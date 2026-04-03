@@ -13,6 +13,7 @@
 | [Database](database.md) | Entity-relationship diagrams, table reference, indexing, migrations |
 | [API Reference](api-reference.md) | REST endpoints, authentication, pagination, filtering, error codes |
 | [MCP Server](mcp-server.md) | Model Context Protocol integration for AI clients |
+| [Operations](operations.md) | **Updating, backups, maintenance, troubleshooting** |
 | [Deployment](deployment.md) | Production deployment tiers, scaling, backups, CI/CD, monitoring |
 | [Development](development.md) | Developer guide, monorepo workflow, testing, code style, contributing |
 

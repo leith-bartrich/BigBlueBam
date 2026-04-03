@@ -337,6 +337,7 @@ BigBlueBam exposes a Model Context Protocol server enabling AI assistants (Claud
 | [Database](docs/database.md) | ER diagrams, table descriptions, indexing |
 | [API Reference](docs/api-reference.md) | All REST endpoints with examples |
 | [MCP Server](docs/mcp-server.md) | Tools, resources, prompts, configuration |
+| [Operations](docs/operations.md) | **Updates, backups, scaling, troubleshooting** |
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, scaling, backup |
 | [Development](docs/development.md) | Contributing, testing, code style |
 | [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
