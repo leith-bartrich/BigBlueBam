@@ -127,8 +127,8 @@ export function HelpdeskPanel({ ticketId }: HelpdeskPanelProps) {
               className={cn(
                 'rounded-lg p-3 text-sm',
                 msg.author_type === 'client'
-                  ? 'bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700'
-                  : 'bg-primary-50 dark:bg-primary-950 border border-primary-200 dark:border-primary-800',
+                  ? 'bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600'
+                  : 'bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700',
               )}
             >
               <div className="flex items-center justify-between mb-1">
@@ -140,7 +140,7 @@ export function HelpdeskPanel({ ticketId }: HelpdeskPanelProps) {
                 </span>
                 <span className="text-xs text-zinc-400">{formatRelativeTime(msg.created_at)}</span>
               </div>
-              <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">{msg.body}</p>
+              <p className="text-zinc-800 dark:text-zinc-100 whitespace-pre-wrap">{msg.body}</p>
             </div>
           ))
         ) : (
