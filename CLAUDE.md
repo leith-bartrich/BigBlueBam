@@ -52,6 +52,17 @@ The entire stack runs via `docker compose up`. All services are accessed through
 
 Application containers (api, mcp-server, worker, helpdesk-api, frontend) are stateless and scale horizontally. Data services (postgres, redis, minio) can be swapped for managed cloud equivalents by changing environment variables only.
 
+## IMPORTANT: Preserving Test Data
+
+**NEVER run `docker compose down -v` unless the user explicitly asks to wipe the database.** The `-v` flag destroys all persistent volumes (PostgreSQL data, Redis data, MinIO uploads). Instead:
+
+- Rebuild and restart individual services: `docker compose build api && docker compose up -d --force-recreate api`
+- Restart nginx after rebuilds: `docker compose restart frontend`
+- Stop without wiping: `docker compose down` (no `-v`)
+- Only target what changed: `docker compose build frontend && docker compose up -d --force-recreate frontend`
+
+The test database contains seeded projects, users, tickets, and conversations that are time-consuming to recreate.
+
 ## Common Commands
 
 ```bash
