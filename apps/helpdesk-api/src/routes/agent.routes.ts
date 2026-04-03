@@ -15,8 +15,8 @@ const updateTicketSchema = z.object({
 const agentMessageSchema = z.object({
   body: z.string().min(1),
   is_internal: z.boolean().default(false),
-  author_name: z.string().min(1).max(100),
-  author_id: z.string().uuid(),
+  author_name: z.string().min(1).max(100).optional(),
+  author_id: z.string().uuid().optional(),
 });
 
 /**
@@ -165,13 +165,30 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // Resolve author from session if not provided
+    let authorId = data.author_id ?? '00000000-0000-0000-0000-000000000000';
+    let authorName = data.author_name ?? 'Support Agent';
+    const sessionCookie = request.cookies?.session;
+    if (sessionCookie && (!data.author_id || !data.author_name)) {
+      try {
+        const rows = await db.execute(
+          sql`SELECT u.id, u.display_name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ${sessionCookie} LIMIT 1`
+        );
+        const user = Array.isArray(rows) ? rows[0] : (rows as any).rows?.[0];
+        if (user) {
+          authorId = (user as any).id ?? authorId;
+          authorName = (user as any).display_name ?? authorName;
+        }
+      } catch { /* use defaults */ }
+    }
+
     const [message] = await db
       .insert(ticketMessages)
       .values({
         ticket_id: id,
         author_type: 'agent',
-        author_id: data.author_id,
-        author_name: data.author_name,
+        author_id: authorId,
+        author_name: authorName,
         body: data.body,
         is_internal: data.is_internal,
       })

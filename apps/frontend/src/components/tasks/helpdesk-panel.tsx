@@ -180,6 +180,9 @@ export function HelpdeskPanel({ ticketId }: HelpdeskPanelProps) {
               : 'border-zinc-200 bg-white dark:border-zinc-700',
           )}
         />
+        {sendMessage.isError && (
+          <p className="text-xs text-red-500">Failed to send message. Please try again.</p>
+        )}
         <div className="flex justify-end">
           <Button
             size="sm"
