@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { env } from '../env.js';
-import { uploadFile, getFileUrl, deleteFile } from '../services/upload.service.js';
+import { uploadFile, getFileStream, deleteFile } from '../services/upload.service.js';
 import { requireAuth } from '../plugins/auth.js';
 
 const MAX_FILE_SIZE = env.UPLOAD_MAX_FILE_SIZE; // 25MB
@@ -114,8 +114,11 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
       }
 
       try {
-        const url = await getFileUrl(env.S3_BUCKET, key);
-        return reply.redirect(302, url);
+        const { stream, contentType, size } = await getFileStream(env.S3_BUCKET, key);
+        reply.header('Content-Type', contentType);
+        reply.header('Content-Length', size);
+        reply.header('Cache-Control', 'public, max-age=86400');
+        return reply.send(stream);
       } catch {
         return reply.status(404).send({
           error: {

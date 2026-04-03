@@ -41,6 +41,12 @@ export async function getFileUrl(bucket: string, key: string): Promise<string> {
   return minioClient.presignedGetObject(bucket, key, 24 * 60 * 60);
 }
 
+export async function getFileStream(bucket: string, key: string) {
+  const stat = await minioClient.statObject(bucket, key);
+  const stream = await minioClient.getObject(bucket, key);
+  return { stream, contentType: stat.metaData?.['content-type'] ?? 'application/octet-stream', size: stat.size };
+}
+
 export async function deleteFile(bucket: string, key: string): Promise<void> {
   await minioClient.removeObject(bucket, key);
 }
