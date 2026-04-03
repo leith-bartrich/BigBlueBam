@@ -39,7 +39,7 @@ export function ImageUpload({ onUpload, endpoint, className, size = 'sm' }: Imag
       // Use XMLHttpRequest for progress tracking
       const url = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        const uploadUrl = endpoint ?? '/api/upload';
+        const uploadUrl = endpoint ?? '/b3/api/upload';
 
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {

@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
 
 export default defineConfig({
+  base: '/b3/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -13,13 +14,15 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
+      '/b3/api': {
         target: 'http://localhost:4000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/b3\/api/, ''),
       },
-      '/ws': {
+      '/b3/ws': {
         target: 'ws://localhost:4000',
         ws: true,
+        rewrite: (path) => path.replace(/^\/b3\/ws/, '/ws'),
       },
     },
   },

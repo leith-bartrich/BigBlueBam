@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
 
 export default defineConfig({
+  base: '/helpdesk/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -13,9 +14,10 @@ export default defineConfig({
   server: {
     port: 8081,
     proxy: {
-      '/helpdesk': {
+      '/helpdesk/api': {
         target: 'http://localhost:4001',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/helpdesk\/api/, '/helpdesk'),
       },
     },
   },

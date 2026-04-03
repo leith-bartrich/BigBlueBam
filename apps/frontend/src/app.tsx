@@ -22,27 +22,37 @@ type Route =
   | { page: 'settings' }
   | { page: 'my-work' };
 
+const BASE_PATH = '/b3';
+
+function stripBase(path: string): string {
+  if (path.startsWith(BASE_PATH)) {
+    return path.slice(BASE_PATH.length) || '/';
+  }
+  return path;
+}
+
 function parseRoute(path: string): Route {
-  const boardMatch = path.match(/^\/projects\/([^/]+)\/board$/);
+  const p = stripBase(path);
+  const boardMatch = p.match(/^\/projects\/([^/]+)\/board$/);
   if (boardMatch) {
     return { page: 'board', projectId: boardMatch[1]! };
   }
-  const dashboardMatch = path.match(/^\/projects\/([^/]+)\/dashboard$/);
+  const dashboardMatch = p.match(/^\/projects\/([^/]+)\/dashboard$/);
   if (dashboardMatch) {
     return { page: 'project-dashboard', projectId: dashboardMatch[1]! };
   }
-  const auditMatch = path.match(/^\/projects\/([^/]+)\/audit-log$/);
+  const auditMatch = p.match(/^\/projects\/([^/]+)\/audit-log$/);
   if (auditMatch) {
     return { page: 'audit-log', projectId: auditMatch[1]! };
   }
-  const sprintReportMatch = path.match(/^\/projects\/([^/]+)\/sprints\/([^/]+)\/report$/);
+  const sprintReportMatch = p.match(/^\/projects\/([^/]+)\/sprints\/([^/]+)\/report$/);
   if (sprintReportMatch) {
     return { page: 'sprint-report', projectId: sprintReportMatch[1]!, sprintId: sprintReportMatch[2]! };
   }
-  if (path === '/register') return { page: 'register' };
-  if (path === '/login') return { page: 'login' };
-  if (path === '/settings') return { page: 'settings' };
-  if (path === '/my-work') return { page: 'my-work' };
+  if (p === '/register') return { page: 'register' };
+  if (p === '/login') return { page: 'login' };
+  if (p === '/settings') return { page: 'settings' };
+  if (p === '/my-work') return { page: 'my-work' };
   return { page: 'dashboard' };
 }
 
@@ -76,8 +86,9 @@ export function App() {
   }, []);
 
   const navigate = useCallback((path: string) => {
-    window.history.pushState(null, '', path);
-    setRoute(parseRoute(path));
+    const fullPath = `${BASE_PATH}${path}`;
+    window.history.pushState(null, '', fullPath);
+    setRoute(parseRoute(fullPath));
   }, []);
 
   if (isLoading) {

@@ -81,7 +81,7 @@ export default async function helpdeskUploadRoutes(fastify: FastifyInstance) {
       await uploadFile(env.S3_BUCKET, key, buffer, contentType);
 
       // Return proxy URL through API
-      const url = `/api/files/${key}`;
+      const url = `/files/${key}`;
 
       return reply.status(201).send({
         data: {

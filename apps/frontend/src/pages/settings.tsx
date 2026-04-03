@@ -652,15 +652,15 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">My Tasks (Personal)</p>
                         <p className="text-xs text-zinc-400 truncate font-mono">
-                          {window.location.origin}/api/me/calendar.ics?token=API_KEY
+                          {window.location.origin}/b3/api/me/calendar.ics?token=API_KEY
                         </p>
                       </div>
                       <button
-                        onClick={() => handleCopyUrl(`${window.location.origin}/api/me/calendar.ics?token=API_KEY`)}
+                        onClick={() => handleCopyUrl(`${window.location.origin}/b3/api/me/calendar.ics?token=API_KEY`)}
                         className="shrink-0 rounded-md p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                         title="Copy URL"
                       >
-                        {copiedUrl === `${window.location.origin}/api/me/calendar.ics?token=API_KEY` ? (
+                        {copiedUrl === `${window.location.origin}/b3/api/me/calendar.ics?token=API_KEY` ? (
                           <Check className="h-4 w-4 text-green-500" />
                         ) : (
                           <Copy className="h-4 w-4" />
@@ -673,7 +673,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
                     {/* Per-project calendars */}
                     {projects.map((project) => {
-                      const url = `${window.location.origin}/api/projects/${project.id}/calendar.ics`;
+                      const url = `${window.location.origin}/b3/api/projects/${project.id}/calendar.ics`;
                       return (
                         <div key={project.id} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3">
                           <div className="min-w-0 flex-1">

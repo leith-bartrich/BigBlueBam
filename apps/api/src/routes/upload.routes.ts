@@ -81,7 +81,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
       await uploadFile(env.S3_BUCKET, key, buffer, contentType);
 
       // Return a proxy URL through our API (not a direct MinIO URL)
-      const url = `/api/files/${key}`;
+      const url = `/files/${key}`;
 
       return reply.status(201).send({
         data: {

@@ -14,7 +14,7 @@ export class ApiError extends Error {
 class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl = '/helpdesk') {
+  constructor(baseUrl = '/helpdesk/api') {
     this.baseUrl = baseUrl;
   }
 

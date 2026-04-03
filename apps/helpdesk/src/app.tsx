@@ -17,16 +17,26 @@ type Route =
   | { page: 'new-ticket' }
   | { page: 'ticket-detail'; ticketId: string };
 
+const BASE_PATH = '/helpdesk';
+
+function stripBase(path: string): string {
+  if (path.startsWith(BASE_PATH)) {
+    return path.slice(BASE_PATH.length) || '/';
+  }
+  return path;
+}
+
 function parseRoute(path: string): Route {
-  const ticketMatch = path.match(/^\/tickets\/([^/]+)$/);
+  const p = stripBase(path);
+  const ticketMatch = p.match(/^\/tickets\/([^/]+)$/);
   if (ticketMatch && ticketMatch[1] !== 'new') {
     return { page: 'ticket-detail', ticketId: ticketMatch[1]! };
   }
-  if (path === '/tickets/new') return { page: 'new-ticket' };
-  if (path === '/tickets') return { page: 'tickets' };
-  if (path === '/register') return { page: 'register' };
-  if (path === '/verify') return { page: 'verify' };
-  if (path === '/login') return { page: 'login' };
+  if (p === '/tickets/new') return { page: 'new-ticket' };
+  if (p === '/tickets') return { page: 'tickets' };
+  if (p === '/register') return { page: 'register' };
+  if (p === '/verify') return { page: 'verify' };
+  if (p === '/login') return { page: 'login' };
   return { page: 'tickets' };
 }
 
@@ -47,8 +57,9 @@ export function App() {
   }, []);
 
   const navigate = useCallback((path: string) => {
-    window.history.pushState(null, '', path);
-    setRoute(parseRoute(path));
+    const fullPath = `${BASE_PATH}${path}`;
+    window.history.pushState(null, '', fullPath);
+    setRoute(parseRoute(fullPath));
   }, []);
 
   if (isLoading) {
