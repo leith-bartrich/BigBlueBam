@@ -19,6 +19,11 @@ import pinRoutes from './routes/pin.routes.js';
 import bookmarkRoutes from './routes/bookmark.routes.js';
 import preferenceRoutes from './routes/preference.routes.js';
 import fileRoutes from './routes/file.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import userGroupRoutes from './routes/user-group.routes.js';
+import searchRoutes from './routes/search.routes.js';
+import callRoutes from './routes/call.routes.js';
+import webhookRoutes from './routes/webhook.routes.js';
 import { sql } from 'drizzle-orm';
 
 const fastify = Fastify({
@@ -131,6 +136,11 @@ await fastify.register(pinRoutes);
 await fastify.register(bookmarkRoutes);
 await fastify.register(preferenceRoutes);
 await fastify.register(fileRoutes);
+await fastify.register(adminRoutes);
+await fastify.register(userGroupRoutes);
+await fastify.register(searchRoutes);
+await fastify.register(callRoutes);
+await fastify.register(webhookRoutes);
 
 // WebSocket handler
 await fastify.register(websocketHandler);

@@ -6,7 +6,9 @@ import { ChannelBrowser } from '@/pages/channel-browser';
 import { BookmarksPage } from '@/pages/bookmarks';
 import { SearchPage } from '@/pages/search';
 import { PreferencesPage } from '@/pages/preferences';
+import { AdminPage } from '@/pages/admin';
 import { ws } from '@/lib/websocket';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -16,6 +18,7 @@ type Route =
   | { page: 'bookmarks' }
   | { page: 'search' }
   | { page: 'settings' }
+  | { page: 'admin' }
   | { page: 'redirect' };
 
 const BASE_PATH = '/banter';
@@ -44,6 +47,7 @@ function parseRoute(path: string): Route {
   if (p === '/bookmarks') return { page: 'bookmarks' };
   if (p === '/search') return { page: 'search' };
   if (p === '/settings') return { page: 'settings' };
+  if (p === '/admin') return { page: 'admin' };
 
   return { page: 'redirect' };
 }
@@ -90,6 +94,9 @@ export function App() {
     setRoute(parseRoute(fullPath));
   }, []);
 
+  // Register keyboard shortcuts
+  useKeyboardShortcuts(navigate);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -129,6 +136,8 @@ export function App() {
         return <SearchPage onNavigate={navigate} />;
       case 'settings':
         return <PreferencesPage onNavigate={navigate} />;
+      case 'admin':
+        return <AdminPage onNavigate={navigate} />;
       default:
         return null;
     }

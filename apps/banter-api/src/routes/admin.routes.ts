@@ -1,0 +1,385 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { eq, and, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { banterSettings, banterChannelGroups } from '../db/schema/index.js';
+import { requireAuth, requireRole } from '../plugins/auth.js';
+import { broadcastToOrg } from '../services/realtime.js';
+
+// ── Schemas ──────────────────────────────────────────────────────
+
+const updateSettingsSchema = z.object({
+  allow_channel_creation: z.enum(['members', 'admins']).optional(),
+  allow_dm: z.boolean().optional(),
+  allow_group_dm: z.boolean().optional(),
+  allow_guest_access: z.boolean().optional(),
+  message_retention_days: z.number().int().min(0).optional(),
+  max_file_size_mb: z.number().int().min(1).optional(),
+  allowed_file_types: z.array(z.string()).optional(),
+  enable_link_previews: z.boolean().optional(),
+  enable_bbb_integration: z.boolean().optional(),
+  voice_video_enabled: z.boolean().optional(),
+  livekit_host: z.string().max(500).nullable().optional(),
+  livekit_api_key: z.string().max(255).nullable().optional(),
+  livekit_api_secret: z.string().nullable().optional(),
+  max_call_participants: z.number().int().min(2).max(500).optional(),
+  max_call_duration_minutes: z.number().int().min(1).optional(),
+  allow_recording: z.boolean().optional(),
+  recording_storage_prefix: z.string().max(255).optional(),
+  transcription_enabled: z.boolean().optional(),
+  stt_provider: z.string().max(50).nullable().optional(),
+  stt_provider_config: z.record(z.unknown()).optional(),
+  tts_provider: z.string().max(50).nullable().optional(),
+  tts_provider_config: z.record(z.unknown()).optional(),
+  tts_default_voice: z.string().max(100).nullable().optional(),
+  ai_voice_agent_enabled: z.boolean().optional(),
+  ai_voice_agent_llm_provider: z.string().max(50).optional(),
+  ai_voice_agent_llm_config: z.record(z.unknown()).optional(),
+  ai_voice_agent_greeting: z.string().max(500).nullable().optional(),
+});
+
+const createChannelGroupSchema = z.object({
+  name: z.string().min(1).max(100),
+  position: z.number().int().min(0).optional(),
+  is_collapsed_default: z.boolean().optional(),
+});
+
+const updateChannelGroupSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  position: z.number().int().min(0).optional(),
+  is_collapsed_default: z.boolean().optional(),
+});
+
+const reorderGroupsSchema = z.object({
+  order: z.array(
+    z.object({
+      id: z.string().uuid(),
+      position: z.number().int().min(0),
+    }),
+  ),
+});
+
+// ── Routes ───────────────────────────────────────────────────────
+
+export default async function adminRoutes(fastify: FastifyInstance) {
+  const adminPreHandler = [requireAuth, requireRole(['owner', 'admin'])];
+
+  // GET /v1/admin/settings
+  fastify.get(
+    '/v1/admin/settings',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const user = request.user!;
+
+      const [settings] = await db
+        .select()
+        .from(banterSettings)
+        .where(eq(banterSettings.org_id, user.org_id))
+        .limit(1);
+
+      if (!settings) {
+        // Auto-create default settings for this org
+        const [created] = await db
+          .insert(banterSettings)
+          .values({ org_id: user.org_id })
+          .returning();
+        return reply.send({ data: created });
+      }
+
+      return reply.send({ data: settings });
+    },
+  );
+
+  // PATCH /v1/admin/settings
+  fastify.patch(
+    '/v1/admin/settings',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const user = request.user!;
+      const body = updateSettingsSchema.parse(request.body);
+
+      // Upsert settings
+      const [existing] = await db
+        .select()
+        .from(banterSettings)
+        .where(eq(banterSettings.org_id, user.org_id))
+        .limit(1);
+
+      let settings;
+      if (!existing) {
+        [settings] = await db
+          .insert(banterSettings)
+          .values({ org_id: user.org_id, ...body, updated_at: new Date() })
+          .returning();
+      } else {
+        [settings] = await db
+          .update(banterSettings)
+          .set({ ...body, updated_at: new Date() })
+          .where(eq(banterSettings.org_id, user.org_id))
+          .returning();
+      }
+
+      broadcastToOrg(user.org_id, {
+        type: 'settings.updated',
+        data: { settings },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.send({ data: settings });
+    },
+  );
+
+  // POST /v1/admin/settings/test-livekit
+  fastify.post(
+    '/v1/admin/settings/test-livekit',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const user = request.user!;
+
+      const [settings] = await db
+        .select()
+        .from(banterSettings)
+        .where(eq(banterSettings.org_id, user.org_id))
+        .limit(1);
+
+      if (!settings?.livekit_host || !settings?.livekit_api_key || !settings?.livekit_api_secret) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'LiveKit host, API key, and API secret must be configured before testing',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      try {
+        // Attempt to create a test room via the LiveKit HTTP API
+        const { generateLiveKitToken, buildRoomName } = await import(
+          '../services/livekit-token.js'
+        );
+
+        const testRoomName = `banter_test_${user.org_id}_${Date.now()}`;
+        const token = await generateLiveKitToken({
+          participantIdentity: 'test-connection',
+          participantName: 'Test',
+          roomName: testRoomName,
+          ttlSeconds: 30,
+        });
+
+        return reply.send({
+          data: {
+            success: true,
+            message: 'LiveKit credentials are valid. Token generated successfully.',
+            test_room: testRoomName,
+          },
+        });
+      } catch (err) {
+        return reply.status(400).send({
+          error: {
+            code: 'LIVEKIT_ERROR',
+            message: `LiveKit connection test failed: ${(err as Error).message}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    },
+  );
+
+  // ── Channel Groups CRUD ────────────────────────────────────────
+
+  // GET /v1/admin/channel-groups
+  fastify.get(
+    '/v1/admin/channel-groups',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const user = request.user!;
+
+      const groups = await db
+        .select()
+        .from(banterChannelGroups)
+        .where(eq(banterChannelGroups.org_id, user.org_id))
+        .orderBy(banterChannelGroups.position);
+
+      return reply.send({ data: groups });
+    },
+  );
+
+  // POST /v1/admin/channel-groups
+  fastify.post(
+    '/v1/admin/channel-groups',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const user = request.user!;
+      const body = createChannelGroupSchema.parse(request.body);
+
+      // If no position given, place at end
+      let position = body.position;
+      if (position === undefined) {
+        const [maxRow] = await db
+          .select({ max: sql<number>`coalesce(max(${banterChannelGroups.position}), -1)` })
+          .from(banterChannelGroups)
+          .where(eq(banterChannelGroups.org_id, user.org_id));
+        position = (maxRow?.max ?? -1) + 1;
+      }
+
+      const [group] = await db
+        .insert(banterChannelGroups)
+        .values({
+          org_id: user.org_id,
+          name: body.name,
+          position,
+          is_collapsed_default: body.is_collapsed_default ?? false,
+        })
+        .returning();
+
+      broadcastToOrg(user.org_id, {
+        type: 'channel_group.created',
+        data: { group },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.status(201).send({ data: group });
+    },
+  );
+
+  // GET /v1/admin/channel-groups/:id
+  fastify.get(
+    '/v1/admin/channel-groups/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+
+      const [group] = await db
+        .select()
+        .from(banterChannelGroups)
+        .where(and(eq(banterChannelGroups.id, id), eq(banterChannelGroups.org_id, user.org_id)))
+        .limit(1);
+
+      if (!group) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Channel group not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: group });
+    },
+  );
+
+  // PATCH /v1/admin/channel-groups/:id
+  fastify.patch(
+    '/v1/admin/channel-groups/:id',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+      const body = updateChannelGroupSchema.parse(request.body);
+
+      const [existing] = await db
+        .select()
+        .from(banterChannelGroups)
+        .where(and(eq(banterChannelGroups.id, id), eq(banterChannelGroups.org_id, user.org_id)))
+        .limit(1);
+
+      if (!existing) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Channel group not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const [updated] = await db
+        .update(banterChannelGroups)
+        .set(body)
+        .where(eq(banterChannelGroups.id, id))
+        .returning();
+
+      broadcastToOrg(user.org_id, {
+        type: 'channel_group.updated',
+        data: { group: updated },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.send({ data: updated });
+    },
+  );
+
+  // DELETE /v1/admin/channel-groups/:id
+  fastify.delete(
+    '/v1/admin/channel-groups/:id',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+
+      const deleted = await db
+        .delete(banterChannelGroups)
+        .where(and(eq(banterChannelGroups.id, id), eq(banterChannelGroups.org_id, user.org_id)))
+        .returning();
+
+      if (deleted.length === 0) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Channel group not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      broadcastToOrg(user.org_id, {
+        type: 'channel_group.deleted',
+        data: { id },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.send({ data: { success: true } });
+    },
+  );
+
+  // POST /v1/admin/channel-groups/reorder
+  fastify.post(
+    '/v1/admin/channel-groups/reorder',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const user = request.user!;
+      const body = reorderGroupsSchema.parse(request.body);
+
+      // Update each group's position in a transaction-like manner
+      for (const item of body.order) {
+        await db
+          .update(banterChannelGroups)
+          .set({ position: item.position })
+          .where(
+            and(eq(banterChannelGroups.id, item.id), eq(banterChannelGroups.org_id, user.org_id)),
+          );
+      }
+
+      const groups = await db
+        .select()
+        .from(banterChannelGroups)
+        .where(eq(banterChannelGroups.org_id, user.org_id))
+        .orderBy(banterChannelGroups.position);
+
+      broadcastToOrg(user.org_id, {
+        type: 'channel_groups.reordered',
+        data: { groups },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.send({ data: groups });
+    },
+  );
+}

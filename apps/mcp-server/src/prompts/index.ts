@@ -2,7 +2,20 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
 
-export function registerPrompts(server: McpServer, api: ApiClient): void {
+/** Helper to make requests to the banter-api for prompts */
+async function banterFetch(banterApiUrl: string, path: string) {
+  const url = `${banterApiUrl.replace(/\/$/, '')}${path}`;
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Failed to reach banter-api' };
+  }
+}
+
+export function registerPrompts(server: McpServer, api: ApiClient, banterApiUrl?: string): void {
   server.prompt(
     'sprint_planning',
     'Generate a structured sprint planning prompt with backlog and velocity data',
@@ -178,6 +191,214 @@ Please help break this task into smaller, actionable sub-tasks:
 5. Include any testing or documentation sub-tasks if appropriate
 
 Format the breakdown as a numbered list with details for each sub-task.`,
+            },
+          },
+        ],
+      };
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Banter prompts
+  // ---------------------------------------------------------------------------
+
+  const banterUrl = banterApiUrl ?? 'http://localhost:4002';
+
+  server.prompt(
+    'banter_channel_summary',
+    'Fetch recent messages from a Banter channel and generate a summary',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to summarize'),
+      limit: z.string().optional().describe('Number of recent messages to include (default 50)'),
+    },
+    async ({ channel_id, limit }) => {
+      const msgLimit = limit ?? '50';
+      const messagesData = await banterFetch(
+        banterUrl,
+        `/banter/api/v1/channels/${channel_id}/messages?limit=${msgLimit}`,
+      );
+      const channelData = await banterFetch(banterUrl, `/banter/api/v1/channels/${channel_id}`);
+
+      const messages = JSON.stringify(messagesData, null, 2);
+      const channel = JSON.stringify(channelData, null, 2);
+
+      return {
+        messages: [
+          {
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are a Banter channel summary assistant.
+
+## Channel Info
+${channel}
+
+## Recent Messages
+${messages}
+
+Please provide a concise summary of the recent conversation in this channel:
+
+1. **Key topics discussed**: What were the main subjects people talked about?
+2. **Decisions made**: Were any decisions or conclusions reached?
+3. **Action items**: Were any tasks or follow-ups mentioned?
+4. **Open questions**: Are there any unresolved questions?
+5. **Participants**: Who were the most active contributors?
+
+Format the summary so someone who missed the conversation can quickly get up to speed.`,
+            },
+          },
+        ],
+      };
+    },
+  );
+
+  server.prompt(
+    'banter_standup_broadcast',
+    'Generate a standup summary from BigBlueBam project data and format it for posting to Banter',
+    {
+      project_id: z.string().uuid().describe('The BBB project ID to pull standup data from'),
+      channel_id: z.string().uuid().describe('The Banter channel ID where the standup will be posted'),
+    },
+    async ({ project_id, channel_id }) => {
+      // Fetch project board state from BBB
+      const boardResult = await api.get(`/projects/${project_id}/board`);
+      const sprintResult = await api.get(`/projects/${project_id}/sprints?status=active&limit=1`);
+
+      // Fetch channel info from Banter
+      const channelData = await banterFetch(banterUrl, `/banter/api/v1/channels/${channel_id}`);
+
+      const board = JSON.stringify(boardResult.data, null, 2);
+      const sprint = JSON.stringify(
+        (sprintResult.data as Record<string, unknown>)?.data ?? sprintResult.data,
+        null,
+        2,
+      );
+      const channel = JSON.stringify(channelData, null, 2);
+
+      return {
+        messages: [
+          {
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are a standup broadcast assistant. Generate a standup update to post in a Banter channel.
+
+## Active Sprint
+${sprint}
+
+## Current Board State
+${board}
+
+## Target Channel
+${channel}
+
+Generate a formatted standup message suitable for posting in the Banter channel. The message should:
+
+1. Start with a greeting and the date
+2. List what was completed since the last standup
+3. List what is in progress with assignees
+4. Flag any blocked items
+5. Show sprint progress (story points completed vs total)
+6. End with any reminders or upcoming deadlines
+
+Format the output as a single Banter message using markdown. Keep it concise but informative.`,
+            },
+          },
+        ],
+      };
+    },
+  );
+
+  server.prompt(
+    'banter_thread_summary',
+    'Summarize a long Banter thread conversation',
+    {
+      message_id: z.string().uuid().describe('The parent message ID of the thread'),
+    },
+    async ({ message_id }) => {
+      const threadData = await banterFetch(
+        banterUrl,
+        `/banter/api/v1/messages/${message_id}/thread?limit=100`,
+      );
+      const parentData = await banterFetch(
+        banterUrl,
+        `/banter/api/v1/messages/${message_id}`,
+      );
+
+      const thread = JSON.stringify(threadData, null, 2);
+      const parent = JSON.stringify(parentData, null, 2);
+
+      return {
+        messages: [
+          {
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are a Banter thread summary assistant.
+
+## Original Message
+${parent}
+
+## Thread Replies
+${thread}
+
+Please provide a concise summary of this thread:
+
+1. **Original topic**: What was the thread about?
+2. **Key points**: What were the main arguments or points made?
+3. **Outcome**: Was a conclusion or decision reached?
+4. **Action items**: Were any follow-ups or tasks identified?
+5. **Dissenting views**: Were there any disagreements or alternative perspectives?
+
+Keep the summary brief enough to post as a reply in the thread itself.`,
+            },
+          },
+        ],
+      };
+    },
+  );
+
+  server.prompt(
+    'banter_call_recap',
+    'Summarize a Banter call transcript',
+    {
+      call_id: z.string().uuid().describe('The call ID to summarize'),
+    },
+    async ({ call_id }) => {
+      const callData = await banterFetch(banterUrl, `/banter/api/v1/calls/${call_id}`);
+      const transcriptData = await banterFetch(
+        banterUrl,
+        `/banter/api/v1/calls/${call_id}/transcript`,
+      );
+
+      const call = JSON.stringify(callData, null, 2);
+      const transcript = JSON.stringify(transcriptData, null, 2);
+
+      return {
+        messages: [
+          {
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are a Banter call recap assistant.
+
+## Call Details
+${call}
+
+## Transcript
+${transcript}
+
+Please provide a structured call recap:
+
+1. **Participants**: Who was on the call?
+2. **Duration**: How long was the call?
+3. **Topics discussed**: What subjects were covered?
+4. **Decisions made**: What was agreed upon?
+5. **Action items**: What tasks or follow-ups were assigned and to whom?
+6. **Key quotes**: Any particularly important statements (with attribution)?
+7. **Next steps**: What happens next?
+
+Format this as a call recap that can be posted to the channel for anyone who missed the call.`,
             },
           },
         ],

@@ -19,7 +19,8 @@ import { registerTemplateTools } from './tools/template-tools.js';
 import { registerImportTools } from './tools/import-tools.js';
 import { registerUtilityTools } from './tools/utility-tools.js';
 import { registerHelpdeskTools } from './tools/helpdesk-tools.js';
-import { registerResources } from './resources/index.js';
+import { registerBanterTools } from './tools/banter-tools.js';
+import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 
 const env = loadEnv();
@@ -84,10 +85,12 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
   registerImportTools(server, apiClient);
   registerUtilityTools(server, apiClient, rateLimiter);
   registerHelpdeskTools(server, apiClient, env.HELPDESK_API_URL);
+  registerBanterTools(server, apiClient, env.BANTER_API_URL);
 
   // Register resources and prompts
   registerResources(server, apiClient);
-  registerPrompts(server, apiClient);
+  registerBanterResources(server, env.BANTER_API_URL);
+  registerPrompts(server, apiClient, env.BANTER_API_URL);
 
   // Hook into the tools/call handler after all tools are registered
   // to add rate limiting and audit logging.
