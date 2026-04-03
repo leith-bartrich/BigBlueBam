@@ -35,7 +35,7 @@ export function RichTextEditor({
   className,
   compact = false,
 }: RichTextEditorProps) {
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState(() => !!value?.trim());
   const [uploading, setUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
