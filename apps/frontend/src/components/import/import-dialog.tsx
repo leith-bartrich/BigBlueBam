@@ -298,7 +298,7 @@ export function ImportDialog({ open, onOpenChange, projectId }: ImportDialogProp
                   }}
                   className={`w-full flex items-center gap-4 p-4 rounded-lg border transition-colors text-left ${
                     source === s.value
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-950'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-zinc-800'
                       : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
                   }`}
                 >
@@ -364,7 +364,7 @@ export function ImportDialog({ open, onOpenChange, projectId }: ImportDialogProp
                   onClick={() => fileInputRef.current?.click()}
                   className={`flex flex-col items-center justify-center h-40 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
                     dragOver
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-950'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-zinc-800'
                       : 'border-zinc-300 dark:border-zinc-600 hover:border-zinc-400'
                   }`}
                 >

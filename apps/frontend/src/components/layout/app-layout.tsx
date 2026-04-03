@@ -134,7 +134,7 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
                       {notifications.map((notif) => (
                         <div
                           key={notif.id}
-                          className={`px-4 py-3 text-sm ${!notif.read ? 'bg-primary-50/50 dark:bg-primary-950/30' : ''}`}
+                          className={`px-4 py-3 text-sm ${!notif.read ? 'bg-primary-50/50 dark:bg-zinc-800/30' : ''}`}
                         >
                           <div className="flex items-start gap-2">
                             {!notif.read && (

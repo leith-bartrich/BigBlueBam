@@ -797,7 +797,7 @@ export function TaskDetailDrawer({
                                         className={cn(
                                           'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-colors',
                                           r.reacted
-                                            ? 'bg-primary-50 border-primary-200 dark:bg-primary-950 dark:border-primary-800'
+                                            ? 'bg-primary-50 border-primary-200 dark:bg-zinc-800 dark:border-primary-800'
                                             : 'bg-zinc-50 border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700',
                                         )}
                                       >

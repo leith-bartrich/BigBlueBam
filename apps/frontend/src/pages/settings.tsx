@@ -369,7 +369,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                    ? 'bg-primary-50 text-primary-700 dark:bg-zinc-800 dark:text-primary-400'
                     : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
                 }`}
               >
@@ -436,7 +436,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         onClick={() => applyTheme(opt.value)}
                         className={`flex items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-colors ${
                           theme === opt.value
-                            ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                            ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-zinc-800 dark:text-primary-400'
                             : 'border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-400'
                         }`}
                       >

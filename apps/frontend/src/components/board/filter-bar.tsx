@@ -46,7 +46,7 @@ function MultiSelectDropdown({ label, options, selectedValues, onToggle }: Multi
         className={cn(
           'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors',
           hasSelections
-            ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-950 dark:text-primary-300'
+            ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-zinc-800 dark:text-primary-400'
             : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-400',
         )}
       >

@@ -233,7 +233,7 @@ export function CommandPalette({
                             className={cn(
                               'flex items-center gap-3 w-full px-4 py-2.5 text-sm text-left transition-colors',
                               action.globalIndex === selectedIndex
-                                ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                                ? 'bg-primary-50 text-primary-700 dark:bg-zinc-800 dark:text-primary-400'
                                 : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800',
                             )}
                           >

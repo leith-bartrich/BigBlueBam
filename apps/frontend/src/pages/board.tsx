@@ -599,7 +599,7 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
                     onClick={() => setExportFormat(fmt)}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       exportFormat === fmt
-                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-zinc-800 dark:text-primary-400'
                         : 'border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-400'
                     }`}
                   >
