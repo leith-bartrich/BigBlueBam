@@ -16,7 +16,7 @@ The authoritative design specification is `BigBlueBam_Design_Document.md` in the
 
 **Data:** PostgreSQL 16 (RLS, JSONB custom fields, partitioned activity log), Redis 7 (sessions, cache, pubsub, queues), MinIO/S3 (attachments)
 
-**MCP Server:** `@modelcontextprotocol/sdk`, Streamable HTTP + SSE + stdio transports, runs as sidecar container on :3001
+**MCP Server:** `@modelcontextprotocol/sdk`, Streamable HTTP + SSE + stdio transports, runs as sidecar container on internal :3001, exposed at `/mcp/` via nginx on port 80
 
 ## Architecture
 
@@ -24,10 +24,12 @@ Monorepo managed with **Turborepo** and **pnpm workspaces**.
 
 ```
 apps/
-  api/          — Fastify REST API + WebSocket server (:4000) — 23 route files, 24 schema tables, ~63 source files
-  frontend/     — React SPA served by nginx (:80/:443) — ~55 source files, 8 pages, command palette, keyboard shortcuts
-  mcp-server/   — MCP protocol server (:3001) — 38 tools, 7 resources, 4 prompts, 10 tool modules
+  api/          — Fastify REST API + WebSocket server (internal :4000, proxied at /b3/api/) — 23 route files, 24 schema tables, ~63 source files
+  frontend/     — React SPA served by nginx at /b3/ (port 80) — ~55 source files, 8 pages, command palette, keyboard shortcuts
+  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 38 tools, 7 resources, 4 prompts, 10 tool modules
   worker/       — BullMQ background job processor (no exposed port) — 4 job handlers (email, notification, export, sprint-close)
+  helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
+  helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
 infra/
@@ -37,7 +39,18 @@ infra/
 scripts/        — Utility scripts (seed-frndo.js)
 ```
 
-The entire stack runs via `docker compose up`. Application containers (api, mcp-server, worker, frontend) are stateless and scale horizontally. Data services (postgres, redis, minio) can be swapped for managed cloud equivalents by changing environment variables only.
+The entire stack runs via `docker compose up`. All services are accessed through a single nginx container on port 80:
+
+- `http://DOMAIN/` redirects to `/helpdesk/`
+- `http://DOMAIN/b3/` serves the BigBlueBam SPA
+- `http://DOMAIN/b3/api/` proxies to the Fastify REST API
+- `http://DOMAIN/b3/ws` proxies WebSocket connections
+- `http://DOMAIN/helpdesk/` serves the Helpdesk portal SPA
+- `http://DOMAIN/helpdesk/api/` proxies to the Helpdesk API
+- `http://DOMAIN/files/` serves uploaded files from MinIO
+- `http://DOMAIN/mcp/` proxies to the MCP server
+
+Application containers (api, mcp-server, worker, helpdesk-api, frontend) are stateless and scale horizontally. Data services (postgres, redis, minio) can be swapped for managed cloud equivalents by changing environment variables only.
 
 ## Common Commands
 

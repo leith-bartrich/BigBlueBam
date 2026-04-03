@@ -516,3 +516,357 @@ CREATE INDEX idx_saved_views_project_id
     ON saved_views (project_id);
 CREATE INDEX idx_saved_views_user_id
     ON saved_views (user_id);
+
+-- =========================================================================
+-- Banter Tables
+-- =========================================================================
+
+-- ── banter_channel_groups ───────────────────────────────────────────────
+CREATE TABLE banter_channel_groups (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id                uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name                  varchar(100) NOT NULL,
+    position              int NOT NULL DEFAULT 0,
+    is_collapsed_default  boolean NOT NULL DEFAULT false,
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(org_id, name)
+);
+
+-- ── banter_channels ─────────────────────────────────────────────────────
+CREATE TABLE banter_channels (
+    id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id                  uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name                    varchar(80) NOT NULL,
+    display_name            varchar(100),
+    slug                    varchar(80) NOT NULL,
+    type                    varchar(20) NOT NULL DEFAULT 'public',
+    topic                   varchar(500),
+    description             text,
+    icon                    varchar(10),
+    channel_group_id        uuid REFERENCES banter_channel_groups(id) ON DELETE SET NULL,
+    created_by              uuid NOT NULL REFERENCES users(id),
+    is_archived             boolean NOT NULL DEFAULT false,
+    is_default              boolean NOT NULL DEFAULT false,
+    allow_bots              boolean NOT NULL DEFAULT true,
+    allow_huddles           boolean NOT NULL DEFAULT true,
+    message_retention_days  int,
+    last_message_at         timestamptz,
+    last_message_preview    varchar(200),
+    message_count           int NOT NULL DEFAULT 0,
+    member_count            int NOT NULL DEFAULT 0,
+    active_huddle_id        uuid,
+    created_at              timestamptz NOT NULL DEFAULT now(),
+    updated_at              timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(org_id, slug)
+);
+
+CREATE TRIGGER trg_banter_channels_updated_at
+    BEFORE UPDATE ON banter_channels
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ── banter_messages ─────────────────────────────────────────────────────
+CREATE TABLE banter_messages (
+    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    channel_id        uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
+    author_id         uuid NOT NULL REFERENCES users(id),
+    thread_parent_id  uuid REFERENCES banter_messages(id) ON DELETE SET NULL,
+    content           text NOT NULL,
+    content_plain     text NOT NULL DEFAULT '',
+    content_format    varchar(20) NOT NULL DEFAULT 'html',
+    is_system         boolean NOT NULL DEFAULT false,
+    is_bot            boolean NOT NULL DEFAULT false,
+    is_edited         boolean NOT NULL DEFAULT false,
+    is_deleted        boolean NOT NULL DEFAULT false,
+    edited_at         timestamptz,
+    deleted_at        timestamptz,
+    deleted_by        uuid REFERENCES users(id),
+    call_id           uuid,
+    reply_count       int NOT NULL DEFAULT 0,
+    reply_user_ids    uuid[] NOT NULL DEFAULT '{}',
+    last_reply_at     timestamptz,
+    reaction_counts   jsonb NOT NULL DEFAULT '{}',
+    attachment_count  int NOT NULL DEFAULT 0,
+    has_link_preview  boolean NOT NULL DEFAULT false,
+    metadata          jsonb NOT NULL DEFAULT '{}',
+    created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── banter_channel_memberships ──────────────────────────────────────────
+CREATE TABLE banter_channel_memberships (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    channel_id            uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
+    user_id               uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role                  varchar(20) NOT NULL DEFAULT 'member',
+    notifications         varchar(20) NOT NULL DEFAULT 'default',
+    is_muted              boolean NOT NULL DEFAULT false,
+    joined_at             timestamptz NOT NULL DEFAULT now(),
+    last_read_message_id  uuid REFERENCES banter_messages(id) ON DELETE SET NULL,
+    last_read_at          timestamptz,
+    UNIQUE(channel_id, user_id)
+);
+
+-- ── banter_message_attachments ──────────────────────────────────────────
+CREATE TABLE banter_message_attachments (
+    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id        uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
+    uploader_id       uuid NOT NULL REFERENCES users(id),
+    filename          varchar(255) NOT NULL,
+    content_type      varchar(100) NOT NULL,
+    size_bytes        bigint NOT NULL,
+    storage_key       text NOT NULL,
+    thumbnail_key     text,
+    width             int,
+    height            int,
+    duration_seconds  int,
+    created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── banter_message_reactions ────────────────────────────────────────────
+CREATE TABLE banter_message_reactions (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id  uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
+    user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji       varchar(50) NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(message_id, user_id, emoji)
+);
+
+-- ── banter_pins ─────────────────────────────────────────────────────────
+CREATE TABLE banter_pins (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    channel_id  uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
+    message_id  uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
+    pinned_by   uuid NOT NULL REFERENCES users(id),
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(channel_id, message_id)
+);
+
+-- ── banter_bookmarks ────────────────────────────────────────────────────
+CREATE TABLE banter_bookmarks (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id  uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
+    note        varchar(500),
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(user_id, message_id)
+);
+
+-- ── banter_calls ────────────────────────────────────────────────────────
+CREATE TABLE banter_calls (
+    id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    channel_id               uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
+    started_by               uuid NOT NULL REFERENCES users(id),
+    type                     varchar(20) NOT NULL,
+    status                   varchar(20) NOT NULL DEFAULT 'ringing',
+    livekit_room_name        varchar(255) NOT NULL,
+    livekit_room_sid         varchar(255),
+    title                    varchar(255),
+    recording_enabled        boolean NOT NULL DEFAULT false,
+    recording_storage_key    text,
+    transcription_enabled    boolean NOT NULL DEFAULT false,
+    transcript_storage_key   text,
+    ai_agent_mode            varchar(20) NOT NULL DEFAULT 'auto',
+    peak_participant_count   int NOT NULL DEFAULT 0,
+    started_at               timestamptz NOT NULL DEFAULT now(),
+    ended_at                 timestamptz,
+    duration_seconds         int
+);
+
+-- One active huddle per channel
+CREATE UNIQUE INDEX idx_banter_calls_active_huddle
+    ON banter_calls (channel_id) WHERE type = 'huddle' AND status = 'active';
+
+-- Add FK for active_huddle_id now that banter_calls exists
+ALTER TABLE banter_channels
+    ADD CONSTRAINT fk_banter_channels_active_huddle
+    FOREIGN KEY (active_huddle_id) REFERENCES banter_calls(id) ON DELETE SET NULL;
+
+-- Add FK for banter_messages.call_id
+ALTER TABLE banter_messages
+    ADD CONSTRAINT fk_banter_messages_call_id
+    FOREIGN KEY (call_id) REFERENCES banter_calls(id) ON DELETE SET NULL;
+
+-- ── banter_call_participants ────────────────────────────────────────────
+CREATE TABLE banter_call_participants (
+    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    call_id             uuid NOT NULL REFERENCES banter_calls(id) ON DELETE CASCADE,
+    user_id             uuid NOT NULL REFERENCES users(id),
+    role                varchar(20) NOT NULL DEFAULT 'participant',
+    joined_at           timestamptz NOT NULL DEFAULT now(),
+    left_at             timestamptz,
+    duration_seconds    int,
+    has_audio           boolean NOT NULL DEFAULT true,
+    has_video           boolean NOT NULL DEFAULT false,
+    has_screen_share    boolean NOT NULL DEFAULT false,
+    is_bot              boolean NOT NULL DEFAULT false,
+    participation_mode  varchar(20) NOT NULL DEFAULT 'media',
+    UNIQUE(call_id, user_id, joined_at)
+);
+
+-- ── banter_call_transcripts ─────────────────────────────────────────────
+CREATE TABLE banter_call_transcripts (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    call_id     uuid NOT NULL REFERENCES banter_calls(id) ON DELETE CASCADE,
+    speaker_id  uuid NOT NULL REFERENCES users(id),
+    content     text NOT NULL,
+    started_at  timestamptz NOT NULL,
+    ended_at    timestamptz NOT NULL,
+    confidence  float,
+    is_final    boolean NOT NULL DEFAULT true
+);
+
+-- ── banter_user_groups ──────────────────────────────────────────────────
+CREATE TABLE banter_user_groups (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name        varchar(80) NOT NULL,
+    handle      varchar(80) NOT NULL,
+    description varchar(500),
+    created_by  uuid NOT NULL REFERENCES users(id),
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(org_id, handle)
+);
+
+CREATE TRIGGER trg_banter_user_groups_updated_at
+    BEFORE UPDATE ON banter_user_groups
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ── banter_user_group_memberships ───────────────────────────────────────
+CREATE TABLE banter_user_group_memberships (
+    id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id  uuid NOT NULL REFERENCES banter_user_groups(id) ON DELETE CASCADE,
+    user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    added_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(group_id, user_id)
+);
+
+-- ── banter_user_preferences ─────────────────────────────────────────────
+CREATE TABLE banter_user_preferences (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+    default_notification_level  varchar(20) NOT NULL DEFAULT 'mentions',
+    sidebar_sort                varchar(20) NOT NULL DEFAULT 'recent',
+    sidebar_collapsed_groups    uuid[] NOT NULL DEFAULT '{}',
+    theme_override              varchar(20),
+    enter_sends_message         boolean NOT NULL DEFAULT true,
+    show_message_timestamps     varchar(20) NOT NULL DEFAULT 'hover',
+    compact_mode                boolean NOT NULL DEFAULT false,
+    auto_join_huddles           boolean NOT NULL DEFAULT false,
+    noise_suppression           boolean NOT NULL DEFAULT true,
+    created_at                  timestamptz NOT NULL DEFAULT now(),
+    updated_at                  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_banter_user_preferences_updated_at
+    BEFORE UPDATE ON banter_user_preferences
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ── banter_settings ─────────────────────────────────────────────────────
+CREATE TABLE banter_settings (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id                      uuid NOT NULL REFERENCES organizations(id) UNIQUE,
+    default_channel_id          uuid REFERENCES banter_channels(id) ON DELETE SET NULL,
+    allow_channel_creation      varchar(20) NOT NULL DEFAULT 'members',
+    allow_dm                    boolean NOT NULL DEFAULT true,
+    allow_group_dm              boolean NOT NULL DEFAULT true,
+    allow_guest_access          boolean NOT NULL DEFAULT false,
+    message_retention_days      int NOT NULL DEFAULT 0,
+    max_file_size_mb            int NOT NULL DEFAULT 25,
+    allowed_file_types          text[] NOT NULL DEFAULT '{}',
+    custom_emoji                jsonb NOT NULL DEFAULT '[]',
+    enable_link_previews        boolean NOT NULL DEFAULT true,
+    enable_bbb_integration      boolean NOT NULL DEFAULT true,
+    voice_video_enabled         boolean NOT NULL DEFAULT false,
+    livekit_host                varchar(500),
+    livekit_api_key             varchar(255),
+    livekit_api_secret          text,
+    max_call_participants       int NOT NULL DEFAULT 50,
+    max_call_duration_minutes   int NOT NULL DEFAULT 480,
+    allow_recording             boolean NOT NULL DEFAULT false,
+    recording_storage_prefix    varchar(255) NOT NULL DEFAULT 'banter/recordings/',
+    transcription_enabled       boolean NOT NULL DEFAULT false,
+    stt_provider                varchar(50),
+    stt_provider_config         jsonb NOT NULL DEFAULT '{}',
+    tts_provider                varchar(50),
+    tts_provider_config         jsonb NOT NULL DEFAULT '{}',
+    tts_default_voice           varchar(100),
+    ai_voice_agent_enabled      boolean NOT NULL DEFAULT false,
+    ai_voice_agent_llm_provider varchar(50) NOT NULL DEFAULT 'anthropic',
+    ai_voice_agent_llm_config   jsonb NOT NULL DEFAULT '{}',
+    ai_voice_agent_greeting     varchar(500),
+    created_at                  timestamptz NOT NULL DEFAULT now(),
+    updated_at                  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_banter_settings_updated_at
+    BEFORE UPDATE ON banter_settings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =========================================================================
+-- Banter Indexes
+-- =========================================================================
+
+-- banter_channels
+CREATE INDEX idx_banter_channels_org_type
+    ON banter_channels (org_id, type, is_archived);
+CREATE INDEX idx_banter_channels_org_last_message
+    ON banter_channels (org_id, last_message_at DESC);
+
+-- banter_channel_memberships
+CREATE INDEX idx_banter_channel_memberships_user
+    ON banter_channel_memberships (user_id);
+CREATE INDEX idx_banter_channel_memberships_channel
+    ON banter_channel_memberships (channel_id);
+
+-- banter_messages
+CREATE INDEX idx_banter_messages_channel_created
+    ON banter_messages (channel_id, created_at);
+CREATE INDEX idx_banter_messages_channel_thread
+    ON banter_messages (channel_id, thread_parent_id, created_at);
+CREATE INDEX idx_banter_messages_author
+    ON banter_messages (author_id, created_at);
+CREATE INDEX idx_banter_messages_channel_id
+    ON banter_messages (channel_id, id);
+
+-- banter_message_attachments
+CREATE INDEX idx_banter_message_attachments_message
+    ON banter_message_attachments (message_id);
+
+-- banter_message_reactions
+CREATE INDEX idx_banter_message_reactions_message
+    ON banter_message_reactions (message_id);
+
+-- banter_pins
+CREATE INDEX idx_banter_pins_channel
+    ON banter_pins (channel_id);
+
+-- banter_bookmarks
+CREATE INDEX idx_banter_bookmarks_user
+    ON banter_bookmarks (user_id);
+
+-- banter_calls
+CREATE INDEX idx_banter_calls_channel_status
+    ON banter_calls (channel_id, status);
+CREATE INDEX idx_banter_calls_channel_started
+    ON banter_calls (channel_id, started_at DESC);
+CREATE INDEX idx_banter_calls_started_by
+    ON banter_calls (started_by, started_at DESC);
+
+-- banter_call_participants
+CREATE INDEX idx_banter_call_participants_call
+    ON banter_call_participants (call_id, left_at NULLS FIRST);
+
+-- banter_call_transcripts
+CREATE INDEX idx_banter_call_transcripts_call
+    ON banter_call_transcripts (call_id, started_at);
+
+-- banter_user_groups
+CREATE INDEX idx_banter_user_groups_org
+    ON banter_user_groups (org_id);
+
+-- banter_user_group_memberships
+CREATE INDEX idx_banter_user_group_memberships_group
+    ON banter_user_group_memberships (group_id);
+CREATE INDEX idx_banter_user_group_memberships_user
+    ON banter_user_group_memberships (user_id);

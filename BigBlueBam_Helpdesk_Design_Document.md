@@ -34,14 +34,18 @@ The two systems share a database but maintain separate authentication — helpde
 └──────────────────┬────────────────────────┘
                    │ HTTPS
 ┌──────────────────▼────────────────────────┐
-│       Docker Container: helpdesk          │
-│       nginx + static SPA assets           │
-│       Reverse proxy to helpdesk-api       │
+│    Single nginx container (port 80)       │
+│    /b3/          → BigBlueBam SPA         │
+│    /helpdesk/    → Helpdesk SPA           │
+│    /helpdesk/api/→ helpdesk-api :4001     │
+│    /b3/api/      → BBB API :4000          │
+│    /mcp/         → MCP server :3001       │
+│    /files/       → MinIO :9000            │
 └──────────┬────────────────────────────────┘
            │ REST
 ┌──────────▼────────────────────────────────┐
 │     Docker Container: helpdesk-api        │
-│     Fastify REST server :4001             │
+│     Fastify REST server :4001 (internal)  │
 │     Shares DB with BigBlueBam API         │
 └──────────┬────────────────────────────────┘
            │
@@ -56,9 +60,8 @@ The two systems share a database but maintain separate authentication — helpde
 | Deployment | Helpdesk Frontend | Helpdesk API | Notes |
 |---|---|---|---|
 | **Docker Compose** | nginx serves at /helpdesk/ (shared port 80) | Fastify on :4001 (internal) | Default. Added to existing docker-compose.yml |
-| **Dev mode** | Vite on :8081 | tsx watch on :4001 | Via docker-compose.dev.yml override |
+| **Dev mode** | Vite on :5174 | tsx watch on :4001 | Via docker-compose.dev.yml override |
 | **Standalone** | Any static host | Any Node.js host | Point `HELPDESK_API_URL` and `DATABASE_URL` to BigBlueBam's DB |
-| **Embedded** | nginx serves both on :80 | Same API process | Add helpdesk routes to main API under `/helpdesk/` prefix |
 
 ---
 
@@ -347,7 +350,9 @@ All emails dispatched through the existing BullMQ email worker queue. New job ty
 
 ## 9. Docker Setup
 
-### 9.1 New Containers
+### 9.1 Containers
+
+The helpdesk no longer runs as a separate nginx container. Both the BigBlueBam SPA and Helpdesk SPA are served from a single `frontend` nginx container on port 80. The helpdesk-api remains its own container.
 
 ```yaml
 # Added to docker-compose.yml
@@ -365,7 +370,7 @@ helpdesk-api:
     DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/bigbluebam
     REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     SESSION_SECRET: ${SESSION_SECRET}
-    HELPDESK_URL: ${HELPDESK_URL:-http://localhost/helpdesk}
+    HELPDESK_URL: ${HELPDESK_URL:-http://localhost/helpdesk/}
     SMTP_HOST: ${SMTP_HOST:-}
     SMTP_PORT: ${SMTP_PORT:-587}
     SMTP_USER: ${SMTP_USER:-}
@@ -374,37 +379,65 @@ helpdesk-api:
   networks:
     - backend
 
-helpdesk:
-  build:
-    context: .
-    dockerfile: apps/helpdesk/Dockerfile
-    target: production
-  depends_on:
-    helpdesk-api: { condition: service_healthy }
-  ports:
-    - # Helpdesk served from main frontend container at /helpdesk/
-  volumes:
-    - ./infra/nginx/helpdesk.conf:/etc/nginx/conf.d/default.conf:ro
-  networks:
-    - frontend
+# The frontend container serves both SPAs:
+# /b3/       → BigBlueBam SPA
+# /helpdesk/ → Helpdesk SPA
+# No separate helpdesk container needed.
 ```
 
-### 9.2 nginx Config (helpdesk.conf)
+### 9.2 nginx Config (unified)
+
+The single nginx config handles all routing:
 
 ```nginx
 server {
     listen 80;
     root /usr/share/nginx/html;
-    index index.html;
 
-    location / {
-        try_files $uri $uri/ /index.html;
+    location = / {
+        return 302 /helpdesk/;
+    }
+
+    location /b3/ {
+        alias /usr/share/nginx/html/b3/;
+        try_files $uri $uri/ /b3/index.html;
+    }
+
+    location /b3/api/ {
+        proxy_pass http://api:4000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+    }
+
+    location /b3/ws {
+        proxy_pass http://api:4000/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 
     location /helpdesk/ {
+        alias /usr/share/nginx/html/helpdesk/;
+        try_files $uri $uri/ /helpdesk/index.html;
+    }
+
+    location /helpdesk/api/ {
         proxy_pass http://helpdesk-api:4001/helpdesk/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /files/ {
+        proxy_pass http://minio:9000/;
+    }
+
+    location /mcp/ {
+        proxy_pass http://mcp-server:3001/mcp/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_cache off;
     }
 }
 ```
@@ -415,10 +448,10 @@ server {
 
 ```
 apps/
-  helpdesk-api/     — Fastify server for helpdesk endpoints (:4001)
-  helpdesk/         — React SPA for client-facing portal (served at /helpdesk/)
-  api/              — (existing) BigBlueBam API — gains agent ticket endpoints
-  frontend/         — (existing) BigBlueBam SPA — gains helpdesk tab in task drawer + settings
+  helpdesk-api/     — Fastify server for helpdesk endpoints (internal :4001, proxied at /helpdesk/api/)
+  helpdesk/         — Helpdesk React SPA (built assets served by frontend nginx at /helpdesk/)
+  api/              — (existing) BigBlueBam API — gains agent ticket endpoints (proxied at /b3/api/)
+  frontend/         — (existing) Single nginx container serving both SPAs at /b3/ and /helpdesk/
   ...
 ```
 

@@ -29,6 +29,7 @@ import {
   Upload,
   Link2,
   Settings2,
+  MessageSquareShare,
 } from 'lucide-react';
 import type { Task, Priority, ApiResponse, PaginatedResponse } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
@@ -142,6 +143,9 @@ export function TaskDetailDrawer({
   const [timeMinutes, setTimeMinutes] = useState('');
   const [timeDate, setTimeDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [timeDescription, setTimeDescription] = useState('');
+  const [showShareBanter, setShowShareBanter] = useState(false);
+  const [banterChannelId, setBanterChannelId] = useState('');
+  const [banterMessage, setBanterMessage] = useState('');
 
   const descriptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -297,6 +301,38 @@ export function TaskDetailDrawer({
     mutationFn: (id: string) => api.delete(`/attachments/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task-attachments', task?.id] });
+    },
+  });
+
+  // Banter channels for "Share to Banter"
+  const { data: banterChannelsRes } = useQuery({
+    queryKey: ['banter-channels'],
+    queryFn: () => api.get<{ data: { id: string; name: string }[] }>('/banter/api/v1/channels'),
+    enabled: showShareBanter,
+  });
+  const banterChannels = banterChannelsRes?.data ?? [];
+
+  // Share to Banter mutation
+  const shareToBanter = useMutation({
+    mutationFn: (channelId: string) => {
+      const humanIdStr = task?.human_id ?? '';
+      const descPreview = (task?.description ?? '').slice(0, 120);
+      return api.post(`/banter/api/v1/channels/${channelId}/messages`, {
+        content: `Shared from BigBlueBam: **${humanIdStr} — ${task?.title}**\n\n> ${descPreview}${(task?.description ?? '').length > 120 ? '...' : ''}\n\n[Open in BigBlueBam →](/b3/projects/${projectId}/board)`,
+        metadata: {
+          bbb_entity: {
+            type: 'task',
+            id: task?.id,
+            human_id: humanIdStr,
+            title: task?.title,
+          },
+        },
+      });
+    },
+    onSuccess: () => {
+      setShowShareBanter(false);
+      setBanterChannelId('');
+      setBanterMessage('');
     },
   });
 
@@ -473,6 +509,58 @@ export function TaskDetailDrawer({
                     />
                   </div>
                   <div className="flex items-center gap-1">
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowShareBanter((v) => !v)}
+                        className="rounded-md p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        title="Share to Banter"
+                      >
+                        <MessageSquareShare className="h-4.5 w-4.5" />
+                      </button>
+                      {showShareBanter && (
+                        <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700 p-4 space-y-3">
+                          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Share to Banter</h4>
+                          <div>
+                            <label className="text-xs font-medium text-zinc-500 mb-1 block">Channel</label>
+                            <select
+                              value={banterChannelId}
+                              onChange={(e) => setBanterChannelId(e.target.value)}
+                              className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-100"
+                            >
+                              <option value="">Select a channel...</option>
+                              {banterChannels.map((ch) => (
+                                <option key={ch.id} value={ch.id}>#{ch.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-zinc-500 mb-1 block">Message (optional)</label>
+                            <textarea
+                              value={banterMessage}
+                              onChange={(e) => setBanterMessage(e.target.value)}
+                              placeholder="Add a note..."
+                              rows={2}
+                              className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm resize-none dark:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-100"
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setShowShareBanter(false)}
+                              className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-700 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => banterChannelId && shareToBanter.mutate(banterChannelId)}
+                              disabled={!banterChannelId || shareToBanter.isPending}
+                              className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                            >
+                              {shareToBanter.isPending ? 'Sharing...' : 'Share'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => duplicateTask.mutate()}
                       disabled={duplicateTask.isPending}
@@ -758,6 +846,22 @@ export function TaskDetailDrawer({
                                 ))}
                               </div>
                             )}
+                          </div>
+
+                          {/* Banter mentions */}
+                          <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3">
+                            <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                              <MessageSquareShare className="h-4 w-4 shrink-0" />
+                              <span>
+                                Referenced in Banter:{' '}
+                                <a
+                                  href={`/banter/search?q=${encodeURIComponent(humanId)}`}
+                                  className="text-primary-600 hover:text-primary-700 hover:underline transition-colors"
+                                >
+                                  Search for mentions &rarr;
+                                </a>
+                              </span>
+                            </div>
                           </div>
                         </div>
                       )}

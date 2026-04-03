@@ -1,0 +1,214 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { eq, and, sql, lt, gt, desc, asc } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import {
+  banterMessages,
+  banterChannelMemberships,
+  users,
+} from '../db/schema/index.js';
+import { requireAuth } from '../plugins/auth.js';
+import { broadcastToChannel } from '../services/realtime.js';
+
+const createReplySchema = z.object({
+  content: z.string().min(1).max(40000),
+  content_format: z.enum(['html', 'markdown', 'plain']).default('html'),
+});
+
+export default async function threadRoutes(fastify: FastifyInstance) {
+  // GET /v1/messages/:id/thread — list thread replies
+  fastify.get(
+    '/v1/messages/:id/thread',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const query = request.query as {
+        before?: string;
+        after?: string;
+        limit?: string;
+      };
+
+      const limit = Math.min(parseInt(query.limit || '50', 10), 100);
+
+      // Verify parent message exists
+      const [parent] = await db
+        .select()
+        .from(banterMessages)
+        .where(and(eq(banterMessages.id, id), eq(banterMessages.is_deleted, false)))
+        .limit(1);
+
+      if (!parent) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Message not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const conditions = [
+        eq(banterMessages.thread_parent_id, id),
+        eq(banterMessages.is_deleted, false),
+      ];
+
+      if (query.before) {
+        conditions.push(
+          lt(
+            banterMessages.created_at,
+            sql`(SELECT created_at FROM banter_messages WHERE id = ${query.before})`,
+          ),
+        );
+      }
+
+      if (query.after) {
+        conditions.push(
+          gt(
+            banterMessages.created_at,
+            sql`(SELECT created_at FROM banter_messages WHERE id = ${query.after})`,
+          ),
+        );
+      }
+
+      const orderDir = query.after ? asc(banterMessages.created_at) : desc(banterMessages.created_at);
+
+      const replies = await db
+        .select({
+          message: banterMessages,
+          author: {
+            id: users.id,
+            display_name: users.display_name,
+            avatar_url: users.avatar_url,
+          },
+        })
+        .from(banterMessages)
+        .innerJoin(users, eq(banterMessages.author_id, users.id))
+        .where(and(...conditions))
+        .orderBy(orderDir)
+        .limit(limit);
+
+      if (query.after) {
+        replies.reverse();
+      }
+
+      const data = replies.map((row) => ({
+        ...row.message,
+        author: row.author,
+      }));
+
+      return reply.send({
+        data,
+        meta: {
+          has_more: replies.length === limit,
+          count: replies.length,
+          parent_id: id,
+        },
+      });
+    },
+  );
+
+  // POST /v1/messages/:id/thread — post reply
+  fastify.post(
+    '/v1/messages/:id/thread',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+      const body = createReplySchema.parse(request.body);
+
+      // Verify parent message exists
+      const [parent] = await db
+        .select()
+        .from(banterMessages)
+        .where(and(eq(banterMessages.id, id), eq(banterMessages.is_deleted, false)))
+        .limit(1);
+
+      if (!parent) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Parent message not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Verify membership
+      const [membership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, parent.channel_id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Must be a member of this channel to reply',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const contentPlain = body.content.replace(/<[^>]*>/g, '').slice(0, 500);
+
+      const [message] = await db
+        .insert(banterMessages)
+        .values({
+          channel_id: parent.channel_id,
+          author_id: user.id,
+          thread_parent_id: id,
+          content: body.content,
+          content_plain: contentPlain,
+          content_format: body.content_format,
+        })
+        .returning();
+
+      // Update parent: reply_count, last_reply_at, reply_user_ids (cap 5)
+      await db
+        .update(banterMessages)
+        .set({
+          reply_count: sql`${banterMessages.reply_count} + 1`,
+          last_reply_at: new Date(),
+          reply_user_ids: sql`(
+            SELECT COALESCE(
+              (SELECT array_agg(uid) FROM (
+                SELECT DISTINCT unnest(
+                  array_append(reply_user_ids, ${user.id}::uuid)
+                ) AS uid
+                FROM banter_messages WHERE id = ${id}
+              ) sub LIMIT 5),
+              ARRAY[${user.id}::uuid]
+            )
+          )`,
+        })
+        .where(eq(banterMessages.id, id));
+
+      broadcastToChannel(parent.channel_id, {
+        type: 'thread.reply',
+        data: {
+          parent_id: id,
+          message: {
+            ...message,
+            author: {
+              id: user.id,
+              display_name: user.display_name,
+              avatar_url: user.avatar_url,
+            },
+          },
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.status(201).send({ data: message });
+    },
+  );
+}

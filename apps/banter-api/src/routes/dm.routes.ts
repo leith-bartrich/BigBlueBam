@@ -1,0 +1,212 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { eq, and, sql, inArray, desc } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import {
+  banterChannels,
+  banterChannelMemberships,
+  users,
+} from '../db/schema/index.js';
+import { requireAuth } from '../plugins/auth.js';
+
+const createDmSchema = z.object({
+  user_id: z.string().uuid(),
+});
+
+const createGroupDmSchema = z.object({
+  user_ids: z.array(z.string().uuid()).min(2).max(7),
+});
+
+export default async function dmRoutes(fastify: FastifyInstance) {
+  // POST /v1/dm — create or retrieve DM
+  fastify.post(
+    '/v1/dm',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const user = request.user!;
+      const body = createDmSchema.parse(request.body);
+
+      if (body.user_id === user.id) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'Cannot create DM with yourself',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Check if DM already exists between these two users
+      const existingDms = await db
+        .select({ channel_id: banterChannelMemberships.channel_id })
+        .from(banterChannelMemberships)
+        .where(eq(banterChannelMemberships.user_id, user.id))
+        .innerJoin(
+          banterChannels,
+          and(
+            eq(banterChannelMemberships.channel_id, banterChannels.id),
+            eq(banterChannels.type, 'dm'),
+            eq(banterChannels.org_id, user.org_id),
+          ),
+        );
+
+      for (const dm of existingDms) {
+        const otherMember = await db
+          .select()
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, dm.channel_id),
+              eq(banterChannelMemberships.user_id, body.user_id),
+            ),
+          )
+          .limit(1);
+
+        if (otherMember.length > 0) {
+          const [channel] = await db
+            .select()
+            .from(banterChannels)
+            .where(eq(banterChannels.id, dm.channel_id))
+            .limit(1);
+
+          return reply.send({ data: channel });
+        }
+      }
+
+      // Get the other user's info for the channel name
+      const [otherUser] = await db
+        .select({ id: users.id, display_name: users.display_name })
+        .from(users)
+        .where(eq(users.id, body.user_id))
+        .limit(1);
+
+      if (!otherUser) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Create new DM channel
+      const slug = `dm-${[user.id, body.user_id].sort().join('-')}`.slice(0, 80);
+
+      const [channel] = await db
+        .insert(banterChannels)
+        .values({
+          org_id: user.org_id,
+          name: `dm-${otherUser.display_name}`,
+          slug,
+          type: 'dm',
+          created_by: user.id,
+          member_count: 2,
+        })
+        .returning();
+
+      await db.insert(banterChannelMemberships).values([
+        { channel_id: channel.id, user_id: user.id, role: 'member' },
+        { channel_id: channel.id, user_id: body.user_id, role: 'member' },
+      ]);
+
+      return reply.status(201).send({ data: channel });
+    },
+  );
+
+  // POST /v1/group-dm — create group DM
+  fastify.post(
+    '/v1/group-dm',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const user = request.user!;
+      const body = createGroupDmSchema.parse(request.body);
+
+      const allUserIds = [...new Set([user.id, ...body.user_ids])];
+
+      if (allUserIds.length < 3 || allUserIds.length > 8) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'Group DM requires 3-8 total participants',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Get display names for channel name
+      const groupUsers = await db
+        .select({ display_name: users.display_name })
+        .from(users)
+        .where(inArray(users.id, allUserIds));
+
+      const channelName = groupUsers
+        .map((u) => u.display_name)
+        .slice(0, 3)
+        .join(', ')
+        + (groupUsers.length > 3 ? ` +${groupUsers.length - 3}` : '');
+
+      const slug = `gdm-${allUserIds.sort().join('-').slice(0, 60)}`;
+
+      const [channel] = await db
+        .insert(banterChannels)
+        .values({
+          org_id: user.org_id,
+          name: channelName.slice(0, 80),
+          slug: slug.slice(0, 80),
+          type: 'group_dm',
+          created_by: user.id,
+          member_count: allUserIds.length,
+        })
+        .returning();
+
+      await db.insert(banterChannelMemberships).values(
+        allUserIds.map((uid) => ({
+          channel_id: channel.id,
+          user_id: uid,
+          role: 'member' as const,
+        })),
+      );
+
+      return reply.status(201).send({ data: channel });
+    },
+  );
+
+  // GET /v1/dm — list user's DMs and group DMs
+  fastify.get(
+    '/v1/dm',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const user = request.user!;
+
+      const rows = await db
+        .select({
+          channel: banterChannels,
+          membership: banterChannelMemberships,
+        })
+        .from(banterChannelMemberships)
+        .innerJoin(
+          banterChannels,
+          eq(banterChannelMemberships.channel_id, banterChannels.id),
+        )
+        .where(
+          and(
+            eq(banterChannelMemberships.user_id, user.id),
+            sql`${banterChannels.type} IN ('dm', 'group_dm')`,
+          ),
+        )
+        .orderBy(desc(banterChannels.last_message_at));
+
+      const channels = rows.map((row) => ({
+        ...row.channel,
+        role: row.membership.role,
+        last_read_message_id: row.membership.last_read_message_id,
+      }));
+
+      return reply.send({ data: channels });
+    },
+  );
+}

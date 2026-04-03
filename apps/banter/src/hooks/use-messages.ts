@@ -1,0 +1,119 @@
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+
+export interface Message {
+  id: string;
+  channel_id: string;
+  author_id: string;
+  author_display_name: string;
+  author_avatar_url: string | null;
+  content: string;
+  is_edited: boolean;
+  is_system: boolean;
+  is_bot: boolean;
+  is_pinned: boolean;
+  thread_reply_count: number;
+  thread_latest_reply_at: string | null;
+  reactions: Reaction[];
+  attachments: Attachment[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Reaction {
+  emoji: string;
+  count: number;
+  users: string[];
+  me: boolean;
+}
+
+export interface Attachment {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  url: string;
+  thumbnail_url?: string;
+}
+
+interface MessagesPage {
+  data: Message[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+/** Fetch paginated messages for a channel */
+export function useMessages(channelId: string) {
+  return useInfiniteQuery({
+    queryKey: ['messages', channelId],
+    queryFn: ({ pageParam }) =>
+      api
+        .get<MessagesPage>(`/channels/${channelId}/messages`, {
+          cursor: pageParam || undefined,
+          limit: 50,
+        }),
+    initialPageParam: '' as string,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
+    enabled: !!channelId,
+    // Messages load newest first; "next" page loads older messages
+  });
+}
+
+/** Post a new message */
+export function usePostMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      channelId,
+      content,
+      attachmentIds,
+    }: {
+      channelId: string;
+      content: string;
+      attachmentIds?: string[];
+    }) =>
+      api
+        .post<{ data: Message }>(`/channels/${channelId}/messages`, {
+          content,
+          attachment_ids: attachmentIds,
+        })
+        .then((r) => r.data),
+    onSuccess: (msg) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', msg.channel_id] });
+    },
+  });
+}
+
+/** Edit an existing message */
+export function useEditMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      channelId,
+      messageId,
+      content,
+    }: {
+      channelId: string;
+      messageId: string;
+      content: string;
+    }) =>
+      api
+        .patch<{ data: Message }>(`/channels/${channelId}/messages/${messageId}`, { content })
+        .then((r) => r.data),
+    onSuccess: (msg) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', msg.channel_id] });
+    },
+  });
+}
+
+/** Delete a message */
+export function useDeleteMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ channelId, messageId }: { channelId: string; messageId: string }) =>
+      api.delete(`/channels/${channelId}/messages/${messageId}`),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', variables.channelId] });
+    },
+  });
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Search, LogOut, ChevronRight, Bell, CheckCheck } from 'lucide-react';
+import { Search, LogOut, ChevronRight, Bell, CheckCheck, MessageCircle } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './sidebar';
 import { Avatar } from '@/components/common/avatar';
@@ -72,22 +72,51 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
 
       <div className="flex flex-col flex-1 overflow-hidden">
         <header className="flex items-center justify-between h-14 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0">
-          <div className="flex items-center gap-1 text-sm">
-            {breadcrumbs.map((crumb, i) => (
-              <span key={i} className="flex items-center gap-1">
-                {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />}
-                {crumb.href ? (
-                  <button
-                    onClick={() => crumb.href && onNavigate(crumb.href)}
-                    className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                  >
-                    {crumb.label}
-                  </button>
-                ) : (
-                  <span className="text-zinc-900 dark:text-zinc-100 font-medium">{crumb.label}</span>
-                )}
-              </span>
-            ))}
+          <div className="flex items-center gap-4">
+            {/* Cross-app navigation */}
+            <nav className="flex items-center gap-1 border-r border-zinc-200 dark:border-zinc-700 pr-4 mr-2">
+              <button
+                onClick={() => onNavigate('/')}
+                className="px-2 py-1 text-xs font-medium rounded-md bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                title="BigBlueBam"
+              >
+                BBB
+              </button>
+              <button
+                onClick={() => { window.location.href = '/banter/'; }}
+                className="relative px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                title="Banter"
+              >
+                Banter
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary-500" />
+              </button>
+              <button
+                onClick={() => { window.location.href = '/helpdesk/'; }}
+                className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                title="Helpdesk"
+              >
+                Helpdesk
+              </button>
+            </nav>
+
+            {/* Breadcrumbs */}
+            <div className="flex items-center gap-1 text-sm">
+              {breadcrumbs.map((crumb, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />}
+                  {crumb.href ? (
+                    <button
+                      onClick={() => crumb.href && onNavigate(crumb.href)}
+                      className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                    >
+                      {crumb.label}
+                    </button>
+                  ) : (
+                    <span className="text-zinc-900 dark:text-zinc-100 font-medium">{crumb.label}</span>
+                  )}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-4">
@@ -101,6 +130,15 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
                 className="w-64 rounded-lg border border-zinc-200 bg-zinc-50 pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
               />
             </div>
+
+            <a
+              href="/banter/"
+              className="relative rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+              title="Banter — unread messages"
+            >
+              <MessageCircle className="h-4.5 w-4.5" />
+              <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-primary-500 ring-2 ring-white dark:ring-zinc-900" />
+            </a>
 
             <div className="relative" ref={notifRef}>
               <button
