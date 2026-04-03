@@ -7,7 +7,8 @@ import { RichTextEditor } from '@/components/common/rich-text-editor';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { api } from '@/lib/api';
-import { ArrowLeft, Loader2, Send, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Loader2, Send, RotateCcw, CheckCircle, ChevronDown } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface TicketDetailPageProps {
   ticketId: string;
@@ -21,9 +22,28 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
   const { user } = useAuthStore();
 
   const [replyText, setReplyText] = useState('');
+  const [showPriorityMenu, setShowPriorityMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const isClosedOrResolved = ticket?.status === 'resolved' || ticket?.status === 'closed';
+
+  const updatePriority = useMutation({
+    mutationFn: (priority: string) =>
+      api.post(`/tickets/${ticketId}/update-priority`, { priority }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['helpdesk-ticket', ticketId] });
+      setShowPriorityMenu(false);
+    },
+  });
+
+  const closeTicket = useMutation({
+    mutationFn: () =>
+      api.post(`/tickets/${ticketId}/close`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['helpdesk-ticket', ticketId] });
+    },
+  });
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -124,14 +144,58 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={ticket.status} />
-          <PriorityBadge priority={ticket.priority} />
+          {/* Priority with dropdown to change */}
+          <div className="relative">
+            <button
+              onClick={() => setShowPriorityMenu(!showPriorityMenu)}
+              className="inline-flex items-center gap-1"
+            >
+              <PriorityBadge priority={ticket.priority} />
+              <ChevronDown className="h-3 w-3 text-zinc-400" />
+            </button>
+            {showPriorityMenu && (
+              <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 min-w-[120px]">
+                {['low', 'medium', 'high'].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => updatePriority.mutate(p)}
+                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 ${ticket.priority === p ? 'font-medium text-primary-600' : 'text-zinc-700 dark:text-zinc-300'}`}
+                  >
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {ticket.category && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
               {ticket.category}
             </span>
           )}
           <span className="text-sm text-zinc-400 ml-2">Created on {formatDate(ticket.created_at)}</span>
+          {/* Close button */}
+          {!isClosedOrResolved && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => { if (confirm('Close this ticket?')) closeTicket.mutate(); }}
+              loading={closeTicket.isPending}
+              className="ml-auto"
+            >
+              <CheckCircle className="h-3.5 w-3.5" />
+              Close Ticket
+            </Button>
+          )}
         </div>
+      </div>
+
+      {/* Description */}
+      <div className="mb-6 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
+        <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 mb-2">Description</h2>
+        <div
+          className="rich-text-content text-sm text-zinc-800 dark:text-zinc-200"
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(ticket.description)) }}
+        />
       </div>
 
       {/* Resolved/Closed banner */}

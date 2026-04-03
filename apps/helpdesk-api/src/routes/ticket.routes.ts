@@ -319,4 +319,57 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
 
     return reply.send({ data: updated });
   });
+
+  // POST /helpdesk/tickets/:id/update-priority — client changes priority
+  fastify.post('/helpdesk/tickets/:id/update-priority', { preHandler: [requireHelpdeskAuth] }, async (request, reply) => {
+    const user = request.helpdeskUser!;
+    const { id } = request.params as { id: string };
+    const { priority } = z.object({ priority: z.enum(['low', 'medium', 'high']) }).parse(request.body);
+
+    const [ticket] = await db
+      .select()
+      .from(tickets)
+      .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
+      .limit(1);
+
+    if (!ticket) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    const [updated] = await db
+      .update(tickets)
+      .set({ priority })
+      .where(eq(tickets.id, id))
+      .returning();
+
+    return reply.send({ data: updated });
+  });
+
+  // POST /helpdesk/tickets/:id/close — client closes their ticket
+  fastify.post('/helpdesk/tickets/:id/close', { preHandler: [requireHelpdeskAuth] }, async (request, reply) => {
+    const user = request.helpdeskUser!;
+    const { id } = request.params as { id: string };
+
+    const [ticket] = await db
+      .select()
+      .from(tickets)
+      .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
+      .limit(1);
+
+    if (!ticket) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    const [updated] = await db
+      .update(tickets)
+      .set({ status: 'closed', closed_at: new Date() })
+      .where(eq(tickets.id, id))
+      .returning();
+
+    return reply.send({ data: updated });
+  });
 }
