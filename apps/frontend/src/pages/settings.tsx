@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -84,6 +84,9 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
   const [webhookEvents, setWebhookEvents] = useState<string[]>([]);
+  const [editingWebhookId, setEditingWebhookId] = useState<string | null>(null);
+  const [editWebhookUrl, setEditWebhookUrl] = useState('');
+  const [editWebhookEvents, setEditWebhookEvents] = useState<string[]>([]);
   const [inviteSuccessMessage, setInviteSuccessMessage] = useState<string | null>(null);
 
   // Helpdesk tab state
@@ -278,6 +281,16 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     mutationFn: (id: string) => api.delete(`/webhooks/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-webhooks'] });
+    },
+  });
+
+  // Update webhook mutation
+  const updateWebhook = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { url: string; events: string[] } }) =>
+      api.patch(`/webhooks/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-webhooks'] });
+      setEditingWebhookId(null);
     },
   });
 
@@ -887,20 +900,89 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         {projectWebhooks.length > 0 ? (
                           <div className="space-y-2">
                             {projectWebhooks.map((wh) => (
-                              <div key={wh.id} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3">
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-mono text-zinc-700 dark:text-zinc-300 truncate">{wh.url}</p>
-                                  <p className="text-xs text-zinc-400">
-                                    {wh.events.join(', ')} &middot; {wh.is_active ? 'Active' : 'Inactive'}
-                                  </p>
+                              <div key={wh.id}>
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-mono text-zinc-700 dark:text-zinc-300 truncate">{wh.url}</p>
+                                    <p className="text-xs text-zinc-400">
+                                      {wh.events.join(', ')} &middot; {wh.is_active ? 'Active' : 'Inactive'}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => {
+                                        setEditingWebhookId(editingWebhookId === wh.id ? null : wh.id);
+                                        setEditWebhookUrl(wh.url);
+                                        setEditWebhookEvents([...wh.events]);
+                                      }}
+                                      className="p-1.5 rounded-md text-zinc-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-950 transition-colors"
+                                      title="Edit webhook"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => deleteWebhook.mutate(wh.id)}
+                                      className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                                      title="Delete webhook"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
                                 </div>
-                                <button
-                                  onClick={() => deleteWebhook.mutate(wh.id)}
-                                  className="shrink-0 p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-                                  title="Delete webhook"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                {editingWebhookId === wh.id && (
+                                  <div className="mt-2 p-4 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-3">
+                                    <Input
+                                      id={`edit-webhook-url-${wh.id}`}
+                                      label="URL"
+                                      value={editWebhookUrl}
+                                      onChange={(e) => setEditWebhookUrl(e.target.value)}
+                                    />
+                                    <div>
+                                      <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">Events</label>
+                                      <div className="flex flex-wrap gap-2">
+                                        {WEBHOOK_EVENT_TYPES.map((evt) => (
+                                          <label key={evt} className="flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+                                            <input
+                                              type="checkbox"
+                                              checked={editWebhookEvents.includes(evt)}
+                                              onChange={(e) => {
+                                                if (e.target.checked) {
+                                                  setEditWebhookEvents((prev) => [...prev, evt]);
+                                                } else {
+                                                  setEditWebhookEvents((prev) => prev.filter((x) => x !== evt));
+                                                }
+                                              }}
+                                              className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                                            />
+                                            {evt}
+                                          </label>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={() =>
+                                          updateWebhook.mutate({
+                                            id: wh.id,
+                                            data: { url: editWebhookUrl, events: editWebhookEvents },
+                                          })
+                                        }
+                                        loading={updateWebhook.isPending}
+                                        disabled={!editWebhookUrl.trim() || editWebhookEvents.length === 0}
+                                      >
+                                        Save Changes
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setEditingWebhookId(null)}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>

@@ -8,6 +8,7 @@ import { SettingsPage } from '@/pages/settings';
 import { MyWorkPage } from '@/pages/my-work';
 import { ProjectDashboardPage } from '@/pages/project-dashboard';
 import { AuditLogPage } from '@/pages/audit-log';
+import { SprintReportPage } from '@/pages/sprint-report';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -17,6 +18,7 @@ type Route =
   | { page: 'board'; projectId: string }
   | { page: 'project-dashboard'; projectId: string }
   | { page: 'audit-log'; projectId: string }
+  | { page: 'sprint-report'; projectId: string; sprintId: string }
   | { page: 'settings' }
   | { page: 'my-work' };
 
@@ -32,6 +34,10 @@ function parseRoute(path: string): Route {
   const auditMatch = path.match(/^\/projects\/([^/]+)\/audit-log$/);
   if (auditMatch) {
     return { page: 'audit-log', projectId: auditMatch[1]! };
+  }
+  const sprintReportMatch = path.match(/^\/projects\/([^/]+)\/sprints\/([^/]+)\/report$/);
+  if (sprintReportMatch) {
+    return { page: 'sprint-report', projectId: sprintReportMatch[1]!, sprintId: sprintReportMatch[2]! };
   }
   if (path === '/register') return { page: 'register' };
   if (path === '/login') return { page: 'login' };
@@ -101,6 +107,8 @@ export function App() {
       return <ProjectDashboardPage projectId={route.projectId} onNavigate={navigate} />;
     case 'audit-log':
       return <AuditLogPage projectId={route.projectId} onNavigate={navigate} />;
+    case 'sprint-report':
+      return <SprintReportPage projectId={route.projectId} sprintId={route.sprintId} onNavigate={navigate} />;
     case 'settings':
       return <SettingsPage onNavigate={navigate} />;
     case 'my-work':

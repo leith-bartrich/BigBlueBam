@@ -151,7 +151,7 @@ describe('ApiClient', () => {
         expect(err).toBeInstanceOf(ApiError);
         const apiErr = err as InstanceType<typeof ApiError>;
         expect(apiErr.status).toBe(401);
-        expect(apiErr.message).toBe('Session expired');
+        expect(apiErr.message).toBe('Not authenticated');
       }
     });
 

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ArrowLeft, AlertTriangle, Activity, Users, BarChart3 } from 'lucide-react';
+import { Loader2, ArrowLeft, AlertTriangle, Activity, Users, BarChart3, TrendingDown } from 'lucide-react';
 import type { PaginatedResponse } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/common/button';
@@ -92,6 +92,29 @@ export function ProjectDashboardPage({ projectId, onNavigate }: ProjectDashboard
     enabled: !!projectId,
   });
   const activities = activityRes?.data ?? [];
+
+  // Velocity chart data
+  const { data: velocityRes } = useQuery({
+    queryKey: ['project-velocity', projectId],
+    queryFn: () =>
+      api.get<{ data: { sprint_name: string; completed_points: number; committed_points: number }[] }>(
+        `/projects/${projectId}/reports/velocity`,
+      ),
+    enabled: !!projectId,
+  });
+  const velocityData = velocityRes?.data ?? [];
+
+  // Burndown chart data
+  const { data: burndownRes } = useQuery({
+    queryKey: ['project-burndown', projectId],
+    queryFn: () =>
+      api.get<{ data: { date: string; remaining: number; ideal: number }[] }>(
+        `/projects/${projectId}/reports/burndown`,
+        { sprint_id: 'ACTIVE' },
+      ),
+    enabled: !!projectId,
+  });
+  const burndownData = burndownRes?.data ?? [];
 
   const totalTasks = status?.total_tasks ?? 0;
   const completedTasks = status?.completed_tasks ?? 0;
@@ -353,6 +376,123 @@ export function ProjectDashboardPage({ projectId, onNavigate }: ProjectDashboard
                         <span className="text-xs text-zinc-500 capitalize">{name}</span>
                       </div>
                     ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sprint Charts: Velocity + Burndown */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Velocity Chart */}
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-5 shadow-sm">
+              <h3 className="text-sm font-medium text-zinc-500 mb-4 flex items-center gap-1.5">
+                <BarChart3 className="h-4 w-4" />
+                Velocity Chart
+              </h3>
+              {velocityData.length > 0 ? (
+                <div className="flex items-end gap-2 h-40">
+                  {(() => {
+                    const maxVal = Math.max(...velocityData.map((v) => Math.max(v.completed_points, v.committed_points)), 1);
+                    return velocityData.map((v, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                        <div className="w-full flex gap-0.5 items-end justify-center" style={{ height: '120px' }}>
+                          <div
+                            className="w-3 rounded-t bg-zinc-300 dark:bg-zinc-600 transition-all"
+                            style={{ height: `${(v.committed_points / maxVal) * 120}px` }}
+                            title={`Committed: ${v.committed_points}`}
+                          />
+                          <div
+                            className="w-3 rounded-t bg-primary-500 transition-all"
+                            style={{ height: `${(v.completed_points / maxVal) * 120}px` }}
+                            title={`Completed: ${v.completed_points}`}
+                          />
+                        </div>
+                        <span className="text-[10px] text-zinc-400 truncate max-w-full" title={v.sprint_name}>
+                          {v.sprint_name.length > 8 ? v.sprint_name.slice(0, 8) + '...' : v.sprint_name}
+                        </span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-400">No velocity data available</p>
+              )}
+              {velocityData.length > 0 && (
+                <div className="flex items-center gap-4 mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                    <span className="text-xs text-zinc-500">Committed</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-primary-500" />
+                    <span className="text-xs text-zinc-500">Completed</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Burndown Chart */}
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-5 shadow-sm">
+              <h3 className="text-sm font-medium text-zinc-500 mb-4 flex items-center gap-1.5">
+                <TrendingDown className="h-4 w-4" />
+                Sprint Burndown
+              </h3>
+              {burndownData.length > 0 ? (
+                <div className="relative h-40">
+                  <svg viewBox={`0 0 ${burndownData.length * 40} 120`} className="w-full h-full" preserveAspectRatio="none">
+                    {(() => {
+                      const maxVal = Math.max(...burndownData.map((d) => Math.max(d.remaining, d.ideal)), 1);
+                      const xStep = burndownData.length > 1 ? (burndownData.length * 40 - 20) / (burndownData.length - 1) : 0;
+
+                      const idealPoints = burndownData
+                        .map((d, i) => `${10 + i * xStep},${110 - (d.ideal / maxVal) * 100}`)
+                        .join(' ');
+                      const remainingPoints = burndownData
+                        .map((d, i) => `${10 + i * xStep},${110 - (d.remaining / maxVal) * 100}`)
+                        .join(' ');
+
+                      return (
+                        <>
+                          <polyline
+                            fill="none"
+                            stroke="#a1a1aa"
+                            strokeWidth="1.5"
+                            strokeDasharray="4 3"
+                            points={idealPoints}
+                          />
+                          <polyline
+                            fill="none"
+                            stroke="#3b82f6"
+                            strokeWidth="2"
+                            points={remainingPoints}
+                          />
+                          {burndownData.map((d, i) => (
+                            <circle
+                              key={i}
+                              cx={10 + i * xStep}
+                              cy={110 - (d.remaining / maxVal) * 100}
+                              r="2.5"
+                              fill="#3b82f6"
+                            />
+                          ))}
+                        </>
+                      );
+                    })()}
+                  </svg>
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-400">No burndown data available</p>
+              )}
+              {burndownData.length > 0 && (
+                <div className="flex items-center gap-4 mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-4 bg-zinc-400" style={{ borderTop: '1.5px dashed #a1a1aa' }} />
+                    <span className="text-xs text-zinc-500">Ideal</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-4 bg-blue-500" />
+                    <span className="text-xs text-zinc-500">Remaining</span>
+                  </div>
                 </div>
               )}
             </div>

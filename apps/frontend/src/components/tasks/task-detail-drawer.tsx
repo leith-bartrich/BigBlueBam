@@ -24,6 +24,11 @@ import {
   Trash2,
   Zap,
   Headset,
+  Paperclip,
+  Download,
+  Upload,
+  Link2,
+  Settings2,
 } from 'lucide-react';
 import type { Task, Priority, ApiResponse, PaginatedResponse } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
@@ -75,6 +80,23 @@ interface ActivityEntry {
   actor?: { display_name: string };
 }
 
+interface TimeEntry {
+  id: string;
+  minutes: number;
+  description: string;
+  date: string;
+  user?: { display_name: string };
+  created_at: string;
+}
+
+interface Attachment {
+  id: string;
+  filename: string;
+  size: number;
+  url: string;
+  created_at: string;
+}
+
 interface TaskDetailDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -116,6 +138,10 @@ export function TaskDetailDrawer({
   const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'activity' | 'helpdesk'>('details');
   const [copiedId, setCopiedId] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [showTimeForm, setShowTimeForm] = useState(false);
+  const [timeMinutes, setTimeMinutes] = useState('');
+  const [timeDate, setTimeDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [timeDescription, setTimeDescription] = useState('');
 
   const descriptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -139,6 +165,22 @@ export function TaskDetailDrawer({
     { value: '__none__', label: 'No Epic' },
     ...epics.map((e) => ({ value: e.id, label: e.name })),
   ];
+
+  // Fetch custom field definitions
+  const { data: customFieldsRes } = useQuery({
+    queryKey: ['custom-fields', projectId],
+    queryFn: () =>
+      api.get<PaginatedResponse<{
+        id: string;
+        name: string;
+        field_type: string;
+        is_required: boolean;
+        is_visible_on_card: boolean;
+        options?: { label: string; color: string }[];
+      }>>(`/projects/${projectId}/custom-fields`),
+    enabled: !!projectId && open,
+  });
+  const customFieldDefs = customFieldsRes?.data ?? [];
 
   // Fetch comments
   const { data: commentsRes } = useQuery({
@@ -199,6 +241,62 @@ export function TaskDetailDrawer({
       api.post(`/comments/${commentId}/reactions`, { emoji }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task-comments', task?.id] });
+    },
+  });
+
+  // Fetch time entries
+  const { data: timeEntriesRes } = useQuery({
+    queryKey: ['task-time-entries', task?.id],
+    queryFn: () => api.get<{ data: TimeEntry[] }>(`/tasks/${task!.id}/time-entries`),
+    enabled: !!task?.id && open,
+  });
+  const timeEntries = timeEntriesRes?.data ?? [];
+  const totalMinutesLogged = timeEntries.reduce((sum, e) => sum + e.minutes, 0);
+
+  // Create time entry mutation
+  const createTimeEntry = useMutation({
+    mutationFn: (data: { minutes: number; date: string; description: string }) =>
+      api.post(`/tasks/${task!.id}/time-entries`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-time-entries', task?.id] });
+      setShowTimeForm(false);
+      setTimeMinutes('');
+      setTimeDate(new Date().toISOString().split('T')[0]);
+      setTimeDescription('');
+    },
+  });
+
+  // Fetch attachments
+  const { data: attachmentsRes } = useQuery({
+    queryKey: ['task-attachments', task?.id],
+    queryFn: () => api.get<{ data: Attachment[] }>(`/tasks/${task!.id}/attachments`),
+    enabled: !!task?.id && open,
+  });
+  const attachments = attachmentsRes?.data ?? [];
+
+  // Upload and attach file
+  const uploadAttachment = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const uploadRes = await api.upload<{ data: { url: string; filename: string; size: number } }>('/upload', formData);
+      const uploadData = uploadRes.data ?? (uploadRes as unknown as { url: string; filename: string; size: number });
+      return api.post(`/tasks/${task!.id}/attachments`, {
+        url: uploadData.url,
+        filename: uploadData.filename ?? file.name,
+        size: uploadData.size ?? file.size,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-attachments', task?.id] });
+    },
+  });
+
+  // Delete attachment
+  const deleteAttachment = useMutation({
+    mutationFn: (id: string) => api.delete(`/attachments/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-attachments', task?.id] });
     },
   });
 
@@ -598,6 +696,69 @@ export function TaskDetailDrawer({
                               </div>
                             </div>
                           )}
+
+                          {/* Attachments */}
+                          <div>
+                            <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-1.5">
+                              <Paperclip className="h-4 w-4" />
+                              Attachments
+                              {attachments.length > 0 && (
+                                <span className="text-zinc-400">({attachments.length})</span>
+                              )}
+                            </h3>
+                            <label className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-600 px-3 py-2 text-sm text-zinc-500 hover:border-primary-400 hover:text-primary-600 cursor-pointer transition-colors mb-3">
+                              <Upload className="h-4 w-4" />
+                              Upload File
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) uploadAttachment.mutate(file);
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                            {uploadAttachment.isPending && (
+                              <p className="text-xs text-zinc-400 mb-2">Uploading...</p>
+                            )}
+                            {attachments.length > 0 && (
+                              <div className="space-y-2">
+                                {attachments.map((att) => (
+                                  <div
+                                    key={att.id}
+                                    className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 py-2"
+                                  >
+                                    <Paperclip className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{att.filename}</p>
+                                      <p className="text-xs text-zinc-400">
+                                        {att.size > 1048576
+                                          ? `${(att.size / 1048576).toFixed(1)} MB`
+                                          : `${Math.round(att.size / 1024)} KB`}
+                                        {' '}&middot; {formatDate(att.created_at)}
+                                      </p>
+                                    </div>
+                                    <a
+                                      href={att.url}
+                                      download={att.filename}
+                                      className="p-1 rounded text-zinc-400 hover:text-primary-600 transition-colors"
+                                      title="Download"
+                                    >
+                                      <Download className="h-4 w-4" />
+                                    </a>
+                                    <button
+                                      onClick={() => deleteAttachment.mutate(att.id)}
+                                      className="p-1 rounded text-zinc-400 hover:text-red-600 transition-colors"
+                                      title="Delete attachment"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -840,6 +1001,87 @@ export function TaskDetailDrawer({
                         />
                       </div>
 
+                      {/* Time Tracking */}
+                      <div>
+                        <label className="text-xs font-medium text-zinc-500 mb-1 block flex items-center gap-1">
+                          <Clock className="h-3 w-3" /> Time Logged
+                        </label>
+                        <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-1.5">
+                          {totalMinutesLogged > 0
+                            ? `${Math.floor(totalMinutesLogged / 60)}h ${totalMinutesLogged % 60}m`
+                            : '0h 0m'}
+                        </p>
+                        {!showTimeForm ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setShowTimeForm(true)}
+                            className="w-full"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Log Time
+                          </Button>
+                        ) : (
+                          <div className="space-y-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50">
+                            <input
+                              type="number"
+                              min={1}
+                              placeholder="Minutes"
+                              value={timeMinutes}
+                              onChange={(e) => setTimeMinutes(e.target.value)}
+                              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+                            />
+                            <input
+                              type="date"
+                              value={timeDate}
+                              onChange={(e) => setTimeDate(e.target.value)}
+                              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Description (optional)"
+                              value={timeDescription}
+                              onChange={(e) => setTimeDescription(e.target.value)}
+                              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+                            />
+                            <div className="flex gap-1.5">
+                              <Button
+                                size="sm"
+                                className="flex-1"
+                                disabled={!timeMinutes || parseInt(timeMinutes) <= 0}
+                                loading={createTimeEntry.isPending}
+                                onClick={() =>
+                                  createTimeEntry.mutate({
+                                    minutes: parseInt(timeMinutes),
+                                    date: timeDate,
+                                    description: timeDescription,
+                                  })
+                                }
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setShowTimeForm(false)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        {timeEntries.length > 0 && (
+                          <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                            {timeEntries.slice(0, 5).map((entry) => (
+                              <div key={entry.id} className="text-xs text-zinc-500 flex justify-between">
+                                <span>{entry.minutes}m {entry.description && `- ${entry.description}`}</span>
+                                <span>{entry.date?.split('T')[0]}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Start Date */}
                       <div>
                         <DatePicker
@@ -886,6 +1128,98 @@ export function TaskDetailDrawer({
                           <span className="text-sm text-zinc-400">None</span>
                         )}
                       </div>
+
+                      {/* Custom Fields */}
+                      {customFieldDefs.length > 0 && (
+                        <div>
+                          <label className="text-xs font-medium text-zinc-500 mb-1.5 block flex items-center gap-1">
+                            <Settings2 className="h-3 w-3" /> Custom Fields
+                          </label>
+                          <div className="space-y-2">
+                            {customFieldDefs.map((field) => {
+                              const cfValue = task.custom_fields?.[field.id] ?? task.custom_fields?.[field.name];
+                              const handleCfChange = (value: unknown) => {
+                                onUpdate?.(task.id, {
+                                  custom_fields: {
+                                    ...task.custom_fields,
+                                    [field.id]: value,
+                                  },
+                                } as Partial<Task>);
+                              };
+                              return (
+                                <div key={field.id}>
+                                  <label className="text-[11px] text-zinc-400 mb-0.5 block">{field.name}</label>
+                                  {field.field_type === 'text' && (
+                                    <input
+                                      type="text"
+                                      value={(cfValue as string) ?? ''}
+                                      onChange={(e) => handleCfChange(e.target.value)}
+                                      className="w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+                                      placeholder={field.name}
+                                    />
+                                  )}
+                                  {field.field_type === 'number' && (
+                                    <input
+                                      type="number"
+                                      value={(cfValue as number) ?? ''}
+                                      onChange={(e) =>
+                                        handleCfChange(e.target.value === '' ? null : Number(e.target.value))
+                                      }
+                                      className="w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+                                      placeholder="0"
+                                    />
+                                  )}
+                                  {field.field_type === 'date' && (
+                                    <DatePicker
+                                      value={(cfValue as string) ?? ''}
+                                      onChange={(val) => handleCfChange(val || null)}
+                                    />
+                                  )}
+                                  {field.field_type === 'select' && (
+                                    <Select
+                                      options={[
+                                        { value: '__none__', label: 'None' },
+                                        ...(field.options ?? []).map((o) => ({
+                                          value: o.label,
+                                          label: o.label,
+                                        })),
+                                      ]}
+                                      value={(cfValue as string) ?? '__none__'}
+                                      onValueChange={(val) => handleCfChange(val === '__none__' ? null : val)}
+                                      className="w-full"
+                                    />
+                                  )}
+                                  {field.field_type === 'checkbox' && (
+                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!cfValue}
+                                        onChange={(e) => handleCfChange(e.target.checked)}
+                                        className="rounded border-zinc-300"
+                                      />
+                                      <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                                        {cfValue ? 'Yes' : 'No'}
+                                      </span>
+                                    </label>
+                                  )}
+                                  {field.field_type === 'url' && (
+                                    <div className="flex items-center gap-1">
+                                      <Link2 className="h-3 w-3 text-zinc-400 shrink-0" />
+                                      <input
+                                        type="url"
+                                        value={(cfValue as string) ?? ''}
+                                        onChange={(e) => handleCfChange(e.target.value)}
+                                        className="w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
+                                        placeholder="https://..."
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 text-xs text-zinc-400 space-y-1">
                         <p>Created {formatDate(task.created_at)}</p>

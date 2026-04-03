@@ -1,9 +1,20 @@
-import { useState, type ReactNode } from 'react';
-import { Search, LogOut, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { Search, LogOut, ChevronRight, Bell, CheckCheck } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './sidebar';
 import { Avatar } from '@/components/common/avatar';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { useAuthStore } from '@/stores/auth.store';
+import { api } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/utils';
+
+interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+}
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -15,7 +26,36 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavigate, onCreateProject }: AppLayoutProps) {
   const { user, logout } = useAuthStore();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const { data: notificationsRes } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.get<{ data: Notification[] }>('/me/notifications'),
+    refetchInterval: 30000,
+  });
+  const notifications = notificationsRes?.data ?? [];
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const markAllRead = useMutation({
+    mutationFn: () => api.post('/me/notifications/mark-read'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
+  // Close notifications dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    if (showNotifications) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showNotifications]);
 
   const handleLogout = async () => {
     await logout();
@@ -60,6 +100,62 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-64 rounded-lg border border-zinc-200 bg-zinc-50 pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
               />
+            </div>
+
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => setShowNotifications((prev) => !prev)}
+                className="relative rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                title="Notifications"
+              >
+                <Bell className="h-4.5 w-4.5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-80 max-h-96 overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-700">
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={() => markAllRead.mutate()}
+                        className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 transition-colors"
+                      >
+                        <CheckCheck className="h-3.5 w-3.5" />
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  {notifications.length > 0 ? (
+                    <div className="divide-y divide-zinc-100 dark:divide-zinc-700">
+                      {notifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          className={`px-4 py-3 text-sm ${!notif.read ? 'bg-primary-50/50 dark:bg-primary-950/30' : ''}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {!notif.read && (
+                              <span className="mt-1.5 h-2 w-2 rounded-full bg-primary-500 shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-zinc-900 dark:text-zinc-100 truncate">{notif.title}</p>
+                              <p className="text-zinc-500 dark:text-zinc-400 line-clamp-2">{notif.body}</p>
+                              <p className="text-xs text-zinc-400 mt-1">{formatRelativeTime(notif.created_at)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-8 text-center text-sm text-zinc-400">
+                      No notifications yet
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <DropdownMenu

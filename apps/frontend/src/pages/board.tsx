@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, Upload, BarChart3, Bookmark, FileText, Layers, Trash2, MoreVertical } from 'lucide-react';
+import { Loader2, Upload, BarChart3, Bookmark, FileText, Layers, Trash2, MoreVertical, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import type { Task, PaginatedResponse } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -19,6 +19,7 @@ import { ImportDialog } from '@/components/import/import-dialog';
 import { TemplateManager } from '@/components/tasks/template-manager';
 import { EpicManager } from '@/components/board/epic-manager';
 import { PhaseManager } from '@/components/board/phase-manager';
+import { CustomFieldManager } from '@/components/board/custom-field-manager';
 import { KeyboardShortcutsOverlay } from '@/components/common/keyboard-shortcuts-overlay';
 import { CommandPalette } from '@/components/common/command-palette';
 import { Select } from '@/components/common/select';
@@ -66,6 +67,11 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
   const [showEpicManager, setShowEpicManager] = useState(false);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [showPhaseManager, setShowPhaseManager] = useState(false);
+  const [showCustomFieldManager, setShowCustomFieldManager] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
+  const [exportSprintId, setExportSprintId] = useState<string>('');
+  const [exporting, setExporting] = useState(false);
 
   const { data: projectRes } = useProject(projectId);
   const { data: boardData, isLoading: boardLoading } = useBoard(projectId, selectedSprintId);
@@ -219,6 +225,34 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
     });
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.post<Blob | Record<string, unknown>>(`/projects/${projectId}/export`, {
+        format: exportFormat,
+        sprint_id: exportSprintId || undefined,
+      });
+      const blob = res instanceof Blob
+        ? res
+        : new Blob([exportFormat === 'json' ? JSON.stringify(res, null, 2) : String(res)], {
+            type: exportFormat === 'json' ? 'application/json' : 'text/csv',
+          });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project?.name ?? 'export'}-${new Date().toISOString().split('T')[0]}.${exportFormat}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setShowExportDialog(false);
+    } catch {
+      // error handling
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Keyboard shortcuts
   useKeyboardShortcuts(
     {
@@ -338,6 +372,7 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
                 selectedSprintId={selectedSprintId}
                 onSelectSprint={setSelectedSprintId}
                 projectId={projectId}
+                onNavigate={onNavigate}
               />
             </div>
 
@@ -424,6 +459,26 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
                         >
                           <Layers className="h-4 w-4" />
                           Manage Phases
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowProjectMenu(false);
+                            setShowCustomFieldManager(true);
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <Layers className="h-4 w-4" />
+                          Custom Fields
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowProjectMenu(false);
+                            setShowExportDialog(true);
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <Download className="h-4 w-4" />
+                          Export
                         </button>
                         <button
                           onClick={() => {
@@ -522,6 +577,61 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
         onOpenChange={setShowPhaseManager}
         projectId={projectId}
       />
+
+      <CustomFieldManager
+        open={showCustomFieldManager}
+        onOpenChange={setShowCustomFieldManager}
+        projectId={projectId}
+      />
+
+      {/* Export Dialog */}
+      {showExportDialog && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setShowExportDialog(false)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-96 rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700 p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Export Tasks</h2>
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">Format</label>
+              <div className="flex gap-2">
+                {(['json', 'csv'] as const).map((fmt) => (
+                  <button
+                    key={fmt}
+                    onClick={() => setExportFormat(fmt)}
+                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      exportFormat === fmt
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                        : 'border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-400'
+                    }`}
+                  >
+                    {fmt.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">Sprint (optional)</label>
+              <Select
+                options={[
+                  { value: '', label: 'All sprints' },
+                  ...sprints.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+                value={exportSprintId}
+                onValueChange={setExportSprintId}
+                className="w-full"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowExportDialog(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleExport} loading={exporting}>
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </AppLayout>
   );
 }

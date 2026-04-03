@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, Plus, Play, X, Trash2 } from 'lucide-react';
+import { Calendar, Plus, Play, X, Trash2, BarChart3 } from 'lucide-react';
 import type { Sprint } from '@bigbluebam/shared';
 import { Select } from '@/components/common/select';
 import { Button } from '@/components/common/button';
@@ -14,9 +14,10 @@ interface SprintSelectorProps {
   selectedSprintId?: string;
   onSelectSprint: (sprintId: string) => void;
   projectId: string;
+  onNavigate?: (path: string) => void;
 }
 
-export function SprintSelector({ sprints, activeSprint, selectedSprintId, onSelectSprint, projectId }: SprintSelectorProps) {
+export function SprintSelector({ sprints, activeSprint, selectedSprintId, onSelectSprint, projectId, onNavigate }: SprintSelectorProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -119,6 +120,16 @@ export function SprintSelector({ sprints, activeSprint, selectedSprintId, onSele
               <Calendar className="h-3.5 w-3.5" />
               {formatDate(selected.start_date)} - {formatDate(selected.end_date)}
             </span>
+            {onNavigate && (
+              <button
+                onClick={() => onNavigate(`/projects/${projectId}/sprints/${selected.id}/report`)}
+                className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
+                title="View sprint report"
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                View Report
+              </button>
+            )}
           </div>
         )}
       </div>
