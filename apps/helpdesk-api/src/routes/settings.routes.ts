@@ -19,36 +19,45 @@ const updateSettingsSchema = z.object({
   notify_on_agent_reply: z.boolean().optional(),
 });
 
+import { sql } from 'drizzle-orm';
+
 /**
- * Require agent API key for admin settings routes.
+ * Require admin auth — accepts BBB session cookie or agent API key.
  */
 async function requireAdminAuth(request: FastifyRequest, reply: FastifyReply) {
-  const agentKey = env.AGENT_API_KEY;
-  if (!agentKey) {
-    return reply.status(503).send({
-      error: {
-        code: 'AGENT_AUTH_DISABLED',
-        message: 'Agent API key is not configured',
-        details: [],
-        request_id: request.id,
-      },
-    });
+  // Check BBB session cookie
+  const sessionCookie = request.cookies?.session;
+  if (sessionCookie) {
+    try {
+      const result = await db.execute(
+        sql`SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ${sessionCookie} AND s.expires_at > now() LIMIT 1`
+      );
+      if (result && (Array.isArray(result) ? result.length > 0 : (result as any).rows?.length > 0)) {
+        return; // Authenticated via BBB session
+      }
+    } catch {
+      // Fall through
+    }
   }
 
+  // Check agent API key
+  const agentKey = env.AGENT_API_KEY;
   const provided =
     (request.headers['x-agent-key'] as string) ??
     request.headers.authorization?.replace('Bearer ', '');
 
-  if (!provided || provided !== agentKey) {
-    return reply.status(401).send({
-      error: {
-        code: 'UNAUTHORIZED',
-        message: 'Invalid agent API key',
-        details: [],
-        request_id: request.id,
-      },
-    });
+  if (agentKey && provided && provided === agentKey) {
+    return;
   }
+
+  return reply.status(401).send({
+    error: {
+      code: 'UNAUTHORIZED',
+      message: 'Authentication required',
+      details: [],
+      request_id: request.id,
+    },
+  });
 }
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
