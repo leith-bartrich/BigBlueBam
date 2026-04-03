@@ -1,0 +1,509 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Loader2, Upload, BarChart3, Bookmark, FileText, Layers, Trash2, MoreVertical } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import type { Task, PaginatedResponse } from '@bigbluebam/shared';
+import { AppLayout } from '@/components/layout/app-layout';
+import { BoardView } from '@/components/board/board-view';
+import { SwimlaneBoard, type SwimlanGroupBy } from '@/components/board/swimlane-board';
+import { SprintSelector } from '@/components/board/sprint-selector';
+import { FilterBar } from '@/components/board/filter-bar';
+import { ViewSwitcher, type ViewMode } from '@/components/board/view-switcher';
+import { SavedViewsPanel } from '@/components/board/saved-views-panel';
+import { ListView } from '@/components/views/list-view';
+import { TimelineView } from '@/components/views/timeline-view';
+import { CalendarView } from '@/components/views/calendar-view';
+import { WorkloadView } from '@/components/views/workload-view';
+import { TaskDetailDrawer } from '@/components/tasks/task-detail-drawer';
+import { CreateTaskDialog } from '@/components/tasks/create-task-dialog';
+import { ImportDialog } from '@/components/import/import-dialog';
+import { TemplateManager } from '@/components/tasks/template-manager';
+import { EpicManager } from '@/components/board/epic-manager';
+import { KeyboardShortcutsOverlay } from '@/components/common/keyboard-shortcuts-overlay';
+import { CommandPalette } from '@/components/common/command-palette';
+import { Select } from '@/components/common/select';
+import { Button } from '@/components/common/button';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useBoard, useCreateTask, useUpdateTask, useDeleteTask } from '@/hooks/use-tasks';
+import { useSprints } from '@/hooks/use-sprints';
+import { useProject, useProjects, useDeleteProject } from '@/hooks/use-projects';
+import { useBoardStore } from '@/stores/board.store';
+import { useRealtime } from '@/hooks/use-realtime';
+import { api } from '@/lib/api';
+
+interface Member {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  role: string;
+}
+
+interface BoardPageProps {
+  projectId: string;
+  onNavigate: (path: string) => void;
+}
+
+const SWIMLANE_OPTIONS = [
+  { value: 'none', label: 'No Swimlanes' },
+  { value: 'assignee', label: 'By Assignee' },
+  { value: 'priority', label: 'By Priority' },
+  { value: 'epic', label: 'By Epic' },
+];
+
+export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
+  const [selectedSprintId, setSelectedSprintId] = useState<string | undefined>();
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [createDialogPhaseId, setCreateDialogPhaseId] = useState<string | undefined>();
+  const [filters, setFilters] = useState<{ assignee_id?: string; priority?: string; state_id?: string; search?: string }>({});
+  const [viewMode, setViewMode] = useState<ViewMode>('board');
+  const [swimlaneGroupBy, setSwimlaneGroupBy] = useState<SwimlanGroupBy>('none');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [showSavedViews, setShowSavedViews] = useState(false);
+  const [showEpicManager, setShowEpicManager] = useState(false);
+  const [showProjectMenu, setShowProjectMenu] = useState(false);
+
+  const { data: projectRes } = useProject(projectId);
+  const { data: boardData, isLoading: boardLoading } = useBoard(projectId, selectedSprintId);
+  const { data: sprintsRes } = useSprints(projectId);
+  const { data: projectsRes } = useProjects();
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+  const deleteTask = useDeleteTask();
+  const deleteProject = useDeleteProject();
+
+  // Subscribe to realtime events for this project
+  useRealtime(projectId);
+
+  // Fetch project members
+  const { data: membersRes } = useQuery({
+    queryKey: ['project-members', projectId],
+    queryFn: () => api.get<PaginatedResponse<Member>>(`/projects/${projectId}/members`),
+    enabled: !!projectId,
+  });
+  const members = membersRes?.data ?? [];
+
+  // Fetch project labels
+  const { data: labelsRes } = useQuery({
+    queryKey: ['project-labels', projectId],
+    queryFn: () => api.get<PaginatedResponse<{ id: string; name: string; color: string }>>(`/projects/${projectId}/labels`),
+    enabled: !!projectId,
+  });
+  const labels = labelsRes?.data ?? [];
+
+  // Fetch project states
+  const { data: statesRes } = useQuery({
+    queryKey: ['project-states', projectId],
+    queryFn: () => api.get<PaginatedResponse<{ id: string; name: string; category: string }>>(`/projects/${projectId}/states`),
+    enabled: !!projectId,
+  });
+  const projectStates = statesRes?.data ?? [];
+
+  const boardPhases = useBoardStore((s) => s.phases);
+  const setBoardState = useBoardStore.setState;
+
+  useEffect(() => {
+    if (boardData) {
+      setBoardState({
+        phases: boardData.phases,
+        activeSprint: boardData.sprint,
+      });
+      if (!selectedSprintId && boardData.sprint) {
+        setSelectedSprintId(boardData.sprint.id);
+      }
+    }
+  }, [boardData, setBoardState, selectedSprintId]);
+
+  const project = projectRes?.data;
+  const sprints = sprintsRes?.data ?? [];
+  const projects = projectsRes?.data ?? [];
+
+  // Build member ID -> display name map for swimlane grouping
+  const membersMap = useMemo(
+    () => new Map(members.map((m) => [m.id, m.display_name])),
+    [members],
+  );
+
+  const filteredPhases = boardPhases.map((phase) => ({
+    ...phase,
+    tasks: phase.tasks.filter((task) => {
+      if (filters.priority) {
+        const priorities = filters.priority.split(',');
+        if (!priorities.includes(task.priority)) return false;
+      }
+      if (filters.assignee_id) {
+        const assignees = filters.assignee_id.split(',');
+        if (!task.assignee_id || !assignees.includes(task.assignee_id)) return false;
+      }
+      if (filters.state_id) {
+        const stateIds = filters.state_id.split(',');
+        if (!task.state_id || !stateIds.includes(task.state_id)) return false;
+      }
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        if (!task.title.toLowerCase().includes(q) && !(task.human_id ?? '').toLowerCase().includes(q)) return false;
+      }
+      return true;
+    }),
+  }));
+
+  const selectedTask = selectedTaskId
+    ? boardPhases.flatMap((p) => p.tasks).find((t) => t.id === selectedTaskId) ?? null
+    : null;
+
+  const handleTaskClick = useCallback((taskId: string) => {
+    setSelectedTaskId(taskId);
+  }, []);
+
+  const handleAddTask = useCallback((phaseId: string) => {
+    setCreateDialogPhaseId(phaseId);
+    setShowCreateDialog(true);
+  }, []);
+
+  const handleCreateTask = async (data: {
+    title: string;
+    phase_id: string;
+    priority?: string;
+    story_points?: number | null;
+    description?: string;
+    assignee_id?: string;
+    due_date?: string;
+    label_ids?: string[];
+  }) => {
+    await createTask.mutateAsync({
+      projectId,
+      data: {
+        title: data.title,
+        phase_id: data.phase_id,
+        priority: (data.priority as Task['priority']) ?? 'medium',
+        story_points: data.story_points ?? undefined,
+        description: data.description,
+        sprint_id: selectedSprintId,
+        assignee_id: data.assignee_id === '__none__' ? undefined : data.assignee_id,
+        due_date: data.due_date || undefined,
+      },
+    });
+    setShowCreateDialog(false);
+  };
+
+  const handleInlineCreate = async (phaseId: string, title: string) => {
+    await createTask.mutateAsync({
+      projectId,
+      data: {
+        title,
+        phase_id: phaseId,
+        priority: 'medium',
+        sprint_id: selectedSprintId,
+      },
+    });
+  };
+
+  const handleUpdateTask = (taskId: string, updates: Partial<Task>) => {
+    updateTask.mutate({ taskId, data: updates });
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    deleteTask.mutate({ taskId }, {
+      onSuccess: () => setSelectedTaskId(null),
+    });
+  };
+
+  const handleDeleteProject = () => {
+    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) return;
+    deleteProject.mutate(projectId, {
+      onSuccess: () => onNavigate('/'),
+    });
+  };
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts(
+    {
+      n: () => setShowCreateDialog(true),
+      s: () => {
+        const el = document.getElementById('board-search-input');
+        if (el) el.focus();
+      },
+      '/': () => {
+        const el = document.getElementById('board-search-input');
+        if (el) el.focus();
+      },
+      f: () => {
+        const el = document.getElementById('board-search-input');
+        if (el) el.focus();
+      },
+      Escape: () => {
+        if (showCommandPalette) {
+          setShowCommandPalette(false);
+        } else if (showShortcuts) {
+          setShowShortcuts(false);
+        } else if (selectedTaskId) {
+          setSelectedTaskId(null);
+        } else if (showCreateDialog) {
+          setShowCreateDialog(false);
+        }
+      },
+      '?': () => setShowShortcuts((prev) => !prev),
+      'Ctrl+k': () => setShowCommandPalette(true),
+      'Cmd+k': () => setShowCommandPalette(true),
+    },
+    !showCreateDialog,
+  );
+
+  const renderView = () => {
+    switch (viewMode) {
+      case 'board':
+        if (swimlaneGroupBy !== 'none') {
+          return (
+            <SwimlaneBoard
+              phases={filteredPhases}
+              groupBy={swimlaneGroupBy}
+              onTaskClick={handleTaskClick}
+              onAddTask={handleAddTask}
+              members={membersMap}
+            />
+          );
+        }
+        return (
+          <BoardView
+            phases={filteredPhases}
+            onTaskClick={handleTaskClick}
+            onAddTask={handleAddTask}
+            onInlineCreate={handleInlineCreate}
+          />
+        );
+
+      case 'list':
+        return (
+          <ListView
+            phases={filteredPhases}
+            onTaskClick={handleTaskClick}
+            onUpdateTask={handleUpdateTask}
+          />
+        );
+
+      case 'timeline':
+        return (
+          <TimelineView
+            phases={filteredPhases}
+            onTaskClick={handleTaskClick}
+          />
+        );
+
+      case 'calendar':
+        return (
+          <CalendarView
+            phases={filteredPhases}
+            onTaskClick={handleTaskClick}
+          />
+        );
+
+      case 'workload':
+        return (
+          <WorkloadView
+            projectId={projectId}
+            onFilterByUser={(userId) => setFilters((prev) => ({ ...prev, assignee_id: userId }))}
+          />
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <AppLayout
+      currentProjectId={projectId}
+      breadcrumbs={[
+        { label: 'Projects', href: '/' },
+        { label: project?.name ?? 'Loading...' },
+      ]}
+      onNavigate={onNavigate}
+      onCreateProject={() => onNavigate('/')}
+    >
+      {boardLoading ? (
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+        </div>
+      ) : (
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0 flex-wrap">
+            <div className="flex items-center gap-3">
+              <SprintSelector
+                sprints={sprints}
+                activeSprint={boardData?.sprint}
+                selectedSprintId={selectedSprintId}
+                onSelectSprint={setSelectedSprintId}
+                projectId={projectId}
+              />
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <FilterBar
+                filters={filters}
+                onFilterChange={setFilters}
+                assignees={members.map((m) => ({ id: m.id, display_name: m.display_name }))}
+                states={projectStates.map((s) => ({ id: s.id, name: s.name }))}
+              />
+
+              {viewMode === 'board' && (
+                <Select
+                  options={SWIMLANE_OPTIONS}
+                  value={swimlaneGroupBy}
+                  onValueChange={(val) => setSwimlaneGroupBy(val as SwimlanGroupBy)}
+                  placeholder="Swimlanes"
+                  className="w-40"
+                />
+              )}
+
+              <ViewSwitcher activeView={viewMode} onViewChange={setViewMode} />
+
+              <div className="flex items-center gap-1.5 border-l border-zinc-200 dark:border-zinc-700 pl-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onNavigate(`/projects/${projectId}/dashboard`)}
+                  title="Dashboard"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowImportDialog(true)}
+                  title="Import tasks"
+                >
+                  <Upload className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTemplateManager(true)}
+                  title="Task templates"
+                >
+                  <FileText className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSavedViews((prev) => !prev)}
+                  title="Saved views"
+                >
+                  <Bookmark className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowEpicManager(true)}
+                  title="Manage epics"
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowProjectMenu((prev) => !prev)}
+                    title="Project options"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                  {showProjectMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowProjectMenu(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded-lg border border-zinc-200 bg-white shadow-lg dark:bg-zinc-800 dark:border-zinc-700 py-1">
+                        <button
+                          onClick={() => {
+                            setShowProjectMenu(false);
+                            handleDeleteProject();
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete Project
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden flex">
+            <div className="flex-1 overflow-hidden">
+              {renderView()}
+            </div>
+            {showSavedViews && (
+              <SavedViewsPanel
+                projectId={projectId}
+                currentFilters={filters}
+                currentViewType={viewMode}
+                onApplyView={(view) => {
+                  setFilters(view.filters as typeof filters);
+                  setViewMode(view.view_type as ViewMode);
+                  setShowSavedViews(false);
+                }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      <TaskDetailDrawer
+        open={!!selectedTaskId}
+        onOpenChange={(open) => { if (!open) setSelectedTaskId(null); }}
+        task={selectedTask}
+        onUpdate={handleUpdateTask}
+        onDelete={handleDeleteTask}
+        phases={boardPhases.map((p) => ({ id: p.id, name: p.name }))}
+        projectId={projectId}
+        states={projectStates}
+        sprints={sprints.map((s) => ({ id: s.id, name: s.name }))}
+      />
+
+      <CreateTaskDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        phases={boardPhases}
+        defaultPhaseId={createDialogPhaseId}
+        onSubmit={handleCreateTask}
+        isLoading={createTask.isPending}
+        members={members}
+        labels={labels}
+      />
+
+      <KeyboardShortcutsOverlay
+        open={showShortcuts}
+        onOpenChange={setShowShortcuts}
+      />
+
+      <CommandPalette
+        open={showCommandPalette}
+        onOpenChange={setShowCommandPalette}
+        onNavigate={onNavigate}
+        onCreateTask={() => setShowCreateDialog(true)}
+        projects={projects}
+      />
+
+      <ImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        projectId={projectId}
+      />
+
+      <TemplateManager
+        open={showTemplateManager}
+        onOpenChange={setShowTemplateManager}
+        projectId={projectId}
+      />
+
+      <EpicManager
+        open={showEpicManager}
+        onOpenChange={setShowEpicManager}
+        projectId={projectId}
+      />
+    </AppLayout>
+  );
+}

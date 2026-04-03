@@ -1,0 +1,855 @@
+import { useState } from 'react';
+import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
+import { AppLayout } from '@/components/layout/app-layout';
+import { Button } from '@/components/common/button';
+import { Input } from '@/components/common/input';
+import { Select } from '@/components/common/select';
+import { useAuthStore } from '@/stores/auth.store';
+import { api } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
+
+interface OrgMember {
+  id: string;
+  email: string;
+  display_name: string;
+  avatar_url: string | null;
+  role: string;
+  created_at: string;
+}
+
+interface ApiKeyData {
+  id: string;
+  name: string;
+  key_prefix: string;
+  key_hint: string;
+  scope: string;
+  project_ids: string[] | null;
+  expires_at: string | null;
+  created_at: string;
+  last_used_at: string | null;
+  key?: string; // only present on creation
+}
+
+interface WebhookData {
+  id: string;
+  project_id: string;
+  url: string;
+  events: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+const WEBHOOK_EVENT_TYPES = [
+  'task.created',
+  'task.updated',
+  'task.deleted',
+  'comment.created',
+  'sprint.started',
+  'sprint.completed',
+];
+
+interface SettingsPageProps {
+  onNavigate: (path: string) => void;
+}
+
+export function SettingsPage({ onNavigate }: SettingsPageProps) {
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations'>('profile');
+  const [displayName, setDisplayName] = useState(user?.display_name ?? '');
+  const [timezone, setTimezone] = useState(user?.timezone ?? 'UTC');
+  const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
+    return (localStorage.getItem('bbam-theme') as 'system' | 'light' | 'dark') ?? 'system';
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Members tab state
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteDisplayName, setInviteDisplayName] = useState('');
+  const [inviteRole, setInviteRole] = useState('member');
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+
+  // Integrations tab state
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [showCreateKey, setShowCreateKey] = useState(false);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScope, setNewKeyScope] = useState('read');
+  const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null);
+  const [showAddWebhook, setShowAddWebhook] = useState<string | null>(null); // project id
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [webhookEvents, setWebhookEvents] = useState<string[]>([]);
+  const [inviteSuccessMessage, setInviteSuccessMessage] = useState<string | null>(null);
+
+  // Fetch org members
+  const { data: membersRes, isLoading: membersLoading } = useQuery({
+    queryKey: ['org-members'],
+    queryFn: () => api.get<PaginatedResponse<OrgMember>>('/org/members'),
+    enabled: activeTab === 'members',
+  });
+  const orgMembers = membersRes?.data ?? [];
+
+  // Invite member mutation
+  const inviteMember = useMutation({
+    mutationFn: (data: { email: string; display_name?: string; role: string }) =>
+      api.post<ApiResponse<OrgMember>>('/org/members/invite', data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['org-members'] });
+      setInviteSuccessMessage(
+        `User created. Share these credentials with them:\n- Email: ${variables.email}\n- They will need to set up a password via the admin.`
+      );
+      setInviteEmail('');
+      setInviteDisplayName('');
+      setInviteRole('member');
+    },
+  });
+
+  // Update role mutation
+  const updateRole = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      api.patch<ApiResponse<OrgMember>>(`/org/members/${userId}`, { role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members'] });
+    },
+  });
+
+  // Remove member mutation
+  const removeMember = useMutation({
+    mutationFn: (userId: string) => api.delete(`/org/members/${userId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members'] });
+      setConfirmRemoveId(null);
+    },
+  });
+
+  // Fetch projects for integrations
+  const { data: projectsRes } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => api.get<PaginatedResponse<Project>>('/projects'),
+    enabled: activeTab === 'integrations',
+  });
+  const projects = projectsRes?.data ?? [];
+
+  // Fetch API keys
+  const { data: apiKeysRes } = useQuery({
+    queryKey: ['api-keys'],
+    queryFn: () => api.get<{ data: ApiKeyData[] }>('/auth/api-keys'),
+    enabled: activeTab === 'integrations',
+  });
+  const apiKeysData = apiKeysRes?.data ?? [];
+
+  // Create API key mutation
+  const createApiKey = useMutation({
+    mutationFn: (data: { name: string; scope: string }) =>
+      api.post<{ data: ApiKeyData }>('/auth/api-keys', data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+      setCreatedKeyValue(res.data.key ?? null);
+      setNewKeyName('');
+      setNewKeyScope('read');
+      setShowCreateKey(false);
+    },
+  });
+
+  // Revoke API key mutation
+  const revokeApiKey = useMutation({
+    mutationFn: (id: string) => api.delete(`/auth/api-keys/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+    },
+  });
+
+  // Fetch webhooks per project (only for the integrations tab)
+  const { data: webhooksData } = useQuery({
+    queryKey: ['all-webhooks', projects.map((p) => p.id)],
+    queryFn: async () => {
+      const results: Record<string, WebhookData[]> = {};
+      for (const project of projects) {
+        const res = await api.get<{ data: WebhookData[] }>(`/projects/${project.id}/webhooks`);
+        results[project.id] = res.data;
+      }
+      return results;
+    },
+    enabled: activeTab === 'integrations' && projects.length > 0,
+  });
+
+  // Create webhook mutation
+  const createWebhook = useMutation({
+    mutationFn: ({ projectId, data }: { projectId: string; data: { url: string; events: string[]; secret: string } }) =>
+      api.post(`/projects/${projectId}/webhooks`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-webhooks'] });
+      setShowAddWebhook(null);
+      setWebhookUrl('');
+      setWebhookSecret('');
+      setWebhookEvents([]);
+    },
+  });
+
+  // Delete webhook mutation
+  const deleteWebhook = useMutation({
+    mutationFn: (id: string) => api.delete(`/webhooks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-webhooks'] });
+    },
+  });
+
+  const handleCopyUrl = (url: string) => {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedUrl(url);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    });
+  };
+
+  const applyTheme = (newTheme: 'system' | 'light' | 'dark') => {
+    setTheme(newTheme);
+    localStorage.setItem('bbam-theme', newTheme);
+    const root = document.documentElement;
+    root.classList.remove('dark');
+    if (newTheme === 'dark') {
+      root.classList.add('dark');
+    } else if (newTheme === 'system') {
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        root.classList.add('dark');
+      }
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      await api.patch('/auth/me', { display_name: displayName, timezone });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // error handling
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleInvite = () => {
+    if (!inviteEmail.trim()) return;
+    inviteMember.mutate({
+      email: inviteEmail.trim(),
+      display_name: inviteDisplayName.trim() || undefined,
+      role: inviteRole,
+    });
+  };
+
+  const roleOptions = [
+    { value: 'member', label: 'Member' },
+    { value: 'admin', label: 'Admin' },
+    { value: 'viewer', label: 'Viewer' },
+  ];
+
+  const tabs = [
+    { id: 'profile' as const, label: 'Profile', icon: User },
+    { id: 'appearance' as const, label: 'Appearance', icon: Sun },
+    { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+    { id: 'members' as const, label: 'Members', icon: Users },
+    { id: 'integrations' as const, label: 'Integrations', icon: Plug },
+  ];
+
+  return (
+    <AppLayout
+      breadcrumbs={[{ label: 'Settings' }]}
+      onNavigate={onNavigate}
+      onCreateProject={() => onNavigate('/')}
+    >
+      <div className="max-w-4xl mx-auto p-6">
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-6">Settings</h1>
+
+        <div className="flex gap-6">
+          <nav className="w-48 shrink-0">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                }`}
+              >
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="flex-1">
+            {activeTab === 'profile' && (
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Profile</h2>
+                  <p className="text-sm text-zinc-500">Update your personal information.</p>
+                </div>
+                <Input
+                  id="display-name"
+                  label="Display Name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                />
+                <Input
+                  id="email"
+                  label="Email"
+                  value={user?.email ?? ''}
+                  disabled
+                />
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Timezone</label>
+                  <select
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
+                  >
+                    {['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'Australia/Sydney'].map((tz) => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSaveProfile} loading={saving}>Save Changes</Button>
+                  {saved && <span className="text-sm text-green-600">Saved!</span>}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'appearance' && (
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Appearance</h2>
+                  <p className="text-sm text-zinc-500">Customize how BigBlueBam looks.</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3 block">Theme</label>
+                  <div className="flex gap-3">
+                    {([
+                      { value: 'system' as const, label: 'System', icon: Monitor },
+                      { value: 'light' as const, label: 'Light', icon: Sun },
+                      { value: 'dark' as const, label: 'Dark', icon: Moon },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => applyTheme(opt.value)}
+                        className={`flex items-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-colors ${
+                          theme === opt.value
+                            ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                            : 'border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-400'
+                        }`}
+                      >
+                        <opt.icon className="h-4 w-4" />
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'notifications' && (
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Notifications</h2>
+                  <p className="text-sm text-zinc-500">Configure how you receive notifications.</p>
+                </div>
+                <div className="space-y-4">
+                  {[
+                    { label: 'Task assigned to me', key: 'assigned' },
+                    { label: 'Mentioned in comments', key: 'mentioned' },
+                    { label: 'Task state changed', key: 'state_changed' },
+                    { label: 'Sprint started/completed', key: 'sprint' },
+                    { label: 'Due date approaching', key: 'due_date' },
+                  ].map((pref) => (
+                    <label key={pref.key} className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">{pref.label}</span>
+                      <input
+                        type="checkbox"
+                        defaultChecked
+                        className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'members' && (
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Organization Members</h2>
+                    <p className="text-sm text-zinc-500">Manage who has access to your organization.</p>
+                  </div>
+                  <Button size="sm" onClick={() => setShowInviteForm((v) => !v)}>
+                    <UserPlus className="h-4 w-4" />
+                    Invite Member
+                  </Button>
+                </div>
+
+                {showInviteForm && (
+                  <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-3">
+                    <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Invite a new member</h3>
+                    <div className="flex gap-3 items-end flex-wrap">
+                      <Input
+                        id="invite-email"
+                        label="Email"
+                        type="email"
+                        placeholder="user@example.com"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        className="w-56"
+                      />
+                      <Input
+                        id="invite-name"
+                        label="Display Name"
+                        placeholder="Optional"
+                        value={inviteDisplayName}
+                        onChange={(e) => setInviteDisplayName(e.target.value)}
+                        className="w-44"
+                      />
+                      <Select
+                        label="Role"
+                        options={[
+                          { value: 'member', label: 'Member' },
+                          { value: 'admin', label: 'Admin' },
+                        ]}
+                        value={inviteRole}
+                        onValueChange={setInviteRole}
+                        className="w-32"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={handleInvite}
+                        loading={inviteMember.isPending}
+                        disabled={!inviteEmail.trim()}
+                      >
+                        Create User
+                      </Button>
+                    </div>
+                    {inviteMember.isError && (
+                      <p className="text-sm text-red-600">
+                        {(inviteMember.error as any)?.message ?? 'Failed to invite member.'}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {inviteSuccessMessage && (
+                  <div className="p-4 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950 space-y-2">
+                    <p className="text-sm text-green-800 dark:text-green-200 whitespace-pre-line">
+                      {inviteSuccessMessage}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setInviteSuccessMessage(null);
+                        setShowInviteForm(false);
+                      }}
+                      className="text-xs text-green-700 dark:text-green-300 underline"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                {membersLoading ? (
+                  <p className="text-sm text-zinc-400">Loading members...</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-zinc-200 dark:border-zinc-700 text-left">
+                          <th className="pb-2 font-medium text-zinc-500">Name</th>
+                          <th className="pb-2 font-medium text-zinc-500">Email</th>
+                          <th className="pb-2 font-medium text-zinc-500">Role</th>
+                          <th className="pb-2 font-medium text-zinc-500">Joined</th>
+                          <th className="pb-2 font-medium text-zinc-500 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orgMembers.map((member) => {
+                          const isCurrentUser = member.id === user?.id;
+                          return (
+                            <tr key={member.id} className="border-b border-zinc-100 dark:border-zinc-800">
+                              <td className="py-3 text-zinc-900 dark:text-zinc-100">{member.display_name || '-'}</td>
+                              <td className="py-3 text-zinc-600 dark:text-zinc-400">{member.email}</td>
+                              <td className="py-3">
+                                {isCurrentUser ? (
+                                  <span className="text-zinc-600 dark:text-zinc-400 capitalize">{member.role}</span>
+                                ) : (
+                                  <Select
+                                    options={roleOptions}
+                                    value={member.role}
+                                    onValueChange={(val) => updateRole.mutate({ userId: member.id, role: val })}
+                                    className="w-28"
+                                  />
+                                )}
+                              </td>
+                              <td className="py-3 text-zinc-500">{formatDate(member.created_at)}</td>
+                              <td className="py-3 text-right">
+                                {!isCurrentUser && (
+                                  <>
+                                    {confirmRemoveId === member.id ? (
+                                      <div className="flex items-center justify-end gap-2">
+                                        <span className="text-xs text-zinc-500">Remove?</span>
+                                        <Button
+                                          size="sm"
+                                          variant="danger"
+                                          onClick={() => removeMember.mutate(member.id)}
+                                          loading={removeMember.isPending}
+                                        >
+                                          Yes
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => setConfirmRemoveId(null)}
+                                        >
+                                          No
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => setConfirmRemoveId(member.id)}
+                                        className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                                        title="Remove member"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {orgMembers.length === 0 && (
+                      <p className="text-sm text-zinc-400 py-4 text-center">No members found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'integrations' && (
+              <div className="space-y-6">
+                {/* Calendar Feeds */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Calendar Feeds</h2>
+                    <p className="text-sm text-zinc-500">
+                      Subscribe to these URLs in Google Calendar, Outlook, or Apple Calendar to see task due dates.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Personal calendar */}
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">My Tasks (Personal)</p>
+                        <p className="text-xs text-zinc-400 truncate font-mono">
+                          {window.location.origin}/api/me/calendar.ics?token=API_KEY
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleCopyUrl(`${window.location.origin}/api/me/calendar.ics?token=API_KEY`)}
+                        className="shrink-0 rounded-md p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        title="Copy URL"
+                      >
+                        {copiedUrl === `${window.location.origin}/api/me/calendar.ics?token=API_KEY` ? (
+                          <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-zinc-400 -mt-1 ml-1">
+                      Replace API_KEY with an actual API key from the section below.
+                    </p>
+
+                    {/* Per-project calendars */}
+                    {projects.map((project) => {
+                      const url = `${window.location.origin}/api/projects/${project.id}/calendar.ics`;
+                      return (
+                        <div key={project.id} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{project.name}</p>
+                            <p className="text-xs text-zinc-400 truncate font-mono">{url}</p>
+                          </div>
+                          <button
+                            onClick={() => handleCopyUrl(url)}
+                            className="shrink-0 rounded-md p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                            title="Copy URL"
+                          >
+                            {copiedUrl === url ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {projects.length === 0 && (
+                      <p className="text-sm text-zinc-400">No projects found.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* API Keys */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">API Keys</h2>
+                      <p className="text-sm text-zinc-500">
+                        Use API keys to authenticate with the MCP server or REST API.
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={() => setShowCreateKey((v) => !v)}>
+                      <Plus className="h-4 w-4" />
+                      Create API Key
+                    </Button>
+                  </div>
+
+                  {createdKeyValue && (
+                    <div className="p-4 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950 space-y-2">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                        API key created! Copy it now -- it will not be shown again.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs bg-white dark:bg-zinc-900 rounded px-3 py-2 font-mono border border-green-200 dark:border-green-800 break-all">
+                          {createdKeyValue}
+                        </code>
+                        <button
+                          onClick={() => handleCopyUrl(createdKeyValue)}
+                          className="shrink-0 rounded-md p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          {copiedUrl === createdKeyValue ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setCreatedKeyValue(null)}
+                        className="text-xs text-green-700 dark:text-green-300 underline"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+
+                  {showCreateKey && (
+                    <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-3">
+                      <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Create a new API key</h3>
+                      <div className="flex gap-3 items-end flex-wrap">
+                        <Input
+                          id="key-name"
+                          label="Name"
+                          placeholder="e.g. MCP Server"
+                          value={newKeyName}
+                          onChange={(e) => setNewKeyName(e.target.value)}
+                          className="w-56"
+                        />
+                        <Select
+                          label="Scope"
+                          options={[
+                            { value: 'read', label: 'Read' },
+                            { value: 'write', label: 'Write' },
+                            { value: 'admin', label: 'Admin' },
+                          ]}
+                          value={newKeyScope}
+                          onValueChange={setNewKeyScope}
+                          className="w-32"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => createApiKey.mutate({ name: newKeyName, scope: newKeyScope })}
+                          loading={createApiKey.isPending}
+                          disabled={!newKeyName.trim()}
+                        >
+                          Create
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {apiKeysData.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-zinc-200 dark:border-zinc-700 text-left">
+                            <th className="pb-2 font-medium text-zinc-500">Name</th>
+                            <th className="pb-2 font-medium text-zinc-500">Key</th>
+                            <th className="pb-2 font-medium text-zinc-500">Scope</th>
+                            <th className="pb-2 font-medium text-zinc-500">Created</th>
+                            <th className="pb-2 font-medium text-zinc-500 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {apiKeysData.map((key) => (
+                            <tr key={key.id} className="border-b border-zinc-100 dark:border-zinc-800">
+                              <td className="py-3 text-zinc-900 dark:text-zinc-100">{key.name}</td>
+                              <td className="py-3 text-zinc-500 font-mono text-xs">{key.key_hint}</td>
+                              <td className="py-3 text-zinc-600 dark:text-zinc-400 capitalize">{key.scope}</td>
+                              <td className="py-3 text-zinc-500">{formatDate(key.created_at)}</td>
+                              <td className="py-3 text-right">
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => revokeApiKey.mutate(key.id)}
+                                  loading={revokeApiKey.isPending}
+                                >
+                                  Revoke
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-zinc-400">No API keys created yet.</p>
+                  )}
+                </div>
+
+                {/* Webhooks */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Webhooks</h2>
+                    <p className="text-sm text-zinc-500">
+                      Receive HTTP POST notifications when events occur. Configure webhooks per project.
+                    </p>
+                  </div>
+
+                  {projects.map((project) => {
+                    const projectWebhooks = webhooksData?.[project.id] ?? [];
+                    return (
+                      <div key={project.id} className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{project.name}</h3>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setShowAddWebhook(showAddWebhook === project.id ? null : project.id)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add Webhook
+                          </Button>
+                        </div>
+
+                        {showAddWebhook === project.id && (
+                          <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-3">
+                            <Input
+                              id={`webhook-url-${project.id}`}
+                              label="URL"
+                              placeholder="https://example.com/webhook"
+                              value={webhookUrl}
+                              onChange={(e) => setWebhookUrl(e.target.value)}
+                            />
+                            <Input
+                              id={`webhook-secret-${project.id}`}
+                              label="Secret (min 16 characters)"
+                              placeholder="your-webhook-secret"
+                              value={webhookSecret}
+                              onChange={(e) => setWebhookSecret(e.target.value)}
+                            />
+                            <div>
+                              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">Events</label>
+                              <div className="flex flex-wrap gap-2">
+                                {WEBHOOK_EVENT_TYPES.map((evt) => (
+                                  <label key={evt} className="flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+                                    <input
+                                      type="checkbox"
+                                      checked={webhookEvents.includes(evt)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setWebhookEvents((prev) => [...prev, evt]);
+                                        } else {
+                                          setWebhookEvents((prev) => prev.filter((x) => x !== evt));
+                                        }
+                                      }}
+                                      className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                                    />
+                                    {evt}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                createWebhook.mutate({
+                                  projectId: project.id,
+                                  data: { url: webhookUrl, events: webhookEvents, secret: webhookSecret },
+                                })
+                              }
+                              loading={createWebhook.isPending}
+                              disabled={!webhookUrl.trim() || webhookSecret.length < 16 || webhookEvents.length === 0}
+                            >
+                              Save Webhook
+                            </Button>
+                          </div>
+                        )}
+
+                        {projectWebhooks.length > 0 ? (
+                          <div className="space-y-2">
+                            {projectWebhooks.map((wh) => (
+                              <div key={wh.id} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-mono text-zinc-700 dark:text-zinc-300 truncate">{wh.url}</p>
+                                  <p className="text-xs text-zinc-400">
+                                    {wh.events.join(', ')} &middot; {wh.is_active ? 'Active' : 'Inactive'}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => deleteWebhook.mutate(wh.id)}
+                                  className="shrink-0 p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                                  title="Delete webhook"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-zinc-400 ml-1">No webhooks configured.</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {projects.length === 0 && (
+                    <p className="text-sm text-zinc-400">No projects found.</p>
+                  )}
+                </div>
+
+                {/* Email Configuration */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Email Notifications</h2>
+                    <p className="text-sm text-zinc-500">
+                      Email notifications require SMTP configuration in the server's environment variables
+                      (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS).
+                    </p>
+                  </div>
+                  <p className="text-sm text-zinc-400">
+                    Contact your server administrator to configure email delivery.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </AppLayout>
+  );
+}
