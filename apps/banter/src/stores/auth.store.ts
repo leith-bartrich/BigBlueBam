@@ -27,14 +27,26 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   fetchMe: async () => {
     try {
-      const res = await api.get<{ data: BanterUser }>('/me');
-      set({ user: res.data, isAuthenticated: true, isLoading: false });
-    } catch (err) {
+      // Use the BBB auth endpoint since Banter shares the same session
+      const res = await fetch('/b3/api/auth/me', { credentials: 'include' });
+      if (!res.ok) throw new Error('Not authenticated');
+      const json = await res.json();
+      const user = json.data;
+      set({
+        user: {
+          id: user.id,
+          email: user.email,
+          display_name: user.display_name,
+          avatar_url: user.avatar_url ?? null,
+          org_id: user.org_id,
+          presence: 'online',
+          role: user.role,
+        },
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
-      // If 401, redirect to BBB login
-      if (err instanceof ApiError && err.status === 401) {
-        window.location.href = '/b3/login';
-      }
     }
   },
 }));
