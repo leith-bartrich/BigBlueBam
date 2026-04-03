@@ -1,66 +1,283 @@
 <p align="center">
-  <img src="docs/images/logo.svg" alt="BigBlueBam Logo" width="80" height="80" />
+  <img src="docs/images/logo.svg" alt="BigBlueBam Logo" width="100" height="100" />
 </p>
 
 <h1 align="center">BigBlueBam</h1>
 
 <p align="center">
-  <strong>A web-based, multi-user Kanban project planning tool with sprint management, real-time collaboration, and AI integration via MCP.</strong>
+  <strong>Project management built for human-AI teams.</strong><br/>
+  Engineers set the strategy. AI agents handle the grunt work. Everyone sees it on the board.
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> &bull;
+  <a href="#the-vision">Vision</a> &bull;
+  <a href="#product-tour">Tour</a> &bull;
+  <a href="#for-teams">For Teams</a> &bull;
+  <a href="#for-ai-agents">For AI Agents</a> &bull;
+  <a href="#helpdesk">Helpdesk</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#screenshots">Screenshots</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
-  <a href="#mcp-server">MCP Server</a> &bull;
-  <a href="#documentation">Documentation</a>
+  <a href="#documentation">Docs</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/tests-466%2B%20passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/MCP%20tools-42-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/Docker%20services-9-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
 ---
 
-## Features
+## The Vision
 
-**Board & Task Management**
-- Drag-and-drop Kanban board with animated cards (Motion spring physics)
-- 5 configurable phases per project with WIP limits
-- Multiple views: Board, List, Timeline/Gantt, Calendar, Workload
-- Swimlanes by assignee, priority, or epic
-- Inline task creation, duplication, and bulk operations
-- Task templates for repeatable workflows
-- Sprint management with carry-forward ceremony
-- Story points, time tracking, due dates, subtasks
+Most project management tools are built for humans talking to humans. BigBlueBam is built for **human-AI collaborative development** — a world where engineers and AI agents work side by side on the same board, in the same sprints, toward the same goals.
 
-**Collaboration**
-- Real-time sync via WebSocket + Redis PubSub
-- Comments with emoji reactions
-- @mention notifications
-- Activity feed and audit log
-- File attachments
+**Humans** own the strategy: setting priorities, defining epics, reviewing deliverables, talking to customers.
 
-**Integrations**
-- **MCP Server** with 38 tools for AI-powered project management
-- iCal calendar feeds (Google Calendar, Outlook)
-- Webhooks for CI/CD integration
-- Data import from Jira, Trello, GitHub Issues, and CSV
-- REST API with OpenAPI/Swagger docs
-- API key management for automation
+**AI agents** own the routine: triaging helpdesk tickets, creating tasks from bug reports, posting status updates, generating sprint reports, and keeping the board organized.
 
-**Helpdesk / Ticketing**
-- Client-facing support portal on :8080 with separate auth
-- Ticket submission with categories, priority, and message threading
-- Auto-creates linked BigBlueBam tasks from tickets
-- Status sync: moving a BBB task updates the client's ticket status
-- Agent replies visible to clients; internal comments stay private
-- Configurable email verification and domain restrictions
+The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-**Customization**
-- Dark/light/system theme with class-based toggle
-- Custom date picker with calendar popover
-- Keyboard shortcuts + command palette (Ctrl+K)
-- Saved views and filter presets
-- Labels, epics, and custom fields
-- Per-project phase and state configuration
+This is made possible by **42 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, and helpdesk tickets.
+
+---
+
+## Product Tour
+
+<p align="center">
+  <img src="images/03-board.png" alt="Kanban Board" width="100%" />
+</p>
+<p align="center"><em>The Kanban board — the central hub where human and AI work converges.</em></p>
+
+<br/>
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/07-timeline.png" alt="Timeline View" width="100%" /></td>
+    <td width="50%"><img src="images/08-calendar.png" alt="Calendar View" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Timeline / Gantt view</em></td>
+    <td align="center"><em>Calendar view</em></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="images/06-list-view.png" alt="List View" width="100%" /></td>
+    <td width="50%"><img src="images/09-project-dashboard.png" alt="Project Analytics" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>List / table view</em></td>
+    <td align="center"><em>Project analytics dashboard</em></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="images/16-helpdesk-tickets.png" alt="Helpdesk Tickets" width="100%" /></td>
+    <td width="50%"><img src="images/14-command-palette.png" alt="Command Palette" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Helpdesk ticket list</em></td>
+    <td align="center"><em>Command palette (Ctrl+K)</em></td>
+  </tr>
+</table>
+
+---
+
+## For Teams
+
+### Kanban Board
+
+Drag-and-drop cards across 5 configurable phases with WIP limits. Each card shows priority, assignee, story points, due date, and comment count at a glance. Motion spring physics make the interactions feel natural.
+
+<p align="center">
+  <img src="images/03-board.png" alt="Kanban Board — Dark Mode" width="100%" />
+</p>
+<p align="center"><em>Dark mode — the default for late-night deploys.</em></p>
+
+<p align="center">
+  <img src="images/13-board-light.png" alt="Kanban Board — Light Mode" width="100%" />
+</p>
+<p align="center"><em>Light mode — because some people like the sun.</em></p>
+
+### Swimlanes
+
+Group tasks by assignee, priority, or epic. Collapsible rows show task count and total story points per group, making it easy to spot bottlenecks and unbalanced workloads.
+
+<p align="center">
+  <img src="images/05-swimlanes.png" alt="Swimlanes by Assignee" width="100%" />
+</p>
+
+### Five Views, One Board
+
+Every project supports five views — switch between them without losing your filters or context:
+
+| View | What it shows |
+|------|--------------|
+| **Board** | Kanban columns with drag-and-drop cards |
+| **List** | Sortable, filterable table with inline editing |
+| **Timeline** | Gantt-style horizontal bars from start to due date |
+| **Calendar** | Monthly calendar with tasks on their due dates |
+| **Workload** | Team member capacity and allocation |
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/06-list-view.png" alt="List View" width="100%" /></td>
+    <td width="50%"><img src="images/07-timeline.png" alt="Timeline View" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>List view with sortable columns</em></td>
+    <td align="center"><em>Timeline / Gantt view with today marker</em></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="images/08-calendar.png" alt="Calendar View" width="100%" />
+</p>
+<p align="center"><em>Calendar view — monthly navigation with task due dates</em></p>
+
+### Task Detail
+
+Click any card to open the detail drawer. Full rich-text description with image support, assignee, priority, phase, sprint, story points, start and due dates, subtasks, file attachments, comments with emoji reactions, and a complete activity feed.
+
+<p align="center">
+  <img src="images/04-task-detail.png" alt="Task Detail Drawer" width="100%" />
+</p>
+
+### Sprint Management
+
+Create sprints, assign tasks, track velocity. When a sprint ends, the carry-forward ceremony moves incomplete work to the next sprint automatically. Sprint reports show burndown, velocity trends, and completion rates.
+
+### Project Dashboard
+
+Charts and widgets for sprint progress, priority breakdown, overdue tasks, task distribution by phase, and team workload — all in one place.
+
+<p align="center">
+  <img src="images/09-project-dashboard.png" alt="Project Analytics Dashboard" width="100%" />
+</p>
+
+### My Work
+
+A cross-project view of everything assigned to you, grouped by project. One place to see your full plate.
+
+<p align="center">
+  <img src="images/10-my-work.png" alt="My Work View" width="100%" />
+</p>
+
+### Command Palette
+
+Press **Ctrl+K** to open the command palette. Search tasks, switch projects, navigate views, and trigger actions without touching the mouse.
+
+<p align="center">
+  <img src="images/14-command-palette.png" alt="Command Palette" width="100%" />
+</p>
+
+### Organization Management
+
+Invite team members, assign roles, manage permissions. Configure integrations with calendar feeds, API keys, and webhooks.
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/11-members.png" alt="Members Management" width="100%" /></td>
+    <td width="50%"><img src="images/12-integrations.png" alt="Integrations Settings" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Organization members</em></td>
+    <td align="center"><em>Integrations — calendar feeds, API keys, webhooks</em></td>
+  </tr>
+</table>
+
+---
+
+## For AI Agents
+
+BigBlueBam exposes **42 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+
+### What AI Agents Can Do
+
+- **Create and manage tasks** — create tasks, set priority and assignee, move cards across phases, add subtasks
+- **Run sprints** — create sprints, assign tasks, start/complete sprints, generate sprint reports
+- **Triage helpdesk tickets** — read incoming tickets, create linked tasks, assign to the right engineer, post responses to customers
+- **Generate reports** — velocity reports, burndown charts, cumulative flow, workload distribution, overdue task alerts
+- **Collaborate** — post comments, log time, bulk update tasks, suggest branch names
+
+### Example: AI-Powered Helpdesk Triage
+
+> A customer submits a bug report through the helpdesk portal. An AI agent monitoring the ticket queue picks it up, creates a `FRND-` prefixed task in the Frontend project, assigns it to the right engineer based on the related epic, sets priority to High, and posts an initial response to the customer: *"Thanks for reporting this. We've created task FRND-247 and assigned it to the team. We'll update you when there's a fix."*
+>
+> The engineer sees the new card on their board. The customer sees the response in their portal. No human had to do the triage.
+
+### MCP Tools Reference
+
+| Category | Tools | What they do |
+|----------|-------|-------------|
+| **Projects** | `list_projects`, `get_project`, `create_project` | Browse and create projects |
+| **Board** | `get_board`, `list_phases`, `create_phase`, `reorder_phases` | Read board state, configure columns |
+| **Tasks** | `search_tasks`, `get_task`, `create_task`, `update_task`, `move_task`, `delete_task`, `duplicate_task`, `bulk_update_tasks` | Full CRUD on tasks with search and bulk ops |
+| **Sprints** | `list_sprints`, `create_sprint`, `start_sprint`, `complete_sprint`, `get_sprint_report` | Sprint lifecycle management |
+| **Comments** | `list_comments`, `add_comment` | Read and post comments on tasks |
+| **Members** | `list_members`, `get_my_tasks` | Team member info and personal task lists |
+| **Reports** | `get_velocity_report`, `get_burndown`, `get_cumulative_flow`, `get_overdue_tasks`, `get_workload`, `get_status_distribution` | Analytics and reporting |
+| **Templates** | `list_templates`, `create_from_template` | Task templates for repeatable workflows |
+| **Import** | `import_csv`, `import_github_issues`, `suggest_branch_name` | Data import and git integration |
+| **Time** | `log_time` | Time tracking entries |
+| **Helpdesk** | `list_tickets`, `get_ticket`, `reply_to_ticket`, `update_ticket_status` | Ticket management and customer communication |
+| **Utility** | `get_server_info`, `confirm_action` | Server metadata and confirmation flows |
+
+### MCP Setup
+
+Add this to your Claude Desktop or Claude Code configuration:
+
+```json
+{
+  "mcpServers": {
+    "bigbluebam": {
+      "url": "http://localhost:3001/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+Generate an API key from **Settings > Integrations** in the BigBlueBam UI.
+
+---
+
+## Helpdesk
+
+BigBlueBam includes a full client-facing helpdesk portal. Customers submit tickets, your team (or your AI agents) responds, and every ticket is linked to a task on the board.
+
+### Client Portal
+
+Customers log into their own portal at `:8080`, submit tickets with categories and priority, and track responses — all with clean, simple branding separate from the internal tool.
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/15-helpdesk-login.png" alt="Helpdesk Login" width="100%" /></td>
+    <td width="50%"><img src="images/16-helpdesk-tickets.png" alt="Helpdesk Ticket List" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Helpdesk portal login</em></td>
+    <td align="center"><em>Client ticket list with status badges</em></td>
+  </tr>
+</table>
+
+### Ticket-to-Task Pipeline
+
+When a client submits a ticket, BigBlueBam automatically creates a linked task on your board. Moving the task through phases updates the ticket status. Clients see progress without your team lifting a finger.
+
+<p align="center">
+  <img src="images/17-helpdesk-conversation.png" alt="Helpdesk Ticket Detail" width="100%" />
+</p>
+<p align="center"><em>Ticket detail with description and metadata</em></p>
+
+### Agent Conversations
+
+Team members (or AI agents via MCP) reply directly to tickets. Agent replies are visible to clients. Internal comments stay private. Full threading keeps the conversation organized.
+
+<p align="center">
+  <img src="images/18-helpdesk-detail-conversation.png" alt="Helpdesk Conversation" width="100%" />
+</p>
+<p align="center"><em>Client and agent conversation on a helpdesk ticket</em></p>
 
 ---
 
@@ -69,7 +286,7 @@
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- [Node.js 22+](https://nodejs.org/) and [pnpm 9+](https://pnpm.io/) (for development)
+- [Node.js 22+](https://nodejs.org/) and [pnpm 9+](https://pnpm.io/) (for development only)
 
 ### Run with Docker
 
@@ -95,19 +312,30 @@ docker compose exec api node dist/cli.js create-admin \
 
 Open **http://localhost** and log in.
 
+<p align="center">
+  <img src="images/01-login.png" alt="Login Page" width="60%" />
+</p>
+<p align="center"><em>The login page — clean and branded.</em></p>
+
+After login, you land on the project dashboard:
+
+<p align="center">
+  <img src="images/02-dashboard.png" alt="Project Dashboard" width="100%" />
+</p>
+
 ### Services
 
 | Service | Port | Description |
 |---------|------|-------------|
-| Frontend | :80 | React SPA via nginx |
-| API | :4000 | Fastify REST + WebSocket |
-| MCP Server | :3001 | Model Context Protocol |
-| Helpdesk Portal | :8080 | Client-facing ticket submission |
-| Helpdesk API | :4001 (internal) | Helpdesk auth, tickets, messages |
-| PostgreSQL | :5432 | Primary database |
-| Redis | :6379 | Cache, PubSub, queues |
-| MinIO | :9000 | S3-compatible storage |
-| Worker | — | Background job processor |
+| Frontend | `:80` | React SPA via nginx |
+| API | `:4000` | Fastify REST + WebSocket |
+| MCP Server | `:3001` | Model Context Protocol (42 tools) |
+| Helpdesk Portal | `:8080` | Client-facing ticket submission |
+| Helpdesk API | `:4001` (internal) | Helpdesk auth, tickets, messages |
+| PostgreSQL | `:5432` | Primary database |
+| Redis | `:6379` | Cache, PubSub, queues |
+| MinIO | `:9000` | S3-compatible file storage |
+| Worker | -- | BullMQ background job processor |
 
 ### Development Mode
 
@@ -120,154 +348,48 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Run Tests
 
 ```bash
-pnpm test  # 466 tests across all packages
+pnpm test  # 466+ tests across all packages
 ```
-
----
-
-## Screenshots
-
-### Login
-
-Clean, centered login form with BigBlueBam branding.
-
-![Login](images/01-login.png)
-
-### Project Dashboard
-
-Overview page with cards for each project.
-
-![Dashboard](images/02-dashboard.png)
-
-### Kanban Board
-
-Drag-and-drop board with 5 configurable phases, task cards with priority icons, story points, due dates, and comment counts.
-
-![Board](images/03-board.png)
-
-### Task Detail
-
-Slide-out drawer with full task editing: title, description, assignee, priority, phase, sprint, story points, dates, subtasks, comments with emoji reactions, and activity feed.
-
-![Task Detail](images/04-task-detail.png)
-
-### List View
-
-Sortable table with inline editing for priority and story points.
-
-![List View](images/05-list-view.png)
-
-### Timeline / Gantt View
-
-Horizontal task bars spanning start-to-due dates with a today marker.
-
-![Timeline](images/06-timeline-view.png)
-
-### Calendar View
-
-Monthly calendar showing tasks on their due dates with navigation and today highlighting.
-
-![Calendar](images/07-calendar-view.png)
-
-### Swimlanes
-
-Horizontal grouping by assignee (or priority/epic) with collapsible rows showing task count and total story points.
-
-![Swimlanes](images/08-swimlanes.png)
-
-### Project Dashboard
-
-Charts and widgets: sprint progress, priority breakdown, overdue tasks, task distribution, and team workload.
-
-![Project Dashboard](images/09-project-dashboard.png)
-
-### My Work
-
-Cross-project view of all tasks assigned to you, grouped by section.
-
-![My Work](images/10-my-work.png)
-
-### Settings — Profile
-
-Edit display name, email, and timezone.
-
-![Settings Profile](images/11-settings-profile.png)
-
-### Settings — Appearance
-
-System, Light, and Dark theme toggle.
-
-![Settings Appearance](images/12-settings-appearance.png)
-
-### Settings — Members
-
-Organization member management with invite, role editing, and removal.
-
-![Settings Members](images/13-settings-members.png)
-
-### Settings — Integrations
-
-Calendar feed URLs, API key management, and webhook configuration.
-
-![Settings Integrations](images/14-settings-integrations.png)
-
-### Dark Mode
-
-Full dark mode support across all views.
-
-![Dark Mode](images/15-dark-mode.png)
-
-### Helpdesk — Login
-
-Client-facing portal with clean, simple branding.
-
-![Helpdesk Login](images/helpdesk-01-login.png)
-
-### Helpdesk — My Tickets
-
-Clients see their tickets with status badges, priority, category, and timestamps.
-
-![Helpdesk Tickets](images/helpdesk-02-tickets.png)
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   Client (SPA)                               │
-│  React 19 · Motion · TanStack Query · Zustand · dnd-kit     │
-│  TailwindCSS v4 · Radix UI                                  │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ HTTPS / WSS
-┌──────────────────────▼──────────────────────────────────────┐
-│              nginx (reverse proxy + static SPA)              │
-└──────────┬───────────────────────┬──────────────────────────┘
-           │ REST / WS             │ SSE / HTTP
-┌──────────▼──────────┐  ┌────────▼─────────────┐  ┌────────────────────┐
-│ Fastify API :4000   │  │ MCP Server :3001     │  │ BullMQ Worker      │
-│ + WebSocket         │  │ 38 tools, 7 resources│  │ email, notifications│
-└──────────┬──────────┘  └────────┬─────────────┘  └────────┬───────────┘
-           │                      │                          │
-┌──────────▼──────────────────────▼──────────────────────────▼───────────┐
-│  PostgreSQL 16     │  Redis 7           │  MinIO (S3)                  │
-│  20+ tables        │  PubSub + cache    │  File storage                │
-└────────────────────┴───────────────────┴──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                       Client (SPA)                              │
+│    React 19 · Motion · TanStack Query · Zustand · dnd-kit      │
+│    TailwindCSS v4 · Radix UI                                   │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ HTTPS / WSS
+┌────────────────────────▼────────────────────────────────────────┐
+│               nginx (reverse proxy + static SPA)                │
+└──────────┬────────────────────────┬─────────────────────────────┘
+           │ REST / WS              │ SSE / HTTP
+┌──────────▼──────────┐  ┌─────────▼────────────┐  ┌─────────────────────┐
+│  Fastify API :4000  │  │  MCP Server :3001    │  │  BullMQ Worker      │
+│  + WebSocket        │  │  42 tools            │  │  email, jobs        │
+└──────────┬──────────┘  └─────────┬────────────┘  └──────────┬──────────┘
+           │                       │                           │
+┌──────────▼───────────────────────▼───────────────────────────▼──────────┐
+│  PostgreSQL 16       │  Redis 7             │  MinIO (S3)              │
+│  25+ tables          │  PubSub + cache      │  File storage            │
+└──────────────────────┴──────────────────────┴──────────────────────────┘
 ```
 
 ### Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 19, TailwindCSS v4, Motion, TanStack Query, Zustand, dnd-kit, Radix UI |
-| API | Node.js 22, Fastify v5, Drizzle ORM, Zod |
-| Realtime | WebSocket + Redis PubSub |
-| MCP | @modelcontextprotocol/sdk (Streamable HTTP + SSE) |
-| Database | PostgreSQL 16, Redis 7, MinIO |
-| Worker | BullMQ, Nodemailer |
-| Build | Turborepo, pnpm, tsup, Vite |
-| Test | Vitest (466 tests) |
-| Deploy | Docker Compose, multi-stage Dockerfiles |
+| **Frontend** | React 19, TailwindCSS v4, Motion, TanStack Query, Zustand, dnd-kit, Radix UI |
+| **API** | Node.js 22, Fastify v5, Drizzle ORM, Zod |
+| **Realtime** | WebSocket + Redis PubSub |
+| **MCP** | @modelcontextprotocol/sdk (Streamable HTTP + SSE) |
+| **Database** | PostgreSQL 16, Redis 7, MinIO |
+| **Worker** | BullMQ, Nodemailer |
+| **Build** | Turborepo, pnpm workspaces, tsup, Vite |
+| **Testing** | Vitest (466+ tests) |
+| **Deploy** | Docker Compose, multi-stage Dockerfiles |
 
 ### Monorepo Structure
 
@@ -288,43 +410,17 @@ docs/               → 7 documentation pages with Mermaid diagrams
 scripts/            → Utility and seed scripts
 ```
 
----
+### Key Numbers
 
-## MCP Server
-
-BigBlueBam exposes a Model Context Protocol server enabling AI assistants (Claude, Claude Code, custom agents) to manage projects through structured tool calls.
-
-### Setup
-
-```json
-{
-  "mcpServers": {
-    "bigbluebam": {
-      "url": "http://localhost:3001/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-### Available Tools (38)
-
-| Category | Tools |
-|----------|-------|
-| Projects | list_projects, get_project, create_project |
-| Board | get_board, list_phases, create_phase, reorder_phases |
-| Tasks | search_tasks, get_task, create_task, update_task, move_task, delete_task, duplicate_task, bulk_update_tasks |
-| Sprints | list_sprints, create_sprint, start_sprint, complete_sprint, get_sprint_report |
-| Comments | list_comments, add_comment |
-| Members | list_members, get_my_tasks |
-| Reports | get_velocity_report, get_burndown, get_cumulative_flow, get_overdue_tasks, get_workload, get_status_distribution |
-| Templates | list_templates, create_from_template |
-| Import | import_csv, import_github_issues, suggest_branch_name |
-| Time | log_time |
-| Helpdesk | list_tickets, get_ticket, reply_to_ticket, update_ticket_status |
-| Utility | get_server_info, confirm_action |
+| Metric | Count |
+|--------|-------|
+| Docker services | 9 |
+| MCP tools | 42 |
+| Test cases | 466+ |
+| API route modules | 23 |
+| Database tables | 25+ |
+| Frontend components | 33 |
+| Documentation pages | 7 |
 
 ---
 
@@ -337,7 +433,7 @@ BigBlueBam exposes a Model Context Protocol server enabling AI assistants (Claud
 | [Database](docs/database.md) | ER diagrams, table descriptions, indexing |
 | [API Reference](docs/api-reference.md) | All REST endpoints with examples |
 | [MCP Server](docs/mcp-server.md) | Tools, resources, prompts, configuration |
-| [Operations](docs/operations.md) | **Updates, backups, scaling, troubleshooting** |
+| [Operations](docs/operations.md) | Updates, backups, scaling, troubleshooting |
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, scaling, backup |
 | [Development](docs/development.md) | Contributing, testing, code style |
 | [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
@@ -346,7 +442,7 @@ BigBlueBam exposes a Model Context Protocol server enabling AI assistants (Claud
 
 ## License
 
-MIT
+MIT -- see [LICENSE](LICENSE).
 
 ---
 
