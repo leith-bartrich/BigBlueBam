@@ -379,6 +379,90 @@ CREATE TRIGGER trg_saved_views_updated_at
     BEFORE UPDATE ON saved_views
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- ── Helpdesk Tables ─────────────────────────────────────────────────
+CREATE TABLE helpdesk_users (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email varchar(320) UNIQUE NOT NULL,
+    display_name varchar(100) NOT NULL,
+    password_hash text NOT NULL,
+    email_verified boolean NOT NULL DEFAULT false,
+    email_verification_token text,
+    email_verification_sent_at timestamptz,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_helpdesk_users_updated_at
+    BEFORE UPDATE ON helpdesk_users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE helpdesk_sessions (
+    id text PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES helpdesk_users(id) ON DELETE CASCADE,
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE tickets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_number serial UNIQUE,
+    helpdesk_user_id uuid NOT NULL REFERENCES helpdesk_users(id),
+    task_id uuid REFERENCES tasks(id) ON DELETE SET NULL,
+    project_id uuid REFERENCES projects(id) ON DELETE SET NULL,
+    subject varchar(500) NOT NULL,
+    description text NOT NULL,
+    status varchar(50) NOT NULL DEFAULT 'open',
+    priority varchar(20) NOT NULL DEFAULT 'medium',
+    category varchar(100),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz,
+    closed_at timestamptz
+);
+
+CREATE TRIGGER trg_tickets_updated_at
+    BEFORE UPDATE ON tickets
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE ticket_messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_id uuid NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    author_type varchar(20) NOT NULL,
+    author_id uuid NOT NULL,
+    author_name varchar(100) NOT NULL,
+    body text NOT NULL,
+    is_internal boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE helpdesk_settings (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
+    require_email_verification boolean NOT NULL DEFAULT false,
+    allowed_email_domains text[] NOT NULL DEFAULT '{}',
+    default_project_id uuid REFERENCES projects(id),
+    default_phase_id uuid REFERENCES phases(id),
+    default_priority varchar(20) NOT NULL DEFAULT 'medium',
+    categories jsonb NOT NULL DEFAULT '[]',
+    welcome_message text,
+    auto_close_days integer NOT NULL DEFAULT 0,
+    notify_on_status_change boolean NOT NULL DEFAULT true,
+    notify_on_agent_reply boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_helpdesk_settings_updated_at
+    BEFORE UPDATE ON helpdesk_settings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE INDEX idx_tickets_helpdesk_user ON tickets (helpdesk_user_id);
+CREATE INDEX idx_tickets_task_id ON tickets (task_id);
+CREATE INDEX idx_tickets_status ON tickets (status);
+CREATE INDEX idx_ticket_messages_ticket ON ticket_messages (ticket_id, created_at);
+CREATE INDEX idx_helpdesk_sessions_user ON helpdesk_sessions (user_id);
+
 -- =========================================================================
 -- Indexes
 -- =========================================================================

@@ -124,6 +124,7 @@ services:
       MCP_PORT: ${MCP_PORT:-3001}
       MCP_TRANSPORT: ${MCP_TRANSPORT:-streamable-http}
       API_INTERNAL_URL: http://api:4000
+      HELPDESK_API_URL: http://helpdesk-api:4001
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
     ports:
       - "${MCP_PORT:-3001}:3001"
@@ -181,6 +182,57 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - frontend
+
+  helpdesk-api:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/helpdesk-api/Dockerfile
+      target: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/bigbluebam
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:?}
+      HELPDESK_URL: ${HELPDESK_URL:-http://localhost:8080}
+      CORS_ORIGIN: ${HELPDESK_URL:-http://localhost:8080}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${SMTP_FROM:-noreply@bigbluebam.io}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - backend
+      - frontend
+
+  helpdesk:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/helpdesk/Dockerfile
+      target: production
+    depends_on:
+      helpdesk-api:
+        condition: service_healthy
+    ports:
+      - "${HELPDESK_PORT:-8080}:80"
+    volumes:
+      - ./infra/nginx/helpdesk.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - frontend
 

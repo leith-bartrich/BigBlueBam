@@ -1052,6 +1052,16 @@ Export tasks with due dates as an iCal (.ics) feed. Authenticated via API key in
 
 ---
 
+### Activity Endpoints
+
+#### `GET /projects/:id/activity`
+
+List activity log entries for a project (audit trail).
+
+**Query params:** `?cursor=...&limit=20`
+
+---
+
 ### Reporting Endpoints
 
 #### `GET /projects/:id/reports/velocity`

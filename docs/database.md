@@ -381,6 +381,31 @@ erDiagram
 | `activity_log` | Append-only audit trail. Partitioned monthly. | `action` (e.g., "task.created"), `details` (JSONB diff) |
 | `notifications` | Per-user notification queue. | `type`, `payload` (JSONB), `is_read` |
 
+### Templates and Views
+
+| Table | Purpose | Key Columns |
+|---|---|---|
+| `task_templates` | Reusable task templates per project. | `title_pattern`, `subtask_titles` (text array), `label_ids` (UUID array), `story_points` |
+| `saved_views` | Saved filter/sort/view configurations per user or shared. | `filters` (JSONB), `view_type` (board/list/calendar/timeline), `swimlane`, `is_shared` |
+
+### Time Tracking
+
+| Table | Purpose | Key Columns |
+|---|---|---|
+| `time_entries` | Individual time log entries on tasks. | `minutes`, `date`, `description`. Indexed on `(user_id, date)` for reporting. |
+
+### Reactions
+
+| Table | Purpose | Key Columns |
+|---|---|---|
+| `comment_reactions` | Emoji reactions on comments (toggle semantics). | `emoji`, unique on `(comment_id, user_id, emoji)` |
+
+### Webhooks
+
+| Table | Purpose | Key Columns |
+|---|---|---|
+| `webhooks` | Outgoing webhook registrations per project. | `url`, `events` (JSONB string array), `secret` (HMAC signing), `is_active` |
+
 ### Auth and Security
 
 | Table | Purpose | Key Columns |
@@ -548,7 +573,7 @@ BigBlueBam uses **Drizzle ORM** for type-safe schema definitions and migrations.
 
 ```mermaid
 graph LR
-    A["Edit Drizzle schema<br/>(apps/api/src/db/schema.ts)"] --> B["Generate migration<br/>pnpm db:generate"]
+    A["Edit Drizzle schema<br/>(apps/api/src/db/schema/*.ts)"] --> B["Generate migration<br/>pnpm db:generate"]
     B --> C["Review SQL in<br/>migrations/ directory"]
     C --> D["Apply migration<br/>docker compose run --rm migrate"]
     D --> E["Verify in database"]
@@ -574,7 +599,10 @@ pnpm --filter @bigbluebam/api db:migrate
 
 ```
 apps/api/src/db/
-  schema.ts           Drizzle table definitions
+  schema/
+    index.ts          Re-exports all table definitions
+    tasks.ts          24 table definition files (one per table)
+    ...
   migrations/
     0001_initial_schema.sql
     0002_activity_log_partitions.sql

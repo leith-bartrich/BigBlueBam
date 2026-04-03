@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -58,7 +58,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk'>('profile');
   const [displayName, setDisplayName] = useState(user?.display_name ?? '');
   const [timezone, setTimezone] = useState(user?.timezone ?? 'UTC');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
@@ -85,6 +85,18 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [webhookSecret, setWebhookSecret] = useState('');
   const [webhookEvents, setWebhookEvents] = useState<string[]>([]);
   const [inviteSuccessMessage, setInviteSuccessMessage] = useState<string | null>(null);
+
+  // Helpdesk tab state
+  const [helpdeskRequireVerification, setHelpdeskRequireVerification] = useState(false);
+  const [helpdeskAllowedDomains, setHelpdeskAllowedDomains] = useState('');
+  const [helpdeskDefaultProject, setHelpdeskDefaultProject] = useState('');
+  const [helpdeskDefaultPhase, setHelpdeskDefaultPhase] = useState('');
+  const [helpdeskWelcomeMessage, setHelpdeskWelcomeMessage] = useState('');
+  const [helpdeskCategories, setHelpdeskCategories] = useState('');
+  const [helpdeskNotifyOnStatus, setHelpdeskNotifyOnStatus] = useState(true);
+  const [helpdeskNotifyOnReply, setHelpdeskNotifyOnReply] = useState(true);
+  const [helpdeskSaving, setHelpdeskSaving] = useState(false);
+  const [helpdeskSaved, setHelpdeskSaved] = useState(false);
 
   // Fetch org members
   const { data: membersRes, isLoading: membersLoading } = useQuery({
@@ -191,6 +203,76 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     },
   });
 
+  // Fetch helpdesk settings
+  const { data: helpdeskSettingsRes } = useQuery({
+    queryKey: ['helpdesk-settings'],
+    queryFn: async () => {
+      const res = await fetch('/helpdesk-api/helpdesk/settings', { credentials: 'include' });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.data ?? json;
+    },
+    enabled: activeTab === 'helpdesk',
+  });
+
+  // Fetch all projects for helpdesk default project picker
+  const { data: helpdeskProjectsRes } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => api.get<PaginatedResponse<Project>>('/projects'),
+    enabled: activeTab === 'helpdesk' || activeTab === 'integrations',
+  });
+  const helpdeskProjects = helpdeskProjectsRes?.data ?? [];
+
+  // Fetch phases for selected helpdesk default project
+  const { data: helpdeskPhasesRes } = useQuery({
+    queryKey: ['project-phases', helpdeskDefaultProject],
+    queryFn: () => api.get<{ data: { id: string; name: string }[] }>(`/projects/${helpdeskDefaultProject}/phases`),
+    enabled: !!helpdeskDefaultProject && activeTab === 'helpdesk',
+  });
+  const helpdeskPhases = helpdeskPhasesRes?.data ?? [];
+
+  // Load helpdesk settings into state when fetched
+  useEffect(() => {
+    if (helpdeskSettingsRes) {
+      setHelpdeskRequireVerification(helpdeskSettingsRes.require_email_verification ?? false);
+      setHelpdeskAllowedDomains((helpdeskSettingsRes.allowed_email_domains ?? []).join(', '));
+      setHelpdeskDefaultProject(helpdeskSettingsRes.default_project_id ?? '');
+      setHelpdeskDefaultPhase(helpdeskSettingsRes.default_phase_id ?? '');
+      setHelpdeskWelcomeMessage(helpdeskSettingsRes.welcome_message ?? '');
+      setHelpdeskCategories((helpdeskSettingsRes.ticket_categories ?? []).join('\n'));
+      setHelpdeskNotifyOnStatus(helpdeskSettingsRes.notify_client_on_status_change ?? true);
+      setHelpdeskNotifyOnReply(helpdeskSettingsRes.notify_client_on_agent_reply ?? true);
+    }
+  }, [helpdeskSettingsRes]);
+
+  const handleSaveHelpdeskSettings = async () => {
+    setHelpdeskSaving(true);
+    try {
+      await fetch('/helpdesk-api/helpdesk/settings', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          require_email_verification: helpdeskRequireVerification,
+          allowed_email_domains: helpdeskAllowedDomains.split(',').map((d) => d.trim()).filter(Boolean),
+          default_project_id: helpdeskDefaultProject || null,
+          default_phase_id: helpdeskDefaultPhase || null,
+          welcome_message: helpdeskWelcomeMessage,
+          ticket_categories: helpdeskCategories.split('\n').map((c) => c.trim()).filter(Boolean),
+          notify_client_on_status_change: helpdeskNotifyOnStatus,
+          notify_client_on_agent_reply: helpdeskNotifyOnReply,
+        }),
+      });
+      setHelpdeskSaved(true);
+      setTimeout(() => setHelpdeskSaved(false), 2000);
+      queryClient.invalidateQueries({ queryKey: ['helpdesk-settings'] });
+    } catch {
+      // error handling
+    } finally {
+      setHelpdeskSaving(false);
+    }
+  };
+
   // Delete webhook mutation
   const deleteWebhook = useMutation({
     mutationFn: (id: string) => api.delete(`/webhooks/${id}`),
@@ -254,6 +336,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'members' as const, label: 'Members', icon: Users },
     { id: 'integrations' as const, label: 'Integrations', icon: Plug },
+    { id: 'helpdesk' as const, label: 'Helpdesk', icon: Headset },
   ];
 
   return (
@@ -844,6 +927,125 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                   <p className="text-sm text-zinc-400">
                     Contact your server administrator to configure email delivery.
                   </p>
+                </div>
+              </div>
+            )}
+            {activeTab === 'helpdesk' && (
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Helpdesk Settings</h2>
+                  <p className="text-sm text-zinc-500">Configure the client-facing helpdesk portal.</p>
+                </div>
+
+                {/* Require email verification */}
+                <label className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">Require email verification for helpdesk signups</span>
+                  <input
+                    type="checkbox"
+                    checked={helpdeskRequireVerification}
+                    onChange={(e) => setHelpdeskRequireVerification(e.target.checked)}
+                    className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </label>
+
+                {/* Allowed email domains */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Allowed email domains</label>
+                  <input
+                    type="text"
+                    placeholder="example.com, acme.org"
+                    value={helpdeskAllowedDomains}
+                    onChange={(e) => setHelpdeskAllowedDomains(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
+                  />
+                  <p className="text-xs text-zinc-400">Comma-separated. Leave blank to allow all domains.</p>
+                </div>
+
+                {/* Default project */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Default project for new tickets</label>
+                  <select
+                    value={helpdeskDefaultProject}
+                    onChange={(e) => {
+                      setHelpdeskDefaultProject(e.target.value);
+                      setHelpdeskDefaultPhase('');
+                    }}
+                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
+                  >
+                    <option value="">-- Select Project --</option>
+                    {helpdeskProjects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Default phase */}
+                {helpdeskDefaultProject && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Default phase for new tickets</label>
+                    <select
+                      value={helpdeskDefaultPhase}
+                      onChange={(e) => setHelpdeskDefaultPhase(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
+                    >
+                      <option value="">-- Select Phase --</option>
+                      {helpdeskPhases.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Welcome message */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Welcome message</label>
+                  <textarea
+                    placeholder="Welcome to our helpdesk! How can we help you today?"
+                    value={helpdeskWelcomeMessage}
+                    onChange={(e) => setHelpdeskWelcomeMessage(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 resize-y"
+                  />
+                  <p className="text-xs text-zinc-400">Shown on the helpdesk portal landing page.</p>
+                </div>
+
+                {/* Ticket categories */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Ticket categories</label>
+                  <textarea
+                    placeholder={"Bug Report\nFeature Request\nBilling\nGeneral Inquiry"}
+                    value={helpdeskCategories}
+                    onChange={(e) => setHelpdeskCategories(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 resize-y"
+                  />
+                  <p className="text-xs text-zinc-400">One category per line.</p>
+                </div>
+
+                {/* Notification toggles */}
+                <label className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">Notify client on status change</span>
+                  <input
+                    type="checkbox"
+                    checked={helpdeskNotifyOnStatus}
+                    onChange={(e) => setHelpdeskNotifyOnStatus(e.target.checked)}
+                    className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">Notify client on agent reply</span>
+                  <input
+                    type="checkbox"
+                    checked={helpdeskNotifyOnReply}
+                    onChange={(e) => setHelpdeskNotifyOnReply(e.target.checked)}
+                    className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </label>
+
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSaveHelpdeskSettings} loading={helpdeskSaving}>Save Settings</Button>
+                  {helpdeskSaved && <span className="text-sm text-green-600">Saved!</span>}
                 </div>
               </div>
             )}

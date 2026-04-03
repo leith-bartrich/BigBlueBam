@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { tasks } from '../db/schema/tasks.js';
 import { projects } from '../db/schema/projects.js';
 import { phases } from '../db/schema/phases.js';
+import { tickets, ticketMessages } from '../db/schema/tickets.js';
 import type { CreateTaskInput, UpdateTaskInput, MoveTaskInput, BulkUpdateInput } from '@bigbluebam/shared';
 import { broadcastToProject } from './realtime.service.js';
 import { logActivity } from './activity.service.js';
@@ -228,6 +229,47 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
     .set(updateValues)
     .where(eq(tasks.id, taskId))
     .returning();
+
+  // Sync ticket status if this task is linked to a helpdesk ticket
+  try {
+    const ticketSync = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.task_id, taskId))
+      .limit(1);
+
+    if (ticketSync.length > 0) {
+      const ticket = ticketSync[0]!;
+      // Map phase to ticket status
+      let newStatus = ticket.status;
+      if (phase?.is_terminal) {
+        newStatus = 'resolved';
+      } else if (phase?.is_start) {
+        newStatus = 'open';
+      } else {
+        newStatus = 'in_progress';
+      }
+
+      if (newStatus !== ticket.status) {
+        const updates: Record<string, unknown> = { status: newStatus };
+        if (newStatus === 'resolved') updates.resolved_at = new Date();
+
+        await db.update(tickets).set(updates).where(eq(tickets.id, ticket.id));
+
+        // Create a status change message
+        await db.insert(ticketMessages).values({
+          ticket_id: ticket.id,
+          author_type: 'system',
+          author_id: actorId ?? '00000000-0000-0000-0000-000000000000',
+          author_name: 'System',
+          body: `Status changed to ${newStatus.replace('_', ' ')}`,
+          is_internal: false,
+        });
+      }
+    }
+  } catch {
+    // Don't fail the task move if ticket sync fails
+  }
 
   // Broadcast realtime event
   if (task) {

@@ -139,19 +139,22 @@ Export from the package index: `packages/shared/src/index.ts`.
 
 ### Step 2: Define the Database Schema
 
-**File:** `apps/api/src/db/schema.ts`
+**File:** `apps/api/src/db/schema/widgets.ts`
 
 ```typescript
 import { pgTable, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core';
+import { projects } from './projects.js';
 
 export const widgets = pgTable('widgets', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
-  projectId: uuid('project_id').notNull().references(() => projects.id),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  project_id: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 ```
+
+Then export from `apps/api/src/db/schema/index.ts`.
 
 ### Step 3: Generate and Apply Migration
 
@@ -182,48 +185,61 @@ export async function getWidgetsByProject(projectId: string) {
 
 ### Step 5: Create the Route Handler
 
-**File:** `apps/api/src/routes/widgets.ts`
+**File:** `apps/api/src/routes/widget.routes.ts`
 
 ```typescript
 import type { FastifyInstance } from 'fastify';
-import { createWidgetSchema } from '@bigbluebam/shared';
-import { createWidget, getWidgetsByProject } from '../services/widget.service';
-import { requireAuth, requireProjectRole } from '../middleware/auth';
+import { z } from 'zod';
+import { db } from '../db/index.js';
+import { widgets } from '../db/schema/widgets.js';
+import { requireAuth } from '../plugins/auth.js';
+import { eq } from 'drizzle-orm';
 
-export async function widgetRoutes(app: FastifyInstance) {
-  app.get('/projects/:id/widgets', {
-    preHandler: [requireAuth, requireProjectRole('viewer')],
-    handler: async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const widgets = await getWidgetsByProject(id);
-      return { data: widgets };
+export default async function widgetRoutes(fastify: FastifyInstance) {
+  fastify.get<{ Params: { id: string } }>(
+    '/projects/:id/widgets',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const result = await db
+        .select()
+        .from(widgets)
+        .where(eq(widgets.project_id, request.params.id));
+      return reply.send({ data: result });
     },
-  });
+  );
 
-  app.post('/projects/:id/widgets', {
-    preHandler: [requireAuth, requireProjectRole('member')],
-    handler: async (request, reply) => {
-      const input = createWidgetSchema.parse(request.body);
-      const widget = await createWidget(input, request.user.id);
-      reply.status(201);
-      return { data: widget };
+  fastify.post<{ Params: { id: string } }>(
+    '/projects/:id/widgets',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const schema = z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+      });
+      const input = schema.parse(request.body);
+      const [widget] = await db
+        .insert(widgets)
+        .values({ ...input, project_id: request.params.id })
+        .returning();
+      return reply.status(201).send({ data: widget });
     },
-  });
+  );
 }
 ```
 
 ### Step 6: Register the Route
 
-In `apps/api/src/server.ts`, register the new route plugin:
+In `apps/api/src/server.ts`, import and register the new route plugin:
 
 ```typescript
-import { widgetRoutes } from './routes/widgets';
-app.register(widgetRoutes, { prefix: '/v1' });
+import widgetRoutes from './routes/widget.routes.js';
+// ... in the setup section:
+fastify.register(widgetRoutes, { prefix: '/v1' });
 ```
 
 ### Step 7: Add Tests
 
-**File:** `apps/api/src/routes/widgets.test.ts`
+**File:** `apps/api/src/routes/widget.routes.test.ts`
 
 Write unit tests with Vitest and integration tests that hit the actual endpoint.
 
@@ -369,7 +385,7 @@ Custom hooks in `apps/frontend/src/hooks/`:
 
 ```mermaid
 graph LR
-    A["Edit schema.ts"] --> B["pnpm db:generate"]
+    A["Edit schema/*.ts"] --> B["pnpm db:generate"]
     B --> C["Review migration SQL"]
     C --> D["pnpm db:migrate<br/>(or docker compose run --rm migrate)"]
     D --> E["Verify changes"]

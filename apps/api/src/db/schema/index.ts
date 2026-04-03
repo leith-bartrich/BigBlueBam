@@ -21,3 +21,4 @@ export { webhooks } from './webhooks.js';
 export { taskTemplates } from './task-templates.js';
 export { commentReactions } from './comment-reactions.js';
 export { savedViews } from './saved-views.js';
+export { tickets, ticketMessages } from './tickets.js';

@@ -10,6 +10,7 @@ import {
   Minus,
   AlertTriangle,
   RotateCcw,
+  Headset,
 } from 'lucide-react';
 import type { Task, Priority } from '@bigbluebam/shared';
 import { cn, formatDate, isOverdue, truncate } from '@/lib/utils';
@@ -92,6 +93,9 @@ export function TaskCard({ task, onClick, isDragOverlay = false }: TaskCardProps
             <RotateCcw className="h-3 w-3" />
             {task.carry_forward_count}
           </span>
+        )}
+        {task.custom_fields?.helpdesk_ticket_id && (
+          <Headset className="h-3 w-3 text-purple-500" title={`Ticket #${task.custom_fields.helpdesk_ticket_number}`} />
         )}
       </div>
 

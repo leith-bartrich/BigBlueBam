@@ -60,15 +60,15 @@ BigBlueBam/
 |-- apps/
 |   |-- api/              Fastify REST API + WebSocket server (~63 source files)
 |   |   |-- src/
-|   |   |   |-- routes/       23 route files grouped by domain
-|   |   |   |-- services/     Business logic layer (auth, org, project, task, activity, realtime)
+|   |   |   |-- routes/       23 route files grouped by domain (*.routes.ts)
+|   |   |   |-- services/     Business logic (auth, org, project, task, activity, realtime)
 |   |   |   |-- db/
-|   |   |   |   |-- schema/   24 Drizzle table definitions
+|   |   |   |   |-- schema/   24 Drizzle table definitions (one file per table)
 |   |   |   |   +-- migrations/
-|   |   |   |-- middleware/   Auth (authorize.ts), error handling
-|   |   |   |-- plugins/      Fastify plugin registrations
+|   |   |   |-- middleware/   authorize.ts, error-handler.ts
+|   |   |   |-- plugins/      Fastify plugins (auth, redis, websocket)
 |   |   |   |-- utils/        Shared utilities
-|   |   |   |-- cli.ts        CLI commands (create-admin)
+|   |   |   |-- cli.ts        CLI commands (create-admin --email --password --name --org)
 |   |   |   |-- server.ts     Entry point
 |   |   |   +-- migrate.ts    Migration runner
 |   |   |-- Dockerfile
@@ -97,7 +97,7 @@ BigBlueBam/
 |   |   |   |-- tools/        10 tool modules (project, board, sprint, task, comment, member, report, import, template, utility)
 |   |   |   |-- resources/    7 MCP resource providers
 |   |   |   |-- prompts/      4 prompt templates (sprint planning, standup, retro, task breakdown)
-|   |   |   |-- middleware/    API client, rate limiter
+|   |   |   |-- middleware/    API client, rate limiter, audit logger
 |   |   |   +-- server.ts     Entry point
 |   |   |-- Dockerfile
 |   |   +-- package.json
@@ -361,32 +361,39 @@ graph TD
     App["App"]
     App --> AuthProvider["AuthProvider"]
     AuthProvider --> Router["Router"]
-    Router --> MainLayout["MainLayout"]
+    Router --> MainLayout["AppLayout"]
 
     MainLayout --> Sidebar["Sidebar<br/>(project list, navigation)"]
-    MainLayout --> TopBar["TopBar<br/>(search, notifications, user menu)"]
     MainLayout --> ContentArea["Content Area"]
+    MainLayout --> CommandPalette["CommandPalette<br/>(Cmd+K)"]
+    MainLayout --> KbdOverlay["KeyboardShortcutsOverlay<br/>(?)"]
 
     ContentArea --> BoardView["BoardView"]
     ContentArea --> ListView["ListView"]
     ContentArea --> TimelineView["TimelineView"]
     ContentArea --> CalendarView["CalendarView"]
+    ContentArea --> WorkloadView["WorkloadView"]
     ContentArea --> MyWorkView["MyWorkView"]
     ContentArea --> SettingsView["SettingsView"]
+    ContentArea --> AuditLogView["AuditLogView"]
 
-    BoardView --> SprintHeader["SprintHeader<br/>(sprint selector, goal, progress)"]
+    BoardView --> SprintSelector["SprintSelector"]
     BoardView --> FilterBar["FilterBar<br/>(assignee, label, priority, search)"]
-    BoardView --> PhaseColumns["PhaseColumns"]
-    PhaseColumns --> PhaseColumn["PhaseColumn<br/>(header, WIP indicator)"]
+    BoardView --> SavedViewsPanel["SavedViewsPanel"]
+    BoardView --> ViewSwitcher["ViewSwitcher"]
+    BoardView --> SwimlaneBoard["SwimlaneBoard"]
+    BoardView --> PhaseColumn["PhaseColumn<br/>(header, WIP indicator)"]
     PhaseColumn --> TaskCard["TaskCard<br/>(drag source, card face)"]
+    PhaseColumn --> InlineTaskInput["InlineTaskInput"]
 
     TaskCard --> TaskDetailDrawer["TaskDetailDrawer<br/>(slide-over panel)"]
-    TaskDetailDrawer --> DescriptionEditor["DescriptionEditor<br/>(Tiptap)"]
-    TaskDetailDrawer --> MetadataSidebar["MetadataSidebar<br/>(fields, pickers)"]
-    TaskDetailDrawer --> SubtaskList["SubtaskList"]
-    TaskDetailDrawer --> CommentThread["CommentThread"]
-    TaskDetailDrawer --> ActivityFeed["ActivityFeed"]
-    TaskDetailDrawer --> AttachmentZone["AttachmentZone"]
+    TaskCard --> TemplatePicker["TemplatePicker"]
+    TaskDetailDrawer --> TemplateManager["TemplateManager"]
+    TaskDetailDrawer --> CreateTaskDialog["CreateTaskDialog"]
+    TaskDetailDrawer --> ImportDialog["ImportDialog<br/>(CSV, Trello, Jira, GitHub)"]
+
+    BoardView --> CarryForwardDialog["CarryForwardDialog"]
+    BoardView --> EpicManager["EpicManager"]
 ```
 
 ---

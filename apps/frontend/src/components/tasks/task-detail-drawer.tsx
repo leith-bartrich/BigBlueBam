@@ -23,6 +23,7 @@ import {
   CopyPlus,
   Trash2,
   Zap,
+  Headset,
 } from 'lucide-react';
 import type { Task, Priority, ApiResponse, PaginatedResponse } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
@@ -33,6 +34,7 @@ import { Avatar } from '@/components/common/avatar';
 import { Select } from '@/components/common/select';
 import { api } from '@/lib/api';
 import { DatePicker } from '@/components/common/date-picker';
+import { HelpdeskPanel } from '@/components/tasks/helpdesk-panel';
 
 interface Member {
   id: string;
@@ -109,7 +111,7 @@ export function TaskDetailDrawer({
   const [description, setDescription] = useState('');
   const [newComment, setNewComment] = useState('');
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'activity'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'activity' | 'helpdesk'>('details');
   const [copiedId, setCopiedId] = useState(false);
 
   const descriptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -437,6 +439,19 @@ export function TaskDetailDrawer({
                             )}
                           </button>
                         ))}
+                        {task.custom_fields?.helpdesk_ticket_id && (
+                          <button
+                            onClick={() => setActiveTab('helpdesk')}
+                            className={cn(
+                              'px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px flex items-center gap-1.5',
+                              activeTab === 'helpdesk'
+                                ? 'border-primary-600 text-primary-600'
+                                : 'border-transparent text-zinc-500 hover:text-zinc-700',
+                            )}
+                          >
+                            <Headset className="h-3.5 w-3.5" /> Helpdesk
+                          </button>
+                        )}
                       </div>
 
                       {/* Details Tab */}
@@ -663,6 +678,11 @@ export function TaskDetailDrawer({
                             <p className="text-sm text-zinc-400 py-4">No activity recorded yet.</p>
                           )}
                         </div>
+                      )}
+
+                      {/* Helpdesk Tab */}
+                      {activeTab === 'helpdesk' && task.custom_fields?.helpdesk_ticket_id && (
+                        <HelpdeskPanel ticketId={task.custom_fields.helpdesk_ticket_id as string} />
                       )}
                     </div>
 

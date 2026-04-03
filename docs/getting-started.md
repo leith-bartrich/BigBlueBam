@@ -142,10 +142,11 @@ docker compose exec api node dist/cli.js create-admin \
 Expected output:
 
 ```
-Admin user created successfully.
+Admin user created successfully:
+  User ID: <uuid>
   Email: admin@example.com
-  Organization: My Organization (slug: my-organization)
-  Role: owner
+  Org ID: <uuid>
+  Org Slug: my-organization
 ```
 
 ### Step 6: Access the Application
