@@ -46,10 +46,6 @@ class ApiClient {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    if (response.status === 401 && !options?.skipAuthRedirect) {
-      throw new ApiError(401, 'UNAUTHORIZED', 'Session expired');
-    }
-
     if (!response.ok) {
       let errorData: {
         error?: { code?: string; message?: string; details?: Record<string, unknown>[]; request_id?: string };
