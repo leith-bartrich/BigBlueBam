@@ -149,3 +149,126 @@ export function registerResources(server: McpServer, api: ApiClient): void {
     },
   );
 }
+
+/** Helper to make requests to the banter-api service for resources */
+async function banterFetch(banterApiUrl: string, path: string) {
+  const url = `${banterApiUrl.replace(/\/$/, '')}${path}`;
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Failed to reach banter-api' };
+  }
+}
+
+export function registerBanterResources(server: McpServer, banterApiUrl: string): void {
+  // List all Banter channels
+  server.resource(
+    'banter_channels',
+    'banter://channels',
+    async () => {
+      const data = await banterFetch(banterApiUrl, '/banter/api/v1/channels');
+
+      return {
+        contents: [
+          {
+            uri: 'banter://channels',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // Channel detail with recent messages
+  server.resource(
+    'banter_channel_detail',
+    'banter://channels/{slug}',
+    async (uri) => {
+      const match = uri.href.match(/banter:\/\/channels\/([^/]+)/);
+      const slug = match?.[1] ?? '';
+
+      // Fetch channel by slug, which returns detail including recent messages
+      const data = await banterFetch(banterApiUrl, `/banter/api/v1/channels/by-slug/${slug}`);
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // DM detail
+  server.resource(
+    'banter_dm',
+    'banter://dm/{userId}',
+    async (uri) => {
+      const match = uri.href.match(/banter:\/\/dm\/([^/]+)/);
+      const userId = match?.[1] ?? '';
+
+      const data = await banterFetch(banterApiUrl, `/banter/api/v1/dm/${userId}`);
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // Current user's unread summary
+  server.resource(
+    'banter_unread',
+    'banter://me/unread',
+    async () => {
+      const data = await banterFetch(banterApiUrl, '/banter/api/v1/me/unread');
+
+      return {
+        contents: [
+          {
+            uri: 'banter://me/unread',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // Search results
+  server.resource(
+    'banter_search',
+    'banter://search?q={query}',
+    async (uri) => {
+      const match = uri.href.match(/banter:\/\/search\?q=([^&]*)/);
+      const query = decodeURIComponent(match?.[1] ?? '');
+
+      const data = await banterFetch(
+        banterApiUrl,
+        `/banter/api/v1/search/messages?q=${encodeURIComponent(query)}`,
+      );
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+}

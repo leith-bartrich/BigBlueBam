@@ -1,0 +1,801 @@
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { ApiClient } from '../middleware/api-client.js';
+
+/**
+ * Helper to make requests to the banter-api service.
+ * Similar pattern to helpdesk-tools.ts — a lightweight fetch wrapper
+ * that targets the banter-api base URL and forwards the user's auth token.
+ */
+function createBanterClient(banterApiUrl: string, api: ApiClient) {
+  const baseUrl = banterApiUrl.replace(/\/$/, '');
+
+  async function request(method: string, path: string, body?: unknown) {
+    const url = `${baseUrl}${path}`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    // Forward the bearer token from the main API client
+    const token = (api as unknown as { token?: string }).token;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const init: RequestInit = { method, headers };
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+    }
+
+    try {
+      const res = await fetch(url, init);
+      const data = await res.json();
+      return { ok: res.ok, status: res.status, data };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 0,
+        data: { error: error instanceof Error ? error.message : 'Unknown error' },
+      };
+    }
+  }
+
+  return {
+    get: (path: string) => request('GET', path),
+    post: (path: string, body?: unknown) => request('POST', path, body),
+    patch: (path: string, body?: unknown) => request('PATCH', path, body),
+    delete: (path: string) => request('DELETE', path),
+  };
+}
+
+function ok(data: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+}
+
+function err(label: string, data: unknown) {
+  return {
+    content: [{ type: 'text' as const, text: `Error ${label}: ${JSON.stringify(data)}` }],
+    isError: true,
+  };
+}
+
+export function registerBanterTools(server: McpServer, api: ApiClient, banterApiUrl: string): void {
+  const banter = createBanterClient(banterApiUrl, api);
+
+  // ---------------------------------------------------------------------------
+  // Channel tools (10)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_list_channels',
+    'List all Banter channels the current user has access to',
+    {
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().int().positive().max(100).optional().describe('Number of results'),
+    },
+    async (params) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const q = qs.toString();
+      const result = await banter.get(`/banter/api/v1/channels${q ? `?${q}` : ''}`);
+      return result.ok ? ok(result.data) : err('listing channels', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_get_channel',
+    'Get detailed information about a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+    },
+    async ({ channel_id }) => {
+      const result = await banter.get(`/banter/api/v1/channels/${channel_id}`);
+      return result.ok ? ok(result.data) : err('getting channel', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_create_channel',
+    'Create a new Banter channel',
+    {
+      name: z.string().min(1).max(80).describe('Channel name (lowercase, no spaces)'),
+      description: z.string().optional().describe('Channel description'),
+      topic: z.string().optional().describe('Channel topic'),
+      is_private: z.boolean().optional().describe('Whether the channel is private (invite-only)'),
+      group_id: z.string().uuid().optional().describe('Channel group ID for sidebar organization'),
+    },
+    async (params) => {
+      const result = await banter.post('/banter/api/v1/channels', params);
+      return result.ok ? ok(result.data) : err('creating channel', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_update_channel',
+    'Update a Banter channel name, description, or topic',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      name: z.string().min(1).max(80).optional().describe('New channel name'),
+      description: z.string().optional().describe('New description'),
+      topic: z.string().optional().describe('New topic'),
+    },
+    async ({ channel_id, ...updates }) => {
+      const result = await banter.patch(`/banter/api/v1/channels/${channel_id}`, updates);
+      return result.ok ? ok(result.data) : err('updating channel', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_archive_channel',
+    'Archive a Banter channel (reversible)',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to archive'),
+    },
+    async ({ channel_id }) => {
+      const result = await banter.patch(`/banter/api/v1/channels/${channel_id}`, { is_archived: true });
+      return result.ok ? ok(result.data) : err('archiving channel', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_delete_channel',
+    'Delete a Banter channel (destructive - requires confirmation)',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to delete'),
+      confirm_action: z.boolean().describe('Must be true to confirm deletion'),
+    },
+    async ({ channel_id, confirm_action }) => {
+      if (!confirm_action) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Are you sure you want to delete channel ${channel_id}? Call this tool again with confirm_action: true to proceed.`,
+          }],
+        };
+      }
+      const result = await banter.delete(`/banter/api/v1/channels/${channel_id}`);
+      return result.ok
+        ? { content: [{ type: 'text' as const, text: `Channel ${channel_id} deleted successfully.` }] }
+        : err('deleting channel', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_join_channel',
+    'Join a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to join'),
+    },
+    async ({ channel_id }) => {
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/join`);
+      return result.ok ? ok(result.data) : err('joining channel', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_leave_channel',
+    'Leave a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to leave'),
+    },
+    async ({ channel_id }) => {
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/leave`);
+      return result.ok ? ok(result.data) : err('leaving channel', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_add_channel_members',
+    'Add one or more members to a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      user_ids: z.array(z.string().uuid()).min(1).describe('Array of user IDs to add'),
+    },
+    async ({ channel_id, user_ids }) => {
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/members`, { user_ids });
+      return result.ok ? ok(result.data) : err('adding channel members', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_remove_channel_member',
+    'Remove a member from a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      user_id: z.string().uuid().describe('The user ID to remove'),
+    },
+    async ({ channel_id, user_id }) => {
+      const result = await banter.delete(`/banter/api/v1/channels/${channel_id}/members/${user_id}`);
+      return result.ok
+        ? { content: [{ type: 'text' as const, text: `User ${user_id} removed from channel ${channel_id}.` }] }
+        : err('removing channel member', result.data);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Message tools (8)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_list_messages',
+    'List messages in a Banter channel with pagination',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      cursor: z.string().optional().describe('Pagination cursor (message ID)'),
+      limit: z.number().int().positive().max(100).optional().describe('Number of messages to fetch'),
+      direction: z.enum(['before', 'after']).optional().describe('Pagination direction relative to cursor'),
+    },
+    async ({ channel_id, ...params }) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const q = qs.toString();
+      const result = await banter.get(`/banter/api/v1/channels/${channel_id}/messages${q ? `?${q}` : ''}`);
+      return result.ok ? ok(result.data) : err('listing messages', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_get_message',
+    'Get a specific Banter message by ID',
+    {
+      message_id: z.string().uuid().describe('The message ID'),
+    },
+    async ({ message_id }) => {
+      const result = await banter.get(`/banter/api/v1/messages/${message_id}`);
+      return result.ok ? ok(result.data) : err('getting message', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_post_message',
+    'Post a new message to a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      content: z.string().min(1).describe('Message content (markdown supported)'),
+      attachment_ids: z.array(z.string().uuid()).optional().describe('File attachment IDs'),
+    },
+    async ({ channel_id, ...body }) => {
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, body);
+      return result.ok ? ok(result.data) : err('posting message', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_edit_message',
+    'Edit an existing Banter message',
+    {
+      message_id: z.string().uuid().describe('The message ID to edit'),
+      content: z.string().min(1).describe('New message content'),
+    },
+    async ({ message_id, content }) => {
+      const result = await banter.patch(`/banter/api/v1/messages/${message_id}`, { content });
+      return result.ok ? ok(result.data) : err('editing message', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_delete_message',
+    'Delete a Banter message (destructive - requires confirmation)',
+    {
+      message_id: z.string().uuid().describe('The message ID to delete'),
+      confirm: z.boolean().describe('Must be true to confirm deletion'),
+    },
+    async ({ message_id, confirm }) => {
+      if (!confirm) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Are you sure you want to delete message ${message_id}? Call this tool again with confirm: true to proceed.`,
+          }],
+        };
+      }
+      const result = await banter.delete(`/banter/api/v1/messages/${message_id}`);
+      return result.ok
+        ? { content: [{ type: 'text' as const, text: `Message ${message_id} deleted successfully.` }] }
+        : err('deleting message', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_react',
+    'Add or remove an emoji reaction on a Banter message',
+    {
+      message_id: z.string().uuid().describe('The message ID'),
+      emoji: z.string().min(1).describe('Emoji to react with (e.g. "+1", "fire", "heart")'),
+    },
+    async ({ message_id, emoji }) => {
+      const result = await banter.post(`/banter/api/v1/messages/${message_id}/reactions`, { emoji });
+      return result.ok ? ok(result.data) : err('reacting to message', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_pin_message',
+    'Pin a message in a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      message_id: z.string().uuid().describe('The message ID to pin'),
+    },
+    async ({ channel_id, message_id }) => {
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/pins`, { message_id });
+      return result.ok ? ok(result.data) : err('pinning message', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_unpin_message',
+    'Unpin a message from a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      message_id: z.string().uuid().describe('The message ID to unpin'),
+    },
+    async ({ channel_id, message_id }) => {
+      const result = await banter.delete(`/banter/api/v1/channels/${channel_id}/pins/${message_id}`);
+      return result.ok
+        ? { content: [{ type: 'text' as const, text: `Message ${message_id} unpinned.` }] }
+        : err('unpinning message', result.data);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Thread tools (2)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_list_thread_replies',
+    'List replies in a Banter message thread',
+    {
+      message_id: z.string().uuid().describe('The parent message ID'),
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().int().positive().max(100).optional().describe('Number of replies to fetch'),
+    },
+    async ({ message_id, ...params }) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const q = qs.toString();
+      const result = await banter.get(`/banter/api/v1/messages/${message_id}/thread${q ? `?${q}` : ''}`);
+      return result.ok ? ok(result.data) : err('listing thread replies', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_reply_to_thread',
+    'Post a reply in a Banter message thread',
+    {
+      message_id: z.string().uuid().describe('The parent message ID'),
+      content: z.string().min(1).describe('Reply content (markdown supported)'),
+      also_send_to_channel: z.boolean().optional().describe('Also post the reply to the main channel timeline'),
+    },
+    async ({ message_id, ...body }) => {
+      const result = await banter.post(`/banter/api/v1/messages/${message_id}/thread`, body);
+      return result.ok ? ok(result.data) : err('replying to thread', result.data);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Search tools (3)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_search_messages',
+    'Search messages across Banter channels',
+    {
+      q: z.string().min(1).describe('Search query string'),
+      channel_id: z.string().uuid().optional().describe('Limit search to a specific channel'),
+      from_user_id: z.string().uuid().optional().describe('Filter by message author'),
+      before: z.string().optional().describe('Search messages before this date (ISO 8601)'),
+      after: z.string().optional().describe('Search messages after this date (ISO 8601)'),
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().int().positive().max(50).optional().describe('Number of results'),
+    },
+    async (params) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const result = await banter.get(`/banter/api/v1/search/messages?${qs.toString()}`);
+      return result.ok ? ok(result.data) : err('searching messages', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_browse_channels',
+    'Browse available Banter channels (including unjoined public channels)',
+    {
+      q: z.string().optional().describe('Search query to filter channels'),
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().int().positive().max(100).optional().describe('Number of results'),
+    },
+    async (params) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const q = qs.toString();
+      const result = await banter.get(`/banter/api/v1/channels/browse${q ? `?${q}` : ''}`);
+      return result.ok ? ok(result.data) : err('browsing channels', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_search_transcripts',
+    'Search call transcripts across Banter (placeholder - returns available transcripts)',
+    {
+      q: z.string().min(1).describe('Search query string'),
+      channel_id: z.string().uuid().optional().describe('Limit search to a specific channel'),
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().int().positive().max(50).optional().describe('Number of results'),
+    },
+    async (params) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const result = await banter.get(`/banter/api/v1/search/transcripts?${qs.toString()}`);
+      return result.ok ? ok(result.data) : err('searching transcripts', result.data);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // DM tools (2)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_send_dm',
+    'Send a direct message to another user (creates or reuses existing DM channel)',
+    {
+      user_id: z.string().uuid().describe('The recipient user ID'),
+      content: z.string().min(1).describe('Message content'),
+    },
+    async ({ user_id, content }) => {
+      // Step 1: Create or get existing DM channel
+      const dmResult = await banter.post('/banter/api/v1/dm', { user_id });
+      if (!dmResult.ok) return err('creating DM channel', dmResult.data);
+
+      const channelId = (dmResult.data as Record<string, unknown>).id ??
+        ((dmResult.data as Record<string, unknown>).data as Record<string, unknown>)?.id;
+
+      if (!channelId) return err('creating DM channel', { error: 'No channel ID returned' });
+
+      // Step 2: Post message in the DM channel
+      const msgResult = await banter.post(`/banter/api/v1/channels/${channelId}/messages`, { content });
+      return msgResult.ok ? ok(msgResult.data) : err('sending DM', msgResult.data);
+    },
+  );
+
+  server.tool(
+    'banter_send_group_dm',
+    'Send a group direct message (creates or reuses existing group DM)',
+    {
+      user_ids: z.array(z.string().uuid()).min(2).max(7).describe('Recipient user IDs (2-7 users)'),
+      content: z.string().min(1).describe('Message content'),
+    },
+    async ({ user_ids, content }) => {
+      // Step 1: Create or get existing group DM channel
+      const dmResult = await banter.post('/banter/api/v1/group-dm', { user_ids });
+      if (!dmResult.ok) return err('creating group DM', dmResult.data);
+
+      const channelId = (dmResult.data as Record<string, unknown>).id ??
+        ((dmResult.data as Record<string, unknown>).data as Record<string, unknown>)?.id;
+
+      if (!channelId) return err('creating group DM', { error: 'No channel ID returned' });
+
+      // Step 2: Post message in the group DM channel
+      const msgResult = await banter.post(`/banter/api/v1/channels/${channelId}/messages`, { content });
+      return msgResult.ok ? ok(msgResult.data) : err('sending group DM', msgResult.data);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // User group tools (5)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_list_user_groups',
+    'List all user groups in the organization',
+    {
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().int().positive().max(100).optional().describe('Number of results'),
+    },
+    async (params) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const q = qs.toString();
+      const result = await banter.get(`/banter/api/v1/user-groups${q ? `?${q}` : ''}`);
+      return result.ok ? ok(result.data) : err('listing user groups', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_create_user_group',
+    'Create a new user group (e.g. @backend-team)',
+    {
+      name: z.string().min(1).max(80).describe('Group name'),
+      handle: z.string().min(1).max(40).describe('Group handle for @mentions (lowercase, no spaces)'),
+      description: z.string().optional().describe('Group description'),
+      user_ids: z.array(z.string().uuid()).optional().describe('Initial member user IDs'),
+    },
+    async (params) => {
+      const result = await banter.post('/banter/api/v1/user-groups', params);
+      return result.ok ? ok(result.data) : err('creating user group', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_update_user_group',
+    'Update a user group name, handle, or description',
+    {
+      group_id: z.string().uuid().describe('The user group ID'),
+      name: z.string().min(1).max(80).optional().describe('New group name'),
+      handle: z.string().min(1).max(40).optional().describe('New group handle'),
+      description: z.string().optional().describe('New description'),
+    },
+    async ({ group_id, ...updates }) => {
+      const result = await banter.patch(`/banter/api/v1/user-groups/${group_id}`, updates);
+      return result.ok ? ok(result.data) : err('updating user group', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_add_group_members',
+    'Add members to a user group',
+    {
+      group_id: z.string().uuid().describe('The user group ID'),
+      user_ids: z.array(z.string().uuid()).min(1).describe('User IDs to add'),
+    },
+    async ({ group_id, user_ids }) => {
+      const result = await banter.post(`/banter/api/v1/user-groups/${group_id}/members`, { user_ids });
+      return result.ok ? ok(result.data) : err('adding group members', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_remove_group_member',
+    'Remove a member from a user group',
+    {
+      group_id: z.string().uuid().describe('The user group ID'),
+      user_id: z.string().uuid().describe('The user ID to remove'),
+    },
+    async ({ group_id, user_id }) => {
+      const result = await banter.delete(`/banter/api/v1/user-groups/${group_id}/members/${user_id}`);
+      return result.ok
+        ? { content: [{ type: 'text' as const, text: `User ${user_id} removed from group ${group_id}.` }] }
+        : err('removing group member', result.data);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Call tools (10)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_start_call',
+    'Start a new voice/video call in a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      type: z.enum(['voice', 'video', 'huddle']).optional().describe('Call type (default: voice)'),
+    },
+    async ({ channel_id, ...body }) => {
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/calls`, body);
+      return result.ok ? ok(result.data) : err('starting call', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_join_call',
+    'Join an active call',
+    {
+      call_id: z.string().uuid().describe('The call ID'),
+    },
+    async ({ call_id }) => {
+      const result = await banter.post(`/banter/api/v1/calls/${call_id}/join`);
+      return result.ok ? ok(result.data) : err('joining call', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_leave_call',
+    'Leave an active call',
+    {
+      call_id: z.string().uuid().describe('The call ID'),
+    },
+    async ({ call_id }) => {
+      const result = await banter.post(`/banter/api/v1/calls/${call_id}/leave`);
+      return result.ok ? ok(result.data) : err('leaving call', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_end_call',
+    'End an active call (destructive - requires confirmation)',
+    {
+      call_id: z.string().uuid().describe('The call ID'),
+      confirm: z.boolean().describe('Must be true to confirm ending the call'),
+    },
+    async ({ call_id, confirm }) => {
+      if (!confirm) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Are you sure you want to end call ${call_id}? Call this tool again with confirm: true to proceed.`,
+          }],
+        };
+      }
+      const result = await banter.post(`/banter/api/v1/calls/${call_id}/end`);
+      return result.ok
+        ? { content: [{ type: 'text' as const, text: `Call ${call_id} ended.` }] }
+        : err('ending call', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_get_call',
+    'Get details about a specific call',
+    {
+      call_id: z.string().uuid().describe('The call ID'),
+    },
+    async ({ call_id }) => {
+      const result = await banter.get(`/banter/api/v1/calls/${call_id}`);
+      return result.ok ? ok(result.data) : err('getting call', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_list_calls',
+    'List calls in a Banter channel (active and recent)',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+      status: z.enum(['active', 'ended', 'all']).optional().describe('Filter by call status'),
+      cursor: z.string().optional().describe('Pagination cursor'),
+      limit: z.number().int().positive().max(50).optional().describe('Number of results'),
+    },
+    async ({ channel_id, ...params }) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined) qs.set(k, String(v));
+      }
+      const q = qs.toString();
+      const result = await banter.get(`/banter/api/v1/channels/${channel_id}/calls${q ? `?${q}` : ''}`);
+      return result.ok ? ok(result.data) : err('listing calls', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_get_transcript',
+    'Get the transcript for a call',
+    {
+      call_id: z.string().uuid().describe('The call ID'),
+    },
+    async ({ call_id }) => {
+      const result = await banter.get(`/banter/api/v1/calls/${call_id}/transcript`);
+      return result.ok ? ok(result.data) : err('getting transcript', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_invite_agent_to_call',
+    'Invite an AI agent to join an active call as a participant',
+    {
+      call_id: z.string().uuid().describe('The call ID'),
+      agent_id: z.string().uuid().optional().describe('Specific agent ID to invite (uses default if omitted)'),
+    },
+    async ({ call_id, ...body }) => {
+      const result = await banter.post(`/banter/api/v1/calls/${call_id}/invite-agent`, body);
+      return result.ok ? ok(result.data) : err('inviting agent to call', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_post_call_text',
+    'Post a text message in a call channel with a call reference (for text-mode AI participation)',
+    {
+      channel_id: z.string().uuid().describe('The channel ID where the call is happening'),
+      call_id: z.string().uuid().describe('The active call ID to reference'),
+      content: z.string().min(1).describe('Message content'),
+    },
+    async ({ channel_id, call_id, content }) => {
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, {
+        content,
+        metadata: { call_id },
+      });
+      return result.ok ? ok(result.data) : err('posting call text', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_get_active_huddle',
+    'Check if a channel has an active huddle and get its details',
+    {
+      channel_id: z.string().uuid().describe('The channel ID'),
+    },
+    async ({ channel_id }) => {
+      const result = await banter.get(`/banter/api/v1/channels/${channel_id}`);
+      if (!result.ok) return err('getting channel for huddle check', result.data);
+
+      const data = result.data as Record<string, unknown>;
+      const huddleId = data.active_huddle_id ?? (data.data as Record<string, unknown>)?.active_huddle_id;
+
+      if (!huddleId) {
+        return { content: [{ type: 'text' as const, text: 'No active huddle in this channel.' }] };
+      }
+
+      // Fetch huddle/call details
+      const callResult = await banter.get(`/banter/api/v1/calls/${huddleId}`);
+      return callResult.ok ? ok(callResult.data) : ok({ active_huddle_id: huddleId, detail: 'Could not fetch huddle details' });
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Integration tools (4)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_share_task',
+    'Share a BigBlueBam task as a rich embed in a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to post in'),
+      task_id: z.string().uuid().describe('The BBB task ID to share'),
+      comment: z.string().optional().describe('Optional comment to include with the share'),
+    },
+    async ({ channel_id, task_id, comment }) => {
+      const content = comment ? `${comment}\n\n[task:${task_id}]` : `[task:${task_id}]`;
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, {
+        content,
+        embeds: [{ type: 'bbb_task', id: task_id }],
+      });
+      return result.ok ? ok(result.data) : err('sharing task', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_share_sprint',
+    'Share a BigBlueBam sprint summary as a rich embed in a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to post in'),
+      sprint_id: z.string().uuid().describe('The BBB sprint ID to share'),
+      comment: z.string().optional().describe('Optional comment to include'),
+    },
+    async ({ channel_id, sprint_id, comment }) => {
+      const content = comment ? `${comment}\n\n[sprint:${sprint_id}]` : `[sprint:${sprint_id}]`;
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, {
+        content,
+        embeds: [{ type: 'bbb_sprint', id: sprint_id }],
+      });
+      return result.ok ? ok(result.data) : err('sharing sprint', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_share_ticket',
+    'Share a Helpdesk ticket as a rich embed in a Banter channel',
+    {
+      channel_id: z.string().uuid().describe('The channel ID to post in'),
+      ticket_id: z.string().uuid().describe('The Helpdesk ticket ID to share'),
+      comment: z.string().optional().describe('Optional comment to include'),
+    },
+    async ({ channel_id, ticket_id, comment }) => {
+      const content = comment ? `${comment}\n\n[ticket:${ticket_id}]` : `[ticket:${ticket_id}]`;
+      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, {
+        content,
+        embeds: [{ type: 'helpdesk_ticket', id: ticket_id }],
+      });
+      return result.ok ? ok(result.data) : err('sharing ticket', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_get_unread',
+    'Get the current user\'s unread message summary across all Banter channels',
+    {},
+    async () => {
+      const result = await banter.get('/banter/api/v1/me/unread');
+      return result.ok ? ok(result.data) : err('getting unread', result.data);
+    },
+  );
+}

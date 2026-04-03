@@ -283,6 +283,25 @@ services:
       - backend
       - frontend
 
+  voice-agent:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/voice-agent/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backend
+
   # ── One-shot ────────────────────────────────────────────────────
   migrate:
     build:
