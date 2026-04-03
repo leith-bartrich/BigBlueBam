@@ -24,17 +24,17 @@ Monorepo managed with **Turborepo** and **pnpm workspaces**.
 
 ```
 apps/
-  api/          — Fastify REST API + WebSocket server (:4000)
-  frontend/     — React SPA served by nginx (:80/:443)
-  mcp-server/   — MCP protocol server (:3001)
-  worker/       — BullMQ background job processor (no exposed port)
+  api/          — Fastify REST API + WebSocket server (:4000) — 23 route files, 24 schema tables, ~63 source files
+  frontend/     — React SPA served by nginx (:80/:443) — ~55 source files, 8 pages, command palette, keyboard shortcuts
+  mcp-server/   — MCP protocol server (:3001) — 38 tools, 7 resources, 4 prompts, 10 tool modules
+  worker/       — BullMQ background job processor (no exposed port) — 4 job handlers (email, notification, export, sprint-close)
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
 infra/
   postgres/     — init.sql
-  nginx/        — nginx.conf, certs, lb.conf
+  nginx/        — nginx.conf, certs
   helm/         — Kubernetes Helm chart (bigbluebam/)
-  docs/         — disaster-recovery.md
+scripts/        — Utility scripts (seed-frndo.js)
 ```
 
 The entire stack runs via `docker compose up`. Application containers (api, mcp-server, worker, frontend) are stateless and scale horizontally. Data services (postgres, redis, minio) can be swapped for managed cloud equivalents by changing environment variables only.
@@ -67,7 +67,7 @@ docker compose logs -f api mcp-server worker
 pnpm --filter @bigbluebam/shared build
 pnpm --filter @bigbluebam/api build
 
-# Run tests
+# Run tests (~315 test files, 439 tests total)
 pnpm test                                    # All packages
 pnpm --filter @bigbluebam/shared test        # Shared schemas only
 pnpm --filter @bigbluebam/api test           # API unit tests
@@ -93,6 +93,14 @@ pnpm --filter @bigbluebam/frontend test      # Frontend component tests
 - **Activity log** is append-only, partitioned monthly by `created_at`.
 - **MCP destructive actions** (delete task, complete sprint, remove member) require a two-step confirmation flow via `confirm_action` tool with time-limited action tokens.
 - **API keys** prefixed `bbam_`, stored as Argon2id hashes, scoped to read/read_write/admin with optional project restriction.
+- **Task templates** allow creating reusable task blueprints with title patterns, default fields, and auto-generated subtasks.
+- **Saved views** persist filter/sort/swimlane configurations per user or shared across the project.
+- **Time entries** are separate rows (not just a counter on tasks), enabling per-user per-day time tracking reports.
+- **Comment reactions** use toggle semantics with a unique constraint on `(comment_id, user_id, emoji)`.
+- **iCal feed** exports tasks with due dates as an .ics calendar feed, authenticated via API key in query string.
+- **Import system** supports CSV, Trello, Jira, and GitHub Issues, with automatic phase/label creation for unmatched values.
+- **WebSocket realtime** uses Redis PubSub for cross-instance broadcasting; rooms are scoped to org, project, and user levels.
+- **Keyboard shortcuts** and a **command palette** (Cmd+K) are built into the frontend for power-user navigation.
 
 ## Error Response Envelope
 
