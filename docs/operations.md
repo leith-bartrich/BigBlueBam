@@ -41,7 +41,7 @@ SESSION_SECRET=<generate-with: openssl rand -hex 32>
 # OPTIONAL — adjust as needed
 # API_PORT=4000
 # HTTP_PORT=80
-# HELPDESK_PORT=8080
+# (Helpdesk is served at /helpdesk/ on port 80)
 # LOG_LEVEL=info
 ```
 
@@ -378,7 +378,7 @@ docker compose restart frontend helpdesk
 | `SESSION_SECRET` | — | Yes | 32+ char secret for session signing |
 | `API_PORT` | 4000 | No | API server port |
 | `HTTP_PORT` | 80 | No | Frontend port |
-| `HELPDESK_PORT` | 8080 | No | Helpdesk portal port |
+| `HTTP_PORT` | 80 | No | Single port serving BBB + Helpdesk |
 | `MCP_PORT` | 3001 | No | MCP server port |
 | `LOG_LEVEL` | info | No | Log verbosity (debug, info, warn, error) |
 | `WORKER_CONCURRENCY` | 5 | No | Background job worker threads |

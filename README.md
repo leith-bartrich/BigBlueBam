@@ -23,7 +23,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/tests-466%2B%20passing-brightgreen" alt="Tests" />
   <img src="https://img.shields.io/badge/MCP%20tools-42-blue" alt="MCP Tools" />
-  <img src="https://img.shields.io/badge/Docker%20services-9-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/Docker%20services-8-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -241,7 +241,7 @@ Add this to your Claude Desktop or Claude Code configuration:
 {
   "mcpServers": {
     "bigbluebam": {
-      "url": "http://localhost:3001/mcp",
+      "url": "http://localhost/mcp/",
       "headers": {
         "Authorization": "Bearer YOUR_API_KEY"
       }
@@ -260,7 +260,7 @@ BigBlueBam includes a full client-facing helpdesk portal. Customers submit ticke
 
 ### Client Portal
 
-Customers log into their own portal at `:8080`, submit tickets with categories and priority, and track responses — all with clean, simple branding separate from the internal tool.
+Customers log into their own portal at `/helpdesk/`, submit tickets with categories and priority, and track responses — all with clean, simple branding separate from the internal tool.
 
 <table>
   <tr>
@@ -322,7 +322,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "My Organization"
 ```
 
-Open **http://localhost** and log in.
+Open **http://localhost/b3/** to access BigBlueBam, or **http://localhost/helpdesk/** for the helpdesk portal.
 
 <p align="center">
   <img src="images/01-login.png" alt="Login Page" width="60%" />
@@ -337,13 +337,23 @@ After login, you land on the project dashboard:
 
 ### Services
 
+All services are accessed through a single nginx container on port 80:
+
+| URL Path | Backend | Description |
+|----------|---------|-------------|
+| `/` | redirect | Redirects to `/helpdesk/` |
+| `/b3/` | nginx | BigBlueBam React SPA |
+| `/b3/api/` | Fastify `:4000` | BigBlueBam REST API |
+| `/b3/ws` | Fastify `:4000` | WebSocket (real-time updates) |
+| `/helpdesk/` | nginx | Helpdesk portal SPA |
+| `/helpdesk/api/` | Fastify `:4001` | Helpdesk API (auth, tickets, messages) |
+| `/files/` | MinIO `:9000` | Uploaded files (shared) |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (42 tools) |
+
+Infrastructure services (internal, not exposed via nginx):
+
 | Service | Port | Description |
 |---------|------|-------------|
-| Frontend | `:80` | React SPA via nginx |
-| API | `:4000` | Fastify REST + WebSocket |
-| MCP Server | `:3001` | Model Context Protocol (42 tools) |
-| Helpdesk Portal | `:8080` | Client-facing ticket submission |
-| Helpdesk API | `:4001` (internal) | Helpdesk auth, tickets, messages |
 | PostgreSQL | `:5432` | Primary database |
 | Redis | `:6379` | Cache, PubSub, queues |
 | MinIO | `:9000` | S3-compatible file storage |
@@ -368,15 +378,20 @@ pnpm test  # 466+ tests across all packages
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Client (SPA)                              │
-│    React 19 · Motion · TanStack Query · Zustand · dnd-kit      │
-│    TailwindCSS v4 · Radix UI                                   │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ HTTPS / WSS
-┌────────────────────────▼────────────────────────────────────────┐
-│               nginx (reverse proxy + static SPA)                │
-└──────────┬────────────────────────┬─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                       Clients (Browser / AI)                         │
+└────────────────────────┬─────────────────────────────────────────────┘
+                         │ HTTP :80
+┌────────────────────────▼─────────────────────────────────────────────┐
+│               nginx (single container, port 80)                      │
+│  /b3/          → BigBlueBam SPA (static)                             │
+│  /b3/api/      → Fastify API :4000                                   │
+│  /b3/ws        → WebSocket :4000                                     │
+│  /helpdesk/    → Helpdesk SPA (static)                               │
+│  /helpdesk/api/→ Helpdesk API :4001                                  │
+│  /files/       → MinIO :9000                                         │
+│  /mcp/         → MCP Server :3001                                    │
+└──────────┬────────────────────────┬──────────────────────────────────┘
            │ REST / WS              │ SSE / HTTP
 ┌──────────▼──────────┐  ┌─────────▼────────────┐  ┌─────────────────────┐
 │  Fastify API :4000  │  │  MCP Server :3001    │  │  BullMQ Worker      │
@@ -417,7 +432,7 @@ packages/
   shared/           → Zod schemas, TypeScript types, constants
 infra/
   postgres/         → Database schema (init.sql — 25+ tables)
-  nginx/            → Reverse proxy configs (main + helpdesk)
+  nginx/            → Reverse proxy config (single nginx serves both SPAs)
 docs/               → 7 documentation pages with Mermaid diagrams
 scripts/            → Utility and seed scripts
 ```
@@ -426,7 +441,7 @@ scripts/            → Utility and seed scripts
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 9 |
+| Docker services | 8 |
 | MCP tools | 42 |
 | Test cases | 466+ |
 | API route modules | 23 |

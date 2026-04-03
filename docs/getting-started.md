@@ -157,13 +157,19 @@ Open your browser and navigate to the application.
 
 ## Accessing Services
 
+All services are accessed through port 80 via a single nginx reverse proxy:
+
 | Service | URL | Purpose |
 |---|---|---|
-| **Frontend** | [http://localhost](http://localhost) | Main web application |
-| **API** | [http://localhost:4000](http://localhost:4000) | REST API and WebSocket server |
-| **MCP Server** | [http://localhost:3001](http://localhost:3001) | MCP endpoint for AI clients |
+| **Root** | [http://localhost/](http://localhost/) | Redirects to `/helpdesk/` |
+| **BigBlueBam SPA** | [http://localhost/b3/](http://localhost/b3/) | Main project management app |
+| **BigBlueBam API** | [http://localhost/b3/api/](http://localhost/b3/api/) | REST API and WebSocket |
+| **Helpdesk Portal** | [http://localhost/helpdesk/](http://localhost/helpdesk/) | Client-facing ticket submission |
+| **Helpdesk API** | [http://localhost/helpdesk/api/](http://localhost/helpdesk/api/) | Helpdesk auth, tickets, messages |
+| **MCP Server** | [http://localhost/mcp/](http://localhost/mcp/) | MCP endpoint for AI clients |
+| **Uploaded Files** | [http://localhost/files/](http://localhost/files/) | Shared uploaded files |
 | **MinIO Console** | [http://localhost:9001](http://localhost:9001) | Object storage admin panel |
-| **Health Check** | [http://localhost:4000/health](http://localhost:4000/health) | API health status |
+| **Health Check** | [http://localhost/b3/api/health](http://localhost/b3/api/health) | API health status |
 
 ---
 
@@ -185,19 +191,20 @@ pnpm docker:dev
 
 | Service | Production | Development |
 |---|---|---|
-| **Frontend** | nginx serves built assets on `:80` | Vite dev server with HMR on `:5173` |
-| **API** | Compiled JS from `dist/` | `tsx watch` with auto-reload on `:4000` |
+| **Frontend** | nginx serves built assets at `/b3/` on `:80` | Vite dev server with HMR on `:5173` |
+| **API** | Compiled JS from `dist/`, proxied at `/b3/api/` | `tsx watch` with auto-reload on `:4000` |
 | **Worker** | Compiled JS | `tsx watch` with auto-reload |
-| **MCP Server** | Compiled JS | `tsx watch` with auto-reload |
+| **MCP Server** | Compiled JS, proxied at `/mcp/` | `tsx watch` with auto-reload |
 
 In development mode, source directories are mounted as volumes so changes are reflected immediately.
 
-### Accessing the Dev Frontend
+### Accessing Dev Services
 
 | Service | URL |
 |---|---|
-| **Vite Dev Server** | [http://localhost:5173](http://localhost:5173) |
-| **API (unchanged)** | [http://localhost:4000](http://localhost:4000) |
+| **Vite Dev Server (BBB)** | [http://localhost:5173](http://localhost:5173) |
+| **API (direct)** | [http://localhost:4000](http://localhost:4000) |
+| **Production URLs (via nginx)** | [http://localhost/b3/](http://localhost/b3/), [http://localhost/helpdesk/](http://localhost/helpdesk/) |
 
 ### Running Specific Packages Locally
 
@@ -269,13 +276,11 @@ lsof -i :80
 netstat -ano | findstr :80
 ```
 
-Override ports in your `.env` file:
+Override the HTTP port in your `.env` file:
 
 ```dotenv
-HTTP_PORT=8080
+HTTP_PORT=8888
 HTTPS_PORT=8443
-API_PORT=4001
-MCP_PORT=3002
 ```
 
 ### Database Connection Errors

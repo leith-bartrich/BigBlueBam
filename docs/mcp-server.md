@@ -27,7 +27,7 @@ graph LR
         Agent["Custom Agent"]
     end
 
-    subgraph "BigBlueBam MCP Server (:3001)"
+    subgraph "BigBlueBam MCP Server (proxied at /mcp/)"
         Transport["Transport Layer<br/>(Streamable HTTP / SSE / stdio)"]
         Auth["Auth Middleware<br/>(API key validation)"]
         Rate["Rate Limiter"]
@@ -71,7 +71,7 @@ graph LR
 
 ### SDK
 
-Built with the official `@modelcontextprotocol/sdk` TypeScript package. Runs as a sidecar Docker container on port 3001, communicating with the API server over the internal Docker network.
+Built with the official `@modelcontextprotocol/sdk` TypeScript package. Runs as a sidecar Docker container on internal port 3001, exposed externally at `/mcp/` through the shared nginx reverse proxy on port 80. Communicates with the API server over the internal Docker network.
 
 ---
 
@@ -293,7 +293,7 @@ For a local Docker instance:
 {
   "mcpServers": {
     "bigbluebam": {
-      "url": "http://localhost:3001/mcp/sse",
+      "url": "http://localhost/mcp/sse",
       "headers": {
         "Authorization": "Bearer bbam_your_api_key_here"
       }
@@ -313,7 +313,7 @@ Add to `.claude/settings.json`:
       "command": "npx",
       "args": [
         "@bigbluebam/mcp-server",
-        "--api-url", "http://localhost:4000",
+        "--api-url", "http://localhost/b3/api",
         "--api-key", "bbam_dev_key"
       ]
     }

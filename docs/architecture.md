@@ -16,7 +16,7 @@ graph TB
 
     subgraph "Docker Compose Stack"
         subgraph "Frontend Network"
-            Nginx["frontend<br/>nginx + React SPA<br/>:80 / :443"]
+            Nginx["frontend<br/>nginx (single container)<br/>Serves BBB SPA at /b3/<br/>Serves Helpdesk SPA at /helpdesk/<br/>:80 / :443"]
         end
 
         subgraph "Application Layer"
@@ -34,9 +34,10 @@ graph TB
 
     Browser -->|"HTTPS"| Nginx
     MobileWeb -->|"HTTPS"| Nginx
-    Nginx -->|"Reverse Proxy"| API
-    Browser -->|"WSS"| API
-    AIClient -->|"SSE / Streamable HTTP"| MCP
+    Nginx -->|"/b3/api/ → Reverse Proxy"| API
+    Nginx -->|"/b3/ws → WebSocket"| API
+    Nginx -->|"/mcp/ → Reverse Proxy"| MCP
+    AIClient -->|"SSE / Streamable HTTP"| Nginx
 
     MCP -->|"Internal HTTP"| API
     API -->|"SQL"| PG
@@ -125,7 +126,7 @@ BigBlueBam/
 |       +-- bigbluebam/
 |
 |-- scripts/                  Utility scripts (seed-frndo.js)
-|-- docker-compose.yml        Production stack (7 services + 1 migration one-shot)
+|-- docker-compose.yml        Production stack (8 services + 1 migration one-shot)
 |-- docker-compose.dev.yml    Development overrides
 |-- turbo.json                Turborepo pipeline config
 |-- pnpm-workspace.yaml       Workspace definitions
@@ -302,7 +303,7 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph "Network: frontend"
-        FE["frontend<br/><i>nginx + React SPA</i><br/>Ports: 80, 443"]
+        FE["frontend<br/><i>nginx (single container)</i><br/>/b3/ → BBB SPA<br/>/helpdesk/ → Helpdesk SPA<br/>Ports: 80, 443"]
         API2["api<br/>(also on frontend network)"]
         MCP2["mcp-server<br/>(also on frontend network)"]
     end
@@ -316,7 +317,7 @@ graph TB
         MinIO["minio<br/><i>MinIO latest</i><br/>Ports: 9000, 9001<br/>256MB RAM, 0.25 CPU<br/>Volume: miniodata"]
     end
 
-    FE ---|"proxy /api/*"| API
+    FE ---|"proxy /b3/api/*, /helpdesk/api/*, /mcp/*"| API
     API -->|"SQL queries"| PG
     API -->|"sessions, cache, pubsub, queues"| Redis
     API -->|"presigned URLs"| MinIO

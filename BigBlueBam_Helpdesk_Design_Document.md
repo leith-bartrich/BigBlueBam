@@ -30,7 +30,7 @@ The two systems share a database but maintain separate authentication — helpde
 ┌───────────────────────────────────────────┐
 │          Helpdesk Portal (SPA)            │
 │  React 19 · TailwindCSS v4 · Radix UI    │
-│  Served by nginx on :8080                 │
+│  Served by nginx at /helpdesk/ on :80                 │
 └──────────────────┬────────────────────────┘
                    │ HTTPS
 ┌──────────────────▼────────────────────────┐
@@ -55,7 +55,7 @@ The two systems share a database but maintain separate authentication — helpde
 
 | Deployment | Helpdesk Frontend | Helpdesk API | Notes |
 |---|---|---|---|
-| **Docker Compose** | nginx container on :8080 | Fastify on :4001 (internal) | Default. Added to existing docker-compose.yml |
+| **Docker Compose** | nginx serves at /helpdesk/ (shared port 80) | Fastify on :4001 (internal) | Default. Added to existing docker-compose.yml |
 | **Dev mode** | Vite on :8081 | tsx watch on :4001 | Via docker-compose.dev.yml override |
 | **Standalone** | Any static host | Any Node.js host | Point `HELPDESK_API_URL` and `DATABASE_URL` to BigBlueBam's DB |
 | **Embedded** | nginx serves both on :80 | Same API process | Add helpdesk routes to main API under `/helpdesk/` prefix |
@@ -365,7 +365,7 @@ helpdesk-api:
     DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/bigbluebam
     REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     SESSION_SECRET: ${SESSION_SECRET}
-    HELPDESK_URL: ${HELPDESK_URL:-http://localhost:8080}
+    HELPDESK_URL: ${HELPDESK_URL:-http://localhost/helpdesk}
     SMTP_HOST: ${SMTP_HOST:-}
     SMTP_PORT: ${SMTP_PORT:-587}
     SMTP_USER: ${SMTP_USER:-}
@@ -382,7 +382,7 @@ helpdesk:
   depends_on:
     helpdesk-api: { condition: service_healthy }
   ports:
-    - "${HELPDESK_PORT:-8080}:80"
+    - # Helpdesk served from main frontend container at /helpdesk/
   volumes:
     - ./infra/nginx/helpdesk.conf:/etc/nginx/conf.d/default.conf:ro
   networks:
@@ -416,7 +416,7 @@ server {
 ```
 apps/
   helpdesk-api/     — Fastify server for helpdesk endpoints (:4001)
-  helpdesk/         — React SPA for client-facing portal (:8080)
+  helpdesk/         — React SPA for client-facing portal (served at /helpdesk/)
   api/              — (existing) BigBlueBam API — gains agent ticket endpoints
   frontend/         — (existing) BigBlueBam SPA — gains helpdesk tab in task drawer + settings
   ...

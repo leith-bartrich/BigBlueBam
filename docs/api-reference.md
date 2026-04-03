@@ -8,10 +8,10 @@ Complete reference for the BigBlueBam REST API.
 
 | Environment | Base URL |
 |---|---|
-| **Self-hosted (Docker)** | `http://localhost:4000/v1` |
-| **Cloud** | `https://api.bigbluebam.io/v1` |
+| **Self-hosted (Docker)** | `http://localhost/b3/api/v1` |
+| **Cloud** | `https://app.bigbluebam.io/b3/api/v1` |
 
-All endpoints are prefixed with `/v1`.
+All endpoints are prefixed with `/v1`. In the default Docker deployment, the API is served at `/b3/api/` via the nginx reverse proxy on port 80. The internal Fastify server runs on port 4000 but is not exposed directly in production.
 
 ---
 

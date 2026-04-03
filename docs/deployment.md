@@ -204,11 +204,23 @@ upstream mcp_backend {
 server {
     listen 443 ssl;
 
-    location /api/ {
+    location /b3/api/ {
         proxy_pass http://api_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+    }
+
+    location /b3/ws {
+        proxy_pass http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location /helpdesk/api/ {
+        proxy_pass http://helpdesk_api_backend;
+        proxy_http_version 1.1;
     }
 
     location /mcp/ {
@@ -217,6 +229,20 @@ server {
         proxy_set_header Connection '';
         proxy_buffering off;
         proxy_cache off;
+    }
+
+    location /b3/ {
+        alias /usr/share/nginx/html/b3/;
+        try_files $uri $uri/ /b3/index.html;
+    }
+
+    location /helpdesk/ {
+        alias /usr/share/nginx/html/helpdesk/;
+        try_files $uri $uri/ /helpdesk/index.html;
+    }
+
+    location = / {
+        return 302 /helpdesk/;
     }
 }
 ```
@@ -444,12 +470,12 @@ Configure alerts in Grafana or your cloud provider's monitoring service for the 
 
 ## Health Check Endpoints
 
-| Endpoint | Port | Purpose |
-|---|---|---|
-| `GET /health` | 4000 (api) | Full health check (DB, Redis, MinIO connectivity) |
-| `GET /health` | 3001 (mcp-server) | MCP server health + API connectivity |
-| `GET /health/live` | 4000 | Kubernetes liveness probe (is the process running?) |
-| `GET /health/ready` | 4000 | Kubernetes readiness probe (can it serve requests?) |
+| Endpoint | Via nginx | Internal Port | Purpose |
+|---|---|---|---|
+| `GET /b3/api/health` | Port 80 | 4000 (api) | Full health check (DB, Redis, MinIO connectivity) |
+| `GET /mcp/health` | Port 80 | 3001 (mcp-server) | MCP server health + API connectivity |
+| `GET /b3/api/health/live` | Port 80 | 4000 | Kubernetes liveness probe (is the process running?) |
+| `GET /b3/api/health/ready` | Port 80 | 4000 | Kubernetes readiness probe (can it serve requests?) |
 
 ### Health Check Response
 
