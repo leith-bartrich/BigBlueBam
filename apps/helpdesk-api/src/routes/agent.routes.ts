@@ -24,23 +24,43 @@ const agentMessageSchema = z.object({
  * Agents authenticate via the X-Agent-Key header or Bearer token.
  */
 async function requireAgentAuth(request: FastifyRequest, reply: FastifyReply) {
+  // Method 1: Check BBB session cookie (shared database)
+  const sessionCookie = request.cookies?.session;
+  if (sessionCookie) {
+    try {
+      const result = await db.execute(
+        sql`SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ${sessionCookie} AND s.expires_at > now() LIMIT 1`
+      );
+      if (result && (Array.isArray(result) ? result.length > 0 : (result as any).rows?.length > 0 || (result as any).length > 0)) {
+        return; // Authenticated via BBB session
+      }
+    } catch {
+      // Fall through to API key check
+    }
+  }
+
+  // Method 2: Check agent API key
   const agentKey = env.AGENT_API_KEY;
-  if (!agentKey) {
+  const provided =
+    (request.headers['x-agent-key'] as string) ??
+    request.headers.authorization?.replace('Bearer ', '');
+
+  if (agentKey && provided && provided === agentKey) {
+    return; // Authenticated via API key
+  }
+
+  if (!agentKey && !sessionCookie) {
     return reply.status(503).send({
       error: {
         code: 'AGENT_AUTH_DISABLED',
-        message: 'Agent API key is not configured',
+        message: 'Agent authentication is not configured',
         details: [],
         request_id: request.id,
       },
     });
   }
 
-  const provided =
-    (request.headers['x-agent-key'] as string) ??
-    request.headers.authorization?.replace('Bearer ', '');
-
-  if (!provided || provided !== agentKey) {
+  if (true) {
     return reply.status(401).send({
       error: {
         code: 'UNAUTHORIZED',
