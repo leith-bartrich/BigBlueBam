@@ -40,7 +40,7 @@ const SOURCES: { value: ImportSource; label: string; description: string; icon: 
 ];
 
 const TARGET_FIELDS = [
-  { value: '', label: '-- Skip --' },
+  { value: '__skip__', label: '-- Skip --' },
   { value: 'title', label: 'Title' },
   { value: 'description', label: 'Description' },
   { value: 'priority', label: 'Priority' },

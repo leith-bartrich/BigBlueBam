@@ -35,7 +35,7 @@ interface Member {
 }
 
 const ACTION_OPTIONS = [
-  { value: '', label: 'All Actions' },
+  { value: '__all__', label: 'All Actions' },
   { value: 'created', label: 'Created' },
   { value: 'updated', label: 'Updated' },
   { value: 'deleted', label: 'Deleted' },
@@ -57,7 +57,7 @@ export function AuditLogPage({ projectId, onNavigate }: AuditLogPageProps) {
   const { data: projectRes } = useProject(projectId);
   const project = projectRes?.data;
 
-  const [filterAction, setFilterAction] = useState('');
+  const [filterAction, setFilterAction] = useState('__all__');
   const [filterUser, setFilterUser] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -70,7 +70,7 @@ export function AuditLogPage({ projectId, onNavigate }: AuditLogPageProps) {
   const members = membersRes?.data ?? [];
 
   const params: Record<string, string | number> = { limit: 100 };
-  if (filterAction) params['action'] = filterAction;
+  if (filterAction && filterAction !== '__all__') params['action'] = filterAction;
   if (filterUser) params['actor_id'] = filterUser;
   if (filterDateFrom) params['from'] = filterDateFrom;
   if (filterDateTo) params['to'] = filterDateTo;
@@ -162,7 +162,7 @@ export function AuditLogPage({ projectId, onNavigate }: AuditLogPageProps) {
               variant="ghost"
               size="sm"
               onClick={() => {
-                setFilterAction('');
+                setFilterAction('__all__');
                 setFilterUser('');
                 setFilterDateFrom('');
                 setFilterDateTo('');

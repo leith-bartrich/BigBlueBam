@@ -612,11 +612,11 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
               <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">Sprint (optional)</label>
               <Select
                 options={[
-                  { value: '', label: 'All sprints' },
+                  { value: '__all__', label: 'All sprints' },
                   ...sprints.map((s) => ({ value: s.id, label: s.name })),
                 ]}
-                value={exportSprintId}
-                onValueChange={setExportSprintId}
+                value={exportSprintId || '__all__'}
+                onValueChange={(v) => setExportSprintId(v === '__all__' ? '' : v)}
                 className="w-full"
               />
             </div>
