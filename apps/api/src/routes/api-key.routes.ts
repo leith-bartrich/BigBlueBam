@@ -1,0 +1,123 @@
+import type { FastifyInstance } from 'fastify';
+import { eq, asc } from 'drizzle-orm';
+import { z } from 'zod';
+import { randomBytes } from 'crypto';
+import argon2 from 'argon2';
+import { db } from '../db/index.js';
+import { apiKeys } from '../db/schema/api-keys.js';
+import { requireAuth } from '../plugins/auth.js';
+
+export default async function apiKeyRoutes(fastify: FastifyInstance) {
+  fastify.get(
+    '/auth/api-keys',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const result = await db
+        .select({
+          id: apiKeys.id,
+          name: apiKeys.name,
+          key_prefix: apiKeys.key_prefix,
+          scope: apiKeys.scope,
+          project_ids: apiKeys.project_ids,
+          expires_at: apiKeys.expires_at,
+          created_at: apiKeys.created_at,
+          last_used_at: apiKeys.last_used_at,
+        })
+        .from(apiKeys)
+        .where(eq(apiKeys.user_id, request.user!.id))
+        .orderBy(asc(apiKeys.created_at));
+
+      // Show prefix + last 4 chars hint
+      const data = result.map((k) => ({
+        ...k,
+        key_hint: `${k.key_prefix}...`,
+      }));
+
+      return reply.send({ data });
+    },
+  );
+
+  fastify.post(
+    '/auth/api-keys',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const schema = z.object({
+        name: z.string().max(255),
+        scope: z.enum(['read', 'write', 'admin']).default('read'),
+        project_ids: z.array(z.string().uuid()).optional(),
+        expires_at: z.string().datetime().optional(),
+      });
+      const data = schema.parse(request.body);
+
+      // Generate a random API key
+      const rawKey = randomBytes(32).toString('base64url');
+      const prefix = rawKey.slice(0, 8);
+      const keyHash = await argon2.hash(rawKey);
+
+      const [apiKey] = await db
+        .insert(apiKeys)
+        .values({
+          user_id: request.user!.id,
+          name: data.name,
+          key_hash: keyHash,
+          key_prefix: prefix,
+          scope: data.scope,
+          project_ids: data.project_ids ?? null,
+          expires_at: data.expires_at ? new Date(data.expires_at) : null,
+        })
+        .returning();
+
+      return reply.status(201).send({
+        data: {
+          id: apiKey!.id,
+          name: apiKey!.name,
+          key: rawKey,
+          key_prefix: prefix,
+          scope: apiKey!.scope,
+          project_ids: apiKey!.project_ids,
+          expires_at: apiKey!.expires_at,
+          created_at: apiKey!.created_at,
+        },
+      });
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    '/auth/api-keys/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      // Ensure the key belongs to the current user
+      const [existing] = await db
+        .select()
+        .from(apiKeys)
+        .where(eq(apiKeys.id, request.params.id))
+        .limit(1);
+
+      if (!existing) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'API key not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (existing.user_id !== request.user!.id) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'You can only revoke your own API keys',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await db.delete(apiKeys).where(eq(apiKeys.id, request.params.id));
+
+      return reply.send({ data: { success: true } });
+    },
+  );
+}

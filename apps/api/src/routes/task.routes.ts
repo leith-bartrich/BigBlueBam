@@ -1,0 +1,369 @@
+import type { FastifyInstance } from 'fastify';
+import { eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
+import { createTaskSchema, updateTaskSchema, moveTaskSchema, bulkUpdateSchema } from '@bigbluebam/shared';
+import * as taskService from '../services/task.service.js';
+import * as projectService from '../services/project.service.js';
+import { db } from '../db/index.js';
+import { tasks } from '../db/schema/tasks.js';
+import { projects } from '../db/schema/projects.js';
+import { requireAuth } from '../plugins/auth.js';
+import { requireProjectRole } from '../middleware/authorize.js';
+
+export default async function taskRoutes(fastify: FastifyInstance) {
+  fastify.get<{
+    Params: { id: string };
+    Querystring: {
+      cursor?: string;
+      limit?: string;
+      'filter[sprint_id]'?: string;
+      'filter[phase_id]'?: string;
+      'filter[state_id]'?: string;
+      'filter[assignee_id]'?: string;
+      'filter[priority]'?: string;
+      'filter[labels]'?: string;
+      search?: string;
+    };
+  }>(
+    '/projects/:id/tasks',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const query = request.query;
+      const result = await taskService.listTasks(request.params.id, {
+        sprint_id: query['filter[sprint_id]'],
+        phase_id: query['filter[phase_id]'],
+        state_id: query['filter[state_id]'],
+        assignee_id: query['filter[assignee_id]'],
+        priority: query['filter[priority]'],
+        labels: query['filter[labels]']?.split(','),
+        search: query.search,
+        cursor: query.cursor,
+        limit: query.limit ? parseInt(query.limit, 10) : undefined,
+      });
+
+      return reply.send(result);
+    },
+  );
+
+  fastify.get<{ Params: { id: string }; Querystring: { sprint_id?: string } }>(
+    '/projects/:id/board',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const project = await projectService.getProject(request.params.id);
+      if (!project) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Project not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Get active sprint for this project if no sprint_id specified
+      let sprint = null;
+      if (request.query.sprint_id) {
+        const sprintResult = await projectService.getSprint(request.query.sprint_id);
+        sprint = sprintResult;
+      } else {
+        sprint = await projectService.getActiveSprint(request.params.id);
+      }
+
+      const phasesWithTasks = await taskService.getBoardState(
+        request.params.id,
+        sprint?.id,
+      );
+
+      return reply.send({
+        data: {
+          project,
+          phases: phasesWithTasks,
+          sprint,
+        },
+      });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/projects/:id/tasks',
+    { preHandler: [requireAuth, requireProjectRole('admin', 'member')] },
+    async (request, reply) => {
+      const data = createTaskSchema.parse(request.body);
+
+      try {
+        const task = await taskService.createTask(
+          request.params.id,
+          data,
+          request.user!.id,
+        );
+        return reply.status(201).send({ data: task });
+      } catch (err) {
+        if (err instanceof taskService.TaskError) {
+          return reply.status(err.statusCode).send({
+            error: {
+              code: err.code,
+              message: err.message,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.get<{ Params: { id: string } }>(
+    '/tasks/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const task = await taskService.getTask(request.params.id);
+      if (!task) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Task not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: task });
+    },
+  );
+
+  fastify.patch<{ Params: { id: string } }>(
+    '/tasks/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const data = updateTaskSchema.parse(request.body);
+      const task = await taskService.updateTask(request.params.id, data, request.user!.id);
+
+      if (!task) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Task not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: task });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/tasks/:id/move',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const data = moveTaskSchema.parse(request.body);
+      const task = await taskService.moveTask(request.params.id, data, request.user!.id);
+
+      if (!task) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Task not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: task });
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    '/tasks/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const task = await taskService.deleteTask(request.params.id, request.user!.id);
+      if (!task) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Task not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: { success: true } });
+    },
+  );
+
+  fastify.post(
+    '/tasks/bulk',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const data = bulkUpdateSchema.parse(request.body);
+      const results = await taskService.bulkOperations(data, request.user!.id);
+      return reply.send({ data: results });
+    },
+  );
+
+  // ── POST /tasks/:id/duplicate ─────────────────────────────────────────
+  fastify.post<{ Params: { id: string } }>(
+    '/tasks/:id/duplicate',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const bodySchema = z.object({
+        include_subtasks: z.boolean().optional().default(false),
+      });
+
+      const { include_subtasks } = bodySchema.parse(request.body ?? {});
+
+      const original = await taskService.getTask(request.params.id);
+      if (!original) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Task not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Generate new human_id
+      const [updated] = await db
+        .update(projects)
+        .set({
+          task_id_sequence: sql`${projects.task_id_sequence} + 1`,
+        })
+        .where(eq(projects.id, original.project_id))
+        .returning({
+          task_id_prefix: projects.task_id_prefix,
+          task_id_sequence: projects.task_id_sequence,
+        });
+
+      if (!updated) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Project not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const humanId = `${updated.task_id_prefix}-${updated.task_id_sequence}`;
+
+      // Get next position
+      const posResult = await db
+        .select({ maxPos: sql<number>`coalesce(max(${tasks.position}), 0)` })
+        .from(tasks)
+        .where(eq(tasks.phase_id, original.phase_id!));
+
+      const position = (posResult[0]?.maxPos ?? 0) + 1024;
+
+      const [newTask] = await db
+        .insert(tasks)
+        .values({
+          project_id: original.project_id,
+          human_id: humanId,
+          parent_task_id: original.parent_task_id,
+          title: original.title,
+          description: original.description,
+          description_plain: original.description_plain,
+          phase_id: original.phase_id,
+          state_id: original.state_id,
+          sprint_id: original.sprint_id,
+          epic_id: original.epic_id,
+          assignee_id: original.assignee_id,
+          reporter_id: request.user!.id,
+          priority: original.priority,
+          story_points: original.story_points,
+          time_estimate_minutes: original.time_estimate_minutes,
+          start_date: original.start_date,
+          due_date: original.due_date,
+          position,
+          labels: original.labels,
+          watchers: [],
+          is_blocked: false,
+          blocking_task_ids: [],
+          blocked_by_task_ids: [],
+          custom_fields: original.custom_fields,
+        })
+        .returning();
+
+      // Duplicate subtasks if requested
+      if (include_subtasks && newTask) {
+        const subtasks = await db
+          .select()
+          .from(tasks)
+          .where(eq(tasks.parent_task_id, original.id));
+
+        let subtaskCount = 0;
+        for (const sub of subtasks) {
+          const [subUpdated] = await db
+            .update(projects)
+            .set({
+              task_id_sequence: sql`${projects.task_id_sequence} + 1`,
+            })
+            .where(eq(projects.id, original.project_id))
+            .returning({
+              task_id_prefix: projects.task_id_prefix,
+              task_id_sequence: projects.task_id_sequence,
+            });
+
+          const subHumanId = `${subUpdated!.task_id_prefix}-${subUpdated!.task_id_sequence}`;
+
+          const subPosResult = await db
+            .select({ maxPos: sql<number>`coalesce(max(${tasks.position}), 0)` })
+            .from(tasks)
+            .where(eq(tasks.phase_id, sub.phase_id!));
+
+          const subPosition = (subPosResult[0]?.maxPos ?? 0) + 1024;
+
+          await db.insert(tasks).values({
+            project_id: sub.project_id,
+            human_id: subHumanId,
+            parent_task_id: newTask.id,
+            title: sub.title,
+            description: sub.description,
+            description_plain: sub.description_plain,
+            phase_id: sub.phase_id,
+            state_id: sub.state_id,
+            sprint_id: sub.sprint_id,
+            assignee_id: sub.assignee_id,
+            reporter_id: request.user!.id,
+            priority: sub.priority,
+            story_points: sub.story_points,
+            time_estimate_minutes: sub.time_estimate_minutes,
+            start_date: sub.start_date,
+            due_date: sub.due_date,
+            position: subPosition,
+            labels: sub.labels,
+            custom_fields: sub.custom_fields,
+          });
+
+          subtaskCount++;
+        }
+
+        if (subtaskCount > 0) {
+          await db
+            .update(tasks)
+            .set({ subtask_count: subtaskCount })
+            .where(eq(tasks.id, newTask.id));
+        }
+      }
+
+      // Re-fetch with updated counts
+      const [finalTask] = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, newTask!.id))
+        .limit(1);
+
+      return reply.status(201).send({ data: finalTask });
+    },
+  );
+}

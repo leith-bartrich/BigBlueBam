@@ -1,0 +1,429 @@
+import type { FastifyInstance } from 'fastify';
+import { eq, and, sql, asc } from 'drizzle-orm';
+import { createSprintSchema, updateSprintSchema, completeSprintSchema } from '@bigbluebam/shared';
+import { db } from '../db/index.js';
+import { sprints } from '../db/schema/sprints.js';
+import { tasks } from '../db/schema/tasks.js';
+import { taskStates } from '../db/schema/task-states.js';
+import { sprintTasks } from '../db/schema/sprint-tasks.js';
+import { requireAuth } from '../plugins/auth.js';
+import { requireProjectRole } from '../middleware/authorize.js';
+
+export default async function sprintRoutes(fastify: FastifyInstance) {
+  fastify.get<{ Params: { id: string } }>(
+    '/projects/:id/sprints',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const projectSprints = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.project_id, request.params.id))
+        .orderBy(asc(sprints.start_date));
+
+      return reply.send({ data: projectSprints });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/projects/:id/sprints',
+    { preHandler: [requireAuth, requireProjectRole('admin')] },
+    async (request, reply) => {
+      const data = createSprintSchema.parse(request.body);
+
+      const [sprint] = await db
+        .insert(sprints)
+        .values({
+          project_id: request.params.id,
+          name: data.name,
+          goal: data.goal ?? null,
+          status: 'planned',
+          start_date: data.start_date,
+          end_date: data.end_date,
+        })
+        .returning();
+
+      return reply.status(201).send({ data: sprint });
+    },
+  );
+
+  fastify.get<{ Params: { id: string } }>(
+    '/sprints/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const [sprint] = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.id, request.params.id))
+        .limit(1);
+
+      if (!sprint) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: sprint });
+    },
+  );
+
+  fastify.patch<{ Params: { id: string } }>(
+    '/sprints/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const data = updateSprintSchema.parse(request.body);
+
+      const updateValues: Record<string, unknown> = { updated_at: new Date() };
+      if (data.name !== undefined) updateValues.name = data.name;
+      if (data.goal !== undefined) updateValues.goal = data.goal;
+      if (data.start_date !== undefined) updateValues.start_date = data.start_date;
+      if (data.end_date !== undefined) updateValues.end_date = data.end_date;
+
+      const [sprint] = await db
+        .update(sprints)
+        .set(updateValues)
+        .where(eq(sprints.id, request.params.id))
+        .returning();
+
+      if (!sprint) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: sprint });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/sprints/:id/start',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const [sprint] = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.id, request.params.id))
+        .limit(1);
+
+      if (!sprint) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (sprint.status !== 'planned') {
+        return reply.status(400).send({
+          error: {
+            code: 'INVALID_STATE',
+            message: 'Sprint can only be started from planned status',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Check no other active sprint in this project
+      const [activeSprint] = await db
+        .select()
+        .from(sprints)
+        .where(
+          and(
+            eq(sprints.project_id, sprint.project_id),
+            eq(sprints.status, 'active'),
+          ),
+        )
+        .limit(1);
+
+      if (activeSprint) {
+        return reply.status(400).send({
+          error: {
+            code: 'ACTIVE_SPRINT_EXISTS',
+            message: 'There is already an active sprint in this project',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const [updated] = await db
+        .update(sprints)
+        .set({
+          status: 'active',
+          updated_at: new Date(),
+        })
+        .where(eq(sprints.id, request.params.id))
+        .returning();
+
+      return reply.send({ data: updated });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/sprints/:id/complete',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const data = completeSprintSchema.parse(request.body);
+
+      const [sprint] = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.id, request.params.id))
+        .limit(1);
+
+      if (!sprint) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (sprint.status !== 'active') {
+        return reply.status(400).send({
+          error: {
+            code: 'INVALID_STATE',
+            message: 'Sprint can only be completed from active status',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await db.transaction(async (tx) => {
+        // Process carry-forward tasks
+        for (const item of data.carry_forward.tasks) {
+          if (item.action === 'carry_forward') {
+            await tx
+              .update(tasks)
+              .set({
+                sprint_id: data.carry_forward.target_sprint_id,
+                carry_forward_count: sql`${tasks.carry_forward_count} + 1`,
+                original_sprint_id: sql`coalesce(${tasks.original_sprint_id}, ${request.params.id}::uuid)`,
+                updated_at: new Date(),
+              })
+              .where(eq(tasks.id, item.task_id));
+
+            // Create sprint_tasks record for carried forward task
+            await tx
+              .insert(sprintTasks)
+              .values({
+                sprint_id: request.params.id,
+                task_id: item.task_id,
+                removal_reason: 'carried_forward',
+                removed_at: new Date(),
+              })
+              .onConflictDoUpdate({
+                target: [sprintTasks.sprint_id, sprintTasks.task_id],
+                set: {
+                  removal_reason: 'carried_forward',
+                  removed_at: new Date(),
+                },
+              });
+          } else if (item.action === 'backlog') {
+            await tx
+              .update(tasks)
+              .set({
+                sprint_id: null,
+                updated_at: new Date(),
+              })
+              .where(eq(tasks.id, item.task_id));
+
+            // Create sprint_tasks record for descoped task
+            await tx
+              .insert(sprintTasks)
+              .values({
+                sprint_id: request.params.id,
+                task_id: item.task_id,
+                removal_reason: 'descoped',
+                removed_at: new Date(),
+              })
+              .onConflictDoUpdate({
+                target: [sprintTasks.sprint_id, sprintTasks.task_id],
+                set: {
+                  removal_reason: 'descoped',
+                  removed_at: new Date(),
+                },
+              });
+          }
+          // 'cancel' - leave as-is in completed sprint
+        }
+
+        // Calculate velocity: sum story_points of tasks whose task_state has is_closed = true
+        const closedTasksResult = await tx
+          .select({
+            story_points: tasks.story_points,
+          })
+          .from(tasks)
+          .innerJoin(taskStates, eq(tasks.state_id, taskStates.id))
+          .where(
+            and(
+              eq(tasks.sprint_id, request.params.id),
+              eq(taskStates.is_closed, true),
+            ),
+          );
+
+        const velocity = closedTasksResult.reduce(
+          (sum, t) => sum + (t.story_points ?? 0),
+          0,
+        );
+
+        // Complete the sprint with velocity
+        await tx
+          .update(sprints)
+          .set({
+            status: 'completed',
+            velocity,
+            closed_at: new Date(),
+            notes: data.retrospective_notes ?? null,
+            updated_at: new Date(),
+          })
+          .where(eq(sprints.id, request.params.id));
+      });
+
+      const [completed] = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.id, request.params.id))
+        .limit(1);
+
+      return reply.send({ data: completed });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/sprints/:id/cancel',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const [sprint] = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.id, request.params.id))
+        .limit(1);
+
+      if (!sprint) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (sprint.status !== 'active' && sprint.status !== 'planned') {
+        return reply.status(400).send({
+          error: {
+            code: 'INVALID_STATE',
+            message: 'Sprint can only be cancelled from active or planned status',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await db.transaction(async (tx) => {
+        // Move all tasks in this sprint to backlog (set sprint_id = null)
+        await tx
+          .update(tasks)
+          .set({
+            sprint_id: null,
+            updated_at: new Date(),
+          })
+          .where(eq(tasks.sprint_id, request.params.id));
+
+        // Cancel the sprint
+        await tx
+          .update(sprints)
+          .set({
+            status: 'cancelled',
+            closed_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where(eq(sprints.id, request.params.id));
+      });
+
+      const [cancelled] = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.id, request.params.id))
+        .limit(1);
+
+      return reply.send({ data: cancelled });
+    },
+  );
+
+  fastify.get<{ Params: { id: string } }>(
+    '/sprints/:id/report',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const [sprint] = await db
+        .select()
+        .from(sprints)
+        .where(eq(sprints.id, request.params.id))
+        .limit(1);
+
+      if (!sprint) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Get tasks in this sprint
+      const sprintTasks = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.sprint_id, request.params.id));
+
+      // Get tasks that were originally in this sprint but carried forward
+      const carriedForward = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.original_sprint_id, request.params.id));
+
+      const totalTasks = sprintTasks.length;
+      const completedTasks = sprintTasks.filter((t) => t.completed_at !== null).length;
+      const totalPoints = sprintTasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+      const completedPoints = sprintTasks
+        .filter((t) => t.completed_at !== null)
+        .reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+
+      return reply.send({
+        data: {
+          sprint,
+          summary: {
+            total_tasks: totalTasks,
+            completed_tasks: completedTasks,
+            total_story_points: totalPoints,
+            completed_story_points: completedPoints,
+            carried_forward_count: carriedForward.length,
+            completion_percentage: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+          },
+          tasks: sprintTasks,
+        },
+      });
+    },
+  );
+}
