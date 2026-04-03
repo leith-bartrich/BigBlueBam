@@ -194,15 +194,15 @@ BigBlueBam exposes **42 MCP (Model Context Protocol) tools** that give AI assist
 
 - **Create and manage tasks** — create tasks, set priority and assignee, move cards across phases, add subtasks
 - **Run sprints** — create sprints, assign tasks, start/complete sprints, generate sprint reports
-- **Triage helpdesk tickets** — read incoming tickets, create linked tasks, assign to the right engineer, post responses to customers
+- **Triage helpdesk tickets** — when a customer submits a ticket, a task is auto-created; AI agents can then triage by adjusting priority, setting timelines, assigning to the right engineer, rejecting out-of-scope requests, and posting responses to customers
 - **Generate reports** — velocity reports, burndown charts, cumulative flow, workload distribution, overdue task alerts
 - **Collaborate** — post comments, log time, bulk update tasks, suggest branch names
 
 ### Example: AI-Powered Helpdesk Triage
 
-> A customer submits a bug report through the helpdesk portal. An AI agent monitoring the ticket queue picks it up, creates a `FRND-` prefixed task in the Frontend project, assigns it to the right engineer based on the related epic, sets priority to High, and posts an initial response to the customer: *"Thanks for reporting this. We've created task FRND-247 and assigned it to the team. We'll update you when there's a fix."*
+> A customer submits a bug report through the helpdesk portal. BigBlueBam automatically creates a `FRND-` prefixed task on the board. An AI agent picks up the new task, analyzes the description, sets priority to High, assigns it to the right engineer based on the related epic, adjusts the timeline, and posts a response to the customer: *"Thanks for reporting this — we've assigned task FRND-247 to the team and it's been prioritized. We'll update you when there's a fix."*
 >
-> The engineer sees the new card on their board. The customer sees the response in their portal. No human had to do the triage.
+> The engineer sees the triaged card on their board. The customer sees the response in their portal. The task was created automatically; the AI handled the triage.
 
 ### MCP Tools Reference
 
