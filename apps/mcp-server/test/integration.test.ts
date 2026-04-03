@@ -1,0 +1,831 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import pino from 'pino';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ApiClient } from '../src/middleware/api-client.js';
+
+// Mock fetch globally
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
+const logger = pino({ level: 'silent' });
+
+// ---- Helpers ----
+
+function mockApiOk(data: unknown) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => data,
+  });
+}
+
+function mockApiError(status: number, data: unknown) {
+  mockFetch.mockResolvedValueOnce({
+    ok: false,
+    status,
+    json: async () => data,
+  });
+}
+
+// We test tools by directly importing and calling register functions,
+// capturing the tool handlers via a mock McpServer.
+type ToolHandler = (args: Record<string, unknown>) => Promise<{
+  content: { type: string; text: string }[];
+  isError?: boolean;
+}>;
+
+interface RegisteredTool {
+  name: string;
+  description: string;
+  schema: unknown;
+  handler: ToolHandler;
+}
+
+function createMockServer(): { server: McpServer; tools: Map<string, RegisteredTool> } {
+  const tools = new Map<string, RegisteredTool>();
+
+  const server = {
+    tool: (name: string, description: string, schema: unknown, handler: ToolHandler) => {
+      tools.set(name, { name, description, schema, handler });
+    },
+  } as unknown as McpServer;
+
+  return { server, tools };
+}
+
+const UUID = '550e8400-e29b-41d4-a716-446655440000';
+const UUID2 = '660e8400-e29b-41d4-a716-446655440001';
+
+// ---- Import all register functions ----
+import { registerProjectTools } from '../src/tools/project-tools.js';
+import { registerBoardTools } from '../src/tools/board-tools.js';
+import { registerTaskTools } from '../src/tools/task-tools.js';
+import { registerSprintTools } from '../src/tools/sprint-tools.js';
+import { registerCommentTools } from '../src/tools/comment-tools.js';
+import { registerMemberTools } from '../src/tools/member-tools.js';
+import { registerReportTools } from '../src/tools/report-tools.js';
+import { registerTemplateTools } from '../src/tools/template-tools.js';
+import { registerImportTools } from '../src/tools/import-tools.js';
+
+describe('MCP Integration Tests', () => {
+  let api: ApiClient;
+  let tools: Map<string, RegisteredTool>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api = new ApiClient('http://localhost:4000', 'test-token', logger);
+    const mock = createMockServer();
+    tools = mock.tools;
+
+    registerProjectTools(mock.server, api);
+    registerBoardTools(mock.server, api);
+    registerTaskTools(mock.server, api);
+    registerSprintTools(mock.server, api);
+    registerCommentTools(mock.server, api);
+    registerMemberTools(mock.server, api);
+    registerReportTools(mock.server, api);
+    registerTemplateTools(mock.server, api);
+    registerImportTools(mock.server, api);
+  });
+
+  function getTool(name: string): RegisteredTool {
+    const tool = tools.get(name);
+    if (!tool) throw new Error(`Tool "${name}" not registered`);
+    return tool;
+  }
+
+  function expectSuccessFormat(result: { content: { type: string; text: string }[]; isError?: boolean }) {
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0]!.type).toBe('text');
+    expect(result.isError).toBeUndefined();
+    // Text should be valid JSON
+    expect(() => JSON.parse(result.content[0]!.text)).not.toThrow();
+  }
+
+  function expectErrorFormat(result: { content: { type: string; text: string }[]; isError?: boolean }) {
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0]!.type).toBe('text');
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('Error');
+  }
+
+  // ===== PROJECT TOOLS =====
+
+  describe('list_projects', () => {
+    it('returns projects on success', async () => {
+      mockApiOk({ data: [{ id: UUID, name: 'Test' }], meta: {} });
+      const result = await getTool('list_projects').handler({});
+      expectSuccessFormat(result);
+      expect(JSON.parse(result.content[0]!.text).data).toHaveLength(1);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(500, { error: 'Server error' });
+      const result = await getTool('list_projects').handler({});
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_project', () => {
+    it('returns project details on success', async () => {
+      mockApiOk({ id: UUID, name: 'My Project' });
+      const result = await getTool('get_project').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error for not found', async () => {
+      mockApiError(404, { error: 'Not found' });
+      const result = await getTool('get_project').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('create_project', () => {
+    it('creates a project on success', async () => {
+      mockApiOk({ id: UUID, name: 'New', task_id_prefix: 'NEW' });
+      const result = await getTool('create_project').handler({
+        name: 'New', task_id_prefix: 'NEW',
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on validation failure', async () => {
+      mockApiError(400, { error: 'Validation error' });
+      const result = await getTool('create_project').handler({ name: '', task_id_prefix: '' });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== BOARD TOOLS =====
+
+  describe('get_board', () => {
+    it('returns board state on success', async () => {
+      mockApiOk({ phases: [{ id: UUID, name: 'To Do', tasks: [] }] });
+      const result = await getTool('get_board').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Project not found' });
+      const result = await getTool('get_board').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('list_phases', () => {
+    it('returns phases on success', async () => {
+      mockApiOk([{ id: UUID, name: 'To Do' }]);
+      const result = await getTool('list_phases').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(500, { error: 'Internal error' });
+      const result = await getTool('list_phases').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('create_phase', () => {
+    it('creates a phase on success', async () => {
+      mockApiOk({ id: UUID, name: 'In Progress', position: 1 });
+      const result = await getTool('create_phase').handler({
+        project_id: UUID, name: 'In Progress', position: 1,
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid position' });
+      const result = await getTool('create_phase').handler({
+        project_id: UUID, name: '', position: -1,
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('reorder_phases', () => {
+    it('reorders phases on success', async () => {
+      mockApiOk({ success: true });
+      const result = await getTool('reorder_phases').handler({
+        project_id: UUID, phase_ids: [UUID, UUID2],
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid phase IDs' });
+      const result = await getTool('reorder_phases').handler({
+        project_id: UUID, phase_ids: [],
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== TASK TOOLS =====
+
+  describe('search_tasks', () => {
+    it('returns matching tasks on success', async () => {
+      mockApiOk({ data: [{ id: UUID, title: 'Task 1' }], meta: {} });
+      const result = await getTool('search_tasks').handler({
+        project_id: UUID, q: 'login',
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(500, { error: 'DB error' });
+      const result = await getTool('search_tasks').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_task', () => {
+    it('returns task details on success', async () => {
+      mockApiOk({ id: UUID, title: 'Test Task', human_id: 'TST-1' });
+      const result = await getTool('get_task').handler({ task_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error for not found', async () => {
+      mockApiError(404, { error: 'Task not found' });
+      const result = await getTool('get_task').handler({ task_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('create_task', () => {
+    it('creates a task on success', async () => {
+      mockApiOk({ id: UUID, title: 'New Task', human_id: 'TST-1' });
+      const result = await getTool('create_task').handler({
+        project_id: UUID, title: 'New Task', phase_id: UUID2,
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Missing title' });
+      const result = await getTool('create_task').handler({
+        project_id: UUID, title: '', phase_id: UUID2,
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('update_task', () => {
+    it('updates task on success', async () => {
+      mockApiOk({ id: UUID, title: 'Updated' });
+      const result = await getTool('update_task').handler({
+        task_id: UUID, title: 'Updated',
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Task not found' });
+      const result = await getTool('update_task').handler({
+        task_id: UUID, title: 'x',
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('move_task', () => {
+    it('moves task on success', async () => {
+      mockApiOk({ id: UUID, phase_id: UUID2, position: 0 });
+      const result = await getTool('move_task').handler({
+        task_id: UUID, phase_id: UUID2, position: 0,
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid phase' });
+      const result = await getTool('move_task').handler({
+        task_id: UUID, phase_id: UUID2, position: 0,
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('delete_task', () => {
+    it('asks for confirmation when confirm is false', async () => {
+      const result = await getTool('delete_task').handler({
+        task_id: UUID, confirm: false,
+      });
+      expect(result.content[0]!.text).toContain('confirm');
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('deletes task when confirmed', async () => {
+      mockApiOk({});
+      const result = await getTool('delete_task').handler({
+        task_id: UUID, confirm: true,
+      });
+      expect(result.content[0]!.text).toContain('deleted successfully');
+    });
+
+    it('returns error on API failure with confirm', async () => {
+      mockApiError(404, { error: 'Not found' });
+      const result = await getTool('delete_task').handler({
+        task_id: UUID, confirm: true,
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('bulk_update_tasks', () => {
+    it('bulk updates tasks on success', async () => {
+      mockApiOk({ results: [{ task_id: UUID, success: true }] });
+      const result = await getTool('bulk_update_tasks').handler({
+        task_ids: [UUID], operation: 'update', fields: { priority: 'high' },
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid operation' });
+      const result = await getTool('bulk_update_tasks').handler({
+        task_ids: [UUID], operation: 'update', fields: {},
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('log_time', () => {
+    it('logs time on success', async () => {
+      mockApiOk({ id: UUID, minutes: 60 });
+      const result = await getTool('log_time').handler({
+        task_id: UUID, minutes: 60, date: '2025-01-15',
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid minutes' });
+      const result = await getTool('log_time').handler({
+        task_id: UUID, minutes: -1, date: '2025-01-15',
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('duplicate_task', () => {
+    it('duplicates task on success', async () => {
+      mockApiOk({ id: UUID2, title: 'Test Task (copy)', human_id: 'TST-2' });
+      const result = await getTool('duplicate_task').handler({ task_id: UUID });
+      expectSuccessFormat(result);
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.human_id).toBe('TST-2');
+    });
+
+    it('duplicates with subtasks', async () => {
+      mockApiOk({ id: UUID2, title: 'Test Task (copy)', subtask_count: 3 });
+      const result = await getTool('duplicate_task').handler({
+        task_id: UUID, include_subtasks: true,
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error for invalid task', async () => {
+      mockApiError(404, { error: 'Task not found' });
+      const result = await getTool('duplicate_task').handler({ task_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('import_csv', () => {
+    it('imports CSV rows on success', async () => {
+      mockApiOk({ imported: 3, errors: [] });
+      const result = await getTool('import_csv').handler({
+        project_id: UUID,
+        rows: [
+          { Title: 'Task 1', Priority: 'high' },
+          { Title: 'Task 2', Priority: 'low' },
+          { Title: 'Task 3', Priority: 'medium' },
+        ],
+        mapping: { Title: 'title', Priority: 'priority' },
+      });
+      expectSuccessFormat(result);
+      expect(JSON.parse(result.content[0]!.text).imported).toBe(3);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid mapping' });
+      const result = await getTool('import_csv').handler({
+        project_id: UUID, rows: [], mapping: {},
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== SPRINT TOOLS =====
+
+  describe('list_sprints', () => {
+    it('returns sprints on success', async () => {
+      mockApiOk({ data: [{ id: UUID, name: 'Sprint 1' }] });
+      const result = await getTool('list_sprints').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(500, { error: 'Error' });
+      const result = await getTool('list_sprints').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('create_sprint', () => {
+    it('creates sprint on success', async () => {
+      mockApiOk({ id: UUID, name: 'Sprint 1' });
+      const result = await getTool('create_sprint').handler({
+        project_id: UUID, name: 'Sprint 1',
+        start_date: '2025-01-01', end_date: '2025-01-14',
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid dates' });
+      const result = await getTool('create_sprint').handler({
+        project_id: UUID, name: '', start_date: '', end_date: '',
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('start_sprint', () => {
+    it('starts sprint on success', async () => {
+      mockApiOk({ id: UUID, status: 'active' });
+      const result = await getTool('start_sprint').handler({ sprint_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(409, { error: 'Already active' });
+      const result = await getTool('start_sprint').handler({ sprint_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('complete_sprint', () => {
+    it('completes sprint on success', async () => {
+      mockApiOk({ id: UUID, status: 'completed' });
+      const result = await getTool('complete_sprint').handler({
+        sprint_id: UUID,
+        carry_forward: {
+          target_sprint_id: UUID2,
+          tasks: [{ task_id: UUID, action: 'carry_forward' }],
+        },
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Sprint not active' });
+      const result = await getTool('complete_sprint').handler({
+        sprint_id: UUID,
+        carry_forward: { target_sprint_id: UUID2, tasks: [] },
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_sprint_report', () => {
+    it('returns report on success', async () => {
+      mockApiOk({ velocity: 42, burndown: [] });
+      const result = await getTool('get_sprint_report').handler({ sprint_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Sprint not found' });
+      const result = await getTool('get_sprint_report').handler({ sprint_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== COMMENT TOOLS =====
+
+  describe('list_comments', () => {
+    it('returns comments on success', async () => {
+      mockApiOk({ data: [{ id: UUID, body: 'Great work!' }] });
+      const result = await getTool('list_comments').handler({ task_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Task not found' });
+      const result = await getTool('list_comments').handler({ task_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('add_comment', () => {
+    it('adds comment on success', async () => {
+      mockApiOk({ id: UUID, body: 'New comment' });
+      const result = await getTool('add_comment').handler({
+        task_id: UUID, body: 'New comment',
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Empty body' });
+      const result = await getTool('add_comment').handler({
+        task_id: UUID, body: '',
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== MEMBER TOOLS =====
+
+  describe('list_members', () => {
+    it('returns project members on success', async () => {
+      mockApiOk({ data: [{ id: UUID, name: 'Alice' }] });
+      const result = await getTool('list_members').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns org members when no project_id', async () => {
+      mockApiOk({ data: [{ id: UUID, name: 'Bob' }] });
+      const result = await getTool('list_members').handler({});
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(403, { error: 'Forbidden' });
+      const result = await getTool('list_members').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_my_tasks', () => {
+    it('returns tasks for current user with project_id', async () => {
+      // First call: /auth/me
+      mockApiOk({ id: UUID });
+      // Second call: /projects/:id/tasks
+      mockApiOk({ data: [{ id: UUID2, title: 'My Task' }] });
+      const result = await getTool('get_my_tasks').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns tasks for current user without project_id', async () => {
+      mockApiOk({ id: UUID });
+      mockApiOk({ data: [{ id: UUID2, title: 'My Task' }] });
+      const result = await getTool('get_my_tasks').handler({});
+      expectSuccessFormat(result);
+    });
+
+    it('returns error when auth fails', async () => {
+      mockApiError(401, { error: 'Unauthorized' });
+      const result = await getTool('get_my_tasks').handler({});
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== REPORT TOOLS =====
+
+  describe('get_velocity_report', () => {
+    it('returns velocity data on success', async () => {
+      mockApiOk({ sprints: [{ name: 'Sprint 1', velocity: 21 }] });
+      const result = await getTool('get_velocity_report').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Project not found' });
+      const result = await getTool('get_velocity_report').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_burndown', () => {
+    it('returns burndown data on success', async () => {
+      mockApiOk({ days: [{ date: '2025-01-01', remaining: 42 }] });
+      const result = await getTool('get_burndown').handler({ sprint_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Sprint not found' });
+      const result = await getTool('get_burndown').handler({ sprint_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_cumulative_flow', () => {
+    it('returns CFD data on success', async () => {
+      mockApiOk({ data: [{ date: '2025-01-01', todo: 10, done: 5 }] });
+      const result = await getTool('get_cumulative_flow').handler({
+        project_id: UUID, from_date: '2025-01-01', to_date: '2025-01-31',
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid date range' });
+      const result = await getTool('get_cumulative_flow').handler({
+        project_id: UUID, from_date: '', to_date: '',
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_overdue_tasks', () => {
+    it('returns overdue tasks on success', async () => {
+      mockApiOk({ tasks: [{ id: UUID, title: 'Overdue Task', due_date: '2024-12-01' }] });
+      const result = await getTool('get_overdue_tasks').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Project not found' });
+      const result = await getTool('get_overdue_tasks').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_workload', () => {
+    it('returns workload data on success', async () => {
+      mockApiOk({
+        members: [
+          { user_id: UUID, name: 'Alice', task_count: 5, story_points: 21 },
+          { user_id: UUID2, name: 'Bob', task_count: 3, story_points: 13 },
+        ],
+      });
+      const result = await getTool('get_workload').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.members).toHaveLength(2);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(500, { error: 'Internal error' });
+      const result = await getTool('get_workload').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('get_status_distribution', () => {
+    it('returns status distribution on success', async () => {
+      mockApiOk({
+        distribution: [
+          { phase: 'To Do', count: 10 },
+          { phase: 'Done', count: 5 },
+        ],
+      });
+      const result = await getTool('get_status_distribution').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Project not found' });
+      const result = await getTool('get_status_distribution').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== TEMPLATE TOOLS =====
+
+  describe('list_templates', () => {
+    it('returns templates on success', async () => {
+      mockApiOk({ data: [{ id: UUID, name: 'Bug Report Template' }] });
+      const result = await getTool('list_templates').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Project not found' });
+      const result = await getTool('list_templates').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('create_from_template', () => {
+    it('creates task from template on success', async () => {
+      mockApiOk({ id: UUID2, title: 'Bug Report', human_id: 'TST-10' });
+      const result = await getTool('create_from_template').handler({
+        project_id: UUID, template_id: UUID2,
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('creates with overrides', async () => {
+      mockApiOk({ id: UUID2, title: 'Custom Bug', priority: 'critical' });
+      const result = await getTool('create_from_template').handler({
+        project_id: UUID, template_id: UUID2,
+        overrides: { title: 'Custom Bug', priority: 'critical' },
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error for invalid template', async () => {
+      mockApiError(404, { error: 'Template not found' });
+      const result = await getTool('create_from_template').handler({
+        project_id: UUID, template_id: UUID2,
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== IMPORT TOOLS =====
+
+  describe('import_github_issues', () => {
+    it('imports issues on success', async () => {
+      mockApiOk({ imported: 2, skipped: 0 });
+      const result = await getTool('import_github_issues').handler({
+        project_id: UUID,
+        issues: [
+          { number: 1, title: 'Fix login bug', body: 'Details here', state: 'open', labels: ['bug'], assignee: 'alice' },
+          { number: 2, title: 'Add feature', body: null, state: 'open', labels: [], assignee: null },
+        ],
+      });
+      expectSuccessFormat(result);
+      expect(JSON.parse(result.content[0]!.text).imported).toBe(2);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Invalid issues format' });
+      const result = await getTool('import_github_issues').handler({
+        project_id: UUID, issues: [],
+      });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('suggest_branch_name', () => {
+    it('generates branch name from task', async () => {
+      mockApiOk({ human_id: 'FRND-42', title: 'Design Login Screen' });
+      const result = await getTool('suggest_branch_name').handler({ task_id: UUID });
+      expectSuccessFormat(result);
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.branch_name).toBe('feature/FRND-42-design-login-screen');
+      expect(data.human_id).toBe('FRND-42');
+    });
+
+    it('handles special characters in title', async () => {
+      mockApiOk({ human_id: 'TST-1', title: 'Fix: bug & crash!!! (urgent)' });
+      const result = await getTool('suggest_branch_name').handler({ task_id: UUID });
+      expectSuccessFormat(result);
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.branch_name).toBe('feature/TST-1-fix-bug-crash-urgent');
+    });
+
+    it('returns error when task not found', async () => {
+      mockApiError(404, { error: 'Task not found' });
+      const result = await getTool('suggest_branch_name').handler({ task_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  // ===== TOOL REGISTRATION COMPLETENESS =====
+
+  describe('tool registration', () => {
+    it('registers all expected tools', () => {
+      const expectedTools = [
+        // project
+        'list_projects', 'get_project', 'create_project',
+        // board
+        'get_board', 'list_phases', 'create_phase', 'reorder_phases',
+        // task
+        'search_tasks', 'get_task', 'create_task', 'update_task',
+        'move_task', 'delete_task', 'bulk_update_tasks', 'log_time',
+        'duplicate_task', 'import_csv',
+        // sprint
+        'list_sprints', 'create_sprint', 'start_sprint', 'complete_sprint', 'get_sprint_report',
+        // comment
+        'list_comments', 'add_comment',
+        // member
+        'list_members', 'get_my_tasks',
+        // report
+        'get_velocity_report', 'get_burndown', 'get_cumulative_flow',
+        'get_overdue_tasks', 'get_workload', 'get_status_distribution',
+        // template
+        'list_templates', 'create_from_template',
+        // import
+        'import_github_issues', 'suggest_branch_name',
+      ];
+
+      for (const name of expectedTools) {
+        expect(tools.has(name), `Tool "${name}" should be registered`).toBe(true);
+      }
+
+      expect(tools.size).toBe(expectedTools.length);
+    });
+
+    it('all tools have descriptions', () => {
+      for (const [name, tool] of tools) {
+        expect(tool.description, `Tool "${name}" should have a description`).toBeTruthy();
+        expect(typeof tool.description).toBe('string');
+      }
+    });
+
+    it('all tools have handler functions', () => {
+      for (const [name, tool] of tools) {
+        expect(typeof tool.handler, `Tool "${name}" should have a handler`).toBe('function');
+      }
+    });
+  });
+});
