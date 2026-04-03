@@ -204,6 +204,18 @@ BigBlueBam exposes **42 MCP (Model Context Protocol) tools** that give AI assist
 >
 > The engineer sees the triaged card on their board. The customer sees the response in their portal. The task was created automatically; the AI handled the triage.
 
+### Example: AI Gathering Details from Vague Reports
+
+> A customer submits a ticket: *"The app isn't working."* BigBlueBam auto-creates a task, and an AI agent picks it up. Recognizing the report lacks actionable detail, the agent responds to the customer through the helpdesk portal:
+>
+> *"Sorry to hear that! To help us investigate, could you provide a few details?*
+> - *What were you trying to do when the issue occurred?*
+> - *What device and browser are you using? (e.g., iPhone 14 / Safari, Windows / Chrome)*
+> - *Does the issue happen every time or intermittently?*
+> - *If possible, a screenshot of any error message would be very helpful."*
+>
+> The agent sets the task to `waiting_on_customer` and adds an internal note for the engineering team: *"Vague report — asked customer for repro steps, device info, and screenshots. Will re-triage once details come in."* When the customer replies with specifics, the agent updates the task description, sets the appropriate priority, and assigns it to the right engineer — all before a human touches it.
+
 ### MCP Tools Reference
 
 | Category | Tools | What they do |
