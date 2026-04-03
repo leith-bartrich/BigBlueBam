@@ -339,7 +339,13 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
         return (
           <WorkloadView
             projectId={projectId}
-            onFilterByUser={(userId) => setFilters((prev) => ({ ...prev, assignee_id: userId }))}
+            onFilterByUser={(userId) => {
+              if (userId === 'unassigned') return;
+              setFilters((prev) => ({
+                ...prev,
+                assignee_id: prev.assignee_id === userId ? undefined : userId,
+              }));
+            }}
           />
         );
 
