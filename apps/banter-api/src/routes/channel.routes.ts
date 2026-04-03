@@ -51,6 +51,55 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const user = request.user!;
 
+      // Auto-create #general if no channels exist for this org
+      try {
+        const [existing] = await db
+          .select({ id: banterChannels.id })
+          .from(banterChannels)
+          .where(and(eq(banterChannels.org_id, user.org_id), eq(banterChannels.type, 'public')))
+          .limit(1);
+
+        if (!existing) {
+          const [general] = await db
+            .insert(banterChannels)
+            .values({
+              org_id: user.org_id,
+              name: 'general',
+              slug: 'general',
+              type: 'public',
+              topic: 'General discussion',
+              description: 'The default channel for team communication',
+              is_default: true,
+              created_by: user.id,
+            })
+            .returning();
+
+          if (general) {
+            // Add current user as owner
+            await db.insert(banterChannelMemberships).values({
+              channel_id: general.id,
+              user_id: user.id,
+              role: 'owner',
+            });
+
+            // Add all other active org members
+            const orgMembers = await db.execute(
+              sql`SELECT id FROM users WHERE org_id = ${user.org_id} AND is_active = true AND id != ${user.id}`
+            );
+            const memberRows = Array.isArray(orgMembers) ? orgMembers : (orgMembers as any).rows ?? [];
+            for (const m of memberRows) {
+              await db.insert(banterChannelMemberships).values({
+                channel_id: general.id,
+                user_id: (m as any).id,
+                role: 'member',
+              }).onConflictDoNothing();
+            }
+          }
+        }
+      } catch {
+        // Don't fail the channel list if auto-creation fails
+      }
+
       const rows = await db
         .select({
           channel: banterChannels,
