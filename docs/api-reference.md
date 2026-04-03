@@ -874,11 +874,189 @@ Delete field definition. Removes all stored values across tasks.
 
 ---
 
+### Reaction Endpoints
+
+#### `POST /comments/:id/reactions`
+
+Toggle a reaction on a comment. If the reaction already exists for the authenticated user, it is removed. Otherwise it is added.
+
+**Request:**
+```json
+{
+  "emoji": "thumbsup"
+}
+```
+
+#### `GET /comments/:id/reactions`
+
+List all reactions on a comment, grouped by emoji.
+
+---
+
+### Time Entry Endpoints
+
+#### `POST /tasks/:id/time-entries`
+
+Log time spent on a task.
+
+**Request:**
+```json
+{
+  "minutes": 90,
+  "date": "2026-04-02",
+  "description": "Implemented login flow"
+}
+```
+
+#### `GET /tasks/:id/time-entries`
+
+List all time entries for a task.
+
+#### `GET /projects/:id/time-entries`
+
+List time entries across a project. **Query params:** `?from=2026-04-01&to=2026-04-30&user_id=uuid`
+
+---
+
+### Template Endpoints
+
+#### `GET /projects/:id/task-templates`
+
+List task templates for a project.
+
+#### `POST /projects/:id/task-templates`
+
+Create a new task template.
+
+**Request:**
+```json
+{
+  "name": "Bug Report",
+  "title_pattern": "[Bug] ",
+  "description": "## Steps to reproduce\n\n## Expected behavior\n\n## Actual behavior",
+  "priority": "high",
+  "phase_id": "uuid",
+  "label_ids": ["uuid"],
+  "subtask_titles": ["Reproduce", "Fix", "Write test"],
+  "story_points": 3
+}
+```
+
+#### `PATCH /projects/:id/task-templates/:template_id`
+
+Update a template.
+
+#### `DELETE /projects/:id/task-templates/:template_id`
+
+Delete a template.
+
+#### `POST /projects/:id/task-templates/:template_id/apply`
+
+Create a new task from a template, optionally overriding fields.
+
+**Request:**
+```json
+{
+  "overrides": { "title": "Fix login crash on iOS", "assignee_id": "uuid" }
+}
+```
+
+**Response (201):** Full task object created from the template.
+
+---
+
+### Saved View Endpoints
+
+#### `GET /projects/:id/views`
+
+List saved views for a project (user's own + shared views).
+
+#### `POST /projects/:id/views`
+
+Create a saved view.
+
+**Request:**
+```json
+{
+  "name": "My Critical Tasks",
+  "filters": { "priority": "critical", "assignee_id": "uuid" },
+  "sort": "-due_date",
+  "view_type": "board",
+  "swimlane": "assignee",
+  "is_shared": false
+}
+```
+
+#### `PATCH /views/:id`
+
+Update a saved view.
+
+#### `DELETE /views/:id`
+
+Delete a saved view (own views only, or project admin).
+
+---
+
+### Import Endpoints
+
+#### `POST /projects/:id/import/csv`
+
+Import tasks from CSV data.
+
+**Request:**
+```json
+{
+  "rows": [
+    { "Title": "Task 1", "Priority": "high", "Phase": "To Do" }
+  ],
+  "mapping": {
+    "Title": "title",
+    "Priority": "priority",
+    "Phase": "phase"
+  }
+}
+```
+
+**Response (200):** `{ "imported": 15, "skipped": 2, "errors": [...] }`
+
+#### `POST /projects/:id/import/trello`
+
+Import tasks from a Trello board export.
+
+#### `POST /projects/:id/import/jira`
+
+Import tasks from a Jira export.
+
+#### `POST /projects/:id/import/github`
+
+Import GitHub issues as tasks.
+
+**Request:**
+```json
+{
+  "issues": [
+    { "number": 42, "title": "Fix bug", "body": "...", "state": "open", "labels": ["bug"], "assignee": "username" }
+  ]
+}
+```
+
+---
+
+### iCal Endpoints
+
+#### `GET /projects/:id/ical`
+
+Export tasks with due dates as an iCal (.ics) feed. Authenticated via API key in query string. Returns `text/calendar` content type.
+
+**Query params:** `?key=bbam_...`
+
+---
+
 ### Reporting Endpoints
 
 #### `GET /projects/:id/reports/velocity`
 
-Sprint-over-sprint velocity data. **Query params:** `?last_n_sprints=10`
+Sprint-over-sprint velocity data. **Query params:** `?count=10`
 
 #### `GET /projects/:id/reports/burndown`
 
@@ -886,11 +1064,27 @@ Burndown chart data. **Query params:** `?sprint_id=uuid`
 
 #### `GET /projects/:id/reports/cfd`
 
-Cumulative flow diagram data. **Query params:** `?from=2026-01-01&to=2026-04-02&granularity=day`
+Cumulative flow diagram data. **Query params:** `?from_date=2026-01-01&to_date=2026-04-02`
 
 #### `GET /projects/:id/reports/cycle-time`
 
 Cycle time distribution. **Query params:** `?from=2026-01-01&to=2026-04-02`
+
+#### `GET /projects/:id/reports/overdue`
+
+List all overdue tasks in a project (tasks with `due_date` in the past that are not in a closed state).
+
+#### `GET /projects/:id/reports/workload`
+
+Workload distribution report showing task counts and story points per team member.
+
+#### `GET /projects/:id/reports/status-distribution`
+
+Status distribution report showing task counts per phase and state.
+
+#### `GET /projects/:id/reports/time-tracking`
+
+Time tracking report. **Query params:** `?from=2026-04-01&to=2026-04-30`
 
 ---
 

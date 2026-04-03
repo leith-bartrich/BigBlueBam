@@ -103,6 +103,7 @@ Expected output:
  ✔ Container bigbluebam-worker-1      Started
  ✔ Container bigbluebam-mcp-server-1  Started
  ✔ Container bigbluebam-frontend-1    Started
+ ✔ Container bigbluebam-migrate-1     Exited (0)
 ```
 
 Wait for all services to become healthy:

@@ -32,7 +32,7 @@ graph LR
         Auth["Auth Middleware<br/>(API key validation)"]
         Rate["Rate Limiter"]
         Audit["Audit Logger"]
-        Tools["Tool Registry<br/>(30+ tools)"]
+        Tools["Tool Registry<br/>(38 tools)"]
         Resources["Resource Registry"]
         Prompts["Prompt Registry"]
     end
@@ -127,7 +127,7 @@ sequenceDiagram
 
 ---
 
-## Available Tools
+## Available Tools (38 total)
 
 ### Project Tools
 
@@ -168,6 +168,7 @@ sequenceDiagram
 | `delete_task` | Soft-delete a task (requires confirmation) | read_write |
 | `bulk_update_tasks` | Apply same changes to multiple tasks | read_write |
 | `log_time` | Log time spent on a task | read_write |
+| `duplicate_task` | Duplicate an existing task, optionally including subtasks | read_write |
 
 ### Comment Tools
 
@@ -183,6 +184,21 @@ sequenceDiagram
 | `list_members` | List project or org members with roles | read |
 | `get_my_tasks` | Get all tasks assigned to the authenticated user | read |
 
+### Import Tools
+
+| Tool | Description | Scope |
+|---|---|---|
+| `import_csv` | Import tasks from CSV data into a project | read_write |
+| `import_github_issues` | Import GitHub issues into a project as tasks | read_write |
+| `suggest_branch_name` | Generate a git branch name from a task (e.g., `feature/BBB-42-design-login-screen`) | read |
+
+### Template Tools
+
+| Tool | Description | Scope |
+|---|---|---|
+| `list_templates` | List available task templates for a project | read |
+| `create_from_template` | Create a task from a template with optional field overrides | read_write |
+
 ### Reporting Tools
 
 | Tool | Description | Scope |
@@ -190,13 +206,16 @@ sequenceDiagram
 | `get_velocity_report` | Sprint-over-sprint velocity data | read |
 | `get_burndown` | Burndown chart data for a sprint | read |
 | `get_cumulative_flow` | Cumulative flow diagram data | read |
+| `get_overdue_tasks` | Report of all overdue tasks in a project | read |
+| `get_workload` | Workload distribution (task counts and story points per team member) | read |
+| `get_status_distribution` | Task counts per phase and status | read |
 
 ### Utility Tools
 
 | Tool | Description | Scope |
 |---|---|---|
 | `confirm_action` | Confirm a staged destructive action (60s token, single-use) | read_write |
-| `get_server_info` | Instance version, authenticated user, available projects, rate limit status | read |
+| `get_server_info` | Instance version, authenticated user, available tools (38), rate limit status | read |
 
 ---
 

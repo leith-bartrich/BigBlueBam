@@ -39,13 +39,23 @@ erDiagram
     tasks ||--o{ comments : "has many"
     tasks ||--o{ attachments : "has many"
     tasks ||--o{ activity_log : "has many"
+    tasks ||--o{ time_entries : "has many"
 
     sprints ||--o{ sprint_tasks : "has many"
     tasks ||--o{ sprint_tasks : "has many"
 
     comments }o--|| users : "authored by"
+    comments ||--o{ comment_reactions : "has many"
+    comment_reactions }o--|| users : "reacted by"
     attachments }o--|| users : "uploaded by"
     activity_log }o--|| users : "acted by"
+    time_entries }o--|| users : "logged by"
+
+    projects ||--o{ task_templates : "has many"
+    projects ||--o{ saved_views : "has many"
+    projects ||--o{ webhooks : "has many"
+    saved_views }o--|| users : "owned by"
+    task_templates }o--|| users : "created by"
 
     organizations {
         uuid id PK
@@ -269,6 +279,65 @@ erDiagram
         varchar scope
         timestamptz expires_at
         timestamptz created_at
+    }
+
+    task_templates {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+        varchar title_pattern
+        text description
+        varchar priority
+        uuid phase_id FK
+        uuid_array label_ids
+        text_array subtask_titles
+        integer story_points
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    comment_reactions {
+        uuid id PK
+        uuid comment_id FK
+        uuid user_id FK
+        varchar emoji
+        timestamptz created_at
+    }
+
+    saved_views {
+        uuid id PK
+        uuid project_id FK
+        uuid user_id FK
+        varchar name
+        jsonb filters
+        varchar sort
+        varchar view_type
+        varchar swimlane
+        boolean is_shared
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    time_entries {
+        uuid id PK
+        uuid task_id FK
+        uuid user_id FK
+        integer minutes
+        date date
+        text description
+        timestamptz created_at
+    }
+
+    webhooks {
+        uuid id PK
+        uuid project_id FK
+        text url
+        jsonb events
+        text secret
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
     }
 ```
 

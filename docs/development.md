@@ -346,6 +346,21 @@ export function useCreateWidget(projectId: string) {
 
 Register the new view in the router configuration.
 
+### Notable UI Components
+
+The frontend includes several reusable components in `apps/frontend/src/components/common/`:
+
+- **`CommandPalette`** -- Global command palette (Cmd+K / Ctrl+K) for quick navigation and actions
+- **`KeyboardShortcutsOverlay`** -- Displays available keyboard shortcuts (toggled with `?`)
+- **`DatePicker`** -- Date picker component used for due dates, sprint dates, etc.
+- **`Dialog`**, **`DropdownMenu`**, **`Select`** -- Radix UI-based primitives styled with TailwindCSS
+
+Custom hooks in `apps/frontend/src/hooks/`:
+
+- **`useKeyboardShortcuts`** -- Registers and manages keyboard shortcut bindings
+- **`useRealtime`** -- WebSocket connection for live board updates
+- **`useReducedMotion`** -- Respects user's motion preferences for animations
+
 ---
 
 ## Database Migrations with Drizzle
@@ -390,7 +405,7 @@ docker compose run --rm migrate
 
 | Type | Tool | Location | Command |
 |---|---|---|---|
-| **Unit tests** | Vitest | `*.test.ts` alongside source | `pnpm test:unit` |
+| **Unit tests** | Vitest | `*.test.ts` alongside source (~315 test files, 439 tests) | `pnpm test:unit` |
 | **Integration tests** | Vitest + Docker Compose | `*.integration.test.ts` | `pnpm test` |
 | **E2E tests** | Playwright (future) | `apps/frontend/e2e/` | `pnpm test:e2e` |
 

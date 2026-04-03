@@ -21,7 +21,7 @@ graph TB
 
         subgraph "Application Layer"
             API["api<br/>Fastify v5<br/>REST + WebSocket<br/>:4000"]
-            MCP["mcp-server<br/>MCP SDK<br/>SSE + Streamable HTTP<br/>:3001"]
+            MCP["mcp-server<br/>MCP SDK (38 tools)<br/>SSE + Streamable HTTP<br/>:3001"]
             Worker["worker<br/>BullMQ<br/>Background Jobs<br/>(no exposed port)"]
         end
 
@@ -58,45 +58,54 @@ BigBlueBam uses **Turborepo** for task orchestration and **pnpm workspaces** for
 ```
 BigBlueBam/
 |-- apps/
-|   |-- api/              Fastify REST API + WebSocket server
+|   |-- api/              Fastify REST API + WebSocket server (~63 source files)
 |   |   |-- src/
-|   |   |   |-- routes/       Route handlers grouped by domain
-|   |   |   |-- services/     Business logic layer
-|   |   |   |-- db/           Drizzle schema, migrations, queries
-|   |   |   |-- middleware/   Auth, RBAC, rate limiting, validation
-|   |   |   |-- ws/           WebSocket room management, event handlers
-|   |   |   |-- jobs/         BullMQ job definitions
-|   |   |   |-- cli.ts        CLI commands (create-admin, etc.)
+|   |   |   |-- routes/       23 route files grouped by domain
+|   |   |   |-- services/     Business logic layer (auth, org, project, task, activity, realtime)
+|   |   |   |-- db/
+|   |   |   |   |-- schema/   24 Drizzle table definitions
+|   |   |   |   +-- migrations/
+|   |   |   |-- middleware/   Auth (authorize.ts), error handling
+|   |   |   |-- plugins/      Fastify plugin registrations
+|   |   |   |-- utils/        Shared utilities
+|   |   |   |-- cli.ts        CLI commands (create-admin)
 |   |   |   |-- server.ts     Entry point
 |   |   |   +-- migrate.ts    Migration runner
 |   |   |-- Dockerfile
 |   |   +-- package.json
 |   |
-|   |-- frontend/         React SPA
+|   |-- frontend/         React SPA (~55 source files)
 |   |   |-- src/
-|   |   |   |-- components/   Shared UI components
-|   |   |   |-- features/     Feature modules (board, tasks, sprints, etc.)
-|   |   |   |-- hooks/        Custom React hooks
-|   |   |   |-- stores/       Zustand stores
-|   |   |   |-- api/          TanStack Query hooks and API client
+|   |   |   |-- components/
+|   |   |   |   |-- auth/       Login/register forms
+|   |   |   |   |-- board/      Board view, phase columns, task cards, filter bar, swimlanes, saved views
+|   |   |   |   |-- common/     Reusable UI: Button, Dialog, DatePicker, CommandPalette, KeyboardShortcutsOverlay
+|   |   |   |   |-- import/     Import dialog (CSV, Trello, Jira, GitHub)
+|   |   |   |   |-- layout/     AppLayout, Sidebar
+|   |   |   |   |-- tasks/      Task detail drawer, create dialog, template manager/picker
+|   |   |   |   +-- views/      Calendar, List, Timeline, Workload views
+|   |   |   |-- hooks/        useKeyboardShortcuts, useProjects, useRealtime, useSprints, useTasks, useReducedMotion
+|   |   |   |-- stores/       Zustand stores (auth, board)
+|   |   |   |-- pages/        Dashboard, Board, MyWork, Settings, AuditLog, Login, Register
 |   |   |   |-- lib/          Utilities, constants
-|   |   |   +-- App.tsx       Root component
+|   |   |   +-- app.tsx       Root component
 |   |   |-- Dockerfile
 |   |   +-- package.json
 |   |
-|   |-- mcp-server/       Model Context Protocol server
+|   |-- mcp-server/       Model Context Protocol server (38 tools)
 |   |   |-- src/
-|   |   |   |-- tools/        MCP tool implementations
-|   |   |   |-- resources/    MCP resource providers
-|   |   |   |-- prompts/      Pre-built prompt templates
-|   |   |   |-- auth/         API key validation, OAuth 2.1
+|   |   |   |-- tools/        10 tool modules (project, board, sprint, task, comment, member, report, import, template, utility)
+|   |   |   |-- resources/    7 MCP resource providers
+|   |   |   |-- prompts/      4 prompt templates (sprint planning, standup, retro, task breakdown)
+|   |   |   |-- middleware/    API client, rate limiter
 |   |   |   +-- server.ts     Entry point
 |   |   |-- Dockerfile
 |   |   +-- package.json
 |   |
 |   +-- worker/           Background job processor
 |       |-- src/
-|       |   |-- jobs/         Job handlers (email, notifications, exports)
+|       |   |-- jobs/         Job handlers (email, notification, export, sprint-close)
+|       |   |-- utils/
 |       |   +-- worker.ts     Entry point
 |       |-- Dockerfile
 |       +-- package.json
@@ -115,7 +124,8 @@ BigBlueBam/
 |   +-- helm/             Kubernetes Helm chart
 |       +-- bigbluebam/
 |
-|-- docker-compose.yml        Production stack
+|-- scripts/                  Utility scripts (seed-frndo.js)
+|-- docker-compose.yml        Production stack (7 services + 1 migration one-shot)
 |-- docker-compose.dev.yml    Development overrides
 |-- turbo.json                Turborepo pipeline config
 |-- pnpm-workspace.yaml       Workspace definitions

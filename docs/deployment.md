@@ -57,6 +57,7 @@ docker compose run --rm migrate
 docker compose exec api node dist/cli.js create-admin \
   --email admin@yourcompany.com \
   --password your-secure-password \
+  --name "Admin" \
   --org "Your Company"
 
 # 5. Access at http://localhost (or your server IP)
