@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.log
+.env
+.env.local
+.env.*.local
+!.env.example
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+.vite/
+e2e-*.png
+test-*.png
+.claude/
