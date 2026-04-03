@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Bold,
   Italic,
@@ -22,6 +22,8 @@ interface RichTextEditorProps {
   className?: string;
   /** Show a reduced toolbar (for compact use like comments) */
   compact?: boolean;
+  /** Default to preview mode — overrides the auto-detect */
+  defaultPreview?: boolean;
 }
 
 type FormatAction = 'bold' | 'italic' | 'code' | 'link' | 'heading' | 'list' | 'image';
@@ -34,8 +36,18 @@ export function RichTextEditor({
   onImageUpload,
   className,
   compact = false,
+  defaultPreview,
 }: RichTextEditorProps) {
-  const [preview, setPreview] = useState(() => !!value?.trim());
+  const [preview, setPreview] = useState(() => defaultPreview ?? !!value?.trim());
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // When value loads asynchronously (e.g., from API), switch to preview if it has content
+  useEffect(() => {
+    if (!hasInitialized && value?.trim()) {
+      setPreview(true);
+      setHasInitialized(true);
+    }
+  }, [value, hasInitialized]);
   const [uploading, setUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);

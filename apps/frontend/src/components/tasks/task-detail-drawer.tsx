@@ -115,6 +115,7 @@ export function TaskDetailDrawer({
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'activity' | 'helpdesk'>('details');
   const [copiedId, setCopiedId] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
 
   const descriptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -206,6 +207,7 @@ export function TaskDetailDrawer({
       setTitleValue(task.title);
       setDescription(task.description ?? '');
       setActiveTab('details');
+      setIsEditingDescription(false);
     }
     onOpenChange(isOpen);
   };
@@ -461,19 +463,53 @@ export function TaskDetailDrawer({
                         <div className="space-y-5">
                           {/* Description */}
                           <div>
-                            <label className="text-sm font-medium text-zinc-500 mb-1.5 block">Description</label>
-                            <RichTextEditor
-                              value={description}
-                              onChange={handleDescriptionChange}
-                              placeholder="Add a description..."
-                              minRows={5}
-                              onImageUpload={async (file) => {
-                                const formData = new FormData();
-                                formData.append('file', file);
-                                const res = await api.upload<{ url: string }>('/upload', formData);
-                                return res.url ?? (res as unknown as { data: { url: string } }).data?.url ?? '';
-                              }}
-                            />
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-sm font-medium text-zinc-500">Description</label>
+                              {!isEditingDescription && (
+                                <button
+                                  onClick={() => setIsEditingDescription(true)}
+                                  className="text-xs text-primary-600 hover:text-primary-700"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                            </div>
+                            {isEditingDescription ? (
+                              <div className="space-y-2">
+                                <RichTextEditor
+                                  value={description}
+                                  onChange={handleDescriptionChange}
+                                  placeholder="Add a description..."
+                                  minRows={5}
+                                  defaultPreview={false}
+                                  onImageUpload={async (file) => {
+                                    const formData = new FormData();
+                                    formData.append('file', file);
+                                    const res = await api.upload<{ url: string }>('/upload', formData);
+                                    return res.url ?? (res as unknown as { data: { url: string } }).data?.url ?? '';
+                                  }}
+                                />
+                                <button
+                                  onClick={() => setIsEditingDescription(false)}
+                                  className="text-xs text-zinc-500 hover:text-zinc-700"
+                                >
+                                  Done editing
+                                </button>
+                              </div>
+                            ) : description?.trim() ? (
+                              <div
+                                className="rich-text-content text-sm text-zinc-800 dark:text-zinc-200 cursor-pointer rounded-lg border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 p-2 -m-2 transition-colors"
+                                onClick={() => setIsEditingDescription(true)}
+                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(description)) }}
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setIsEditingDescription(true)}
+                                className="text-sm text-zinc-400 hover:text-zinc-600 py-2"
+                              >
+                                Click to add a description...
+                              </button>
+                            )}
                           </div>
 
                           {/* Subtasks */}

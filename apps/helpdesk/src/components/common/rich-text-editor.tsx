@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Bold, Italic, Link, ImagePlus, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 
@@ -22,7 +22,15 @@ export function RichTextEditor({
   className,
 }: RichTextEditorProps) {
   const [preview, setPreview] = useState(() => !!value?.trim());
+  const [hasInitialized, setHasInitialized] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (!hasInitialized && value?.trim()) {
+      setPreview(true);
+      setHasInitialized(true);
+    }
+  }, [value, hasInitialized]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
