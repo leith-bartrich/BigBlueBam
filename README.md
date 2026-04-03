@@ -40,7 +40,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **42 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, and helpdesk tickets.
+This is made possible by **86 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, and team messaging.
 
 ---
 
