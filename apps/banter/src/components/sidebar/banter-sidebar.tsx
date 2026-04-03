@@ -9,11 +9,13 @@ import {
   Settings,
   Compass,
   MessageSquarePlus,
+  X,
 } from 'lucide-react';
-import { useChannels, type Channel } from '@/hooks/use-channels';
+import { useChannels, useCreateChannel, type Channel } from '@/hooks/use-channels';
 import { useAuthStore } from '@/stores/auth.store';
 import { useChannelStore } from '@/stores/channel.store';
 import { cn, generateAvatarInitials, presenceColor } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 interface BanterSidebarProps {
   onNavigate: (path: string) => void;
@@ -27,9 +29,43 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
 
   const [channelsOpen, setChannelsOpen] = useState(true);
   const [dmsOpen, setDmsOpen] = useState(true);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
+  const [orgMembers, setOrgMembers] = useState<{ id: string; display_name: string; avatar_url: string | null }[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const createChannel = useCreateChannel();
 
-  const regularChannels = channels?.filter((c) => c.type === 'channel') ?? [];
+  const regularChannels = channels?.filter((c) => c.type === 'public' || c.type === 'private') ?? [];
   const dmChannels = channels?.filter((c) => c.type === 'dm' || c.type === 'group_dm') ?? [];
+
+  // Load org members for DM list when DMs section opens
+  if (dmsOpen && !membersLoaded) {
+    setMembersLoaded(true);
+    fetch('/b3/api/org/members', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => { if (j.data) setOrgMembers(j.data.filter((m: any) => m.id !== user?.id)); })
+      .catch(() => {});
+  }
+
+  const handleCreateChannel = () => {
+    const name = newChannelName.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    if (!name) return;
+    createChannel.mutate({ name }, {
+      onSuccess: (ch) => {
+        setShowCreateChannel(false);
+        setNewChannelName('');
+        onNavigate(`/channels/${ch.slug || name}`);
+      },
+    });
+  };
+
+  const handleStartDM = async (userId: string) => {
+    try {
+      const res = await api.post<{ data: any }>('/dm', { user_id: userId });
+      const dm = res.data;
+      onNavigate(`/channels/${dm.slug || dm.id}`);
+    } catch {}
+  };
 
   const isActive = (slug: string, type: 'channel' | 'dm') => {
     if (type === 'channel') return activeRoute.page === 'channel' && activeRoute.slug === slug;
@@ -89,17 +125,47 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onNavigate('/browse');
+                setShowCreateChannel(true);
               }}
               className="ml-auto p-0.5 rounded hover:bg-sidebar-hover"
-              title="Add channel"
+              title="Create channel"
             >
               <Plus className="h-3 w-3" />
             </button>
           </button>
 
+          {showCreateChannel && (
+            <div className="mx-2 mb-1 p-2 rounded-md bg-zinc-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-zinc-400">New Channel</span>
+                <button onClick={() => setShowCreateChannel(false)} className="text-zinc-500 hover:text-zinc-300">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={newChannelName}
+                onChange={(e) => setNewChannelName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateChannel(); if (e.key === 'Escape') setShowCreateChannel(false); }}
+                placeholder="channel-name"
+                autoFocus
+                className="w-full px-2 py-1 text-sm bg-zinc-900 border border-zinc-700 rounded text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+              <button
+                onClick={handleCreateChannel}
+                disabled={!newChannelName.trim()}
+                className="w-full px-2 py-1 text-xs font-medium bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              >
+                Create
+              </button>
+            </div>
+          )}
+
           {channelsOpen && (
             <div className="space-y-0.5 mt-0.5">
+              {regularChannels.length === 0 && (
+                <p className="px-2 py-1 text-xs text-zinc-600 italic">No channels yet</p>
+              )}
               {regularChannels.map((channel) => (
                 <ChannelItem
                   key={channel.id}
@@ -138,6 +204,24 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
                   onClick={() => onNavigate(`/dm/${channel.id}`)}
                 />
               ))}
+              {/* Show org members for starting DMs */}
+              {orgMembers.filter(m => !dmChannels.some(d => d.name === m.display_name)).map((member) => (
+                <button
+                  key={member.id}
+                  onClick={() => handleStartDM(member.id)}
+                  className="flex items-center gap-2 w-full px-2 py-1 rounded-md text-sm text-zinc-500 hover:bg-sidebar-hover hover:text-zinc-300 transition-colors"
+                >
+                  <div className="relative flex-shrink-0">
+                    <div className="h-5 w-5 rounded-md bg-zinc-700 flex items-center justify-center text-[10px] font-medium text-zinc-300">
+                      {generateAvatarInitials(member.display_name)}
+                    </div>
+                  </div>
+                  <span className="truncate">{member.display_name}</span>
+                </button>
+              ))}
+              {orgMembers.length === 0 && dmChannels.length === 0 && (
+                <p className="px-2 py-1 text-xs text-zinc-600 italic">No team members found</p>
+              )}
             </div>
           )}
         </div>
