@@ -1,0 +1,48 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    command: ["npx", "tsx", "watch", "src/server.ts"]
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: deps
+    command: ["pnpm", "dev", "--host", "0.0.0.0"]
+    volumes:
+      - ./apps/frontend:/app/apps/frontend
+    ports:
+      - "5173:5173"
+    environment:
+      NODE_ENV: development
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: dev
+    command: ["npx", "tsx", "watch", "src/worker.ts"]
+    volumes:
+      - ./apps/worker/src:/app/apps/worker/src
+    environment:
+      NODE_ENV: development
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: apps/mcp-server/Dockerfile
+      target: dev
+    command: ["npx", "tsx", "watch", "src/server.ts"]
+    volumes:
+      - ./apps/mcp-server/src:/app/apps/mcp-server/src
+    environment:
+      NODE_ENV: development
