@@ -29,9 +29,9 @@ graph TB
     end
 
     subgraph Application Layer
-        FE["Frontend<br/>nginx :80"]
-        API["API Server<br/>Fastify :4000"]
-        MCP["MCP Server<br/>:3001"]
+        FE["Frontend<br/>nginx :80<br/>/b3/ + /helpdesk/"]
+        API["API Server<br/>Fastify :4000<br/>proxied at /b3/api/"]
+        MCP["MCP Server<br/>:3001<br/>proxied at /mcp/"]
         Worker["Worker<br/>BullMQ"]
     end
 
@@ -81,10 +81,12 @@ graph TB
 ```
 BigBlueBam/
   apps/
-    api/            Fastify REST API + WebSocket server (:4000)
-    frontend/       React SPA served by nginx (:80/:443)
-    mcp-server/     MCP protocol server (:3001)
+    api/            Fastify REST API + WebSocket (internal :4000, proxied at /b3/api/)
+    frontend/       Single nginx container serving BBB at /b3/ and Helpdesk at /helpdesk/ (:80)
+    mcp-server/     MCP protocol server (internal :3001, proxied at /mcp/)
     worker/         BullMQ background job processor
+    helpdesk-api/   Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
+    helpdesk/       Helpdesk React SPA (built assets served by frontend nginx)
   packages/
     shared/         Shared Zod schemas, types, constants
   infra/

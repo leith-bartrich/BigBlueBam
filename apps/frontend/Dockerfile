@@ -9,6 +9,7 @@ COPY package.json pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml* ./
 COPY apps/frontend/package.json ./apps/frontend/
 COPY apps/helpdesk/package.json ./apps/helpdesk/
+COPY apps/banter/package.json ./apps/banter/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
@@ -32,15 +33,23 @@ COPY apps/helpdesk/public ./apps/helpdesk/public
 COPY apps/helpdesk/index.html ./apps/helpdesk/
 COPY apps/helpdesk/tsconfig.json apps/helpdesk/tsconfig.node.json apps/helpdesk/vite.config.ts ./apps/helpdesk/
 
+# Banter frontend
+COPY apps/banter/src ./apps/banter/src
+COPY apps/banter/public ./apps/banter/public
+COPY apps/banter/index.html ./apps/banter/
+COPY apps/banter/tsconfig.json apps/banter/tsconfig.node.json apps/banter/vite.config.ts ./apps/banter/
+
 RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/frontend build \
- && pnpm --filter @bigbluebam/helpdesk build
+ && pnpm --filter @bigbluebam/helpdesk build \
+ && pnpm --filter @bigbluebam/banter build
 
 # ── Stage: production ────────────────────────────────────────────
 FROM nginx:alpine AS production
 
 COPY --from=build /app/apps/frontend/dist /usr/share/nginx/html/b3
 COPY --from=build /app/apps/helpdesk/dist /usr/share/nginx/html/helpdesk
+COPY --from=build /app/apps/banter/dist /usr/share/nginx/html/banter
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

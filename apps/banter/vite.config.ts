@@ -1,0 +1,29 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { resolve } from 'node:path';
+
+export default defineConfig({
+  base: '/banter/',
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
+  server: {
+    port: 3002,
+    proxy: {
+      '/banter/api': {
+        target: 'http://localhost:4002',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/banter\/api/, ''),
+      },
+      '/banter/ws': {
+        target: 'ws://localhost:4002',
+        ws: true,
+        rewrite: (path) => path.replace(/^\/banter\/ws/, '/ws'),
+      },
+    },
+  },
+});

@@ -36,6 +36,19 @@ services:
     environment:
       NODE_ENV: development
 
+  banter-api:
+    build:
+      context: .
+      dockerfile: apps/banter-api/Dockerfile
+      target: dev
+    command: ["npx", "tsx", "watch", "src/server.ts"]
+    volumes:
+      - ./apps/banter-api/src:/app/apps/banter-api/src
+    ports:
+      - "4002:4002"
+    environment:
+      NODE_ENV: development
+
   mcp-server:
     build:
       context: .

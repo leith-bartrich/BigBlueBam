@@ -179,6 +179,8 @@ services:
         condition: service_healthy
       helpdesk-api:
         condition: service_healthy
+      banter-api:
+        condition: service_healthy
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
@@ -225,6 +227,58 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks:
+      - backend
+      - frontend
+
+  banter-api:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/banter-api/Dockerfile
+      target: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4002
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/bigbluebam
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:?}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-bigbluebam-uploads}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      LIVEKIT_HOST: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+      BBB_API_INTERNAL_URL: http://api:4000
+      VOICE_AGENT_URL: http://voice-agent:4003
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+      - frontend
+
+  livekit:
+    <<: *common
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+    volumes:
+      - ./infra/livekit/livekit.yaml:/etc/livekit.yaml:ro
     networks:
       - backend
       - frontend

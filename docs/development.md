@@ -41,10 +41,13 @@ pnpm dev
 ```
 
 This starts:
-- API server on `http://localhost:4000` (with hot reload via `tsx watch`)
-- Frontend on `http://localhost:5173` (Vite HMR)
-- MCP server on `http://localhost:3001` (with hot reload)
+- API server on `http://localhost:4000` internally (proxied at `http://localhost/b3/api/` in production, direct access in dev)
+- Frontend on `http://localhost:5173` (Vite HMR in dev) or `http://localhost/b3/` (production nginx)
+- Helpdesk portal at `http://localhost/helpdesk/` (production nginx)
+- MCP server on `http://localhost:3001` internally (proxied at `http://localhost/mcp/`)
 - Worker process (with hot reload)
+
+In production, all services are accessed through a single nginx container on port 80. In dev mode, you can access the Vite dev server directly on port 5173 or the API on port 4000.
 
 ### Alternative: Full Docker Dev Mode
 

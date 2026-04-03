@@ -4,7 +4,7 @@ This guide covers deploying BigBlueBam in production, performing updates without
 
 ## Deployment Overview
 
-BigBlueBam uses Docker named volumes to persist all data. Application containers (api, frontend, worker, mcp-server, helpdesk-api, helpdesk) are **stateless** — they can be rebuilt, replaced, or scaled without affecting data. Data lives exclusively in three volumes:
+BigBlueBam uses Docker named volumes to persist all data. Application containers (api, frontend, worker, mcp-server, helpdesk-api) are **stateless** — they can be rebuilt, replaced, or scaled without affecting data. Both the BigBlueBam SPA and Helpdesk portal SPA are served from a single nginx container on port 80. Data lives exclusively in three volumes:
 
 | Volume | Service | Contains |
 |--------|---------|----------|
@@ -61,7 +61,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "Your Organization"
 
 # 6. Configure helpdesk (optional)
-# Log in at http://localhost, go to Settings > Helpdesk
+# Log in at http://localhost/b3/, go to Settings > Helpdesk
 # Set default project and phase for new tickets
 ```
 
@@ -88,7 +88,6 @@ docker compose up -d --force-recreate --no-deps worker
 docker compose up -d --force-recreate --no-deps mcp-server
 docker compose up -d --force-recreate --no-deps helpdesk-api
 docker compose up -d --force-recreate --no-deps frontend
-docker compose up -d --force-recreate --no-deps helpdesk
 
 # 4. Verify all services are healthy
 docker compose ps
@@ -251,15 +250,15 @@ docker compose up -d --force-recreate --no-deps api
 # All services
 docker compose ps
 
-# API health
-curl http://localhost:4000/health
-curl http://localhost:4000/health/ready
+# API health (via nginx)
+curl http://localhost/b3/api/health
+curl http://localhost/b3/api/health/ready
 
-# MCP server health
-curl http://localhost:3001/health
+# MCP server health (via nginx)
+curl http://localhost/mcp/health
 
-# Helpdesk API (internal, check via Docker)
-docker compose exec helpdesk-api wget -qO- http://localhost:4001/health
+# Helpdesk API (via nginx)
+curl http://localhost/helpdesk/api/health
 ```
 
 ### Access the Database Directly
@@ -344,12 +343,12 @@ WebSocket connections work across instances because events are broadcast via Red
 Nginx caches DNS for upstream containers. After rebuilding, restart the nginx containers:
 
 ```bash
-docker compose restart frontend helpdesk
+docker compose restart frontend
 ```
 
 ### "Session Expired" on Login
 
-- Check that the API is running: `curl http://localhost:4000/health`
+- Check that the API is running: `curl http://localhost/b3/api/health`
 - If the database was recreated, previous accounts no longer exist — register a new account
 - Clear browser cookies and try again
 
@@ -357,7 +356,7 @@ docker compose restart frontend helpdesk
 
 - Ensure MinIO is running: `docker compose ps minio`
 - Check the API can reach MinIO: `docker compose logs api | grep -i minio`
-- Verify the nginx config doesn't cache `/api/files/` as static assets
+- Verify the nginx config correctly proxies `/files/` to MinIO
 
 ### Helpdesk Settings Don't Save
 
@@ -376,10 +375,9 @@ docker compose restart frontend helpdesk
 | `MINIO_ROOT_USER` | minioadmin | Yes | MinIO access key |
 | `MINIO_ROOT_PASSWORD` | — | Yes | MinIO secret key |
 | `SESSION_SECRET` | — | Yes | 32+ char secret for session signing |
-| `API_PORT` | 4000 | No | API server port |
-| `HTTP_PORT` | 80 | No | Frontend port |
-| `HTTP_PORT` | 80 | No | Single port serving BBB + Helpdesk |
-| `MCP_PORT` | 3001 | No | MCP server port |
+| `API_PORT` | 4000 | No | API server internal port |
+| `HTTP_PORT` | 80 | No | Single nginx port serving BBB + Helpdesk + MCP |
+| `MCP_PORT` | 3001 | No | MCP server internal port |
 | `LOG_LEVEL` | info | No | Log verbosity (debug, info, warn, error) |
 | `WORKER_CONCURRENCY` | 5 | No | Background job worker threads |
 | `CORS_ORIGIN` | http://localhost | No | Allowed CORS origin |

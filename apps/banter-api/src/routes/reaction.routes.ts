@@ -1,0 +1,165 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { eq, and, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import {
+  banterMessages,
+  banterMessageReactions,
+  users,
+} from '../db/schema/index.js';
+import { requireAuth } from '../plugins/auth.js';
+import { broadcastToChannel } from '../services/realtime.js';
+
+const toggleReactionSchema = z.object({
+  emoji: z.string().min(1).max(50),
+});
+
+export default async function reactionRoutes(fastify: FastifyInstance) {
+  // POST /v1/messages/:id/reactions — toggle reaction
+  fastify.post(
+    '/v1/messages/:id/reactions',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+      const body = toggleReactionSchema.parse(request.body);
+
+      // Verify message exists
+      const [message] = await db
+        .select()
+        .from(banterMessages)
+        .where(and(eq(banterMessages.id, id), eq(banterMessages.is_deleted, false)))
+        .limit(1);
+
+      if (!message) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Message not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Check if reaction already exists (toggle)
+      const [existing] = await db
+        .select()
+        .from(banterMessageReactions)
+        .where(
+          and(
+            eq(banterMessageReactions.message_id, id),
+            eq(banterMessageReactions.user_id, user.id),
+            eq(banterMessageReactions.emoji, body.emoji),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        // Remove reaction
+        await db
+          .delete(banterMessageReactions)
+          .where(eq(banterMessageReactions.id, existing.id));
+
+        // Update reaction_counts JSONB
+        await db
+          .update(banterMessages)
+          .set({
+            reaction_counts: sql`
+              CASE
+                WHEN (reaction_counts->${body.emoji})::int <= 1
+                THEN reaction_counts - ${body.emoji}
+                ELSE jsonb_set(reaction_counts, ARRAY[${body.emoji}], to_jsonb(((reaction_counts->${body.emoji})::int - 1)))
+              END
+            `,
+          })
+          .where(eq(banterMessages.id, id));
+
+        broadcastToChannel(message.channel_id, {
+          type: 'reaction.removed',
+          data: {
+            message_id: id,
+            user_id: user.id,
+            emoji: body.emoji,
+          },
+          timestamp: new Date().toISOString(),
+        });
+
+        return reply.send({ data: { action: 'removed', emoji: body.emoji } });
+      } else {
+        // Add reaction
+        await db.insert(banterMessageReactions).values({
+          message_id: id,
+          user_id: user.id,
+          emoji: body.emoji,
+        });
+
+        // Update reaction_counts JSONB
+        await db
+          .update(banterMessages)
+          .set({
+            reaction_counts: sql`
+              jsonb_set(
+                reaction_counts,
+                ARRAY[${body.emoji}],
+                to_jsonb(COALESCE((reaction_counts->${body.emoji})::int, 0) + 1)
+              )
+            `,
+          })
+          .where(eq(banterMessages.id, id));
+
+        broadcastToChannel(message.channel_id, {
+          type: 'reaction.added',
+          data: {
+            message_id: id,
+            user_id: user.id,
+            display_name: user.display_name,
+            emoji: body.emoji,
+          },
+          timestamp: new Date().toISOString(),
+        });
+
+        return reply.send({ data: { action: 'added', emoji: body.emoji } });
+      }
+    },
+  );
+
+  // GET /v1/messages/:id/reactions — list reactions with users
+  fastify.get(
+    '/v1/messages/:id/reactions',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      const reactions = await db
+        .select({
+          id: banterMessageReactions.id,
+          emoji: banterMessageReactions.emoji,
+          user_id: users.id,
+          display_name: users.display_name,
+          avatar_url: users.avatar_url,
+          created_at: banterMessageReactions.created_at,
+        })
+        .from(banterMessageReactions)
+        .innerJoin(users, eq(banterMessageReactions.user_id, users.id))
+        .where(eq(banterMessageReactions.message_id, id))
+        .orderBy(banterMessageReactions.created_at);
+
+      // Group by emoji
+      const grouped: Record<string, { emoji: string; count: number; users: Array<{ id: string; display_name: string; avatar_url: string | null }> }> = {};
+      for (const r of reactions) {
+        if (!grouped[r.emoji]) {
+          grouped[r.emoji] = { emoji: r.emoji, count: 0, users: [] };
+        }
+        grouped[r.emoji].count++;
+        grouped[r.emoji].users.push({
+          id: r.user_id,
+          display_name: r.display_name,
+          avatar_url: r.avatar_url,
+        });
+      }
+
+      return reply.send({ data: Object.values(grouped) });
+    },
+  );
+}
