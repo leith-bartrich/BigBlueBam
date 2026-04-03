@@ -5,11 +5,12 @@ export interface Channel {
   id: string;
   slug: string;
   name: string;
-  type: 'channel' | 'dm' | 'group_dm';
+  type: 'public' | 'private' | 'dm' | 'group_dm';
   topic: string | null;
   description: string | null;
   is_private: boolean;
   is_archived: boolean;
+  is_default: boolean;
   member_count: number;
   created_at: string;
   created_by: string;
@@ -94,6 +95,31 @@ export function useLeaveChannel() {
     mutationFn: (channelId: string) => api.post(`/channels/${channelId}/leave`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
+    },
+  });
+}
+
+/** Update a channel's settings */
+export function useUpdateChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ channelId, ...data }: { channelId: string; name?: string; topic?: string; description?: string; allow_bots?: boolean; allow_huddles?: boolean }) =>
+      api.patch<{ data: Channel }>(`/channels/${channelId}`, data).then((r) => r.data),
+    onSuccess: (channel) => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      queryClient.invalidateQueries({ queryKey: ['channels', channel.slug] });
+    },
+  });
+}
+
+/** Update a channel member's role */
+export function useUpdateMemberRole() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ channelId, userId, role }: { channelId: string; userId: string; role: 'admin' | 'member' }) =>
+      api.patch(`/channels/${channelId}/members/${userId}`, { role }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['channels', vars.channelId, 'members'] });
     },
   });
 }

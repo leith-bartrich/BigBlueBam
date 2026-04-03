@@ -10,6 +10,7 @@ import {
 } from '../db/schema/index.js';
 import { requireAuth } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
+import { enqueueNotification, extractMentions } from '../services/notification-queue.js';
 
 const createMessageSchema = z.object({
   content: z.string().min(1).max(40000),
@@ -33,8 +34,12 @@ export default async function messageRoutes(fastify: FastifyInstance) {
       const query = request.query as {
         before?: string;
         after?: string;
+        cursor?: string;
         limit?: string;
       };
+
+      // `cursor` is an alias for `before` (used by frontend's infinite query)
+      const beforeCursor = query.before || query.cursor;
 
       const limit = Math.min(parseInt(query.limit || '50', 10), 100);
 
@@ -62,11 +67,11 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         isNull(banterMessages.thread_parent_id),
       ];
 
-      if (query.before) {
+      if (beforeCursor) {
         conditions.push(
           lt(
             banterMessages.created_at,
-            sql`(SELECT created_at FROM banter_messages WHERE id = ${query.before})`,
+            sql`(SELECT created_at FROM banter_messages WHERE id = ${beforeCursor})`,
           ),
         );
       }
@@ -104,15 +109,27 @@ export default async function messageRoutes(fastify: FastifyInstance) {
 
       const data = messages.map((row) => ({
         ...row.message,
-        author: row.author,
+        author_id: row.message.author_id,
+        author_display_name: row.author.display_name,
+        author_avatar_url: row.author.avatar_url,
+        is_bot: row.message.is_bot ?? false,
+        is_pinned: row.message.is_pinned ?? false,
+        is_edited: row.message.is_edited ?? false,
+        thread_reply_count: row.message.reply_count ?? 0,
+        thread_latest_reply_at: row.message.last_reply_at ?? null,
+        reactions: [],
+        attachments: [],
       }));
+
+      // Cursor for pagination: use the last message's ID
+      const nextCursor = messages.length === limit && data.length > 0
+        ? data[data.length - 1]!.id
+        : null;
 
       return reply.send({
         data,
-        meta: {
-          has_more: messages.length === limit,
-          count: messages.length,
-        },
+        next_cursor: nextCursor,
+        has_more: messages.length === limit,
       });
     },
   );
@@ -149,8 +166,15 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Sanitize content: strip dangerous HTML (script tags, event handlers, javascript: URLs)
+      let sanitizedContent = body.content;
+      sanitizedContent = sanitizedContent.replace(/<script[\s\S]*?<\/script>/gi, '');
+      sanitizedContent = sanitizedContent.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+      sanitizedContent = sanitizedContent.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
+      sanitizedContent = sanitizedContent.replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src="#"');
+
       // Strip HTML tags for plain text
-      const contentPlain = body.content.replace(/<[^>]*>/g, '').slice(0, 500);
+      const contentPlain = sanitizedContent.replace(/<[^>]*>/g, '').slice(0, 500);
 
       const [message] = await db
         .insert(banterMessages)
@@ -158,7 +182,7 @@ export default async function messageRoutes(fastify: FastifyInstance) {
           channel_id: id,
           author_id: user.id,
           thread_parent_id: body.thread_parent_id ?? null,
-          content: body.content,
+          content: sanitizedContent,
           content_plain: contentPlain,
           content_format: body.content_format,
           metadata: body.metadata ?? {},
@@ -206,6 +230,92 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         },
         timestamp: new Date().toISOString(),
       });
+
+      // ── Dispatch notifications (async, non-blocking) ─────────────
+      (async () => {
+        try {
+          // Get channel info for notification context
+          const [ch] = await db
+            .select({ name: banterChannels.name, type: banterChannels.type, org_id: banterChannels.org_id })
+            .from(banterChannels)
+            .where(eq(banterChannels.id, id))
+            .limit(1);
+          if (!ch) return;
+
+          // DM notifications
+          if (ch.type === 'dm' || ch.type === 'group_dm') {
+            const members = await db
+              .select({ user_id: banterChannelMemberships.user_id })
+              .from(banterChannelMemberships)
+              .where(eq(banterChannelMemberships.channel_id, id));
+            for (const m of members) {
+              if (m.user_id !== user.id) {
+                await enqueueNotification({
+                  type: 'banter-dm',
+                  recipient_user_id: m.user_id,
+                  channel_id: id,
+                  message_id: message.id,
+                  author_display_name: user.display_name,
+                  content_preview: contentPlain,
+                  org_id: ch.org_id,
+                });
+              }
+            }
+          }
+
+          // @mention notifications
+          const mentionedNames = extractMentions(body.content);
+          if (mentionedNames.length > 0) {
+            const mentionedUsers = await db
+              .select({ id: users.id, display_name: users.display_name })
+              .from(users)
+              .where(
+                and(
+                  eq(users.org_id, ch.org_id),
+                  sql`lower(${users.display_name}) = ANY(${mentionedNames.map(n => n.toLowerCase())})`,
+                ),
+              );
+            for (const mu of mentionedUsers) {
+              if (mu.id !== user.id) {
+                await enqueueNotification({
+                  type: 'banter-mention',
+                  mentioned_user_id: mu.id,
+                  channel_id: id,
+                  channel_name: ch.name,
+                  message_id: message.id,
+                  author_display_name: user.display_name,
+                  content_preview: contentPlain,
+                  org_id: ch.org_id,
+                });
+              }
+            }
+          }
+
+          // Thread reply notifications
+          if (body.thread_parent_id) {
+            const [parentMsg] = await db
+              .select({ author_id: banterMessages.author_id })
+              .from(banterMessages)
+              .where(eq(banterMessages.id, body.thread_parent_id))
+              .limit(1);
+            if (parentMsg && parentMsg.author_id !== user.id) {
+              await enqueueNotification({
+                type: 'banter-thread-reply',
+                thread_author_id: parentMsg.author_id,
+                channel_id: id,
+                channel_name: ch.name,
+                message_id: message.id,
+                thread_parent_id: body.thread_parent_id,
+                author_display_name: user.display_name,
+                content_preview: contentPlain,
+                org_id: ch.org_id,
+              });
+            }
+          }
+        } catch {
+          // Non-critical: don't let notification failures affect message delivery
+        }
+      })();
 
       return reply.status(201).send({ data: message });
     },

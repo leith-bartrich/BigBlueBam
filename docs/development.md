@@ -43,9 +43,12 @@ pnpm dev
 This starts:
 - API server on `http://localhost:4000` internally (proxied at `http://localhost/b3/api/` in production, direct access in dev)
 - Frontend on `http://localhost:5173` (Vite HMR in dev) or `http://localhost/b3/` (production nginx)
+- Banter API on `http://localhost:4002` internally (proxied at `http://localhost/banter/api/`)
+- Banter SPA at `http://localhost/banter/` (production nginx) — **Alpha software**
 - Helpdesk portal at `http://localhost/helpdesk/` (production nginx)
-- MCP server on `http://localhost:3001` internally (proxied at `http://localhost/mcp/`)
-- Worker process (with hot reload)
+- MCP server on `http://localhost:3001` internally (proxied at `http://localhost/mcp/`, 86 tools)
+- Worker process (with hot reload, includes Banter notification and retention jobs)
+- LiveKit SFU on `http://localhost:7880` (voice/video, requires configuration in Banter admin)
 
 In production, all services are accessed through a single nginx container on port 80. In dev mode, you can access the Vite dev server directly on port 5173 or the API on port 4000.
 

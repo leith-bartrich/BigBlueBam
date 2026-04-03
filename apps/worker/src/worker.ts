@@ -8,6 +8,8 @@ import { processEmailJob, type EmailJobData } from './jobs/email.job.js';
 import { processNotificationJob, type NotificationJobData } from './jobs/notification.job.js';
 import { processSprintCloseJob, type SprintCloseJobData } from './jobs/sprint-close.job.js';
 import { processExportJob, type ExportJobData } from './jobs/export.job.js';
+import { processBanterNotificationJob, type BanterNotificationJobData } from './jobs/banter-notification.job.js';
+import { processBanterRetentionJob, type BanterRetentionJobData } from './jobs/banter-retention.job.js';
 
 const env = loadEnv();
 
@@ -102,6 +104,40 @@ exportWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'export', err }, 'Job failed');
 });
 
+// Banter notification worker
+const banterNotificationWorker = new Worker<BanterNotificationJobData>(
+  'banter-notifications',
+  async (job: Job<BanterNotificationJobData>) => {
+    await processBanterNotificationJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+
+banterNotificationWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'banter-notifications' }, 'Job completed');
+});
+
+banterNotificationWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'banter-notifications', err }, 'Job failed');
+});
+
+// Banter data retention worker
+const banterRetentionWorker = new Worker<BanterRetentionJobData>(
+  'banter-retention',
+  async (job: Job<BanterRetentionJobData>) => {
+    await processBanterRetentionJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+
+banterRetentionWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'banter-retention' }, 'Job completed');
+});
+
+banterRetentionWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'banter-retention', err }, 'Job failed');
+});
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -123,10 +159,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'analytics'] },
   'All workers started',
 );
 

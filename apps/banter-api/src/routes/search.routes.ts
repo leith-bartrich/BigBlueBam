@@ -1,12 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, and, sql, ilike } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   banterMessages,
   banterChannels,
   banterChannelMemberships,
-  users,
 } from '../db/schema/index.js';
 import { requireAuth } from '../plugins/auth.js';
 
@@ -20,6 +19,13 @@ const searchMessagesSchema = z.object({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const searchTranscriptsSchema = z.object({
+  q: z.string().min(1).max(500),
+  channel_id: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -173,6 +179,98 @@ export default async function searchRoutes(fastify: FastifyInstance) {
         .offset(params.offset);
 
       return reply.send({ data: channels });
+    },
+  );
+
+  // GET /v1/search/transcripts — full-text search on call transcript segments
+  fastify.get(
+    '/v1/search/transcripts',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const user = request.user!;
+      const params = searchTranscriptsSchema.parse(request.query);
+
+      // Build WHERE conditions
+      const conditions: ReturnType<typeof sql>[] = [];
+
+      // Only search transcripts from calls in channels the user is a member of, within their org
+      conditions.push(
+        sql`t.call_id IN (
+          SELECT c.id FROM banter_calls c
+          INNER JOIN banter_channels ch ON ch.id = c.channel_id
+          INNER JOIN banter_channel_memberships cm ON cm.channel_id = ch.id
+          WHERE cm.user_id = ${user.id} AND ch.org_id = ${user.org_id}
+        )`,
+      );
+
+      // Full-text search on content
+      conditions.push(
+        sql`to_tsvector('english', t.content) @@ plainto_tsquery('english', ${params.q})`,
+      );
+
+      // Optional channel filter
+      if (params.channel_id) {
+        conditions.push(
+          sql`t.call_id IN (
+            SELECT id FROM banter_calls WHERE channel_id = ${params.channel_id}
+          )`,
+        );
+      }
+
+      const whereClause = sql.join(conditions, sql` AND `);
+
+      const results = await db.execute(sql`
+        SELECT
+          t.id,
+          t.call_id,
+          t.speaker_id,
+          t.content,
+          t.started_at,
+          t.ended_at,
+          t.confidence,
+          t.is_final,
+          ts_headline(
+            'english',
+            t.content,
+            plainto_tsquery('english', ${params.q}),
+            'StartSel=<mark>, StopSel=</mark>, MaxWords=50, MinWords=20'
+          ) AS snippet,
+          c.channel_id,
+          c.type AS call_type,
+          c.title AS call_title,
+          c.started_at AS call_started_at,
+          u.display_name AS speaker_name,
+          u.avatar_url AS speaker_avatar_url,
+          ts_rank(
+            to_tsvector('english', t.content),
+            plainto_tsquery('english', ${params.q})
+          ) AS rank
+        FROM banter_call_transcripts t
+        INNER JOIN banter_calls c ON c.id = t.call_id
+        INNER JOIN users u ON u.id = t.speaker_id
+        WHERE ${whereClause}
+        ORDER BY rank DESC, t.started_at DESC
+        LIMIT ${params.limit}
+        OFFSET ${params.offset}
+      `);
+
+      // Get total count
+      const countResult = await db.execute(sql`
+        SELECT count(*)::int AS total
+        FROM banter_call_transcripts t
+        WHERE ${whereClause}
+      `);
+
+      const total = (countResult[0] as any)?.total ?? 0;
+
+      return reply.send({
+        data: results,
+        pagination: {
+          total,
+          limit: params.limit,
+          offset: params.offset,
+        },
+      });
     },
   );
 }

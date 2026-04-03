@@ -44,6 +44,12 @@ export function markdownToHtml(md: string): string {
   // @mentions
   html = html.replace(/@(\w+)/g, '<span class="mention-highlight">@$1</span>');
 
+  // BBB task references: BBB-123 → clickable link to task
+  html = html.replace(
+    /\bBBB-(\d+)\b/g,
+    '<a href="/b3/tasks/$1" class="rich-text-link task-reference" title="View task BBB-$1">BBB-$1</a>',
+  );
+
   // Process line-by-line for headings and lists
   const lines = html.split('\n');
   const processed: string[] = [];
@@ -56,7 +62,7 @@ export function markdownToHtml(md: string): string {
         processed.push('</ul>');
         inList = false;
       }
-      const level = line.match(/^(#+)/)?.[1].length ?? 2;
+      const level = line.match(/^(#+)/)?.[1]?.length ?? 2;
       const text = line.replace(/^#+\s*/, '');
       processed.push(`<h${level} class="rich-text-heading">${text}</h${level}>`);
       continue;

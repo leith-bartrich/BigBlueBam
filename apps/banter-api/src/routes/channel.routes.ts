@@ -269,7 +269,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // GET /v1/channels/:id — channel detail
+  // GET /v1/channels/:id — channel detail (accepts UUID id or slug)
   fastify.get(
     '/v1/channels/:id',
     { preHandler: [requireAuth] },
@@ -277,10 +277,16 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const { id } = request.params as { id: string };
       const user = request.user!;
 
+      // Support lookup by UUID or slug
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const condition = isUuid
+        ? and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id))
+        : and(eq(banterChannels.slug, id), eq(banterChannels.org_id, user.org_id));
+
       const [channel] = await db
         .select()
         .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
+        .where(condition)
         .limit(1);
 
       if (!channel) {
@@ -292,6 +298,32 @@ export default async function channelRoutes(fastify: FastifyInstance) {
             request_id: request.id,
           },
         });
+      }
+
+      // Private channel isolation: verify the requesting user is a member.
+      // Return 404 (not 403) to avoid leaking that the channel exists.
+      if (channel.type === 'private') {
+        const [membership] = await db
+          .select({ id: banterChannelMemberships.id })
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, channel.id),
+              eq(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Channel not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       return reply.send({ data: channel });
@@ -732,6 +764,110 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       }
 
       return reply.send({ data: { success: true } });
+    },
+  );
+
+  // PATCH /v1/channels/:id/members/:userId — update member role
+  fastify.patch(
+    '/v1/channels/:id/members/:userId',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id, userId } = request.params as { id: string; userId: string };
+      const user = request.user!;
+      const body = z.object({ role: z.enum(['admin', 'member']) }).parse(request.body);
+
+      // Verify channel exists and belongs to org
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
+        .limit(1);
+
+      if (!channel) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Channel not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Only channel owner or org admin can change member roles
+      const [requesterMembership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (
+        !['owner', 'admin'].includes(user.role) &&
+        (!requesterMembership || requesterMembership.role !== 'owner')
+      ) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Only the channel owner or org admin can update member roles',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Verify target membership exists
+      const [targetMembership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, id),
+            eq(banterChannelMemberships.user_id, userId),
+          ),
+        )
+        .limit(1);
+
+      if (!targetMembership) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Member not found in this channel',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Cannot change the owner's role
+      if (targetMembership.role === 'owner') {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'Cannot change the channel owner role',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const [updated] = await db
+        .update(banterChannelMemberships)
+        .set({ role: body.role })
+        .where(eq(banterChannelMemberships.id, targetMembership.id))
+        .returning();
+
+      broadcastToChannel(id, {
+        type: 'member.role_updated',
+        data: { channel_id: id, user_id: userId, role: body.role },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.send({ data: updated });
     },
   );
 

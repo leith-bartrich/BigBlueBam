@@ -24,6 +24,7 @@ import userGroupRoutes from './routes/user-group.routes.js';
 import searchRoutes from './routes/search.routes.js';
 import callRoutes from './routes/call.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
+import internalRoutes from './routes/internal.routes.js';
 import { sql } from 'drizzle-orm';
 
 const fastify = Fastify({
@@ -126,6 +127,41 @@ fastify.get('/health/ready', async (_request, reply) => {
   });
 });
 
+// Per-route rate limit configurations.
+// @fastify/rate-limit supports per-route overrides via routeConfig.
+// We register route-level hooks that add rate limits to specific endpoints.
+fastify.addHook('onRoute', (routeOptions) => {
+  const key = `${routeOptions.method}:${routeOptions.url}`;
+  const perRouteRateLimits: Record<string, { max: number; timeWindow: string }> = {
+    // POST message: 30/min per user
+    'POST:/v1/channels/:id/messages': { max: 30, timeWindow: '1 minute' },
+    // File upload: 10/min per user
+    'POST:/v1/files/upload': { max: 10, timeWindow: '1 minute' },
+    // Search: 20/min per user
+    'GET:/v1/search/messages': { max: 20, timeWindow: '1 minute' },
+    'GET:/v1/search/channels': { max: 20, timeWindow: '1 minute' },
+    // Reaction: 60/min per user
+    'POST:/v1/messages/:id/reactions': { max: 60, timeWindow: '1 minute' },
+    // Channel create: 5/hr per user
+    'POST:/v1/channels': { max: 5, timeWindow: '1 hour' },
+    // Call start: 5/hr per user
+    'POST:/v1/channels/:id/calls': { max: 5, timeWindow: '1 hour' },
+  };
+
+  const limit = perRouteRateLimits[key];
+  if (limit) {
+    routeOptions.config = {
+      ...((routeOptions.config as Record<string, unknown>) ?? {}),
+      rateLimit: {
+        max: limit.max,
+        timeWindow: limit.timeWindow,
+        keyGenerator: (request: any) =>
+          request.user?.id ?? request.ip,
+      },
+    };
+  }
+});
+
 // Routes
 await fastify.register(channelRoutes);
 await fastify.register(dmRoutes);
@@ -141,6 +177,7 @@ await fastify.register(userGroupRoutes);
 await fastify.register(searchRoutes);
 await fastify.register(callRoutes);
 await fastify.register(webhookRoutes);
+await fastify.register(internalRoutes);
 
 // WebSocket handler
 await fastify.register(websocketHandler);

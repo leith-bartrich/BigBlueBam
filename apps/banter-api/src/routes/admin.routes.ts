@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { banterSettings, banterChannelGroups } from '../db/schema/index.js';
 import { requireAuth, requireRole } from '../plugins/auth.js';
 import { broadcastToOrg } from '../services/realtime.js';
+import { logAudit } from '../services/audit.js';
 
 // ── Schemas ──────────────────────────────────────────────────────
 
@@ -125,6 +126,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
+      logAudit({
+        org_id: user.org_id,
+        user_id: user.id,
+        action: 'banter.settings.updated',
+        entity_type: 'banter_settings',
+        entity_id: settings!.id,
+        details: { changed_fields: Object.keys(body) },
+      }).catch(() => {});
+
       return reply.send({ data: settings });
     },
   );
@@ -187,6 +197,164 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // POST /v1/admin/settings/test-stt — test STT provider connectivity
+  fastify.post(
+    '/v1/admin/settings/test-stt',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const user = request.user!;
+
+      const [settings] = await db
+        .select()
+        .from(banterSettings)
+        .where(eq(banterSettings.org_id, user.org_id))
+        .limit(1);
+
+      const provider = settings?.stt_provider ?? null;
+
+      if (!provider || provider === 'none') {
+        return reply.send({
+          data: {
+            success: true,
+            message: 'No STT provider configured. Simulated success.',
+            provider: provider ?? 'none',
+          },
+        });
+      }
+
+      const config = (settings?.stt_provider_config ?? {}) as Record<string, unknown>;
+
+      try {
+        // Attempt a lightweight connectivity check based on the provider
+        if (provider === 'deepgram') {
+          const apiKey = config.api_key as string | undefined;
+          if (!apiKey) throw new Error('Missing api_key in STT provider config');
+          const res = await fetch('https://api.deepgram.com/v1/projects', {
+            headers: { Authorization: `Token ${apiKey}` },
+          });
+          if (!res.ok) throw new Error(`Deepgram responded with status ${res.status}`);
+        } else if (provider === 'whisper' || provider === 'openai') {
+          const apiKey = config.api_key as string | undefined;
+          if (!apiKey) throw new Error('Missing api_key in STT provider config');
+          const res = await fetch('https://api.openai.com/v1/models', {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          if (!res.ok) throw new Error(`OpenAI responded with status ${res.status}`);
+        } else {
+          // Unknown provider — attempt a generic health check if url is configured
+          const url = config.url as string | undefined;
+          if (url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Provider responded with status ${res.status}`);
+          } else {
+            return reply.send({
+              data: {
+                success: true,
+                message: `Provider "${provider}" configured but no specific test available. Config appears valid.`,
+                provider,
+              },
+            });
+          }
+        }
+
+        return reply.send({
+          data: {
+            success: true,
+            message: `STT provider "${provider}" is reachable and credentials are valid.`,
+            provider,
+          },
+        });
+      } catch (err) {
+        return reply.status(400).send({
+          error: {
+            code: 'STT_TEST_FAILED',
+            message: `STT provider test failed: ${(err as Error).message}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    },
+  );
+
+  // POST /v1/admin/settings/test-tts — test TTS provider connectivity
+  fastify.post(
+    '/v1/admin/settings/test-tts',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const user = request.user!;
+
+      const [settings] = await db
+        .select()
+        .from(banterSettings)
+        .where(eq(banterSettings.org_id, user.org_id))
+        .limit(1);
+
+      const provider = settings?.tts_provider ?? null;
+
+      if (!provider || provider === 'none') {
+        return reply.send({
+          data: {
+            success: true,
+            message: 'No TTS provider configured. Simulated success.',
+            provider: provider ?? 'none',
+          },
+        });
+      }
+
+      const config = (settings?.tts_provider_config ?? {}) as Record<string, unknown>;
+
+      try {
+        if (provider === 'elevenlabs') {
+          const apiKey = config.api_key as string | undefined;
+          if (!apiKey) throw new Error('Missing api_key in TTS provider config');
+          const res = await fetch('https://api.elevenlabs.io/v1/voices', {
+            headers: { 'xi-api-key': apiKey },
+          });
+          if (!res.ok) throw new Error(`ElevenLabs responded with status ${res.status}`);
+        } else if (provider === 'openai') {
+          const apiKey = config.api_key as string | undefined;
+          if (!apiKey) throw new Error('Missing api_key in TTS provider config');
+          const res = await fetch('https://api.openai.com/v1/models', {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          if (!res.ok) throw new Error(`OpenAI responded with status ${res.status}`);
+        } else {
+          const url = config.url as string | undefined;
+          if (url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Provider responded with status ${res.status}`);
+          } else {
+            return reply.send({
+              data: {
+                success: true,
+                message: `Provider "${provider}" configured but no specific test available. Config appears valid.`,
+                provider,
+              },
+            });
+          }
+        }
+
+        return reply.send({
+          data: {
+            success: true,
+            message: `TTS provider "${provider}" is reachable and credentials are valid.`,
+            provider,
+          },
+        });
+      } catch (err) {
+        return reply.status(400).send({
+          error: {
+            code: 'TTS_TEST_FAILED',
+            message: `TTS provider test failed: ${(err as Error).message}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    },
+  );
+
   // ── Channel Groups CRUD ────────────────────────────────────────
 
   // GET /v1/admin/channel-groups
@@ -239,6 +407,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         data: { group },
         timestamp: new Date().toISOString(),
       });
+
+      logAudit({
+        org_id: user.org_id,
+        user_id: user.id,
+        action: 'banter.channel_group.created',
+        entity_type: 'banter_channel_group',
+        entity_id: group!.id,
+        details: { name: body.name, position },
+      }).catch(() => {});
 
       return reply.status(201).send({ data: group });
     },
@@ -311,6 +488,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
+      logAudit({
+        org_id: user.org_id,
+        user_id: user.id,
+        action: 'banter.channel_group.updated',
+        entity_type: 'banter_channel_group',
+        entity_id: id,
+        details: { changed_fields: Object.keys(body) },
+      }).catch(() => {});
+
       return reply.send({ data: updated });
     },
   );
@@ -345,6 +531,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
+      logAudit({
+        org_id: user.org_id,
+        user_id: user.id,
+        action: 'banter.channel_group.deleted',
+        entity_type: 'banter_channel_group',
+        entity_id: id,
+        details: { name: deleted[0]?.name },
+      }).catch(() => {});
+
       return reply.send({ data: { success: true } });
     },
   );
@@ -378,6 +573,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         data: { groups },
         timestamp: new Date().toISOString(),
       });
+
+      logAudit({
+        org_id: user.org_id,
+        user_id: user.id,
+        action: 'banter.channel_groups.reordered',
+        entity_type: 'banter_channel_group',
+        details: { order: body.order },
+      }).catch(() => {});
 
       return reply.send({ data: groups });
     },

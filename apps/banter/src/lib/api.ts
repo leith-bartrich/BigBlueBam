@@ -34,9 +34,12 @@ class ApiClient {
       }
     }
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = {};
+
+    // Only set Content-Type for requests that have a body
+    if (body) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     const response = await fetch(url.toString(), {
       method,

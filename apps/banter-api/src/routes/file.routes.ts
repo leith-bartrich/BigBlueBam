@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import * as Minio from 'minio';
@@ -120,6 +121,54 @@ export default async function fileRoutes(fastify: FastifyInstance) {
           filename: file.filename,
           content_type: contentType,
           size_bytes: buffer.length,
+        },
+      });
+    },
+  );
+
+  // POST /v1/files/presigned-upload — generate a presigned PUT URL
+  fastify.post(
+    '/v1/files/presigned-upload',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const body = z
+        .object({
+          filename: z.string().min(1).max(255),
+          content_type: z.string().min(1).max(255),
+        })
+        .parse(request.body);
+
+      if (!isAllowedMimeType(body.content_type)) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: `File type "${body.content_type}" is not allowed`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const uuid = randomUUID();
+      const safeFilename = body.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const key = `banter/uploads/${uuid}-${safeFilename}`;
+
+      const client = getMinioClient();
+
+      // Ensure bucket exists
+      const bucketExists = await client.bucketExists(env.S3_BUCKET);
+      if (!bucketExists) {
+        await client.makeBucket(env.S3_BUCKET, env.S3_REGION);
+      }
+
+      const expiresIn = 3600; // 1 hour
+      const uploadUrl = await client.presignedPutObject(env.S3_BUCKET, key, expiresIn);
+
+      return reply.status(201).send({
+        data: {
+          upload_url: uploadUrl,
+          key,
+          expires_in: expiresIn,
         },
       });
     },

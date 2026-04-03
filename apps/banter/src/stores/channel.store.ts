@@ -24,6 +24,14 @@ interface ChannelState {
   activeThreadMessageId: string | null;
   openThread: (messageId: string) => void;
   closeThread: () => void;
+
+  /** Active call state */
+  activeCallId: string | null;
+  activeCallToken: string | null;
+  activeCallRoomName: string | null;
+  activeCallType: 'voice' | 'video' | 'huddle' | null;
+  setActiveCall: (callId: string, token: string, roomName: string, type: 'voice' | 'video' | 'huddle') => void;
+  clearActiveCall: () => void;
 }
 
 export const useChannelStore = create<ChannelState>((set) => ({
@@ -57,4 +65,13 @@ export const useChannelStore = create<ChannelState>((set) => ({
   activeThreadMessageId: null,
   openThread: (messageId) => set({ activeThreadMessageId: messageId }),
   closeThread: () => set({ activeThreadMessageId: null }),
+
+  activeCallId: null,
+  activeCallToken: null,
+  activeCallRoomName: null,
+  activeCallType: null,
+  setActiveCall: (callId, token, roomName, type) =>
+    set({ activeCallId: callId, activeCallToken: token, activeCallRoomName: roomName, activeCallType: type }),
+  clearActiveCall: () =>
+    set({ activeCallId: null, activeCallToken: null, activeCallRoomName: null, activeCallType: null }),
 }));

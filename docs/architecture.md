@@ -16,13 +16,16 @@ graph TB
 
     subgraph "Docker Compose Stack"
         subgraph "Frontend Network"
-            Nginx["frontend<br/>nginx (single container)<br/>Serves BBB SPA at /b3/<br/>Serves Helpdesk SPA at /helpdesk/<br/>:80 / :443"]
+            Nginx["frontend<br/>nginx (single container)<br/>Serves BBB SPA at /b3/<br/>Serves Banter SPA at /banter/<br/>Serves Helpdesk SPA at /helpdesk/<br/>:80 / :443"]
         end
 
         subgraph "Application Layer"
             API["api<br/>Fastify v5<br/>REST + WebSocket<br/>:4000"]
-            MCP["mcp-server<br/>MCP SDK (38 tools)<br/>SSE + Streamable HTTP<br/>:3001"]
+            BanterAPI["banter-api<br/>Fastify v5<br/>REST + WebSocket<br/>:4002"]
+            MCP["mcp-server<br/>MCP SDK (86 tools)<br/>SSE + Streamable HTTP<br/>:3001"]
             Worker["worker<br/>BullMQ<br/>Background Jobs<br/>(no exposed port)"]
+            LiveKit["livekit<br/>SFU Media Server<br/>:7880"]
+            VoiceAgent["voice-agent<br/>Python/FastAPI<br/>:4003"]
         end
 
         subgraph "Data Layer"
@@ -36,10 +39,19 @@ graph TB
     MobileWeb -->|"HTTPS"| Nginx
     Nginx -->|"/b3/api/ → Reverse Proxy"| API
     Nginx -->|"/b3/ws → WebSocket"| API
+    Nginx -->|"/banter/api/ → Reverse Proxy"| BanterAPI
+    Nginx -->|"/banter/ws → WebSocket"| BanterAPI
     Nginx -->|"/mcp/ → Reverse Proxy"| MCP
     AIClient -->|"SSE / Streamable HTTP"| Nginx
 
     MCP -->|"Internal HTTP"| API
+    MCP -->|"Internal HTTP"| BanterAPI
+    BanterAPI -->|"SQL"| PG
+    BanterAPI -->|"Cache / PubSub"| Redis
+    BanterAPI -->|"Presigned URLs"| MinIO
+    BanterAPI -->|"Enqueue Jobs"| Redis
+    LiveKit -->|"Webhooks"| BanterAPI
+    VoiceAgent -->|"LiveKit SDK"| LiveKit
     API -->|"SQL"| PG
     API -->|"Cache / PubSub / Sessions"| Redis
     API -->|"Presigned URLs"| MinIO
@@ -93,11 +105,45 @@ BigBlueBam/
 |   |   |-- Dockerfile
 |   |   +-- package.json
 |   |
-|   |-- mcp-server/       Model Context Protocol server (38 tools)
+|   |-- banter-api/       Banter team messaging API (~45 source files)
 |   |   |-- src/
-|   |   |   |-- tools/        10 tool modules (project, board, sprint, task, comment, member, report, import, template, utility)
-|   |   |   |-- resources/    7 MCP resource providers
-|   |   |   |-- prompts/      4 prompt templates (sprint planning, standup, retro, task breakdown)
+|   |   |   |-- routes/       15 route files (channel, dm, message, thread, reaction, pin, bookmark, preference, file, admin, user-group, search, call, webhook, internal)
+|   |   |   |-- services/     Realtime, LiveKit token, voice agent client, notification queue, activity feed, audit
+|   |   |   |-- db/
+|   |   |   |   +-- schema/   18 Drizzle table definitions (banter_ prefix)
+|   |   |   |-- plugins/      Auth (shared session), Redis
+|   |   |   |-- ws/           WebSocket handler (typing, presence, room subscription)
+|   |   |   +-- server.ts     Entry point
+|   |   |-- Dockerfile
+|   |   +-- package.json
+|   |
+|   |-- banter/           Banter React SPA (~39 source files)
+|   |   |-- src/
+|   |   |   |-- components/
+|   |   |   |   |-- calls/      CallPanel, IncomingCallOverlay, VideoGrid, AgentTextSidebar, TranscriptView, HuddleBanner
+|   |   |   |   |-- channels/   ChannelSettings
+|   |   |   |   |-- common/     UserProfilePopover
+|   |   |   |   |-- messages/   MessageTimeline, MessageItem, MessageCompose, TypingIndicator
+|   |   |   |   |-- sidebar/    BanterSidebar
+|   |   |   |   +-- threads/    ThreadPanel
+|   |   |   |-- hooks/        useCall, useChannels, useMessages, usePresence, useRealtime, useTyping, useUnread
+|   |   |   |-- stores/       Zustand stores (auth, channel — incl. call state, drafts)
+|   |   |   |-- pages/        ChannelView, ChannelBrowser, Search, Bookmarks, Preferences, Admin
+|   |   |   |-- lib/          API client, markdown renderer, WebSocket manager, utilities
+|   |   |   +-- app.tsx       Root component with client-side routing
+|   |   +-- package.json
+|   |
+|   |-- voice-agent/      AI voice agent (Python/FastAPI)
+|   |   |-- src/
+|   |   |   +-- api.py        Spawn/despawn endpoints, health check
+|   |   |-- Dockerfile
+|   |   +-- requirements.txt
+|   |
+|   |-- mcp-server/       Model Context Protocol server (86 tools)
+|   |   |-- src/
+|   |   |   |-- tools/        12 tool modules (project, board, sprint, task, comment, member, report, import, template, utility, helpdesk, banter)
+|   |   |   |-- resources/    MCP resource providers (BBB + Banter)
+|   |   |   |-- prompts/      8 prompt templates (sprint planning, standup, retro, task breakdown + 4 Banter prompts)
 |   |   |   |-- middleware/    API client, rate limiter, audit logger
 |   |   |   +-- server.ts     Entry point
 |   |   |-- Dockerfile
@@ -105,7 +151,7 @@ BigBlueBam/
 |   |
 |   +-- worker/           Background job processor
 |       |-- src/
-|       |   |-- jobs/         Job handlers (email, notification, export, sprint-close)
+|       |   |-- jobs/         Job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
 |       |   |-- utils/
 |       |   +-- worker.ts     Entry point
 |       |-- Dockerfile

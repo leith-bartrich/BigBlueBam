@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Target, CheckCircle2, TrendingUp, ArrowRight, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { ArrowLeft, Target, CheckCircle2, TrendingUp, ArrowRight, Loader2, MessageSquareShare } from 'lucide-react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
@@ -36,6 +37,10 @@ interface SprintReportPageProps {
 }
 
 export function SprintReportPage({ projectId, sprintId, onNavigate }: SprintReportPageProps) {
+  const [showShareBanter, setShowShareBanter] = useState(false);
+  const [banterChannelId, setBanterChannelId] = useState('');
+  const [banterMessage, setBanterMessage] = useState('');
+
   const { data: projectRes } = useProject(projectId);
   const project = projectRes?.data;
 
@@ -45,6 +50,39 @@ export function SprintReportPage({ projectId, sprintId, onNavigate }: SprintRepo
     enabled: !!sprintId,
   });
   const report = reportRes?.data;
+
+  // Banter channels for "Share to Banter"
+  const { data: banterChannelsRes } = useQuery({
+    queryKey: ['banter-channels'],
+    queryFn: () => api.get<{ data: { id: string; name: string }[] }>('/banter/api/v1/channels'),
+    enabled: showShareBanter,
+  });
+  const banterChannels = banterChannelsRes?.data ?? [];
+
+  // Share sprint to Banter mutation
+  const shareToBanter = useMutation({
+    mutationFn: (channelId: string) => {
+      const sprintName = report?.sprint.name ?? 'Sprint';
+      const velocity = report ? `${report.velocity.completed}/${report.velocity.committed} pts` : '';
+      const tasks = report ? `${report.tasks.completed}/${report.tasks.total} tasks done` : '';
+      const msgPrefix = banterMessage ? `${banterMessage}\n\n` : '';
+      return api.post(`/banter/api/v1/channels/${channelId}/messages`, {
+        content: `${msgPrefix}Shared from BigBlueBam: **Sprint Report -- ${sprintName}**\n\n> ${velocity} | ${tasks}${report?.sprint.goal ? ` | Goal: ${report.sprint.goal}` : ''}\n\n[Open Sprint Report ->](/b3/projects/${projectId}/sprints/${sprintId}/report)`,
+        metadata: {
+          bbb_entity: {
+            type: 'sprint',
+            id: sprintId,
+            name: sprintName,
+          },
+        },
+      });
+    },
+    onSuccess: () => {
+      setShowShareBanter(false);
+      setBanterChannelId('');
+      setBanterMessage('');
+    },
+  });
 
   const completionRate =
     report && report.tasks.total > 0
@@ -93,6 +131,58 @@ export function SprintReportPage({ projectId, sprintId, onNavigate }: SprintRepo
                 <Badge variant={report.sprint.status === 'completed' ? 'success' : 'default'}>
                   {report.sprint.status}
                 </Badge>
+                <div className="relative ml-auto">
+                  <button
+                    onClick={() => setShowShareBanter((v) => !v)}
+                    className="rounded-md p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    title="Share to Banter"
+                  >
+                    <MessageSquareShare className="h-4.5 w-4.5" />
+                  </button>
+                  {showShareBanter && (
+                    <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700 p-4 space-y-3">
+                      <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Share to Banter</h4>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-500 mb-1 block">Channel</label>
+                        <select
+                          value={banterChannelId}
+                          onChange={(e) => setBanterChannelId(e.target.value)}
+                          className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-100"
+                        >
+                          <option value="">Select a channel...</option>
+                          {banterChannels.map((ch) => (
+                            <option key={ch.id} value={ch.id}>#{ch.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-500 mb-1 block">Message (optional)</label>
+                        <textarea
+                          value={banterMessage}
+                          onChange={(e) => setBanterMessage(e.target.value)}
+                          placeholder="Add a note..."
+                          rows={2}
+                          className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm resize-none dark:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-100"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setShowShareBanter(false)}
+                          className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-700 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => banterChannelId && shareToBanter.mutate(banterChannelId)}
+                          disabled={!banterChannelId || shareToBanter.isPending}
+                          className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                        >
+                          {shareToBanter.isPending ? 'Sharing...' : 'Share'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               {report.sprint.goal && (
                 <p className="text-zinc-500 flex items-center gap-1.5">

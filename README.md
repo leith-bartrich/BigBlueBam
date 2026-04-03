@@ -14,6 +14,7 @@
   <a href="#product-tour">Tour</a> &bull;
   <a href="#for-teams">For Teams</a> &bull;
   <a href="#for-ai-agents">For AI Agents</a> &bull;
+  <a href="#banter">Banter</a> &bull;
   <a href="#helpdesk">Helpdesk</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
@@ -21,9 +22,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/tests-466%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-42-blue" alt="MCP Tools" />
-  <img src="https://img.shields.io/badge/Docker%20services-8-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/tests-530%2B%20passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/MCP%20tools-86-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/Docker%20services-12-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -188,7 +189,7 @@ Invite team members, assign roles, manage permissions. Configure integrations wi
 
 ## For AI Agents
 
-BigBlueBam exposes **42 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **86 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, and customer support. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -197,6 +198,7 @@ BigBlueBam exposes **42 MCP (Model Context Protocol) tools** that give AI assist
 - **Triage helpdesk tickets** — when a customer submits a ticket, a task is auto-created; AI agents can then triage by adjusting priority, setting timelines, assigning to the right engineer, rejecting out-of-scope requests, and posting responses to customers
 - **Generate reports** — velocity reports, burndown charts, cumulative flow, workload distribution, overdue task alerts
 - **Collaborate** — post comments, log time, bulk update tasks, suggest branch names
+- **Message the team via Banter** — post messages, read channels, respond in threads, share task updates, manage channels, react to messages, search conversations, and participate in voice calls as spoken participants
 
 ### Example: AI-Powered Helpdesk Triage
 
@@ -231,6 +233,7 @@ BigBlueBam exposes **42 MCP (Model Context Protocol) tools** that give AI assist
 | **Import** | `import_csv`, `import_github_issues`, `suggest_branch_name` | Data import and git integration |
 | **Time** | `log_time` | Time tracking entries |
 | **Helpdesk** | `list_tickets`, `get_ticket`, `reply_to_ticket`, `update_ticket_status` | Ticket management and customer communication |
+| **Banter** | 44 tools including `banter_post_message`, `banter_list_channels`, `banter_create_channel`, `banter_search_messages`, `banter_start_call`, `banter_invite_agent_to_call` | Team messaging, channels, threads, reactions, calls, voice agent |
 | **Utility** | `get_server_info`, `confirm_action` | Server metadata and confirmation flows |
 
 ### MCP Setup
@@ -251,6 +254,86 @@ Add this to your Claude Desktop or Claude Code configuration:
 ```
 
 Generate an API key from **Settings > Integrations** in the BigBlueBam UI.
+
+---
+
+## Banter
+
+> **Alpha Software** — Banter is under active development and in early release. Bug reports and pull requests are welcome.
+
+Banter is a real-time team messaging platform built natively into the BigBlueBam suite. Channels, direct messages, threaded conversations, voice and video calls, and AI agent participation — all deeply integrated with your project board and helpdesk.
+
+<p align="center">
+  <img src="images/19-banter-channels.png" alt="Banter Channel View" width="100%" />
+</p>
+<p align="center"><em>Banter — channel view with sidebar, message compose, and team member list</em></p>
+
+### Why Not Just Use Slack?
+
+Because Banter shares authentication, database, and deep cross-linking with BigBlueBam. When someone mentions `BBB-247` in a channel, it links directly to the task. When an AI agent triages a helpdesk ticket, it can post the update to `#support-triage`. Sprint reports can be shared to channels with one click. No webhooks, no bridges, no sync lag.
+
+### Features
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Channels** | Stable | Public and private channels with topics, descriptions, member management |
+| **Direct Messages** | Stable | 1:1 and group DMs with presence indicators |
+| **Threads** | Stable | Nested conversations on any message |
+| **Rich Text** | Stable | Markdown with bold, italic, code, links, images |
+| **Reactions** | Stable | Emoji reactions with toggle semantics |
+| **Mentions** | Stable | @user mentions with autocomplete and notifications |
+| **Search** | Stable | Full-text search across channels with filters (author, date, attachments) |
+| **File Sharing** | Stable | Upload and share files with inline image previews |
+| **Pins & Bookmarks** | Stable | Pin messages to channels, bookmark for personal reference |
+| **Presence** | Stable | Online, idle, DND status with automatic idle detection |
+| **Notifications** | Stable | Mention, DM, thread reply, and channel invite notifications |
+| **Voice Calls** | Alpha | Voice and video calls via LiveKit SFU |
+| **AI Voice Agent** | Placeholder | AI participation in calls (STT/TTS pipeline, requires provider config) |
+| **BBB Integration** | Stable | Task references, Share to Banter, activity feed bot |
+| **44 MCP Tools** | Stable | Full AI agent access to all messaging features |
+
+### Channel View
+
+<p align="center">
+  <img src="images/19-banter-channels.png" alt="Banter Channel View" width="100%" />
+</p>
+
+The sidebar shows channels, direct messages, and team members. The message compose area supports markdown formatting, file attachments, emoji picker, and @mention autocomplete. Hover over any message for quick reactions, thread replies, pins, and bookmarks.
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/20-banter-search.png" alt="Banter Search" width="100%" /></td>
+    <td width="50%"><img src="images/22-banter-browse.png" alt="Banter Browse Channels" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Search with channel, author, and date filters</em></td>
+    <td align="center"><em>Browse and join public channels</em></td>
+  </tr>
+</table>
+
+### Administration
+
+<p align="center">
+  <img src="images/21-banter-admin.png" alt="Banter Admin Settings" width="100%" />
+</p>
+<p align="center"><em>Admin panel — voice/video configuration, channel settings, AI voice agent providers</em></p>
+
+### Banter MCP Tools
+
+AI agents can interact with Banter through **44 dedicated MCP tools**:
+
+| Category | Tools | What they do |
+|----------|-------|-------------|
+| **Channels** | `banter_list_channels`, `banter_create_channel`, `banter_update_channel`, `banter_archive_channel`, `banter_join_channel`, `banter_leave_channel` | Channel lifecycle management |
+| **Messages** | `banter_post_message`, `banter_edit_message`, `banter_delete_message`, `banter_get_message` | Send and manage messages |
+| **Threads** | `banter_reply_in_thread`, `banter_get_thread` | Threaded conversations |
+| **Reactions** | `banter_add_reaction`, `banter_remove_reaction` | Emoji reactions |
+| **Search** | `banter_search_messages`, `banter_search_channels`, `banter_search_transcripts` | Full-text search |
+| **DMs** | `banter_start_dm`, `banter_start_group_dm`, `banter_list_dms` | Direct messaging |
+| **Calls** | `banter_start_call`, `banter_join_call`, `banter_end_call`, `banter_invite_agent_to_call`, `banter_get_transcript` | Voice/video call management |
+| **Members** | `banter_list_members`, `banter_add_members`, `banter_remove_member`, `banter_update_member_role` | Channel membership |
+| **Admin** | `banter_get_settings`, `banter_update_settings`, `banter_list_user_groups` | Organization-level configuration |
+| **Pins & Bookmarks** | `banter_pin_message`, `banter_unpin_message`, `banter_bookmark_message` | Message organization |
 
 ---
 
@@ -322,7 +405,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "My Organization"
 ```
 
-Open **http://localhost/b3/** to access BigBlueBam, or **http://localhost/helpdesk/** for the helpdesk portal.
+Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, or **http://localhost/helpdesk/** for the helpdesk portal.
 
 <p align="center">
   <img src="images/01-login.png" alt="Login Page" width="60%" />
@@ -345,10 +428,13 @@ All services are accessed through a single nginx container on port 80:
 | `/b3/` | nginx | BigBlueBam React SPA |
 | `/b3/api/` | Fastify `:4000` | BigBlueBam REST API |
 | `/b3/ws` | Fastify `:4000` | WebSocket (real-time updates) |
+| `/banter/` | nginx | Banter team messaging SPA |
+| `/banter/api/` | Fastify `:4002` | Banter REST API |
+| `/banter/ws` | Fastify `:4002` | Banter WebSocket (real-time messaging) |
 | `/helpdesk/` | nginx | Helpdesk portal SPA |
 | `/helpdesk/api/` | Fastify `:4001` | Helpdesk API (auth, tickets, messages) |
 | `/files/` | MinIO `:9000` | Uploaded files (shared) |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (42 tools) |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (86 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -358,6 +444,8 @@ Infrastructure services (internal, not exposed via nginx):
 | Redis | `:6379` | Cache, PubSub, queues |
 | MinIO | `:9000` | S3-compatible file storage |
 | Worker | -- | BullMQ background job processor |
+| LiveKit | `:7880` | Voice/video SFU (WebRTC media server) |
+| Voice Agent | `:4003` | AI voice call participation (Python/FastAPI) |
 
 ### Development Mode
 
@@ -370,7 +458,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Run Tests
 
 ```bash
-pnpm test  # 466+ tests across all packages
+pnpm test  # 530+ tests across all packages
 ```
 
 ---
@@ -380,28 +468,32 @@ pnpm test  # 466+ tests across all packages
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                       Clients (Browser / AI)                         │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │ HTTP :80
-┌────────────────────────▼─────────────────────────────────────────────┐
-│               nginx (single container, port 80)                      │
-│  /b3/          → BigBlueBam SPA (static)                             │
-│  /b3/api/      → Fastify API :4000                                   │
-│  /b3/ws        → WebSocket :4000                                     │
-│  /helpdesk/    → Helpdesk SPA (static)                               │
-│  /helpdesk/api/→ Helpdesk API :4001                                  │
-│  /files/       → MinIO :9000                                         │
-│  /mcp/         → MCP Server :3001                                    │
-└──────────┬────────────────────────┬──────────────────────────────────┘
-           │ REST / WS              │ SSE / HTTP
-┌──────────▼──────────┐  ┌─────────▼────────────┐  ┌─────────────────────┐
-│  Fastify API :4000  │  │  MCP Server :3001    │  │  BullMQ Worker      │
-│  + WebSocket        │  │  42 tools            │  │  email, jobs        │
-└──────────┬──────────┘  └─────────┬────────────┘  └──────────┬──────────┘
-           │                       │                           │
-┌──────────▼───────────────────────▼───────────────────────────▼──────────┐
-│  PostgreSQL 16       │  Redis 7             │  MinIO (S3)              │
-│  25+ tables          │  PubSub + cache      │  File storage            │
-└──────────────────────┴──────────────────────┴──────────────────────────┘
+└────────────────────────┬──────────────────────┬──────────────────────┘
+                         │ HTTP :80              │ WebRTC
+┌────────────────────────▼──────────────────────┐│
+│               nginx (single container, :80)    ││
+│  /b3/          → BigBlueBam SPA (static)       ││
+│  /b3/api/      → Fastify API :4000             ││
+│  /b3/ws        → WebSocket :4000               ││
+│  /banter/      → Banter SPA (static)           ││
+│  /banter/api/  → Banter API :4002              ││
+│  /banter/ws    → Banter WebSocket :4002        ││
+│  /helpdesk/    → Helpdesk SPA (static)         ││
+│  /helpdesk/api/→ Helpdesk API :4001            ││
+│  /files/       → MinIO :9000                   ││
+│  /mcp/         → MCP Server :3001              ││
+└──────┬──────────┬──────────┬───────────────────┘│
+       │          │          │                     │
+┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌───────▼──────┐ ┌──────────┐
+│ BBB API   │ │ Banter   │ │ MCP Server│ │ LiveKit SFU  │ │ Worker   │
+│ :4000     │ │ API :4002│ │ :3001     │ │ :7880 (voice)│ │ BullMQ   │
+│ +WebSocket│ │ +WS      │ │ 86 tools  │ │ +voice-agent │ │ jobs     │
+└─────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘ └────┬─────┘
+      │             │             │                              │
+┌─────▼─────────────▼─────────────▼──────────────────────────────▼─────┐
+│  PostgreSQL 16       │  Redis 7             │  MinIO (S3)            │
+│  40+ tables          │  PubSub + cache      │  File storage          │
+└──────────────────────┴──────────────────────┴────────────────────────┘
 ```
 
 ### Tech Stack
@@ -412,10 +504,11 @@ pnpm test  # 466+ tests across all packages
 | **API** | Node.js 22, Fastify v5, Drizzle ORM, Zod |
 | **Realtime** | WebSocket + Redis PubSub |
 | **MCP** | @modelcontextprotocol/sdk (Streamable HTTP + SSE) |
+| **Voice/Video** | LiveKit SFU, WebRTC, Python voice agent (STT/TTS) |
 | **Database** | PostgreSQL 16, Redis 7, MinIO |
 | **Worker** | BullMQ, Nodemailer |
 | **Build** | Turborepo, pnpm workspaces, tsup, Vite |
-| **Testing** | Vitest (466+ tests) |
+| **Testing** | Vitest (530+ tests) |
 | **Deploy** | Docker Compose, multi-stage Dockerfiles |
 
 ### Monorepo Structure
@@ -424,16 +517,20 @@ pnpm test  # 466+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (42 tools)
-  worker/           → BullMQ background jobs
+  mcp-server/       → MCP protocol server (86 tools)
+  worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
+  banter-api/       → Banter Fastify API + WebSocket (15 route modules, 18 DB tables)
+  banter/           → Banter React SPA (14 components, 7 pages)
+  voice-agent/      → AI voice agent (Python/FastAPI, LiveKit Agents SDK)
 packages/
   shared/           → Zod schemas, TypeScript types, constants
 infra/
-  postgres/         → Database schema (init.sql — 25+ tables)
-  nginx/            → Reverse proxy config (single nginx serves both SPAs)
-docs/               → 7 documentation pages with Mermaid diagrams
+  postgres/         → Database schema (init.sql — 40+ tables)
+  nginx/            → Reverse proxy config (single nginx serves all 3 SPAs)
+  livekit/          → LiveKit SFU configuration
+docs/               → 8 documentation pages with Mermaid diagrams
 scripts/            → Utility and seed scripts
 ```
 
@@ -441,13 +538,13 @@ scripts/            → Utility and seed scripts
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 8 |
-| MCP tools | 42 |
-| Test cases | 466+ |
-| API route modules | 23 |
-| Database tables | 25+ |
-| Frontend components | 33 |
-| Documentation pages | 7 |
+| Docker services | 12 |
+| MCP tools | 86 (42 BBB + 44 Banter) |
+| Test cases | 530+ |
+| API route modules | 38 (23 BBB + 15 Banter) |
+| Database tables | 40+ (25 BBB + 18 Banter) |
+| Frontend components | 47+ (33 BBB + 14 Banter) |
+| Documentation pages | 8 |
 
 ---
 
@@ -464,6 +561,7 @@ scripts/            → Utility and seed scripts
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, scaling, backup |
 | [Development](docs/development.md) | Contributing, testing, code style |
 | [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
+| [Banter Design](Banter_Design_Document.md) | Team messaging & voice/video design |
 
 ---
 

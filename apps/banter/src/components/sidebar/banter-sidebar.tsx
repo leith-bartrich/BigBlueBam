@@ -10,7 +10,12 @@ import {
   Compass,
   MessageSquarePlus,
   X,
+  MoreHorizontal,
+  Pencil,
+  LogOut,
+  Trash2,
 } from 'lucide-react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useChannels, useCreateChannel, type Channel } from '@/hooks/use-channels';
 import { useAuthStore } from '@/stores/auth.store';
 import { useChannelStore } from '@/stores/channel.store';
@@ -63,7 +68,7 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
     try {
       const res = await api.post<{ data: any }>('/dm', { user_id: userId });
       const dm = res.data;
-      onNavigate(`/channels/${dm.slug || dm.id}`);
+      onNavigate(`/dm/${dm.id}`);
     } catch {}
   };
 
@@ -173,6 +178,7 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
                   active={isActive(channel.slug, 'channel')}
                   unread={unreadCounts[channel.id]}
                   onClick={() => onNavigate(`/channels/${channel.slug}`)}
+                  onNavigate={onNavigate}
                 />
               ))}
             </div>
@@ -291,40 +297,165 @@ function ChannelItem({
   active,
   unread,
   onClick,
+  onNavigate,
 }: {
   channel: Channel;
   active: boolean;
   unread?: { messages: number; mentions: number };
   onClick: () => void;
+  onNavigate: (path: string) => void;
 }) {
   const hasUnread = unread && unread.messages > 0;
   const hasMentions = unread && unread.mentions > 0;
+  const [hovered, setHovered] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameTo, setRenameTo] = useState(channel.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleRename = async () => {
+    const trimmed = renameTo.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    if (!trimmed || trimmed === channel.name) {
+      setRenaming(false);
+      return;
+    }
+    try {
+      await api.patch(`/channels/${channel.id}`, { name: trimmed });
+      setRenaming(false);
+    } catch {
+      // stay in edit mode on failure
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/channels/${channel.id}`);
+      onNavigate('/channels/general');
+    } catch {}
+  };
+
+  const handleLeave = async () => {
+    try {
+      await api.post(`/channels/${channel.id}/leave`);
+    } catch {}
+  };
+
+  if (renaming) {
+    return (
+      <div className="flex items-center gap-1 px-2 py-0.5">
+        <Hash className="h-4 w-4 flex-shrink-0 opacity-60 text-zinc-400" />
+        <input
+          autoFocus
+          value={renameTo}
+          onChange={(e) => setRenameTo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleRename();
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+          onBlur={handleRename}
+          className="flex-1 min-w-0 bg-zinc-800 border border-zinc-600 rounded px-1.5 py-0.5 text-sm text-zinc-200 outline-none focus:border-primary-500"
+        />
+      </div>
+    );
+  }
 
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'flex items-center gap-2 w-full px-2 py-1 rounded-md text-sm transition-colors',
-        active
-          ? 'bg-sidebar-active text-white'
-          : hasUnread
-            ? 'text-white hover:bg-sidebar-hover'
-            : 'text-zinc-400 hover:bg-sidebar-hover hover:text-zinc-200',
-      )}
+    <div
+      className="relative group"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setConfirmDelete(false); }}
     >
-      <Hash className="h-4 w-4 flex-shrink-0 opacity-60" />
-      <span className={cn('truncate', hasUnread && !active && 'font-semibold')}>
-        {channel.name}
-      </span>
-      {hasMentions && (
-        <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
-          {unread.mentions}
+      <button
+        onClick={onClick}
+        className={cn(
+          'flex items-center gap-2 w-full px-2 py-1 rounded-md text-sm transition-colors',
+          active
+            ? 'bg-sidebar-active text-white'
+            : hasUnread
+              ? 'text-white hover:bg-sidebar-hover'
+              : 'text-zinc-400 hover:bg-sidebar-hover hover:text-zinc-200',
+        )}
+      >
+        <Hash className="h-4 w-4 flex-shrink-0 opacity-60" />
+        <span className={cn('truncate', hasUnread && !active && 'font-semibold')}>
+          {channel.name}
         </span>
+        {hasMentions && !hovered && (
+          <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
+            {unread.mentions}
+          </span>
+        )}
+        {hasUnread && !hasMentions && !hovered && (
+          <span className="ml-auto h-2 w-2 rounded-full bg-zinc-400" />
+        )}
+      </button>
+
+      {/* Context menu trigger — visible on hover */}
+      {hovered && (
+        <div className="absolute right-1 top-1/2 -translate-y-1/2">
+          <DropdownMenu.Root onOpenChange={(open) => { if (!open) setConfirmDelete(false); }}>
+            <DropdownMenu.Trigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-0.5 rounded hover:bg-sidebar-active/50 text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className="min-w-[160px] rounded-lg border border-zinc-700 bg-zinc-800 shadow-lg p-1 z-50"
+                sideOffset={4}
+                align="start"
+              >
+                <DropdownMenu.Item
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
+                  onClick={() => { setRenameTo(channel.name); setRenaming(true); }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Rename
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
+                  onClick={onClick}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Channel settings
+                </DropdownMenu.Item>
+                {!channel.is_default && (
+                  <>
+                    <DropdownMenu.Separator className="h-px bg-zinc-700 my-1" />
+                    <DropdownMenu.Item
+                      className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
+                      onClick={handleLeave}
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Leave channel
+                    </DropdownMenu.Item>
+                    {!confirmDelete ? (
+                      <DropdownMenu.Item
+                        className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-red-900/30 text-red-400 outline-none"
+                        onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete channel
+                      </DropdownMenu.Item>
+                    ) : (
+                      <DropdownMenu.Item
+                        className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer bg-red-900/30 text-red-300 outline-none"
+                        onClick={handleDelete}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Click again to confirm
+                      </DropdownMenu.Item>
+                    )}
+                  </>
+                )}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
       )}
-      {hasUnread && !hasMentions && (
-        <span className="ml-auto h-2 w-2 rounded-full bg-zinc-400" />
-      )}
-    </button>
+    </div>
   );
 }
 

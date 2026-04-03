@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Hash,
   Users,
   Pin,
-  Headphones,
-  Phone,
+  Mic,
+  Video,
+  Settings,
 } from 'lucide-react';
 import { useChannel } from '@/hooks/use-channels';
 import { useChannelStore } from '@/stores/channel.store';
@@ -12,6 +13,9 @@ import { useRealtimeChannel } from '@/hooks/use-realtime';
 import { MessageTimeline } from '@/components/messages/message-timeline';
 import { MessageCompose } from '@/components/messages/message-compose';
 import { TypingIndicator } from '@/components/messages/typing-indicator';
+import { ChannelSettings } from '@/components/channels/channel-settings';
+import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 interface ChannelViewProps {
   slug: string;
@@ -23,6 +27,46 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
   const { data: channel, isLoading } = useChannel(slug);
   const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
   const clearUnread = useChannelStore((s) => s.clearUnread);
+  const activeCallId = useChannelStore((s) => s.activeCallId);
+  const setActiveCall = useChannelStore((s) => s.setActiveCall);
+  const clearActiveCall = useChannelStore((s) => s.clearActiveCall);
+  const [showSettings, setShowSettings] = useState(false);
+  const [callLoading, setCallLoading] = useState<'voice' | 'video' | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+
+  const startCall = useCallback(
+    async (callType: 'voice' | 'video') => {
+      if (!channel?.id || callLoading) return;
+      setCallLoading(callType);
+      setCallError(null);
+      try {
+        // API type mapping: 'voice' stays 'voice', 'video' stays 'video'
+        const res = await api.post<{
+          data: {
+            call: { id: string; livekit_room_name: string; type: string };
+            token: string;
+            existing: boolean;
+          };
+        }>(`/channels/${channel.id}/calls`, { type: callType });
+        const { call, token } = res.data;
+        setActiveCall(call.id, token, call.livekit_room_name, callType);
+      } catch (err: any) {
+        setCallError(err?.message ?? 'Failed to start call');
+        setTimeout(() => setCallError(null), 3000);
+      } finally {
+        setCallLoading(null);
+      }
+    },
+    [channel?.id, callLoading, setActiveCall],
+  );
+
+  const leaveCall = useCallback(async () => {
+    if (!activeCallId) return;
+    try {
+      await api.post(`/calls/${activeCallId}/leave`);
+    } catch {}
+    clearActiveCall();
+  }, [activeCallId, clearActiveCall]);
 
   // Set active channel for thread panel and unread tracking
   useEffect(() => {
@@ -73,8 +117,39 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
         <div className="flex items-center gap-1 ml-auto flex-shrink-0">
           <HeaderButton icon={<Users className="h-4 w-4" />} label={`${channel.member_count}`} />
           <HeaderButton icon={<Pin className="h-4 w-4" />} label="" title="Pinned messages" />
-          <HeaderButton icon={<Headphones className="h-4 w-4" />} label="" title="Start huddle" />
-          <HeaderButton icon={<Phone className="h-4 w-4" />} label="" title="Start call" />
+          {!activeCallId ? (
+            <>
+              <HeaderButton
+                icon={<Mic className="h-4 w-4" />}
+                label={callLoading === 'voice' ? '...' : ''}
+                title="Voice call"
+                onClick={() => startCall('voice')}
+              />
+              <HeaderButton
+                icon={<Video className="h-4 w-4" />}
+                label={callLoading === 'video' ? '...' : ''}
+                title="Video call"
+                onClick={() => startCall('video')}
+              />
+            </>
+          ) : (
+            <button
+              onClick={leaveCall}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition-colors"
+            >
+              <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+              Leave call
+            </button>
+          )}
+          <HeaderButton
+            icon={<Settings className="h-4 w-4" />}
+            label=""
+            title="Channel settings"
+            onClick={() => setShowSettings(true)}
+          />
+          {callError && (
+            <span className="text-xs text-red-500 ml-1">{callError}</span>
+          )}
         </div>
       </header>
 
@@ -88,6 +163,11 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
         <TypingIndicator channelId={channel.id} />
         <MessageCompose channelId={channel.id} channelName={channel.name} />
       </div>
+
+      {/* Channel settings modal */}
+      {showSettings && (
+        <ChannelSettings channel={channel} onClose={() => setShowSettings(false)} onNavigate={onNavigate} />
+      )}
     </div>
   );
 }
@@ -96,15 +176,25 @@ function HeaderButton({
   icon,
   label,
   title,
+  onClick,
+  active,
 }: {
   icon: React.ReactNode;
   label: string;
   title?: string;
+  onClick?: () => void;
+  active?: boolean;
 }) {
   return (
     <button
-      className="flex items-center gap-1 px-2 py-1.5 rounded-md text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-sm"
+      className={cn(
+        'flex items-center gap-1 px-2 py-1.5 rounded-md hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-sm',
+        active
+          ? 'text-green-600 dark:text-green-400'
+          : 'text-zinc-500',
+      )}
       title={title}
+      onClick={onClick}
     >
       {icon}
       {label && <span>{label}</span>}

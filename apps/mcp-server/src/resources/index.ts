@@ -247,6 +247,132 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
     },
   );
 
+  // Recent messages in a channel (by slug)
+  server.resource(
+    'banter_channel_messages',
+    'banter://channels/{slug}/messages',
+    async (uri) => {
+      const match = uri.href.match(/banter:\/\/channels\/([^/]+)\/messages/);
+      const slug = match?.[1] ?? '';
+
+      const data = await banterFetch(
+        banterApiUrl,
+        `/banter/api/v1/channels/by-slug/${slug}/messages?limit=50`,
+      );
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // Channel members (by slug)
+  server.resource(
+    'banter_channel_members',
+    'banter://channels/{slug}/members',
+    async (uri) => {
+      const match = uri.href.match(/banter:\/\/channels\/([^/]+)\/members/);
+      const slug = match?.[1] ?? '';
+
+      const data = await banterFetch(
+        banterApiUrl,
+        `/banter/api/v1/channels/by-slug/${slug}/members`,
+      );
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // List DM channels
+  server.resource(
+    'banter_dms',
+    'banter://dms',
+    async () => {
+      const data = await banterFetch(banterApiUrl, '/banter/api/v1/dm');
+
+      return {
+        contents: [
+          {
+            uri: 'banter://dms',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // List org users with presence
+  server.resource(
+    'banter_users',
+    'banter://users',
+    async () => {
+      const data = await banterFetch(banterApiUrl, '/banter/api/v1/users');
+
+      return {
+        contents: [
+          {
+            uri: 'banter://users',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // List user groups
+  server.resource(
+    'banter_user_groups',
+    'banter://user-groups',
+    async () => {
+      const data = await banterFetch(banterApiUrl, '/banter/api/v1/user-groups');
+
+      return {
+        contents: [
+          {
+            uri: 'banter://user-groups',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // List active calls
+  server.resource(
+    'banter_active_calls',
+    'banter://calls/active',
+    async () => {
+      const data = await banterFetch(banterApiUrl, '/banter/api/v1/calls?status=active');
+
+      return {
+        contents: [
+          {
+            uri: 'banter://calls/active',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
   // Search results
   server.resource(
     'banter_search',

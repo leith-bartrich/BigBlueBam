@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, and, sql, isNull, desc } from 'drizzle-orm';
+import { createHmac } from 'node:crypto';
 import { db } from '../db/index.js';
 import {
   banterCalls,
   banterCallParticipants,
   banterChannels,
+  banterSettings,
 } from '../db/schema/index.js';
 import { broadcastToChannel } from '../services/realtime.js';
 
@@ -28,12 +30,100 @@ interface LiveKitWebhookEvent {
   createdAt?: number;
 }
 
+/**
+ * Verify LiveKit webhook signature.
+ *
+ * LiveKit signs webhooks by issuing a JWT in the Authorization header using the
+ * API secret as the HMAC-SHA256 signing key. The JWT payload contains the webhook
+ * body SHA-256 hash. We perform a best-effort verification:
+ *   1. Extract the Bearer token from the Authorization header.
+ *   2. Look up all org settings that have a livekit_api_secret configured.
+ *   3. For each secret, verify the JWT HMAC-SHA256 signature.
+ *   4. If none match, log a warning but still process the event (graceful degradation).
+ *
+ * TODO: Once multi-org LiveKit routing is finalized, narrow down to a single org's
+ * secret based on the room name prefix instead of iterating all settings rows.
+ */
+async function verifyLiveKitSignature(
+  authHeader: string | undefined,
+  _rawBody: unknown,
+  logger: FastifyInstance['log'],
+): Promise<boolean> {
+  if (!authHeader) {
+    logger.warn('LiveKit webhook: no Authorization header present');
+    return false;
+  }
+
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) {
+    logger.warn('LiveKit webhook: Authorization header has no token');
+    return false;
+  }
+
+  // Decode JWT parts (header.payload.signature)
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    logger.warn('LiveKit webhook: malformed JWT token');
+    return false;
+  }
+
+  const signingInput = `${parts[0]}.${parts[1]}`;
+  const signatureB64 = parts[2]!;
+
+  // Retrieve all configured LiveKit API secrets
+  const settingsRows = await db
+    .select({ livekit_api_secret: banterSettings.livekit_api_secret })
+    .from(banterSettings)
+    .where(sql`${banterSettings.livekit_api_secret} IS NOT NULL AND ${banterSettings.livekit_api_secret} != ''`);
+
+  if (settingsRows.length === 0) {
+    logger.warn('LiveKit webhook: no livekit_api_secret configured in any org settings');
+    return false;
+  }
+
+  // Base64url decode helper
+  const base64urlDecode = (str: string): Buffer => {
+    const padded = str.replace(/-/g, '+').replace(/_/g, '/');
+    return Buffer.from(padded, 'base64');
+  };
+
+  const receivedSig = base64urlDecode(signatureB64);
+
+  for (const row of settingsRows) {
+    const secret = row.livekit_api_secret;
+    if (!secret) continue;
+
+    const expectedSig = createHmac('sha256', secret)
+      .update(signingInput)
+      .digest();
+
+    if (
+      expectedSig.length === receivedSig.length &&
+      createHmac('sha256', secret)
+        .update(signingInput)
+        .digest()
+        .equals(receivedSig)
+    ) {
+      return true;
+    }
+  }
+
+  logger.warn('LiveKit webhook: JWT signature did not match any configured API secret');
+  return false;
+}
+
 export default async function webhookRoutes(fastify: FastifyInstance) {
   // POST /v1/webhooks/livekit — receives LiveKit room events
   fastify.post('/v1/webhooks/livekit', async (request, reply) => {
-    // LiveKit sends webhook events as JSON
-    // In production, you should verify the webhook signature using the API key/secret.
-    // For now we accept all events from the internal network.
+    // Verify webhook signature (graceful degradation: warn but still process on failure)
+    const authHeader = request.headers.authorization;
+    const signatureValid = await verifyLiveKitSignature(authHeader, request.body, fastify.log);
+    if (!signatureValid) {
+      fastify.log.warn(
+        'LiveKit webhook: proceeding without verified signature (graceful degradation)',
+      );
+    }
+
     const event = request.body as LiveKitWebhookEvent;
 
     if (!event?.event) {
@@ -145,7 +235,7 @@ async function handleParticipantJoined(event: LiveKitWebhookEvent) {
 
 async function handleParticipantLeft(
   event: LiveKitWebhookEvent,
-  fastify: FastifyInstance,
+  _fastify: FastifyInstance,
 ) {
   const roomName = event.room!.name;
   const participantIdentity = event.participant?.identity;

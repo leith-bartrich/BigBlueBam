@@ -14,3 +14,4 @@ export { banterUserGroups } from './user-groups.js';
 export { banterUserGroupMemberships } from './user-group-memberships.js';
 export { banterUserPreferences } from './user-preferences.js';
 export { banterSettings } from './settings.js';
+export { banterAuditLog } from './audit-log.js';

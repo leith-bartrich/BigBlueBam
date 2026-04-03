@@ -46,6 +46,13 @@ export function BanterLayout({ children, onNavigate, activeRoute }: BanterLayout
         </div>
       </header>
 
+      {/* Alpha warning banner */}
+      <div className="flex items-center justify-center px-4 py-1.5 bg-yellow-500/10 border-b border-yellow-500/30 shrink-0">
+        <span className="text-xs font-semibold text-yellow-500 tracking-wide uppercase">
+          Banter is in Extreme Alpha Mode
+        </span>
+      </div>
+
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         {!sidebarCollapsed && (

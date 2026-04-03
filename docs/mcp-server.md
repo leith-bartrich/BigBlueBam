@@ -32,13 +32,14 @@ graph LR
         Auth["Auth Middleware<br/>(API key validation)"]
         Rate["Rate Limiter"]
         Audit["Audit Logger"]
-        Tools["Tool Registry<br/>(38 tools)"]
-        Resources["Resource Registry"]
-        Prompts["Prompt Registry"]
+        Tools["Tool Registry<br/>(86 tools: 42 BBB + 44 Banter)"]
+        Resources["Resource Registry<br/>(BBB + Banter resources)"]
+        Prompts["Prompt Registry<br/>(8 prompts)"]
     end
 
     subgraph "BigBlueBam Core"
         API["API Server (:4000)"]
+        BanterAPI["Banter API (:4002)"]
         DB["PostgreSQL"]
         Redis["Redis"]
     end
@@ -55,10 +56,14 @@ graph LR
     Rate --> Prompts
 
     Tools -->|"Internal HTTP"| API
+    Tools -->|"Internal HTTP"| BanterAPI
     Resources -->|"Internal HTTP"| API
+    Resources -->|"Internal HTTP"| BanterAPI
     Prompts -->|"Internal HTTP"| API
+    Prompts -->|"Internal HTTP"| BanterAPI
     Audit -->|"Log"| Redis
     API --> DB
+    BanterAPI --> DB
 ```
 
 ### Transport Options

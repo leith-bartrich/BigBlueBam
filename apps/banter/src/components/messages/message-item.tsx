@@ -8,6 +8,9 @@ import {
   Pencil,
   Trash2,
   Bot,
+  Phone,
+  PhoneOff,
+  PhoneMissed,
 } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useChannelStore } from '@/stores/channel.store';
@@ -21,6 +24,7 @@ import {
   formatAbsoluteTime,
   generateAvatarInitials,
 } from '@/lib/utils';
+import { UserProfilePopover } from '@/components/common/user-profile-popover';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '👀', '🚀'];
 
@@ -41,11 +45,33 @@ export function MessageItem({ message, channelId, grouped, onNavigate }: Message
 
   const isOwn = currentUser?.id === message.author_id;
 
-  // System messages: centered, muted
+  // System messages: centered, muted — with special call event styling
   if (message.is_system) {
+    const isCallEvent = message.content.includes('call') || message.content.includes('huddle');
+    const isCallStarted = message.content.includes('started');
+    const isCallEnded = message.content.includes('ended');
+    const isMissedCall = message.content.includes('missed');
+
+    const CallIcon = isMissedCall
+      ? PhoneMissed
+      : isCallEnded
+        ? PhoneOff
+        : isCallStarted
+          ? Phone
+          : null;
+
     return (
-      <div className="flex justify-center py-2">
-        <p className="text-xs text-zinc-500 italic">
+      <div className="flex items-center justify-center gap-2 py-2">
+        {isCallEvent && CallIcon && (
+          <CallIcon className={cn(
+            'h-3.5 w-3.5',
+            isMissedCall ? 'text-red-400' : isCallEnded ? 'text-zinc-400' : 'text-green-500',
+          )} />
+        )}
+        <p className={cn(
+          'text-xs italic',
+          isMissedCall ? 'text-red-400' : 'text-zinc-500',
+        )}>
           {message.content}
         </p>
       </div>
@@ -88,9 +114,15 @@ export function MessageItem({ message, channelId, grouped, onNavigate }: Message
       <div className="flex-1 min-w-0">
         {!grouped && (
           <div className="flex items-baseline gap-2">
-            <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">
-              {message.author_display_name}
-            </span>
+            <UserProfilePopover
+              userId={message.author_id}
+              displayName={message.author_display_name}
+              avatarUrl={message.author_avatar_url}
+            >
+              <button className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 hover:underline cursor-pointer">
+                {message.author_display_name}
+              </button>
+            </UserProfilePopover>
             {message.is_bot && (
               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">
                 <Bot className="h-3 w-3" />

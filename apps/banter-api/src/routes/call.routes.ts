@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import {
   banterCalls,
   banterCallParticipants,
+  banterCallTranscripts,
   banterChannels,
   banterChannelMemberships,
   users,
@@ -574,6 +575,296 @@ export default async function callRoutes(fastify: FastifyInstance) {
         .orderBy(banterCallParticipants.joined_at);
 
       return reply.send({ data: participants });
+    },
+  );
+  // PATCH /v1/calls/:id — update call settings mid-call
+  fastify.patch(
+    '/v1/calls/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+      const body = z
+        .object({
+          recording: z.boolean().optional(),
+          transcription: z.boolean().optional(),
+        })
+        .parse(request.body);
+
+      const [call] = await db
+        .select()
+        .from(banterCalls)
+        .where(and(eq(banterCalls.id, id), eq(banterCalls.status, 'active')))
+        .limit(1);
+
+      if (!call) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Active call not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Only host or org admin can update call settings
+      const [participant] = await db
+        .select()
+        .from(banterCallParticipants)
+        .where(
+          and(
+            eq(banterCallParticipants.call_id, id),
+            eq(banterCallParticipants.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (
+        !['owner', 'admin'].includes(user.role) &&
+        (!participant || participant.role !== 'host')
+      ) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Only the host or an org admin can update call settings',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (body.recording !== undefined) updateData.recording_enabled = body.recording;
+      if (body.transcription !== undefined) updateData.transcription_enabled = body.transcription;
+
+      const [updated] = await db
+        .update(banterCalls)
+        .set(updateData)
+        .where(eq(banterCalls.id, id))
+        .returning();
+
+      broadcastToChannel(call.channel_id, {
+        type: 'call.updated',
+        data: { call: updated },
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.send({ data: updated });
+    },
+  );
+
+  // POST /v1/calls/:id/invite-agent — invite AI agent to a call
+  fastify.post(
+    '/v1/calls/:id/invite-agent',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+
+      const [call] = await db
+        .select()
+        .from(banterCalls)
+        .where(and(eq(banterCalls.id, id), eq(banterCalls.status, 'active')))
+        .limit(1);
+
+      if (!call) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Active call not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Verify user is a member of the channel
+      const [membership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, call.channel_id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'You must be a channel member to invite an agent',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      try {
+        const agentInfo = await voiceAgent.spawnAgent({
+          call_id: id,
+          mode: 'voice',
+          room_name: call.livekit_room_name,
+        });
+
+        broadcastToChannel(call.channel_id, {
+          type: 'call.agent_joined',
+          data: { call_id: id, agent: agentInfo },
+          timestamp: new Date().toISOString(),
+        });
+
+        return reply.send({ data: { success: true, agent: agentInfo } });
+      } catch (err) {
+        return reply.status(500).send({
+          error: {
+            code: 'AGENT_ERROR',
+            message: `Failed to spawn AI agent: ${(err as Error).message}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    },
+  );
+
+  // POST /v1/calls/:id/remove-agent — remove AI agent from a call
+  fastify.post(
+    '/v1/calls/:id/remove-agent',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+
+      const [call] = await db
+        .select()
+        .from(banterCalls)
+        .where(and(eq(banterCalls.id, id), eq(banterCalls.status, 'active')))
+        .limit(1);
+
+      if (!call) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Active call not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Only host or org admin can remove agent
+      const [participant] = await db
+        .select()
+        .from(banterCallParticipants)
+        .where(
+          and(
+            eq(banterCallParticipants.call_id, id),
+            eq(banterCallParticipants.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (
+        !['owner', 'admin'].includes(user.role) &&
+        (!participant || participant.role !== 'host')
+      ) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Only the host or an org admin can remove the AI agent',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      try {
+        await voiceAgent.despawnAgent(id);
+
+        broadcastToChannel(call.channel_id, {
+          type: 'call.agent_removed',
+          data: { call_id: id },
+          timestamp: new Date().toISOString(),
+        });
+
+        return reply.send({ data: { success: true } });
+      } catch (err) {
+        return reply.status(500).send({
+          error: {
+            code: 'AGENT_ERROR',
+            message: `Failed to remove AI agent: ${(err as Error).message}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    },
+  );
+
+  // GET /v1/calls/:id/transcript — get call transcript segments
+  fastify.get(
+    '/v1/calls/:id/transcript',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+
+      const [call] = await db
+        .select()
+        .from(banterCalls)
+        .where(eq(banterCalls.id, id))
+        .limit(1);
+
+      if (!call) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Call not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Verify user has access (channel belongs to their org)
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(and(eq(banterChannels.id, call.channel_id), eq(banterChannels.org_id, user.org_id)))
+        .limit(1);
+
+      if (!channel) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Call not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const segments = await db
+        .select({
+          id: banterCallTranscripts.id,
+          call_id: banterCallTranscripts.call_id,
+          speaker_id: banterCallTranscripts.speaker_id,
+          speaker_name: users.display_name,
+          speaker_avatar_url: users.avatar_url,
+          content: banterCallTranscripts.content,
+          started_at: banterCallTranscripts.started_at,
+          ended_at: banterCallTranscripts.ended_at,
+          confidence: banterCallTranscripts.confidence,
+          is_final: banterCallTranscripts.is_final,
+        })
+        .from(banterCallTranscripts)
+        .innerJoin(users, eq(banterCallTranscripts.speaker_id, users.id))
+        .where(eq(banterCallTranscripts.call_id, id))
+        .orderBy(banterCallTranscripts.started_at);
+
+      return reply.send({ data: segments });
     },
   );
 }

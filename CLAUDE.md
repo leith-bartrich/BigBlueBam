@@ -26,15 +26,19 @@ Monorepo managed with **Turborepo** and **pnpm workspaces**.
 apps/
   api/          — Fastify REST API + WebSocket server (internal :4000, proxied at /b3/api/) — 23 route files, 24 schema tables, ~63 source files
   frontend/     — React SPA served by nginx at /b3/ (port 80) — ~55 source files, 8 pages, command palette, keyboard shortcuts
-  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 38 tools, 7 resources, 4 prompts, 10 tool modules
-  worker/       — BullMQ background job processor (no exposed port) — 4 job handlers (email, notification, export, sprint-close)
+  banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
+  banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (ALPHA)
+  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 86 tools (42 BBB + 44 Banter), 10+ resources, 8 prompts, 12 tool modules
+  worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
+  voice-agent/  — AI voice agent (Python/FastAPI, internal :4003) — LiveKit Agents SDK, STT/TTS pipeline (placeholder)
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
 infra/
   postgres/     — init.sql
   nginx/        — nginx.conf, certs
+  livekit/      — LiveKit SFU configuration (livekit.yaml)
   helm/         — Kubernetes Helm chart (bigbluebam/)
 scripts/        — Utility scripts (seed-frndo.js)
 ```
@@ -45,12 +49,15 @@ The entire stack runs via `docker compose up`. All services are accessed through
 - `http://DOMAIN/b3/` serves the BigBlueBam SPA
 - `http://DOMAIN/b3/api/` proxies to the Fastify REST API
 - `http://DOMAIN/b3/ws` proxies WebSocket connections
+- `http://DOMAIN/banter/` serves the Banter SPA (alpha)
+- `http://DOMAIN/banter/api/` proxies to the Banter REST API
+- `http://DOMAIN/banter/ws` proxies Banter WebSocket connections
 - `http://DOMAIN/helpdesk/` serves the Helpdesk portal SPA
 - `http://DOMAIN/helpdesk/api/` proxies to the Helpdesk API
 - `http://DOMAIN/files/` serves uploaded files from MinIO
 - `http://DOMAIN/mcp/` proxies to the MCP server
 
-Application containers (api, mcp-server, worker, helpdesk-api, frontend) are stateless and scale horizontally. Data services (postgres, redis, minio) can be swapped for managed cloud equivalents by changing environment variables only.
+Application containers (api, banter-api, mcp-server, worker, helpdesk-api, frontend, voice-agent) are stateless and scale horizontally. Data services (postgres, redis, minio) can be swapped for managed cloud equivalents by changing environment variables only.
 
 ## IMPORTANT: Preserving Test Data
 
@@ -91,11 +98,13 @@ docker compose logs -f api mcp-server worker
 pnpm --filter @bigbluebam/shared build
 pnpm --filter @bigbluebam/api build
 
-# Run tests (~315 test files, 439 tests total)
+# Run tests (~530+ tests total)
 pnpm test                                    # All packages
 pnpm --filter @bigbluebam/shared test        # Shared schemas only
 pnpm --filter @bigbluebam/api test           # API unit tests
 pnpm --filter @bigbluebam/frontend test      # Frontend component tests
+pnpm --filter @bigbluebam/banter-api test    # Banter API unit tests (54 tests)
+pnpm --filter @bigbluebam/banter test        # Banter frontend component tests (14 tests)
 ```
 
 ### CI Pipeline

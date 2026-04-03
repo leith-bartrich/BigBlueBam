@@ -4,7 +4,7 @@ This guide covers deploying BigBlueBam in production, performing updates without
 
 ## Deployment Overview
 
-BigBlueBam uses Docker named volumes to persist all data. Application containers (api, frontend, worker, mcp-server, helpdesk-api) are **stateless** — they can be rebuilt, replaced, or scaled without affecting data. Both the BigBlueBam SPA and Helpdesk portal SPA are served from a single nginx container on port 80. Data lives exclusively in three volumes:
+BigBlueBam uses Docker named volumes to persist all data. Application containers (api, banter-api, frontend, worker, mcp-server, helpdesk-api, voice-agent) are **stateless** — they can be rebuilt, replaced, or scaled without affecting data. All three SPAs (BigBlueBam, Banter, Helpdesk) are served from a single nginx container on port 80. Data lives exclusively in three volumes:
 
 | Volume | Service | Contains |
 |--------|---------|----------|

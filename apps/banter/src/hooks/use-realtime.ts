@@ -62,6 +62,27 @@ export function useRealtimeChannel(channelId: string) {
       }
     });
 
+    // Call events — invalidate messages to show system call event messages
+    const unsubCallStarted = ws.on('call.started', (event) => {
+      const payload = event.payload as { call?: { channel_id: string } };
+      if (payload.call?.channel_id === channelId) {
+        queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
+      }
+    });
+
+    const unsubCallEnded = ws.on('call.ended', () => {
+      // Refresh messages to show "call ended" system message
+      queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
+    });
+
+    const unsubCallJoin = ws.on('call.participant_joined', () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
+    });
+
+    const unsubCallLeave = ws.on('call.participant_left', () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
+    });
+
     return () => {
       ws.leaveRoom(room);
       unsubMessage();
@@ -69,6 +90,10 @@ export function useRealtimeChannel(channelId: string) {
       unsubDelete();
       unsubReaction();
       unsubUnread();
+      unsubCallStarted();
+      unsubCallEnded();
+      unsubCallJoin();
+      unsubCallLeave();
     };
   }, [channelId, activeChannelId, queryClient, setUnreadCount]);
 }

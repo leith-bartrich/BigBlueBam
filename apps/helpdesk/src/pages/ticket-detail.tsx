@@ -7,8 +7,8 @@ import { RichTextEditor } from '@/components/common/rich-text-editor';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { api } from '@/lib/api';
-import { ArrowLeft, Loader2, Send, RotateCcw, CheckCircle, ChevronDown } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Loader2, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface TicketDetailPageProps {
   ticketId: string;
@@ -23,6 +23,9 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
 
   const [replyText, setReplyText] = useState('');
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
+  const [showShareBanter, setShowShareBanter] = useState(false);
+  const [banterChannelId, setBanterChannelId] = useState('');
+  const [banterMessage, setBanterMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -42,6 +45,39 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
       api.post(`/tickets/${ticketId}/close`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['helpdesk-ticket', ticketId] });
+    },
+  });
+
+  // Banter channels for "Share to Banter"
+  const { data: banterChannelsRes } = useQuery({
+    queryKey: ['banter-channels'],
+    queryFn: () => api.get<{ data: { id: string; name: string }[] }>('/banter/api/v1/channels'),
+    enabled: showShareBanter,
+  });
+  const banterChannels = (banterChannelsRes as { data?: { id: string; name: string }[] })?.data ?? [];
+
+  // Share ticket to Banter mutation
+  const shareToBanter = useMutation({
+    mutationFn: (channelId: string) => {
+      const ticketNum = ticket ? `#${ticket.ticket_number}` : '';
+      const subject = ticket?.subject ?? '';
+      const msgPrefix = banterMessage ? `${banterMessage}\n\n` : '';
+      return api.post(`/banter/api/v1/channels/${channelId}/messages`, {
+        content: `${msgPrefix}Shared from Helpdesk: **${ticketNum} -- ${subject}**\n\n> Status: ${ticket?.status ?? 'unknown'} | Priority: ${ticket?.priority ?? 'unknown'}${ticket?.category ? ` | Category: ${ticket.category}` : ''}\n\n[Open Ticket ->](/helpdesk/tickets/${ticketId})`,
+        metadata: {
+          bbb_entity: {
+            type: 'ticket',
+            id: ticketId,
+            ticket_number: ticket?.ticket_number,
+            subject,
+          },
+        },
+      });
+    },
+    onSuccess: () => {
+      setShowShareBanter(false);
+      setBanterChannelId('');
+      setBanterMessage('');
     },
   });
 
@@ -173,6 +209,59 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
             </span>
           )}
           <span className="text-sm text-zinc-400 ml-2">Created on {formatDate(ticket.created_at)}</span>
+          {/* Share to Banter */}
+          <div className="relative ml-auto">
+            <button
+              onClick={() => setShowShareBanter((v) => !v)}
+              className="rounded-md p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Share to Banter"
+            >
+              <MessageSquareShare className="h-4.5 w-4.5" />
+            </button>
+            {showShareBanter && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700 p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Share to Banter</h4>
+                <div>
+                  <label className="text-xs font-medium text-zinc-500 mb-1 block">Channel</label>
+                  <select
+                    value={banterChannelId}
+                    onChange={(e) => setBanterChannelId(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-100"
+                  >
+                    <option value="">Select a channel...</option>
+                    {banterChannels.map((ch) => (
+                      <option key={ch.id} value={ch.id}>#{ch.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-zinc-500 mb-1 block">Message (optional)</label>
+                  <textarea
+                    value={banterMessage}
+                    onChange={(e) => setBanterMessage(e.target.value)}
+                    placeholder="Add a note..."
+                    rows={2}
+                    className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm resize-none dark:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-100"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowShareBanter(false)}
+                    className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => banterChannelId && shareToBanter.mutate(banterChannelId)}
+                    disabled={!banterChannelId || shareToBanter.isPending}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                  >
+                    {shareToBanter.isPending ? 'Sharing...' : 'Share'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           {/* Close button */}
           {!isClosedOrResolved && (
             <Button
@@ -180,7 +269,6 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
               variant="secondary"
               onClick={() => { if (confirm('Close this ticket?')) closeTicket.mutate(); }}
               loading={closeTicket.isPending}
-              className="ml-auto"
             >
               <CheckCircle className="h-3.5 w-3.5" />
               Close Ticket

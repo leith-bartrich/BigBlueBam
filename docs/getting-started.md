@@ -164,9 +164,11 @@ All services are accessed through port 80 via a single nginx reverse proxy:
 | **Root** | [http://localhost/](http://localhost/) | Redirects to `/helpdesk/` |
 | **BigBlueBam SPA** | [http://localhost/b3/](http://localhost/b3/) | Main project management app |
 | **BigBlueBam API** | [http://localhost/b3/api/](http://localhost/b3/api/) | REST API and WebSocket |
+| **Banter SPA** | [http://localhost/banter/](http://localhost/banter/) | Team messaging app (alpha) |
+| **Banter API** | [http://localhost/banter/api/](http://localhost/banter/api/) | Banter REST API and WebSocket |
 | **Helpdesk Portal** | [http://localhost/helpdesk/](http://localhost/helpdesk/) | Client-facing ticket submission |
 | **Helpdesk API** | [http://localhost/helpdesk/api/](http://localhost/helpdesk/api/) | Helpdesk auth, tickets, messages |
-| **MCP Server** | [http://localhost/mcp/](http://localhost/mcp/) | MCP endpoint for AI clients |
+| **MCP Server** | [http://localhost/mcp/](http://localhost/mcp/) | MCP endpoint for AI clients (86 tools) |
 | **Uploaded Files** | [http://localhost/files/](http://localhost/files/) | Shared uploaded files |
 | **MinIO Console** | [http://localhost:9001](http://localhost:9001) | Object storage admin panel |
 | **Health Check** | [http://localhost/b3/api/health](http://localhost/b3/api/health) | API health status |

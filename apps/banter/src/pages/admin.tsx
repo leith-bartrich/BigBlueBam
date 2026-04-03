@@ -9,12 +9,32 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Mic,
+  Volume2,
+  Brain,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface AdminPageProps {
   onNavigate: (path: string) => void;
+}
+
+interface ProviderConfig {
+  api_key?: string;
+  model?: string;
+  endpoint_url?: string;
+}
+
+interface TtsProviderConfig {
+  api_key?: string;
+  voice?: string;
+  endpoint_url?: string;
+}
+
+interface LlmConfig {
+  api_key?: string;
+  model?: string;
 }
 
 interface AdminSettings {
@@ -35,7 +55,12 @@ interface AdminSettings {
   // AI settings
   voice_agent_enabled: boolean;
   stt_provider: string;
+  stt_provider_config: ProviderConfig;
   tts_provider: string;
+  tts_provider_config: TtsProviderConfig;
+  ai_voice_agent_llm_provider: string;
+  ai_voice_agent_llm_config: LlmConfig;
+  ai_voice_agent_greeting: string;
 }
 
 const DEFAULT_SETTINGS: AdminSettings = {
@@ -49,7 +74,12 @@ const DEFAULT_SETTINGS: AdminSettings = {
   max_file_size_mb: 25,
   voice_agent_enabled: false,
   stt_provider: 'none',
+  stt_provider_config: {},
   tts_provider: 'none',
+  tts_provider_config: {},
+  ai_voice_agent_llm_provider: 'anthropic',
+  ai_voice_agent_llm_config: {},
+  ai_voice_agent_greeting: '',
 };
 
 export function AdminPage({ onNavigate }: AdminPageProps) {
@@ -60,6 +90,10 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [testingLiveKit, setTestingLiveKit] = useState(false);
   const [liveKitStatus, setLiveKitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [testingStt, setTestingStt] = useState(false);
+  const [sttStatus, setSttStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [testingTts, setTestingTts] = useState(false);
+  const [ttsStatus, setTtsStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     api
@@ -104,6 +138,61 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
       setTestingLiveKit(false);
       setTimeout(() => setLiveKitStatus('idle'), 5000);
     }
+  };
+
+  const handleTestStt = async () => {
+    setTestingStt(true);
+    setSttStatus('idle');
+    try {
+      await api.post('/admin/settings/test-stt', {
+        provider: settings.stt_provider,
+        config: settings.stt_provider_config,
+      });
+      setSttStatus('success');
+    } catch {
+      setSttStatus('error');
+    } finally {
+      setTestingStt(false);
+      setTimeout(() => setSttStatus('idle'), 5000);
+    }
+  };
+
+  const handleTestTts = async () => {
+    setTestingTts(true);
+    setTtsStatus('idle');
+    try {
+      await api.post('/admin/settings/test-tts', {
+        provider: settings.tts_provider,
+        config: settings.tts_provider_config,
+      });
+      setTtsStatus('success');
+    } catch {
+      setTtsStatus('error');
+    } finally {
+      setTestingTts(false);
+      setTimeout(() => setTtsStatus('idle'), 5000);
+    }
+  };
+
+  const updateSttConfig = (field: keyof ProviderConfig, value: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      stt_provider_config: { ...prev.stt_provider_config, [field]: value },
+    }));
+  };
+
+  const updateTtsConfig = (field: keyof TtsProviderConfig, value: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      tts_provider_config: { ...prev.tts_provider_config, [field]: value },
+    }));
+  };
+
+  const updateLlmConfig = (field: keyof LlmConfig, value: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      ai_voice_agent_llm_config: { ...prev.ai_voice_agent_llm_config, [field]: value },
+    }));
   };
 
   const update = <K extends keyof AdminSettings>(key: K, value: AdminSettings[K]) => {
@@ -298,8 +387,25 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
 
               {settings.voice_agent_enabled && (
                 <>
+                  <InputField
+                    label="Voice Agent Greeting"
+                    description="The greeting message the agent says when joining a call"
+                    placeholder="Hello! I'm the voice agent. How can I help?"
+                    value={settings.ai_voice_agent_greeting}
+                    onChange={(v) => update('ai_voice_agent_greeting', v)}
+                  />
+
+                  {/* STT Provider */}
+                  <div className="flex items-center gap-2 mt-6 mb-2">
+                    <Mic className="h-4 w-4 text-zinc-500" />
+                    <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      Speech-to-Text
+                    </span>
+                    <StatusBadge status={settings.stt_provider !== 'none' ? sttStatus : 'idle'} configured={settings.stt_provider !== 'none'} />
+                  </div>
+
                   <SelectField
-                    label="Speech-to-Text provider"
+                    label="STT Provider"
                     value={settings.stt_provider}
                     onChange={(v) => update('stt_provider', v)}
                     options={[
@@ -311,8 +417,78 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
                     ]}
                   />
 
+                  {settings.stt_provider !== 'none' && settings.stt_provider !== 'whisper' && (
+                    <>
+                      <InputField
+                        label="STT API Key"
+                        placeholder="Enter API key..."
+                        value={settings.stt_provider_config.api_key ?? ''}
+                        onChange={(v) => updateSttConfig('api_key', v)}
+                        type="password"
+                      />
+                      <InputField
+                        label="STT Model"
+                        placeholder="e.g. whisper-1, nova-2"
+                        value={settings.stt_provider_config.model ?? ''}
+                        onChange={(v) => updateSttConfig('model', v)}
+                      />
+                      <InputField
+                        label="STT Endpoint URL"
+                        description="Leave blank to use the provider's default endpoint"
+                        placeholder="https://api.example.com/v1/transcribe"
+                        value={settings.stt_provider_config.endpoint_url ?? ''}
+                        onChange={(v) => updateSttConfig('endpoint_url', v)}
+                      />
+                    </>
+                  )}
+
+                  {settings.stt_provider !== 'none' && (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleTestStt}
+                        disabled={testingStt}
+                        className={cn(
+                          'px-3 py-1.5 text-sm rounded-md font-medium transition-colors',
+                          'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300',
+                          'hover:bg-zinc-200 dark:hover:bg-zinc-700',
+                          'disabled:opacity-50 disabled:cursor-not-allowed',
+                        )}
+                      >
+                        {testingStt ? (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Testing...
+                          </span>
+                        ) : (
+                          'Test STT'
+                        )}
+                      </button>
+                      {sttStatus === 'success' && (
+                        <span className="flex items-center gap-1 text-sm text-green-600">
+                          <CheckCircle className="h-4 w-4" />
+                          STT working
+                        </span>
+                      )}
+                      {sttStatus === 'error' && (
+                        <span className="flex items-center gap-1 text-sm text-red-600">
+                          <AlertCircle className="h-4 w-4" />
+                          STT test failed
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TTS Provider */}
+                  <div className="flex items-center gap-2 mt-6 mb-2">
+                    <Volume2 className="h-4 w-4 text-zinc-500" />
+                    <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      Text-to-Speech
+                    </span>
+                    <StatusBadge status={settings.tts_provider !== 'none' ? ttsStatus : 'idle'} configured={settings.tts_provider !== 'none'} />
+                  </div>
+
                   <SelectField
-                    label="Text-to-Speech provider"
+                    label="TTS Provider"
                     value={settings.tts_provider}
                     onChange={(v) => update('tts_provider', v)}
                     options={[
@@ -322,6 +498,108 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
                       { value: 'google', label: 'Google Cloud TTS' },
                       { value: 'openai', label: 'OpenAI TTS' },
                     ]}
+                  />
+
+                  {settings.tts_provider !== 'none' && settings.tts_provider !== 'piper' && (
+                    <>
+                      <InputField
+                        label="TTS API Key"
+                        placeholder="Enter API key..."
+                        value={settings.tts_provider_config.api_key ?? ''}
+                        onChange={(v) => updateTtsConfig('api_key', v)}
+                        type="password"
+                      />
+                      <InputField
+                        label="TTS Voice Name"
+                        placeholder="e.g. alloy, rachel, en-US-Wavenet-D"
+                        value={settings.tts_provider_config.voice ?? ''}
+                        onChange={(v) => updateTtsConfig('voice', v)}
+                      />
+                      <InputField
+                        label="TTS Endpoint URL"
+                        description="Leave blank to use the provider's default endpoint"
+                        placeholder="https://api.example.com/v1/tts"
+                        value={settings.tts_provider_config.endpoint_url ?? ''}
+                        onChange={(v) => updateTtsConfig('endpoint_url', v)}
+                      />
+                    </>
+                  )}
+
+                  {settings.tts_provider !== 'none' && (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleTestTts}
+                        disabled={testingTts}
+                        className={cn(
+                          'px-3 py-1.5 text-sm rounded-md font-medium transition-colors',
+                          'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300',
+                          'hover:bg-zinc-200 dark:hover:bg-zinc-700',
+                          'disabled:opacity-50 disabled:cursor-not-allowed',
+                        )}
+                      >
+                        {testingTts ? (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Testing...
+                          </span>
+                        ) : (
+                          'Test TTS'
+                        )}
+                      </button>
+                      {ttsStatus === 'success' && (
+                        <span className="flex items-center gap-1 text-sm text-green-600">
+                          <CheckCircle className="h-4 w-4" />
+                          TTS working
+                        </span>
+                      )}
+                      {ttsStatus === 'error' && (
+                        <span className="flex items-center gap-1 text-sm text-red-600">
+                          <AlertCircle className="h-4 w-4" />
+                          TTS test failed
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* LLM Provider */}
+                  <div className="flex items-center gap-2 mt-6 mb-2">
+                    <Brain className="h-4 w-4 text-zinc-500" />
+                    <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      LLM Provider
+                    </span>
+                    <StatusBadge
+                      status="idle"
+                      configured={!!settings.ai_voice_agent_llm_config.api_key}
+                    />
+                  </div>
+
+                  <SelectField
+                    label="LLM Provider"
+                    value={settings.ai_voice_agent_llm_provider}
+                    onChange={(v) => update('ai_voice_agent_llm_provider', v)}
+                    options={[
+                      { value: 'anthropic', label: 'Anthropic' },
+                      { value: 'openai', label: 'OpenAI' },
+                    ]}
+                  />
+
+                  <InputField
+                    label="LLM API Key"
+                    placeholder="Enter API key..."
+                    value={settings.ai_voice_agent_llm_config.api_key ?? ''}
+                    onChange={(v) => updateLlmConfig('api_key', v)}
+                    type="password"
+                  />
+
+                  <InputField
+                    label="LLM Model"
+                    placeholder={
+                      settings.ai_voice_agent_llm_provider === 'anthropic'
+                        ? 'claude-sonnet-4-20250514'
+                        : 'gpt-4o'
+                    }
+                    value={settings.ai_voice_agent_llm_config.model ?? ''}
+                    onChange={(v) => updateLlmConfig('model', v)}
                   />
                 </>
               )}
@@ -485,5 +763,44 @@ function ToggleField({
         )}
       </div>
     </div>
+  );
+}
+
+function StatusBadge({
+  status,
+  configured,
+}: {
+  status: 'idle' | 'success' | 'error';
+  configured: boolean;
+}) {
+  if (status === 'success') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+        OK
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+        Error
+      </span>
+    );
+  }
+  if (configured) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+        Configured
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+      <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+      Not configured
+    </span>
   );
 }
