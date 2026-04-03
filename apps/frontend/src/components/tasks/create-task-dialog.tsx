@@ -9,6 +9,8 @@ import { Input } from '@/components/common/input';
 import { Button } from '@/components/common/button';
 import { Select } from '@/components/common/select';
 import { DatePicker } from '@/components/common/date-picker';
+import { RichTextEditor } from '@/components/common/rich-text-editor';
+import { api } from '@/lib/api';
 
 const createTaskFormSchema = z.object({
   title: z.string().min(1, 'Title is required').max(500),
@@ -199,15 +201,20 @@ export function CreateTaskDialog({
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="description" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Description
           </label>
-          <textarea
-            id="description"
-            rows={3}
+          <RichTextEditor
+            value={watch('description') ?? ''}
+            onChange={(val) => setValue('description', val)}
             placeholder="Add a description..."
-            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 resize-y"
-            {...register('description')}
+            minRows={3}
+            onImageUpload={async (file) => {
+              const formData = new FormData();
+              formData.append('file', file);
+              const res = await api.upload<{ url: string }>('/upload', formData);
+              return res.url ?? (res as unknown as { data: { url: string } }).data?.url ?? '';
+            }}
           />
         </div>
 

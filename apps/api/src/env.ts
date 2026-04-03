@@ -18,8 +18,15 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
 
-  UPLOAD_MAX_FILE_SIZE: z.coerce.number().int().positive().default(10485760), // 10MB
-  UPLOAD_ALLOWED_TYPES: z.string().default('image/*,application/pdf,.doc,.docx,.xls,.xlsx'),
+  UPLOAD_MAX_FILE_SIZE: z.coerce.number().int().positive().default(26214400), // 25MB
+  UPLOAD_ALLOWED_TYPES: z.string().default('image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt'),
+
+  // S3 / MinIO
+  S3_ENDPOINT: z.string().default('http://minio:9000'),
+  S3_ACCESS_KEY: z.string().default('minioadmin'),
+  S3_SECRET_KEY: z.string().default('minioadmin'),
+  S3_BUCKET: z.string().default('bigbluebam-uploads'),
+  S3_REGION: z.string().default('us-east-1'),
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),

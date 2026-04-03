@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useCreateTicket, useHelpdeskSettings } from '@/hooks/use-tickets';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
+import { RichTextEditor } from '@/components/common/rich-text-editor';
+import { api } from '@/lib/api';
 import { ArrowLeft } from 'lucide-react';
 
 interface NewTicketPageProps {
@@ -115,17 +117,20 @@ export function NewTicketPage({ onNavigate }: NewTicketPageProps) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="description" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Description
             </label>
-            <textarea
-              id="description"
-              rows={6}
-              placeholder="Describe your issue in detail..."
+            <RichTextEditor
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              required
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700 resize-y"
+              onChange={setDescription}
+              placeholder="Describe your issue in detail..."
+              minRows={6}
+              onImageUpload={async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await api.upload<{ url: string }>('/upload', formData);
+                return res.url ?? (res as unknown as { data: { url: string } }).data?.url ?? '';
+              }}
             />
           </div>
 

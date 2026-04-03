@@ -27,6 +27,13 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().default('noreply@bigbluebam.io'),
 
+  // S3 / MinIO
+  S3_ENDPOINT: z.string().default('http://minio:9000'),
+  S3_ACCESS_KEY: z.string().default('minioadmin'),
+  S3_SECRET_KEY: z.string().default('minioadmin'),
+  S3_BUCKET: z.string().default('bigbluebam-uploads'),
+  S3_REGION: z.string().default('us-east-1'),
+
   // API key for agent routes (BBB engineers)
   AGENT_API_KEY: z.string().optional(),
 

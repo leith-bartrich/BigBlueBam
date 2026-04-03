@@ -3,7 +3,10 @@ import { useTicket, usePostMessage, useReopenTicket } from '@/hooks/use-tickets'
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/common/button';
 import { StatusBadge, PriorityBadge } from '@/components/common/badge';
+import { RichTextEditor } from '@/components/common/rich-text-editor';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
+import { api } from '@/lib/api';
 import { ArrowLeft, Loader2, Send, RotateCcw } from 'lucide-react';
 
 interface TicketDetailPageProps {
@@ -198,7 +201,10 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
                       {formatRelativeTime(msg.created_at)}
                     </span>
                   </div>
-                  <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
+                  <div
+                    className="rich-text-content text-sm break-words"
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(msg.body)) }}
+                  />
                 </div>
               </div>
             );
@@ -209,23 +215,29 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
         {/* Reply box */}
         {!isClosedOrResolved && (
           <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
-            <form onSubmit={handleSendReply} className="flex gap-3">
-              <textarea
+            <form onSubmit={handleSendReply} className="space-y-3">
+              <RichTextEditor
                 value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
+                onChange={setReplyText}
                 placeholder="Type your reply..."
-                rows={2}
-                className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700 resize-y"
+                minRows={2}
+                onImageUpload={async (file) => {
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  const res = await api.upload<{ url: string }>('/upload', formData);
+                  return res.url ?? (res as unknown as { data: { url: string } }).data?.url ?? '';
+                }}
               />
-              <Button
-                type="submit"
-                loading={postMessage.isPending}
-                disabled={!replyText.trim()}
-                className="self-end"
-              >
-                <Send className="h-4 w-4" />
-                Send Reply
-              </Button>
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  loading={postMessage.isPending}
+                  disabled={!replyText.trim()}
+                >
+                  <Send className="h-4 w-4" />
+                  Send Reply
+                </Button>
+              </div>
             </form>
           </div>
         )}

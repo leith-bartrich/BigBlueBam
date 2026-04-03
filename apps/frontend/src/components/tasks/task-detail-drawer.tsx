@@ -28,10 +28,12 @@ import {
 import type { Task, Priority, ApiResponse, PaginatedResponse } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
 import { cn, formatDate, formatRelativeTime, isOverdue, priorityColor } from '@/lib/utils';
+import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
 import { Avatar } from '@/components/common/avatar';
 import { Select } from '@/components/common/select';
+import { RichTextEditor } from '@/components/common/rich-text-editor';
 import { api } from '@/lib/api';
 import { DatePicker } from '@/components/common/date-picker';
 import { HelpdeskPanel } from '@/components/tasks/helpdesk-panel';
@@ -460,11 +462,17 @@ export function TaskDetailDrawer({
                           {/* Description */}
                           <div>
                             <label className="text-sm font-medium text-zinc-500 mb-1.5 block">Description</label>
-                            <textarea
-                              className="w-full min-h-[120px] rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100 resize-y"
-                              placeholder="Add a description..."
+                            <RichTextEditor
                               value={description}
-                              onChange={(e) => handleDescriptionChange(e.target.value)}
+                              onChange={handleDescriptionChange}
+                              placeholder="Add a description..."
+                              minRows={5}
+                              onImageUpload={async (file) => {
+                                const formData = new FormData();
+                                formData.append('file', file);
+                                const res = await api.upload<{ url: string }>('/upload', formData);
+                                return res.url ?? (res as unknown as { data: { url: string } }).data?.url ?? '';
+                              }}
                             />
                           </div>
 
@@ -577,9 +585,10 @@ export function TaskDetailDrawer({
                                       {formatRelativeTime(comment.created_at)}
                                     </span>
                                   </div>
-                                  <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
-                                    {comment.body}
-                                  </p>
+                                  <div
+                                    className="rich-text-content text-sm text-zinc-700 dark:text-zinc-300"
+                                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(comment.body)) }}
+                                  />
                                   {/* Reactions */}
                                   <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                                     {(comment.reactions ?? []).map((r) => (
@@ -624,18 +633,19 @@ export function TaskDetailDrawer({
                             <p className="text-sm text-zinc-400 py-4">No comments yet. Start a conversation.</p>
                           )}
 
-                          <div className="flex gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
-                            <textarea
-                              placeholder="Write a comment..."
+                          <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                            <RichTextEditor
                               value={newComment}
-                              onChange={(e) => setNewComment(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                                  handlePostComment();
-                                }
+                              onChange={setNewComment}
+                              placeholder="Write a comment..."
+                              minRows={2}
+                              compact
+                              onImageUpload={async (file) => {
+                                const formData = new FormData();
+                                formData.append('file', file);
+                                const res = await api.upload<{ url: string }>('/upload', formData);
+                                return res.url ?? (res as unknown as { data: { url: string } }).data?.url ?? '';
                               }}
-                              rows={3}
-                              className="flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100 resize-y"
                             />
                           </div>
                           <div className="flex justify-end">

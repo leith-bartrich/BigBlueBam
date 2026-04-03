@@ -34,6 +34,7 @@ import templateRoutes from './routes/template.routes.js';
 import reactionRoutes from './routes/reaction.routes.js';
 import icalRoutes from './routes/ical.routes.js';
 import viewRoutes from './routes/view.routes.js';
+import uploadRoutes from './routes/upload.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -150,6 +151,7 @@ await fastify.register(templateRoutes);
 await fastify.register(reactionRoutes);
 await fastify.register(icalRoutes);
 await fastify.register(viewRoutes);
+await fastify.register(uploadRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

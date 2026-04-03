@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
 import agentRoutes from './routes/agent.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import helpdeskUploadRoutes from './routes/upload.routes.js';
 import { sql } from 'drizzle-orm';
 
 const fastify = Fastify({
@@ -97,6 +98,7 @@ await fastify.register(authRoutes);
 await fastify.register(ticketRoutes);
 await fastify.register(agentRoutes);
 await fastify.register(settingsRoutes);
+await fastify.register(helpdeskUploadRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
