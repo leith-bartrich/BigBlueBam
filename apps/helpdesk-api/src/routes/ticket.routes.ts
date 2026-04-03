@@ -7,6 +7,7 @@ import { ticketMessages } from '../db/schema/ticket-messages.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { tasks, projects, labels } from '../db/schema/bbb-refs.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
+import { broadcastTaskCreated } from '../lib/broadcast.js';
 
 const createTicketSchema = z.object({
   subject: z.string().min(1).max(500),
@@ -157,8 +158,8 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Update task custom_fields with ticket reference
-    if (taskId) {
+    // Update task custom_fields with ticket reference and broadcast
+    if (taskId && projectId) {
       await db
         .update(tasks)
         .set({
@@ -168,6 +169,12 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
           },
         })
         .where(eq(tasks.id, taskId));
+
+      // Broadcast to BBB WebSocket so board updates instantly
+      const [fullTask] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      if (fullTask) {
+        await broadcastTaskCreated(projectId, fullTask as Record<string, unknown>);
+      }
     }
 
     return reply.status(201).send({

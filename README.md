@@ -46,6 +46,14 @@
 - REST API with OpenAPI/Swagger docs
 - API key management for automation
 
+**Helpdesk / Ticketing**
+- Client-facing support portal on :8080 with separate auth
+- Ticket submission with categories, priority, and message threading
+- Auto-creates linked BigBlueBam tasks from tickets
+- Status sync: moving a BBB task updates the client's ticket status
+- Agent replies visible to clients; internal comments stay private
+- Configurable email verification and domain restrictions
+
 **Customization**
 - Dark/light/system theme with class-based toggle
 - Custom date picker with calendar popover
@@ -94,6 +102,8 @@ Open **http://localhost** and log in.
 | Frontend | :80 | React SPA via nginx |
 | API | :4000 | Fastify REST + WebSocket |
 | MCP Server | :3001 | Model Context Protocol |
+| Helpdesk Portal | :8080 | Client-facing ticket submission |
+| Helpdesk API | :4001 (internal) | Helpdesk auth, tickets, messages |
 | PostgreSQL | :5432 | Primary database |
 | Redis | :6379 | Cache, PubSub, queues |
 | MinIO | :9000 | S3-compatible storage |
@@ -110,7 +120,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Run Tests
 
 ```bash
-pnpm test  # 439 tests across all packages
+pnpm test  # 466 tests across all packages
 ```
 
 ---
@@ -207,6 +217,18 @@ Full dark mode support across all views.
 
 ![Dark Mode](images/15-dark-mode.png)
 
+### Helpdesk — Login
+
+Client-facing portal with clean, simple branding.
+
+![Helpdesk Login](images/helpdesk-01-login.png)
+
+### Helpdesk — My Tickets
+
+Clients see their tickets with status badges, priority, category, and timestamps.
+
+![Helpdesk Tickets](images/helpdesk-02-tickets.png)
+
 ---
 
 ## Architecture
@@ -244,23 +266,26 @@ Full dark mode support across all views.
 | Database | PostgreSQL 16, Redis 7, MinIO |
 | Worker | BullMQ, Nodemailer |
 | Build | Turborepo, pnpm, tsup, Vite |
-| Test | Vitest (439 tests) |
+| Test | Vitest (466 tests) |
 | Deploy | Docker Compose, multi-stage Dockerfiles |
 
 ### Monorepo Structure
 
 ```
 apps/
-  api/          → Fastify REST API + WebSocket (18 route modules)
-  frontend/     → React SPA (33 components, 6 pages)
-  mcp-server/   → MCP protocol server (38 tools)
-  worker/       → BullMQ background jobs
+  api/              → Fastify REST API + WebSocket (23 route modules)
+  frontend/         → React SPA (33 components, 8 pages)
+  mcp-server/       → MCP protocol server (42 tools)
+  worker/           → BullMQ background jobs
+  helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
+  helpdesk/         → Helpdesk React SPA (client-facing portal)
 packages/
-  shared/       → Zod schemas, TypeScript types, constants
+  shared/           → Zod schemas, TypeScript types, constants
 infra/
-  postgres/     → Database schema (init.sql)
-  nginx/        → Reverse proxy config
-docs/           → 7 documentation pages with Mermaid diagrams
+  postgres/         → Database schema (init.sql — 25+ tables)
+  nginx/            → Reverse proxy configs (main + helpdesk)
+docs/               → 7 documentation pages with Mermaid diagrams
+scripts/            → Utility and seed scripts
 ```
 
 ---
@@ -298,6 +323,7 @@ BigBlueBam exposes a Model Context Protocol server enabling AI assistants (Claud
 | Templates | list_templates, create_from_template |
 | Import | import_csv, import_github_issues, suggest_branch_name |
 | Time | log_time |
+| Helpdesk | list_tickets, get_ticket, reply_to_ticket, update_ticket_status |
 | Utility | get_server_info, confirm_action |
 
 ---
@@ -313,6 +339,7 @@ BigBlueBam exposes a Model Context Protocol server enabling AI assistants (Claud
 | [MCP Server](docs/mcp-server.md) | Tools, resources, prompts, configuration |
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, scaling, backup |
 | [Development](docs/development.md) | Contributing, testing, code style |
+| [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
 
 ---
 
