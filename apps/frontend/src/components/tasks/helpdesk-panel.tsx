@@ -89,7 +89,7 @@ export function HelpdeskPanel({ ticketId }: HelpdeskPanelProps) {
     return <p className="text-sm text-red-500 py-4">Failed to load ticket details.</p>;
   }
 
-  const publicMessages = ticket.messages?.filter((m) => !m.is_internal) ?? [];
+  const allMessages = ticket.messages ?? [];
 
   const statusColors: Record<string, string> = {
     open: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
@@ -120,20 +120,27 @@ export function HelpdeskPanel({ ticketId }: HelpdeskPanelProps) {
 
       {/* Messages timeline */}
       <div className="space-y-3 max-h-80 overflow-y-auto">
-        {publicMessages.length > 0 ? (
-          publicMessages.map((msg) => (
+        {allMessages.length > 0 ? (
+          allMessages.map((msg) => (
             <div
               key={msg.id}
               className={cn(
                 'rounded-lg p-3 text-sm',
-                msg.author_type === 'client'
-                  ? 'bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600'
-                  : 'bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700',
+                msg.is_internal
+                  ? 'bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 border-dashed'
+                  : msg.author_type === 'client'
+                    ? 'bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600'
+                    : 'bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700',
               )}
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
                   {msg.author_name}
+                  {msg.is_internal && (
+                    <span className="ml-1.5 inline-flex items-center gap-0.5 text-yellow-600 dark:text-yellow-400">
+                      <Lock className="h-2.5 w-2.5" /> Internal
+                    </span>
+                  )}
                   {msg.author_type === 'system' && (
                     <span className="ml-1 text-zinc-400">(system)</span>
                   )}
