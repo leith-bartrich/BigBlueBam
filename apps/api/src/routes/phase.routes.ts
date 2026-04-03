@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, gte, sql } from 'drizzle-orm';
 import { createPhaseSchema, updatePhaseSchema, reorderPhasesSchema } from '@bigbluebam/shared';
 import { db } from '../db/index.js';
 import { phases } from '../db/schema/phases.js';
@@ -27,6 +27,12 @@ export default async function phaseRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireProjectRole('admin')] },
     async (request, reply) => {
       const data = createPhaseSchema.parse(request.body);
+
+      // Shift existing phases at >= this position to make room
+      await db
+        .update(phases)
+        .set({ position: sql`${phases.position} + 1` })
+        .where(and(eq(phases.project_id, request.params.id), gte(phases.position, data.position)));
 
       const [phase] = await db
         .insert(phases)

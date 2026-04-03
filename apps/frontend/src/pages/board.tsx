@@ -18,6 +18,7 @@ import { CreateTaskDialog } from '@/components/tasks/create-task-dialog';
 import { ImportDialog } from '@/components/import/import-dialog';
 import { TemplateManager } from '@/components/tasks/template-manager';
 import { EpicManager } from '@/components/board/epic-manager';
+import { PhaseManager } from '@/components/board/phase-manager';
 import { KeyboardShortcutsOverlay } from '@/components/common/keyboard-shortcuts-overlay';
 import { CommandPalette } from '@/components/common/command-palette';
 import { Select } from '@/components/common/select';
@@ -64,6 +65,7 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
   const [showSavedViews, setShowSavedViews] = useState(false);
   const [showEpicManager, setShowEpicManager] = useState(false);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  const [showPhaseManager, setShowPhaseManager] = useState(false);
 
   const { data: projectRes } = useProject(projectId);
   const { data: boardData, isLoading: boardLoading } = useBoard(projectId, selectedSprintId);
@@ -416,6 +418,16 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
                         <button
                           onClick={() => {
                             setShowProjectMenu(false);
+                            setShowPhaseManager(true);
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <Layers className="h-4 w-4" />
+                          Manage Phases
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowProjectMenu(false);
                             handleDeleteProject();
                           }}
                           className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
@@ -502,6 +514,12 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
       <EpicManager
         open={showEpicManager}
         onOpenChange={setShowEpicManager}
+        projectId={projectId}
+      />
+
+      <PhaseManager
+        open={showPhaseManager}
+        onOpenChange={setShowPhaseManager}
         projectId={projectId}
       />
     </AppLayout>
