@@ -121,7 +121,7 @@ function getRequestedOrgId(request: FastifyRequest): string | undefined {
   return undefined;
 }
 
-async function buildAuthUser(
+export async function buildAuthUser(
   row: BaseUserRow,
   apiKeyScope: string | null,
   request: FastifyRequest,
@@ -190,7 +190,7 @@ async function authPlugin(fastify: FastifyInstance) {
         .limit(1);
 
       const row = result[0];
-      if (row && new Date(row.session.expires_at) > new Date() && row.user.is_active) {
+      if (row && new Date(row.session.expires_at).getTime() + 30_000 > Date.now() && row.user.is_active) {
         request.user = await buildAuthUser(row.user, null, request);
         request.sessionId = sessionId;
         return;
