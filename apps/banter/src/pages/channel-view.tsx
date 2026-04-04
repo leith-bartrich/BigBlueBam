@@ -18,6 +18,7 @@ import { MessageCompose } from '@/components/messages/message-compose';
 import { TypingIndicator } from '@/components/messages/typing-indicator';
 import { ChannelSettings } from '@/components/channels/channel-settings';
 import { CallPanel } from '@/components/calls/call-panel';
+import { DeviceSettingsDialog } from '@/components/calls/device-settings-dialog';
 import { VideoGrid, type VideoParticipant } from '@/components/calls/video-grid';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -281,6 +282,34 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
       {/* Channel settings modal */}
       {showSettings && (
         <ChannelSettings channel={channel} onClose={() => setShowSettings(false)} onNavigate={onNavigate} />
+      )}
+
+      {/* Device settings dialog */}
+      {showDeviceSettings && (
+        <DeviceSettingsDialog
+          open={showDeviceSettings}
+          onClose={() => setShowDeviceSettings(false)}
+          audioInputs={devices.audioInputs}
+          audioOutputs={devices.audioOutputs}
+          videoInputs={devices.videoInputs}
+          selectedMicId={devices.selectedMicId}
+          selectedSpeakerId={devices.selectedSpeakerId}
+          selectedCameraId={devices.selectedCameraId}
+          onSelectMic={(id) => {
+            devices.setSelectedMic(id);
+            livekit.setMicrophoneDevice(id);
+          }}
+          onSelectSpeaker={(id) => {
+            devices.setSelectedSpeaker(id);
+            livekit.setSpeakerDevice(id);
+          }}
+          onSelectCamera={(id) => {
+            devices.setSelectedCamera(id);
+            livekit.setCameraDevice(id);
+          }}
+          onRequestPermissions={devices.requestPermissions}
+          hasPermission={devices.hasPermission}
+        />
       )}
     </div>
   );

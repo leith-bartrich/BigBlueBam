@@ -7,7 +7,6 @@ import {
   RemoteParticipant,
   LocalParticipant,
   RemoteTrackPublication,
-  ConnectionState,
 } from "livekit-client";
 
 interface UseLiveKitOptions {
@@ -290,22 +289,22 @@ export function useLiveKit({
 
   const toggleMute = useCallback(() => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.state !== ConnectionState.Connected) return;
+    if (!currentRoom) return;
 
     const enabled = currentRoom.localParticipant.isMicrophoneEnabled;
     currentRoom.localParticipant
       .setMicrophoneEnabled(!enabled)
       .then(() => {
-        setIsMuted(enabled);
+        setIsMuted(enabled); // was enabled → now muted
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error("[useLiveKit] Failed to toggle mute:", err);
       });
   }, []);
 
   const toggleCamera = useCallback(() => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.state !== ConnectionState.Connected) return;
+    if (!currentRoom) return;
 
     const enabled = currentRoom.localParticipant.isCameraEnabled;
     currentRoom.localParticipant
@@ -313,14 +312,14 @@ export function useLiveKit({
       .then(() => {
         setIsCameraOn(!enabled);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error("[useLiveKit] Failed to toggle camera:", err);
       });
   }, []);
 
   const toggleScreenShare = useCallback(() => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.state !== ConnectionState.Connected) return;
+    if (!currentRoom) return;
 
     const enabled = currentRoom.localParticipant.isScreenShareEnabled;
     currentRoom.localParticipant
@@ -328,7 +327,7 @@ export function useLiveKit({
       .then(() => {
         setIsScreenSharing(!enabled);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error("[useLiveKit] Failed to toggle screen share:", err);
       });
   }, []);
@@ -342,9 +341,9 @@ export function useLiveKit({
 
   const setMicrophoneDevice = useCallback((deviceId: string) => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.state !== ConnectionState.Connected) return;
+    if (!currentRoom) return;
 
-    currentRoom.switchActiveDevice("audioinput", deviceId).catch((err) => {
+    currentRoom.switchActiveDevice("audioinput", deviceId).catch((err: unknown) => {
       console.error("[useLiveKit] Failed to switch microphone:", err);
     });
   }, []);
@@ -361,9 +360,9 @@ export function useLiveKit({
 
   const setCameraDevice = useCallback((deviceId: string) => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.state !== ConnectionState.Connected) return;
+    if (!currentRoom) return;
 
-    currentRoom.switchActiveDevice("videoinput", deviceId).catch((err) => {
+    currentRoom.switchActiveDevice("videoinput", deviceId).catch((err: unknown) => {
       console.error("[useLiveKit] Failed to switch camera:", err);
     });
   }, []);
