@@ -241,11 +241,32 @@ async function authPlugin(fastify: FastifyInstance) {
         .where(eq(apiKeys.key_prefix, prefix))
         .limit(10);
 
-      for (const candidate of candidates) {
+      // P2-11: An 8-char random prefix has ~2.8 x 10^14 combinations, so
+      // natural collisions are vanishingly rare. Combined with the
+      // candidate cap below, the 8-char prefix is sufficient — we will
+      // never verify more than a handful of Argon2 hashes per request.
+      //
+      // DoS mitigation: seeing >3 candidates for a single prefix is a
+      // strong signal of an attacker trying to force multiple Argon2
+      // verifications per request. In that case, log a warning and only
+      // verify the first candidate.
+      const verifyCandidates = candidates.length > 3 ? candidates.slice(0, 1) : candidates;
+      if (candidates.length > 3) {
+        request.log.warn(
+          { prefix, candidate_count: candidates.length },
+          'Suspicious number of API key candidates for prefix; limiting to first candidate',
+        );
+      }
+
+      for (const candidate of verifyCandidates) {
+        // P2-10: Always run argon2.verify BEFORE checking expiry so that
+        // expired-but-valid-hash keys and invalid-hash keys take the same
+        // amount of wall time. Short-circuiting on expiry first would leak
+        // (via timing) whether a given prefix corresponds to a real key.
+        const valid = await argon2.verify(candidate.apiKey.key_hash, token);
         if (candidate.apiKey.expires_at && new Date(candidate.apiKey.expires_at) < new Date()) {
           continue;
         }
-        const valid = await argon2.verify(candidate.apiKey.key_hash, token);
         if (valid && candidate.user.is_active) {
           request.user = await buildAuthUser(candidate.user, candidate.apiKey.scope, request);
           // Update last_used_at — fire-and-forget, log errors but don't block the response.

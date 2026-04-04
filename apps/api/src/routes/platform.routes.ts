@@ -203,6 +203,14 @@ export default async function platformRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // P2-24: Invalidate all active sessions for users in this org BEFORE
+      // the CASCADE delete runs. Otherwise, a user who is currently logged
+      // in would continue to have a valid session cookie pointing at a
+      // deleted user row until the session naturally expires.
+      await db.execute(
+        sql`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE org_id = ${id})`,
+      );
+
       // CASCADE delete handles users, projects, etc.
       await db.delete(organizations).where(eq(organizations.id, id));
 

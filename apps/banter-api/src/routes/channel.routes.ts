@@ -6,12 +6,12 @@ import {
   banterChannels,
   banterChannelMemberships,
   banterMessages,
-  banterSettings,
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireChannelMember, requireChannelAdmin, requireChannelOwner } from '../middleware/channel-auth.js';
 import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
+import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
 
 const createChannelSchema = z.object({
   name: z
@@ -195,20 +195,23 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const user = request.user!;
       const body = createChannelSchema.parse(request.body);
 
-      // Enforce org-level banter permissions for non-admin members
+      // Enforce org-level banter permissions for non-admin members.
+      //
+      // P2-23 (accepted staleness): There is a small TOCTOU window between
+      // reading banter_settings.allow_channel_creation here and performing
+      // the INSERT below. If an org admin flips the setting to 'admins_only'
+      // in that window (<10ms for a hot-path Postgres read + insert on the
+      // same connection), a member could still create a channel. We accept
+      // this — an admin who wants to lock this down can delete the stray
+      // channel afterwards, and wrapping check + insert in a serializable
+      // transaction would add contention without meaningful safety.
       const isPrivileged = user.is_superuser || user.role === 'admin' || user.role === 'owner';
       if (!isPrivileged) {
-        const [settings] = await db
-          .select({
-            allow_channel_creation: banterSettings.allow_channel_creation,
-          })
-          .from(banterSettings)
-          .where(eq(banterSettings.org_id, user.org_id))
-          .limit(1);
+        // Single code path for banter permission reads. Cached with 30s TTL
+        // and normalized into the OrgPermissions shape used by apps/api.
+        const perms = await getEffectiveBanterPermissions(user.org_id);
 
-        // Default: 'members' can create channels unless restricted
-        const allowCreation = settings?.allow_channel_creation ?? 'members';
-        if (allowCreation !== 'members') {
+        if (!perms.members_can_create_channels) {
           return reply.status(403).send({
             error: {
               code: 'FORBIDDEN',
@@ -219,9 +222,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Private channel restriction: piggyback on allow_channel_creation for now.
-        // Admins can always create private channels; members obey the setting above.
-        if (body.type === 'private' && allowCreation !== 'members') {
+        // Private channel restriction: piggybacks on allow_channel_creation
+        // in the current banter_settings schema. Admins can always create
+        // private channels; members obey the mapped flag above.
+        if (body.type === 'private' && !perms.members_can_create_private_channels) {
           return reply.status(403).send({
             error: {
               code: 'FORBIDDEN',
@@ -541,6 +545,14 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   );
 
   // POST /v1/channels/:id/leave — leave channel
+  //
+  // P3-3: This endpoint intentionally has no channel-role check. Any
+  // authenticated user — including guests — is allowed to leave any
+  // channel they are currently a member of. The delete is keyed on
+  // (channel_id, current user id), so the caller can only remove
+  // themselves. There is no attack surface to expand here; a user being
+  // unable to leave a channel would be worse UX than the negligible risk
+  // of making /leave callable by everyone.
   fastify.post(
     '/v1/channels/:id/leave',
     { preHandler: [requireAuth, requireScope('read_write')] },

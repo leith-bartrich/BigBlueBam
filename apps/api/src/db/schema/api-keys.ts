@@ -1,6 +1,12 @@
 import { pgTable, uuid, varchar, text, timestamp, index } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 
+// P2-8 (multi-org limitation): API keys are scoped to a single user and therefore
+// implicitly to that user's `users.org_id`. In the multi-org world (where users
+// can belong to many orgs via `organization_memberships`), the same key would
+// give access to every org the owner belongs to.
+// TODO: add an `org_id` column to bind each key to a single org, and enforce
+// that scope on every request so API keys never leak across orgs.
 export const apiKeys = pgTable(
   'api_keys',
   {

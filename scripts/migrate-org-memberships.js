@@ -40,6 +40,24 @@ async function migrate() {
     process.exit(1);
   }
 
+  // P2-16: count users with NULL org_id so we can surface them loudly
+  // instead of silently dropping them from the migration.
+  const [{ count: nullOrgCount }] = await sql`
+    SELECT COUNT(*)::int AS count FROM users WHERE org_id IS NULL
+  `;
+  if (nullOrgCount > 0) {
+    console.warn(
+      `WARNING: ${nullOrgCount} user(s) have NULL org_id and will be skipped — ` +
+        `they will have no organization_memberships row and must be assigned manually.`,
+    );
+    const nullUsers = await sql`
+      SELECT id, email FROM users WHERE org_id IS NULL ORDER BY email
+    `;
+    for (const u of nullUsers) {
+      console.warn(`  - skipped user id=${u.id} email=${u.email} (NULL org_id)`);
+    }
+  }
+
   // Fetch all users with their org_id and role
   const users = await sql`
     SELECT id, org_id, role FROM users WHERE org_id IS NOT NULL
@@ -67,7 +85,10 @@ async function migrate() {
     }
   }
 
-  console.log(`Migration complete: ${inserted} inserted, ${skipped} skipped (already existed).`);
+  console.log(
+    `Migration complete: ${inserted} inserted, ${skipped} skipped (already existed), ` +
+      `${nullOrgCount} user(s) with NULL org_id skipped entirely.`,
+  );
 }
 
 try {

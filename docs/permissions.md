@@ -350,6 +350,7 @@ Every API request follows this evaluation sequence:
 | 10 | ~~No permission change audit~~ | ~~Low~~ | **Resolved** | SuperUser actions logged to `superuser_audit_log`. Banter admin actions logged to `banter_audit_log`. |
 | 11 | **UI permission mismatch (P2-3)** | Low | Open | Frontend surfaces actions (buttons, menu items) that the API rejects for viewers/guests. Server-side enforcement is correct; UI should hide/disable actions based on the caller's role to avoid 403s after click. |
 | 12 | **UI permission mismatch (P2-4)** | Low | Open | Banter channel admin/owner-only controls (e.g. archive, rename, member management) are visible to regular channel members. API blocks the mutation, but the UI should gate these controls on `channelMembership.role` / org role. |
+| 13 | **Org admin/owner moderate channels without membership (P2-15)** | Info | **By Design** | Org-level owners and admins can edit/archive channels, delete messages, and manage members on any channel in their org even if they are not a member of that channel. This is the documented override rule in Section 6 — org admins have override power over all channel-level roles. The server treats org role as a fallback authority throughout Banter moderation routes. |
 
 ---
 
