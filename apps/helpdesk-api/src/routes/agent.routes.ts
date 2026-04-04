@@ -7,6 +7,10 @@ import { tickets } from '../db/schema/tickets.js';
 import { ticketMessages } from '../db/schema/ticket-messages.js';
 import { projects } from '../db/schema/bbb-refs.js';
 import { env } from '../env.js';
+import {
+  broadcastTicketMessage,
+  broadcastTicketStatusChanged,
+} from '../services/realtime.js';
 
 const updateTicketSchema = z.object({
   status: z.enum(['open', 'in_progress', 'waiting_on_customer', 'resolved', 'closed']).optional(),
@@ -350,6 +354,21 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       })
       .returning();
 
+    // Only broadcast public (non-internal) messages to the ticket room so that
+    // customer websocket subscribers don't receive internal notes. Internal
+    // notes could be delivered via a future agent-only room.
+    if (message && message.is_internal === false) {
+      await broadcastTicketMessage(id, {
+        id: message.id,
+        ticket_id: id,
+        body: message.body,
+        author_type: 'agent',
+        author_name: authorName,
+        is_internal: message.is_internal,
+        created_at: message.created_at,
+      });
+    }
+
     // TODO: If not internal and notify_on_agent_reply is enabled, queue email to client
 
     return reply.status(201).send({ data: message });
@@ -406,6 +425,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       .where(eq(tickets.id, id))
       .returning();
 
+    if (updated && data.status !== undefined) {
+      await broadcastTicketStatusChanged(id, data.status);
+    }
+
     return reply.send({ data: updated });
   });
 
@@ -438,6 +461,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       })
       .where(eq(tickets.id, id))
       .returning();
+
+    if (updated) {
+      await broadcastTicketStatusChanged(id, 'closed');
+    }
 
     return reply.send({ data: updated });
   });

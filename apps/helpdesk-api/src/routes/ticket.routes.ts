@@ -9,6 +9,10 @@ import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { tasks, projects, phases, labels } from '../db/schema/bbb-refs.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
 import { broadcastTaskCreated, broadcastTicketStatusChanged } from '../lib/broadcast.js';
+import {
+  broadcastTicketMessage,
+  broadcastTicketStatusChanged as broadcastTicketStatusChangedRT,
+} from '../services/realtime.js';
 
 const createTicketSchema = z.object({
   subject: z.string().min(1).max(500),
@@ -411,6 +415,17 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       })
       .returning();
 
+    if (message) {
+      await broadcastTicketMessage(id, {
+        id: message.id,
+        ticket_id: id,
+        body: message.body,
+        author_type: 'client',
+        author_name: user.display_name,
+        created_at: message.created_at,
+      });
+    }
+
     // HB-15: If the ticket was waiting on the customer, flip it back to open
     // now that the customer has replied, and broadcast the status change.
     if (ticket.status === 'waiting_on_customer') {
@@ -422,6 +437,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       if (ticket.project_id && ticket.task_id) {
         await broadcastTicketStatusChanged(ticket.project_id, ticket.task_id, 'open');
       }
+      await broadcastTicketStatusChangedRT(id, 'open');
     }
 
     return reply.status(201).send({ data: message });
@@ -472,6 +488,10 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       })
       .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
       .returning();
+
+    if (updated) {
+      await broadcastTicketStatusChangedRT(id, 'open');
+    }
 
     return reply.send({ data: updated });
   });
@@ -525,6 +545,10 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       .set({ status: 'closed', closed_at: new Date() })
       .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
       .returning();
+
+    if (updated) {
+      await broadcastTicketStatusChangedRT(id, 'closed');
+    }
 
     // HB-16: Move the linked BBB task to a terminal phase so the board reflects
     // that the customer closed their ticket. Best-effort — don't fail the close.
