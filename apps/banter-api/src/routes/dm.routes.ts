@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import {
   banterChannels,
   banterChannelMemberships,
+  banterSettings,
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
@@ -123,6 +124,30 @@ export default async function dmRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const user = request.user!;
       const body = createGroupDmSchema.parse(request.body);
+
+      // Enforce org-level permission: members_can_create_group_dms.
+      // Admins/owners/superusers always allowed.
+      const isPrivileged = user.role === 'admin' || user.role === 'owner' || user.is_superuser;
+      if (!isPrivileged) {
+        const [settings] = await db
+          .select({ allow_group_dm: banterSettings.allow_group_dm })
+          .from(banterSettings)
+          .where(eq(banterSettings.org_id, user.org_id))
+          .limit(1);
+
+        // Default: allowed unless the org explicitly disables group DMs.
+        const allowed = settings?.allow_group_dm ?? true;
+        if (!allowed) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to create group DMs',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       const allUserIds = [...new Set([user.id, ...body.user_ids])];
 

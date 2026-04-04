@@ -138,6 +138,31 @@ export default async function projectRoutes(fastify: FastifyInstance) {
             },
           });
         }
+
+        // Enforce org-level permission: members_can_delete_own_projects.
+        // If the user is not an org admin/owner, they may only delete projects
+        // they created, and only if the org permission allows it.
+        if (!isOrgPrivileged(request.user!.role)) {
+          const existingProject = await projectService.getProject(request.params.id);
+          const org = await orgService.getOrganization(request.user!.org_id);
+          const permitted = checkOrgPermission(
+            org?.settings as Record<string, unknown> | null,
+            'members_can_delete_own_projects',
+          );
+          const isCreator =
+            existingProject !== null &&
+            (existingProject as { created_by?: string | null }).created_by === request.user!.id;
+          if (!permitted || !isCreator) {
+            return reply.status(403).send({
+              error: {
+                code: 'FORBIDDEN',
+                message: 'Your organization does not allow members to delete this project',
+                details: [],
+                request_id: request.id,
+              },
+            });
+          }
+        }
       }
 
       const project = await projectService.archiveProject(request.params.id);

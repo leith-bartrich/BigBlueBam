@@ -23,10 +23,29 @@ export const DEFAULT_ORG_PERMISSIONS = {
 export type OrgPermissions = typeof DEFAULT_ORG_PERMISSIONS;
 export type OrgPermissionKey = keyof OrgPermissions;
 
-/** Get effective permissions for an org, merging defaults with overrides. */
+/** Get effective permissions for an org, merging defaults with overrides.
+ * Only merges values whose type matches the default's type, so that garbage
+ * values (e.g. the string "false") don't corrupt booleans. */
 export function getOrgPermissions(orgSettings: Record<string, unknown> | null | undefined): OrgPermissions {
   const permissions = (orgSettings as Record<string, unknown> | null)?.permissions as Record<string, unknown> | undefined;
-  return { ...DEFAULT_ORG_PERMISSIONS, ...permissions };
+  const merged: Record<string, unknown> = { ...DEFAULT_ORG_PERMISSIONS };
+  if (permissions) {
+    for (const key of Object.keys(DEFAULT_ORG_PERMISSIONS) as OrgPermissionKey[]) {
+      const override = permissions[key];
+      const defaultVal = DEFAULT_ORG_PERMISSIONS[key];
+      if (override === undefined) continue;
+      if (typeof defaultVal === 'boolean') {
+        if (typeof override === 'boolean') merged[key] = override;
+      } else if (typeof defaultVal === 'number') {
+        if (typeof override === 'number') merged[key] = override;
+      } else if (Array.isArray(defaultVal)) {
+        if (Array.isArray(override)) merged[key] = override;
+      } else {
+        merged[key] = override;
+      }
+    }
+  }
+  return merged as OrgPermissions;
 }
 
 /** Check if a specific boolean permission is enabled for the org. */
@@ -35,7 +54,8 @@ export function checkOrgPermission(
   key: OrgPermissionKey,
 ): boolean {
   const perms = getOrgPermissions(orgSettings);
-  return !!perms[key];
+  const val = perms[key];
+  return typeof val === 'boolean' ? val : Boolean(DEFAULT_ORG_PERMISSIONS[key]);
 }
 
 /** Check if a user's org role bypasses permission restrictions (admin/owner). */

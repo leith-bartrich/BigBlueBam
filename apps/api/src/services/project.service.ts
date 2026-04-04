@@ -109,6 +109,7 @@ export async function createProject(orgId: string, data: CreateProjectInput, cre
         color: data.color ?? null,
         task_id_prefix: data.task_id_prefix,
         default_sprint_duration_days: data.default_sprint_duration_days ?? 14,
+        created_by: creatorUserId,
       })
       .returning();
 

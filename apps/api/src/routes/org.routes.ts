@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { projectMemberships } from '../db/schema/project-memberships.js';
 import { users } from '../db/schema/users.js';
 import * as orgService from '../services/org.service.js';
+import { checkOrgPermission, isOrgPrivileged } from '../services/org-permissions.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireOrgRole } from '../middleware/authorize.js';
 
@@ -124,8 +125,28 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.post(
     '/org/members/invite',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    { preHandler: [requireAuth, requireScope('admin')] },
     async (request, reply) => {
+      // Allow org admins/owners/superusers, OR members if the org permission
+      // `members_can_invite_members` is enabled.
+      if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
+        const org = await orgService.getOrganization(request.user!.org_id);
+        const allowed = checkOrgPermission(
+          org?.settings as Record<string, unknown> | null,
+          'members_can_invite_members',
+        );
+        if (!allowed) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to invite other members',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       const schema = z.object({
         email: z.string().email().max(320),
         role: z.enum(['member', 'admin']).default('member'),
