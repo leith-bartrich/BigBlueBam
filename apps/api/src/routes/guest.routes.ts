@@ -162,19 +162,22 @@ export default async function guestRoutes(fastify: FastifyInstance) {
     '/v1/guests/accept/:token',
     async (request, reply) => {
       const bodySchema = z.object({
+        email: z.string().email().max(320),
         display_name: z.string().max(100),
         password: z.string().min(8).max(128),
       });
       const data = bodySchema.parse(request.body);
 
-      // Find the invitation
-      const [invitation] = await db
+      // Peek at the invitation first to validate the submitted email matches.
+      // (P0-12) This prevents an attacker with a stolen token from registering
+      // under a different email.
+      const [peek] = await db
         .select()
         .from(guestInvitations)
         .where(eq(guestInvitations.token, request.params.token))
         .limit(1);
 
-      if (!invitation) {
+      if (!peek) {
         return reply.status(404).send({
           error: {
             code: 'NOT_FOUND',
@@ -185,75 +188,100 @@ export default async function guestRoutes(fastify: FastifyInstance) {
         });
       }
 
-      if (invitation.accepted_at) {
-        return reply.status(410).send({
+      if (data.email.toLowerCase() !== peek.email.toLowerCase()) {
+        return reply.status(400).send({
           error: {
-            code: 'GONE',
-            message: 'This invitation has already been accepted',
-            details: [],
+            code: 'VALIDATION_ERROR',
+            message: 'Submitted email does not match the invitation',
+            details: [{ field: 'email', issue: 'mismatch' }],
             request_id: request.id,
           },
         });
       }
 
-      if (new Date(invitation.expires_at) < new Date()) {
-        return reply.status(410).send({
-          error: {
-            code: 'GONE',
-            message: 'This invitation has expired',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Hash the password
+      // Hash the password before entering the transaction (argon2 is slow).
       const argon2 = await import('argon2');
       const passwordHash = await argon2.hash(data.password);
 
-      // Create the guest user account
-      const [guestUser] = await db
-        .insert(users)
-        .values({
-          org_id: invitation.org_id,
-          email: invitation.email,
-          display_name: data.display_name,
-          password_hash: passwordHash,
-          role: 'guest',
-        })
-        .returning();
+      // (P0-15) Atomically claim the invitation + create the user +
+      // insert project memberships in a single transaction. The atomic
+      // UPDATE on accepted_at guarantees only one concurrent request wins
+      // the race. If anything inside the transaction throws, the claim
+      // rolls back automatically.
+      try {
+        const result = await db.transaction(async (tx) => {
+          const claimedResult = await tx
+            .update(guestInvitations)
+            .set({ accepted_at: new Date() })
+            .where(
+              and(
+                eq(guestInvitations.token, request.params.token),
+                isNull(guestInvitations.accepted_at),
+                gt(guestInvitations.expires_at, new Date()),
+              ),
+            )
+            .returning();
 
-      // Add the guest to specified projects as 'member' role
-      if (invitation.project_ids && invitation.project_ids.length > 0) {
-        const membershipValues = invitation.project_ids.map((projectId) => ({
-          project_id: projectId,
-          user_id: guestUser!.id,
-          role: 'member',
-        }));
-        await db.insert(projectMemberships).values(membershipValues);
+          if (claimedResult.length === 0) {
+            // Signal the caller to return 410.
+            throw new Error('INVITATION_UNAVAILABLE');
+          }
+
+          const invitation = claimedResult[0]!;
+
+          // Create the guest user account
+          const [guestUser] = await tx
+            .insert(users)
+            .values({
+              org_id: invitation.org_id,
+              email: invitation.email,
+              display_name: data.display_name,
+              password_hash: passwordHash,
+              role: 'guest',
+            })
+            .returning();
+
+          // Add the guest to specified projects as 'member' role
+          if (invitation.project_ids && invitation.project_ids.length > 0) {
+            const membershipValues = invitation.project_ids.map((projectId) => ({
+              project_id: projectId,
+              user_id: guestUser!.id,
+              role: 'member',
+            }));
+            await tx.insert(projectMemberships).values(membershipValues);
+          }
+
+          return { invitation, guestUser: guestUser! };
+        });
+
+        // NOTE: Channel membership auto-add would go here once the Banter
+        // channel_members schema is wired up. For now, channel_ids are stored
+        // on the invitation for future use.
+
+        return reply.status(201).send({
+          data: {
+            id: result.guestUser.id,
+            email: result.guestUser.email,
+            display_name: result.guestUser.display_name,
+            role: result.guestUser.role,
+            org_id: result.guestUser.org_id,
+            project_ids: result.invitation.project_ids,
+            channel_ids: result.invitation.channel_ids,
+          },
+        });
+      } catch (err) {
+        if (err instanceof Error && err.message === 'INVITATION_UNAVAILABLE') {
+          return reply.status(410).send({
+            error: {
+              code: 'GONE',
+              message: 'Invitation invalid, expired, or already accepted',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        throw err;
       }
-
-      // Mark invitation as accepted
-      await db
-        .update(guestInvitations)
-        .set({ accepted_at: new Date() })
-        .where(eq(guestInvitations.id, invitation.id));
-
-      // NOTE: Channel membership auto-add would go here once the Banter
-      // channel_members schema is wired up. For now, channel_ids are stored
-      // on the invitation for future use.
-
-      return reply.status(201).send({
-        data: {
-          id: guestUser!.id,
-          email: guestUser!.email,
-          display_name: guestUser!.display_name,
-          role: guestUser!.role,
-          org_id: guestUser!.org_id,
-          project_ids: invitation.project_ids,
-          channel_ids: invitation.channel_ids,
-        },
-      });
     },
   );
 
