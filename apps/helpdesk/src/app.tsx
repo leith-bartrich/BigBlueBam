@@ -7,6 +7,7 @@ import { TicketsListPage } from '@/pages/tickets-list';
 import { NewTicketPage } from '@/pages/new-ticket';
 import { TicketDetailPage } from '@/pages/ticket-detail';
 import { Header } from '@/components/layout/header';
+import { ws } from '@/lib/websocket';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -47,6 +48,14 @@ export function App() {
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
+
+  // Connect WebSocket when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      ws.connect();
+      return () => ws.disconnect();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const handlePopState = () => {

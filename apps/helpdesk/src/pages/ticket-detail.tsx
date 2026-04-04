@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTicket, usePostMessage, useReopenTicket } from '@/hooks/use-tickets';
+import { useRealtimeTicket } from '@/hooks/use-realtime-ticket';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/common/button';
 import { StatusBadge, PriorityBadge } from '@/components/common/badge';
@@ -16,6 +17,7 @@ interface TicketDetailPageProps {
 }
 
 export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps) {
+  useRealtimeTicket(ticketId);
   const { data: ticket, isLoading, error } = useTicket(ticketId);
   const postMessage = usePostMessage(ticketId);
   const reopenTicket = useReopenTicket(ticketId);
