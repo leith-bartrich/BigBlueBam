@@ -4,6 +4,7 @@ import { eq, and, sql, lt, gt, desc, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   banterMessages,
+  banterChannels,
   banterChannelMemberships,
   users,
 } from '../db/schema/index.js';
@@ -22,6 +23,7 @@ export default async function threadRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
+      const user = request.user!;
       const query = request.query as {
         before?: string;
         after?: string;
@@ -46,6 +48,44 @@ export default async function threadRoutes(fastify: FastifyInstance) {
             request_id: request.id,
           },
         });
+      }
+
+      // Verify the user is a member of the parent message's channel
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(eq(banterChannels.id, parent.channel_id))
+        .limit(1);
+
+      const [membership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, parent.channel_id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        const isDm = channel && (channel.type === 'dm' || channel.type === 'group_dm');
+        const hasOrgOverride =
+          !isDm &&
+          channel &&
+          channel.org_id === user.org_id &&
+          (user.is_superuser || ['owner', 'admin'].includes(user.role));
+
+        if (!hasOrgOverride) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Message not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const conditions = [
