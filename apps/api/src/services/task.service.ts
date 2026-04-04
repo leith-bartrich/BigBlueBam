@@ -12,6 +12,7 @@ export async function createTask(
   projectId: string,
   data: CreateTaskInput,
   reporterId: string,
+  impersonatorId?: string | null,
 ) {
   // Atomically increment task_id_sequence and get new value
   const [updated] = await db
@@ -85,7 +86,7 @@ export async function createTask(
   broadcastToProject(projectId, 'task.created', task, reporterId);
 
   // Log activity
-  logActivity(projectId, reporterId, 'task.created', task!.id, { title: task!.title }).catch(() => {});
+  logActivity(projectId, reporterId, 'task.created', task!.id, { title: task!.title }, impersonatorId ?? null).catch(() => {});
 
   return task!;
 }
@@ -109,7 +110,7 @@ export async function getTask(taskId: string) {
   return task ?? null;
 }
 
-export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?: string) {
+export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?: string, impersonatorId?: string | null) {
   const updateValues: Record<string, unknown> = {
     updated_at: new Date(),
   };
@@ -147,14 +148,14 @@ export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?
 
     // Log activity
     if (actorId) {
-      logActivity(task.project_id, actorId, 'task.updated', taskId, { changed_fields: changedFields }).catch(() => {});
+      logActivity(task.project_id, actorId, 'task.updated', taskId, { changed_fields: changedFields }, impersonatorId ?? null).catch(() => {});
     }
   }
 
   return task ?? null;
 }
 
-export async function deleteTask(taskId: string, actorId?: string) {
+export async function deleteTask(taskId: string, actorId?: string, impersonatorId?: string | null) {
   // Soft delete by moving to a terminal state - or we do actual delete
   // For now, actually delete but handle subtask counts
   const task = await getTask(taskId);
@@ -184,14 +185,14 @@ export async function deleteTask(taskId: string, actorId?: string) {
 
     // Log activity
     if (actorId) {
-      logActivity(deleted.project_id, actorId, 'task.deleted', null, { task_id: taskId, title: deleted.title }).catch(() => {});
+      logActivity(deleted.project_id, actorId, 'task.deleted', null, { task_id: taskId, title: deleted.title }, impersonatorId ?? null).catch(() => {});
     }
   }
 
   return deleted ?? null;
 }
 
-export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: string) {
+export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: string, impersonatorId?: string | null) {
   // Get the task before move to know from_phase
   const existingTask = await getTask(taskId);
 
@@ -285,7 +286,7 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
       logActivity(task.project_id, actorId, 'task.moved', taskId, {
         from_phase: existingTask?.phase_id,
         to_phase: data.phase_id,
-      }).catch(() => {});
+      }, impersonatorId ?? null).catch(() => {});
     }
   }
 

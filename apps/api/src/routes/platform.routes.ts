@@ -1,11 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, sql, desc, ilike } from 'drizzle-orm';
+import { eq, sql, desc, ilike, and, isNull, gt } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.js';
 import { organizations } from '../db/schema/organizations.js';
 import { users } from '../db/schema/users.js';
 import { superuserAuditLog } from '../db/schema/superuser-audit-log.js';
+import { notifications } from '../db/schema/notifications.js';
+import { impersonationSessions } from '../db/schema/impersonation-sessions.js';
 import { requireAuth, requireSuperUser } from '../plugins/auth.js';
+
+const IMPERSONATION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 const createOrgSchema = z.object({
   name: z.string().min(1).max(255),
@@ -301,6 +306,18 @@ export default async function platformRoutes(fastify: FastifyInstance) {
         });
       }
 
+      if (targetUser.is_active === false) {
+        return reply.status(400).send({
+          error: { code: 'BAD_REQUEST', message: 'Cannot impersonate deactivated users', details: [], request_id: request.id },
+        });
+      }
+
+      if (targetUser.is_superuser === true) {
+        return reply.status(400).send({
+          error: { code: 'BAD_REQUEST', message: 'Cannot impersonate other SuperUsers', details: [], request_id: request.id },
+        });
+      }
+
       await logSuperuserAction(
         caller.id,
         'user.impersonation_started',
@@ -309,6 +326,29 @@ export default async function platformRoutes(fastify: FastifyInstance) {
         targetUser.org_id,
         targetUser.id,
       );
+
+      // Create a time-limited impersonation session
+      const now = new Date();
+      const expires = new Date(now.getTime() + IMPERSONATION_TTL_MS);
+      await db.insert(impersonationSessions).values({
+        superuser_id: caller.id,
+        target_user_id: targetUser.id,
+        started_at: now,
+        expires_at: expires,
+      });
+
+      // Notify the target user that their account was accessed
+      try {
+        await db.insert(notifications).values({
+          user_id: targetUser.id,
+          project_id: null,
+          type: 'impersonation_started',
+          title: 'Account access notification',
+          body: `A platform administrator (${caller.display_name}) accessed your account.`,
+        });
+      } catch {
+        // Non-critical
+      }
 
       return reply.send({ data: targetUser });
     },
@@ -337,7 +377,55 @@ export default async function platformRoutes(fastify: FastifyInstance) {
         impersonatedUser.id,
       );
 
+      // End any active impersonation sessions for this pair
+      await db
+        .update(impersonationSessions)
+        .set({ ended_at: new Date() })
+        .where(
+          and(
+            eq(impersonationSessions.superuser_id, impersonator.id),
+            eq(impersonationSessions.target_user_id, impersonatedUser.id),
+            isNull(impersonationSessions.ended_at),
+          ),
+        );
+
       return reply.send({ data: { success: true } });
+    },
+  );
+
+  // GET /v1/platform/impersonation-sessions — list active impersonation sessions
+  fastify.get(
+    '/v1/platform/impersonation-sessions',
+    { preHandler: suPreHandler },
+    async (_request, reply) => {
+      const superuser = alias(users, 'superuser');
+      const target = alias(users, 'target');
+      const now = new Date();
+
+      const rows = await db
+        .select({
+          id: impersonationSessions.id,
+          superuser_id: impersonationSessions.superuser_id,
+          target_user_id: impersonationSessions.target_user_id,
+          started_at: impersonationSessions.started_at,
+          expires_at: impersonationSessions.expires_at,
+          superuser_name: superuser.display_name,
+          superuser_email: superuser.email,
+          target_name: target.display_name,
+          target_email: target.email,
+        })
+        .from(impersonationSessions)
+        .innerJoin(superuser, eq(impersonationSessions.superuser_id, superuser.id))
+        .innerJoin(target, eq(impersonationSessions.target_user_id, target.id))
+        .where(
+          and(
+            isNull(impersonationSessions.ended_at),
+            gt(impersonationSessions.expires_at, now),
+          ),
+        )
+        .orderBy(desc(impersonationSessions.started_at));
+
+      return reply.send({ data: rows });
     },
   );
 

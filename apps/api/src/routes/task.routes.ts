@@ -96,6 +96,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
           request.params.id,
           data,
           request.user!.id,
+          request.impersonator?.id ?? null,
         );
         return reply.status(201).send({ data: task });
       } catch (err) {
@@ -156,7 +157,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = updateTaskSchema.parse(request.body);
-      const task = await taskService.updateTask(request.params.id, data, request.user!.id);
+      const task = await taskService.updateTask(request.params.id, data, request.user!.id, request.impersonator?.id ?? null);
 
       if (!task) {
         return reply.status(404).send({
@@ -178,7 +179,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = moveTaskSchema.parse(request.body);
-      const task = await taskService.moveTask(request.params.id, data, request.user!.id);
+      const task = await taskService.moveTask(request.params.id, data, request.user!.id, request.impersonator?.id ?? null);
 
       if (!task) {
         return reply.status(404).send({
@@ -199,7 +200,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
     '/tasks/:id',
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
-      const task = await taskService.deleteTask(request.params.id, request.user!.id);
+      const task = await taskService.deleteTask(request.params.id, request.user!.id, request.impersonator?.id ?? null);
       if (!task) {
         return reply.status(404).send({
           error: {

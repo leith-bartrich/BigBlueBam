@@ -1,12 +1,13 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull, gt } from 'drizzle-orm';
 import argon2 from 'argon2';
 import { db } from '../db/index.js';
 import { sessions } from '../db/schema/sessions.js';
 import { users } from '../db/schema/users.js';
 import { apiKeys } from '../db/schema/api-keys.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
+import { impersonationSessions } from '../db/schema/impersonation-sessions.js';
 
 const UUID_REGEX_HEADER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -329,6 +330,24 @@ async function authPlugin(fastify: FastifyInstance) {
     if (!target) return;
     if (!target.is_active) return;
     if (target.is_superuser) return; // prevent SU impersonation chaining
+
+    // Require an active (non-expired, non-ended) impersonation session
+    // created via POST /v1/platform/impersonate.
+    const now = new Date();
+    const activeSession = await db
+      .select({ id: impersonationSessions.id })
+      .from(impersonationSessions)
+      .where(
+        and(
+          eq(impersonationSessions.superuser_id, request.user.id),
+          eq(impersonationSessions.target_user_id, target.id),
+          isNull(impersonationSessions.ended_at),
+          gt(impersonationSessions.expires_at, now),
+        ),
+      )
+      .limit(1);
+
+    if (activeSession.length === 0) return;
 
     request.impersonator = request.user;
     request.user = await buildAuthUser(target, null, request);

@@ -8,12 +8,14 @@ export async function logActivity(
   action: string,
   taskId?: string | null,
   details?: Record<string, unknown> | null,
+  impersonatorId?: string | null,
 ) {
   const [entry] = await db
     .insert(activityLog)
     .values({
       project_id: projectId,
       actor_id: actorId,
+      impersonator_id: impersonatorId ?? null,
       action,
       task_id: taskId ?? null,
       details: details ?? null,
