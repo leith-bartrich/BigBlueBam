@@ -130,6 +130,23 @@ export default async function taskRoutes(fastify: FastifyInstance) {
         });
       }
 
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          task.project_id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Task not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       return reply.send({ data: task });
     },
   );
