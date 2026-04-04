@@ -9,7 +9,16 @@ export async function logActivity(
   taskId?: string | null,
   details?: Record<string, unknown> | null,
   impersonatorId?: string | null,
+  viaSuperuserContext?: boolean,
 ) {
+  // When a SuperUser is acting via a switched org context
+  // (sessions.active_org_id → request.viaSuperuserContext), tag the activity
+  // entry so the audit log clearly distinguishes "SU acting in their own
+  // org" from "SU acting on another tenant via context switch".
+  const mergedDetails = viaSuperuserContext
+    ? { ...(details ?? {}), via_superuser_context: true }
+    : details ?? null;
+
   const [entry] = await db
     .insert(activityLog)
     .values({
@@ -18,7 +27,7 @@ export async function logActivity(
       impersonator_id: impersonatorId ?? null,
       action,
       task_id: taskId ?? null,
-      details: details ?? null,
+      details: mergedDetails,
     })
     .returning();
 

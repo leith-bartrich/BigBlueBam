@@ -178,7 +178,44 @@ export async function createProject(orgId: string, data: CreateProjectInput, cre
   return result;
 }
 
-export async function listProjects(orgId: string, userId: string) {
+export async function listProjects(
+  orgId: string,
+  userId: string,
+  bypassMembership = false,
+) {
+  // SuperUsers (bypassMembership=true) see every non-archived project in the
+  // org regardless of project_memberships — they are not auto-enrolled as
+  // members when context-switching into another org, so a membership join
+  // would exclude them. Their `membership_role` is surfaced as 'owner'
+  // to match the SuperUser-privilege model used elsewhere in the UI.
+  if (bypassMembership) {
+    const result = await db
+      .select({
+        project: projects,
+        membership: projectMemberships,
+      })
+      .from(projects)
+      .leftJoin(
+        projectMemberships,
+        and(
+          eq(projects.id, projectMemberships.project_id),
+          eq(projectMemberships.user_id, userId),
+        ),
+      )
+      .where(
+        and(
+          eq(projects.org_id, orgId),
+          eq(projects.is_archived, false),
+        ),
+      )
+      .orderBy(projects.name);
+
+    return result.map((r) => ({
+      ...r.project,
+      membership_role: r.membership?.role ?? 'owner',
+    }));
+  }
+
   const result = await db
     .select({
       project: projects,

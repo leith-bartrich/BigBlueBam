@@ -37,14 +37,34 @@ export interface AuthUser {
   api_key_scope: string | null;
   org_memberships: OrgMembership[];
   active_org_id: string;
+  /**
+   * True when a SuperUser is currently viewing a context (org) that is not
+   * their home/default org, as set via POST /superuser/context/switch (the
+   * `active_org_id` is stored on the session row and honored here). Writes
+   * made while this is true are tagged `via_superuser_context` in the
+   * activity_log.
+   */
+  is_superuser_viewing: boolean;
+}
+
+export interface SessionContext {
+  id: string;
+  activeOrgId: string | null;
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
     user: AuthUser | null;
     sessionId: string | null;
+    session: SessionContext | null;
     impersonator: AuthUser | null;  // the SuperUser doing the impersonating
     isImpersonating: boolean;
+    /**
+     * True when the current request's org context was derived from a
+     * SuperUser switched context (sessions.active_org_id) rather than the
+     * user's home/default org membership. Used to tag writes in activity_log.
+     */
+    viaSuperuserContext: boolean;
   }
 }
 
@@ -148,6 +168,7 @@ export async function buildAuthUser(
   row: BaseUserRow,
   apiKeyScope: string | null,
   request: FastifyRequest,
+  sessionActiveOrgId: string | null = null,
 ): Promise<AuthUser> {
   const requestedOrgId = getRequestedOrgId(request);
   const { memberships, activeOrgId, activeRole } = await resolveOrgContext(
@@ -157,20 +178,60 @@ export async function buildAuthUser(
     requestedOrgId,
   );
 
+  // SuperUser context switch: if this user is a SuperUser AND their session
+  // has an active_org_id set (via POST /superuser/context/switch), that org
+  // takes precedence over membership-derived org context — SuperUsers can
+  // view any org, regardless of membership. Non-SuperUsers with an
+  // activeOrgId set on their session are defensively ignored here (this
+  // should never happen — the switch endpoint only accepts SuperUsers).
+  let finalOrgId = activeOrgId;
+  let finalRole = activeRole;
+  let isSuperuserViewing = false;
+  if (row.is_superuser && sessionActiveOrgId) {
+    // Only flip the context if it actually differs from the membership-
+    // resolved default. Matching active_org_id == default org is a no-op.
+    if (sessionActiveOrgId !== activeOrgId) {
+      finalOrgId = sessionActiveOrgId;
+      // Preserve the SuperUser's membership role when switching to an org
+      // they happen to be a member of; otherwise mark them as 'owner' for
+      // that session context (SuperUsers effectively bypass org roles).
+      const existingMembership = memberships.find((m) => m.org_id === sessionActiveOrgId);
+      finalRole = existingMembership?.role ?? 'owner';
+      isSuperuserViewing = true;
+    }
+  }
+
   return {
     id: row.id,
-    org_id: activeOrgId,
+    org_id: finalOrgId,
     email: row.email,
     display_name: row.display_name,
     avatar_url: row.avatar_url,
-    role: activeRole,
+    role: finalRole,
     timezone: row.timezone,
     is_active: row.is_active,
     is_superuser: row.is_superuser,
     api_key_scope: apiKeyScope,
     org_memberships: memberships,
-    active_org_id: activeOrgId,
+    active_org_id: finalOrgId,
+    is_superuser_viewing: isSuperuserViewing,
   };
+}
+
+/**
+ * Resolves the current org id for a request, applying SuperUser context
+ * switch rules. Returns both the org id and a flag indicating whether the
+ * SuperUser-viewing override was applied. This is the canonical helper for
+ * "which org is this request acting on". Most route handlers should prefer
+ * `request.user.active_org_id` (already resolved) — this exists for callers
+ * outside the auth hook that need to inspect the rule directly.
+ */
+export function resolveCurrentOrgId(
+  _session: SessionContext | null,
+  user: Pick<AuthUser, 'active_org_id' | 'is_superuser_viewing'> | null,
+): { orgId: string | null; isSuperuserViewing: boolean } {
+  if (!user) return { orgId: null, isSuperuserViewing: false };
+  return { orgId: user.active_org_id, isSuperuserViewing: user.is_superuser_viewing };
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -185,8 +246,10 @@ function getImpersonateHeader(request: FastifyRequest): string | undefined {
 async function authPlugin(fastify: FastifyInstance) {
   fastify.decorateRequest('user', null);
   fastify.decorateRequest('sessionId', null);
+  fastify.decorateRequest('session', null);
   fastify.decorateRequest('impersonator', null);
   fastify.decorateRequest('isImpersonating', false);
+  fastify.decorateRequest('viaSuperuserContext', false);
 
   // P1-19: is_active is checked at this auth preHandler on every request
   // (the JOIN fetches users.is_active fresh each time). Long-running handlers
@@ -220,8 +283,14 @@ async function authPlugin(fastify: FastifyInstance) {
 
       const row = result[0];
       if (row && new Date(row.session.expires_at).getTime() + 30_000 > Date.now() && row.user.is_active) {
-        request.user = await buildAuthUser(row.user, null, request);
+        const sessionActiveOrgId = row.session.active_org_id ?? null;
+        request.user = await buildAuthUser(row.user, null, request, sessionActiveOrgId);
         request.sessionId = sessionId;
+        request.session = {
+          id: sessionId,
+          activeOrgId: sessionActiveOrgId,
+        };
+        request.viaSuperuserContext = request.user.is_superuser_viewing;
         return;
       }
     }
@@ -358,8 +427,12 @@ async function authPlugin(fastify: FastifyInstance) {
     if (activeSession.length === 0) return;
 
     request.impersonator = request.user;
+    // Impersonation swaps to the target user. The target is not a SuperUser
+    // (we rejected SU→SU above), so they cannot be "viewing" via a switched
+    // context — reset the flag regardless of what the SU's session had.
     request.user = await buildAuthUser(target, null, request);
     request.isImpersonating = true;
+    request.viaSuperuserContext = false;
   });
 
   fastify.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply) => {

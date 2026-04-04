@@ -11,6 +11,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     const projects = await projectService.listProjects(
       request.user!.org_id,
       request.user!.id,
+      request.user!.is_superuser,
     );
 
     return reply.send({ data: projects });
