@@ -18,6 +18,7 @@ export const guestInvitations = pgTable(
     channel_ids: text('channel_ids').array(), // banter channel ids stored as text[]
     token: varchar('token', { length: 100 }).unique().notNull(),
     accepted_at: timestamp('accepted_at', { withTimezone: true }),
+    revoked_at: timestamp('revoked_at', { withTimezone: true }),
     expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
