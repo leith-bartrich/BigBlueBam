@@ -1,4 +1,5 @@
 import { pgTable, uuid, varchar, boolean, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 import { users } from './users.js';
 
@@ -21,5 +22,9 @@ export const organizationMemberships = pgTable(
     uniqueIndex('org_memberships_user_org_idx').on(table.user_id, table.org_id),
     index('org_memberships_user_id_idx').on(table.user_id),
     index('org_memberships_org_id_idx').on(table.org_id),
+    // At most one default membership per user.
+    uniqueIndex('org_memberships_user_default_unique')
+      .on(table.user_id)
+      .where(sql`is_default = true`),
   ],
 );

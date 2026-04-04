@@ -1,7 +1,8 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { organizations } from '../db/schema/organizations.js';
 import { users } from '../db/schema/users.js';
+import { organizationMemberships } from '../db/schema/organization-memberships.js';
 
 export async function getOrganization(orgId: string) {
   const [org] = await db
@@ -70,13 +71,37 @@ export async function inviteMember(
 }
 
 export async function updateMemberRole(orgId: string, userId: string, role: string) {
-  const [user] = await db
-    .update(users)
-    .set({ role, updated_at: new Date() })
-    .where(and(eq(users.id, userId), eq(users.org_id, orgId)))
-    .returning();
+  // Wrap in a transaction and lock the user row FOR UPDATE to prevent
+  // concurrent role changes from racing (e.g. org owner being demoted
+  // mid-request while another request reads a stale role). This also keeps
+  // the legacy users.role column in sync with organization_memberships.role
+  // until the multi-org migration is complete.
+  return await db.transaction(async (tx) => {
+    // Lock the row to serialize concurrent role updates for this user.
+    await tx.execute(sql`SELECT 1 FROM users WHERE id = ${userId} FOR UPDATE`);
 
-  return user ?? null;
+    const [user] = await tx
+      .update(users)
+      .set({ role, updated_at: new Date() })
+      .where(and(eq(users.id, userId), eq(users.org_id, orgId)))
+      .returning();
+
+    if (!user) return null;
+
+    // Keep the organization_memberships row in sync with users.role until
+    // the migration away from users.org_id/role is complete.
+    await tx
+      .update(organizationMemberships)
+      .set({ role })
+      .where(
+        and(
+          eq(organizationMemberships.user_id, userId),
+          eq(organizationMemberships.org_id, orgId),
+        ),
+      );
+
+    return user;
+  });
 }
 
 export async function removeMember(orgId: string, userId: string) {

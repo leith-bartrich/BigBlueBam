@@ -78,6 +78,7 @@ CREATE TABLE projects (
     task_id_sequence            integer NOT NULL DEFAULT 0,
     settings                    jsonb,
     is_archived                 boolean NOT NULL DEFAULT false,
+    created_by                  uuid REFERENCES users(id) ON DELETE SET NULL,
     created_at                  timestamptz NOT NULL DEFAULT now(),
     updated_at                  timestamptz NOT NULL DEFAULT now(),
     UNIQUE(org_id, slug)
@@ -926,3 +927,7 @@ CREATE TABLE organization_memberships (
 
 CREATE INDEX idx_org_memberships_user_id ON organization_memberships (user_id);
 CREATE INDEX idx_org_memberships_org_id ON organization_memberships (org_id);
+-- Enforce at most one default membership per user.
+CREATE UNIQUE INDEX org_memberships_user_default_unique
+    ON organization_memberships (user_id)
+    WHERE is_default = true;
