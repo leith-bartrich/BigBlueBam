@@ -7,7 +7,7 @@ import {
   banterMessages,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope } from '../plugins/auth.js';
 
 const createBookmarkSchema = z.object({
   message_id: z.string().uuid(),
@@ -53,7 +53,7 @@ export default async function bookmarkRoutes(fastify: FastifyInstance) {
   // POST /v1/bookmarks — create bookmark
   fastify.post(
     '/v1/bookmarks',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const user = request.user!;
       const body = createBookmarkSchema.parse(request.body);
@@ -93,7 +93,7 @@ export default async function bookmarkRoutes(fastify: FastifyInstance) {
   // DELETE /v1/bookmarks/:id — remove bookmark
   fastify.delete(
     '/v1/bookmarks/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;

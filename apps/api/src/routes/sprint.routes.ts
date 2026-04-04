@@ -6,7 +6,7 @@ import { sprints } from '../db/schema/sprints.js';
 import { tasks } from '../db/schema/tasks.js';
 import { taskStates } from '../db/schema/task-states.js';
 import { sprintTasks } from '../db/schema/sprint-tasks.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
 
 export default async function sprintRoutes(fastify: FastifyInstance) {
@@ -26,7 +26,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/sprints',
-    { preHandler: [requireAuth, requireProjectRole('admin')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectRole('admin')] },
     async (request, reply) => {
       const data = createSprintSchema.parse(request.body);
 
@@ -73,7 +73,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/sprints/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = updateSprintSchema.parse(request.body);
 
@@ -106,7 +106,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/sprints/:id/start',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const [sprint] = await db
         .select()
@@ -174,7 +174,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/sprints/:id/complete',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = completeSprintSchema.parse(request.body);
 
@@ -309,7 +309,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/sprints/:id/cancel',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const [sprint] = await db
         .select()

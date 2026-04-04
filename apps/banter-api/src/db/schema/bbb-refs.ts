@@ -39,6 +39,7 @@ export const users = pgTable(
     timezone: varchar('timezone', { length: 50 }).default('UTC').notNull(),
     notification_prefs: jsonb('notification_prefs').default({}).notNull(),
     is_active: boolean('is_active').default(true).notNull(),
+    is_superuser: boolean('is_superuser').default(false).notNull(),
     last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

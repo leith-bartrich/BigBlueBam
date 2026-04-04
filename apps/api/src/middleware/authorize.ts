@@ -16,6 +16,8 @@ export function requireProjectRole(...roles: string[]) {
       });
     }
 
+    if (request.user.is_superuser) return; // SuperUsers bypass project role checks
+
     // Extract project ID from route params or request body
     const params = request.params as Record<string, string>;
     const body = request.body as Record<string, unknown> | undefined;
@@ -68,6 +70,8 @@ export function requireOrgRole(...roles: string[]) {
         },
       });
     }
+
+    if (request.user.is_superuser) return; // SuperUsers bypass org role checks
 
     if (!roles.includes(request.user.role)) {
       return reply.status(403).send({

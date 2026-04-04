@@ -318,60 +318,73 @@ Every API request follows this evaluation sequence:
 
 ## 8. Enforcement Points
 
-| Layer | Mechanism | File(s) |
-|-------|-----------|---------|
-| **Authentication** | `requireAuth` Fastify preHandler | `apps/api/src/plugins/auth.ts`, `apps/banter-api/src/plugins/auth.ts` |
-| **SuperUser check** | `requireSuperUser` middleware (to be implemented) | — |
-| **API key scope** | Scope check in auth plugin (to be implemented) | — |
-| **Org role** | `requireOrgRole(...roles)` middleware | `apps/api/src/middleware/authorize.ts` |
-| **Project role** | `requireProjectRole(...roles)` middleware | `apps/api/src/middleware/authorize.ts` |
-| **Channel role** | Inline checks in route handlers | `apps/banter-api/src/routes/channel.routes.ts` |
-| **Authorship** | Inline `author_id === user.id` checks | Various route files |
+| Layer | Mechanism | File(s) | Status |
+|-------|-----------|---------|--------|
+| **Authentication** | `requireAuth` Fastify preHandler | `apps/api/src/plugins/auth.ts`, `apps/banter-api/src/plugins/auth.ts` | Implemented |
+| **SuperUser check** | `requireSuperUser` middleware | `apps/api/src/plugins/auth.ts`, `apps/banter-api/src/plugins/auth.ts` | Implemented |
+| **Minimum role** | `requireMinRole(role)` middleware (viewer < member < admin < owner) | `apps/api/src/plugins/auth.ts`, `apps/banter-api/src/plugins/auth.ts` | Implemented |
+| **API key scope** | `requireScope(scope)` middleware (read < read_write < admin) | `apps/api/src/plugins/auth.ts`, `apps/banter-api/src/plugins/auth.ts` | Implemented |
+| **Org role** | `requireOrgRole(...roles)` middleware | `apps/api/src/middleware/authorize.ts` | Implemented (SuperUser bypass added) |
+| **Project role** | `requireProjectRole(...roles)` middleware | `apps/api/src/middleware/authorize.ts` | Implemented (SuperUser bypass added) |
+| **Channel role** | Inline checks in route handlers | `apps/banter-api/src/routes/channel.routes.ts` | Implemented |
+| **Authorship** | Inline `author_id === user.id` checks | Various route files | Implemented |
+| **MCP scope errors** | `formatScopeError()` utility | `apps/mcp-server/src/middleware/scope-check.ts` | Implemented |
+| **Platform admin** | SuperUser-only org CRUD routes | `apps/api/src/routes/platform.routes.ts` | Implemented |
+| **SuperUser audit** | `superuser_audit_log` table | `apps/api/src/db/schema/superuser-audit-log.ts` | Implemented |
 
 ---
 
-## 9. Known Gaps (To Be Addressed)
+## 9. Known Gaps
 
-| # | Gap | Severity | Description |
-|---|-----|----------|-------------|
-| 1 | **No SuperUser role** | High | No platform-level admin exists. The `create-admin` CLI creates an org owner, not a cross-org admin. |
-| 2 | **API key scopes not enforced** | High | `scope` field exists but middleware doesn't check it. Any API key gets full user access. |
-| 3 | **Viewer role not enforced** | Medium | Most endpoints only check `requireAuth`, not whether the user is a viewer. Viewers can create/modify resources. |
-| 4 | **Guest role not implemented** | Medium | No guest concept exists. All org members see all projects and channels. |
-| 5 | **Many endpoints unguarded** | Medium | Labels, epics, custom fields, webhooks, saved views, templates — no project-role checks. Any org member can modify these. |
-| 6 | **Single org_id on users** | Medium | Users can only belong to one org. Needs migration to `organization_memberships` join table. |
-| 7 | **No resource-level isolation in B3** | Medium | A member of one project can potentially access another project's resources if they know the UUID. |
-| 8 | **Banter channel role checks are inline** | Low | Channel permission checks are scattered across route handlers instead of centralized middleware. |
-| 9 | **No impersonation support** | Low | SuperUsers have no way to act-as another user for support/debugging. |
-| 10 | **No permission change audit** | Low | Role changes (promote/demote) are not consistently logged to the activity log. |
+| # | Gap | Severity | Status | Description |
+|---|-----|----------|--------|-------------|
+| 1 | ~~No SuperUser role~~ | ~~High~~ | **Resolved** | `is_superuser` column, `requireSuperUser` middleware, CLI `--superuser` flag, platform admin routes, audit log table. |
+| 2 | ~~API key scopes not enforced~~ | ~~High~~ | **Resolved** | `requireScope(scope)` middleware enforced on all write/admin endpoints in B3 and Banter APIs. MCP server surfaces user-friendly scope errors. |
+| 3 | ~~Viewer role not enforced~~ | ~~Medium~~ | **Resolved** | `requireMinRole('member')` added to all POST/PATCH/DELETE endpoints. Viewers get read-only access. |
+| 4 | **Guest role not implemented** | Medium | Open | No guest concept exists. All org members see all projects and channels. |
+| 5 | **Many B3 endpoints unguarded** | Medium | Partial | Core routes (task, project, sprint, comment, org) are now guarded. Labels, epics, custom fields, webhooks, saved views, templates still need project-role checks. |
+| 6 | **Single org_id on users** | Medium | Open | Users can only belong to one org. Needs migration to `organization_memberships` join table. |
+| 7 | **No resource-level isolation in B3** | Medium | Open | A member of one project can potentially access another project's resources if they know the UUID. |
+| 8 | **Banter channel role checks are inline** | Low | Open | Channel permission checks are scattered across route handlers instead of centralized middleware. |
+| 9 | **No impersonation support** | Low | Open | SuperUsers have no way to act-as another user for support/debugging. |
+| 10 | ~~No permission change audit~~ | ~~Low~~ | **Resolved** | SuperUser actions logged to `superuser_audit_log`. Banter admin actions logged to `banter_audit_log`. |
 
 ---
 
-## 10. Implementation Priority
+## 10. Implementation Status
 
-### Phase 1: SuperUser + API Key Enforcement
-- Add `is_superuser` column to `users` table
-- Create `requireSuperUser` middleware
-- Add SuperUser CLI flag (`--superuser`)
-- Enforce API key `scope` in auth middleware
-- Create `superuser_audit_log` table
-- Add platform admin API routes (list/create/modify/delete orgs)
+### Phase 1: SuperUser + API Key Enforcement + Viewer — COMPLETE
+- [x] `is_superuser` column on `users` table
+- [x] `requireSuperUser` middleware in both B3 and Banter APIs
+- [x] `requireMinRole(role)` middleware with hierarchy: owner > admin > member > viewer
+- [x] `requireScope(scope)` middleware with hierarchy: admin > read_write > read
+- [x] SuperUsers bypass all role and scope checks
+- [x] Session auth bypasses scope checks (scope only applies to API keys)
+- [x] SuperUser CLI flag (`--superuser`) on `create-admin` command
+- [x] `superuser_audit_log` table with IP tracking
+- [x] Platform admin routes: CRUD orgs, list org members, toggle SuperUser status, audit log
+- [x] All POST/PATCH/DELETE endpoints guarded with `requireMinRole('member')` — viewers are read-only
+- [x] All write endpoints guarded with `requireScope('read_write')` — read-only API keys blocked
+- [x] All admin endpoints guarded with `requireScope('admin')` — non-admin API keys blocked
+- [x] MCP server surfaces user-friendly scope error messages for 403 responses
+- [x] `requireOrgRole` and `requireProjectRole` bypass for SuperUsers
 
-### Phase 2: Viewer + Guest Enforcement
-- Add `requireMinRole(role)` middleware that checks role hierarchy: owner > admin > member > viewer > guest
-- Guard all write endpoints with minimum `member` role
-- Guard all read endpoints to allow `viewer`
-- Implement `guest` role with project/channel scoping
-- Add guest invitation flow
+### Phase 2: Guest Role — PLANNED
+- [ ] `guest` role with project/channel scoping
+- [ ] Guest invitation flow (invite to specific projects/channels)
+- [ ] Restrict guest visibility to only shared resources
+- [ ] Guest-specific UI (no sidebar browse, no org member list)
 
-### Phase 3: Resource Isolation
-- Add project membership checks to all B3 resource endpoints (labels, epics, custom fields, webhooks, etc.)
-- Centralize Banter channel permission checks into middleware
-- Add `organization_memberships` table and migrate from single `org_id`
-- Add org switcher to frontend
+### Phase 3: Resource Isolation — PLANNED
+- [ ] Add project membership checks to remaining B3 endpoints (labels, epics, custom fields, webhooks, saved views, templates)
+- [ ] Centralize Banter channel permission checks into reusable middleware
+- [ ] `organization_memberships` table (many-to-many user↔org)
+- [ ] Migrate from single `users.org_id` to membership table
+- [ ] Org switcher in frontend header
 
-### Phase 4: Fine-Grained Permissions
-- Custom permission sets per org (e.g., "members can create channels" toggle)
-- Per-project permission overrides
-- Field-level permissions for sensitive data
-- Permission templates / presets
+### Phase 4: Fine-Grained Permissions — PLANNED
+- [ ] Custom permission sets per org (e.g., "members can create channels" toggle)
+- [ ] Per-project permission overrides
+- [ ] Field-level permissions for sensitive data
+- [ ] Permission templates / presets
+- [ ] SuperUser impersonation support

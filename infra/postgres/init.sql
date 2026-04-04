@@ -46,6 +46,7 @@ CREATE TABLE users (
     timezone            varchar(100) NOT NULL DEFAULT 'UTC',
     notification_prefs  jsonb,
     is_active           boolean NOT NULL DEFAULT true,
+    is_superuser        boolean NOT NULL DEFAULT false,
     last_seen_at        timestamptz,
     created_at          timestamptz NOT NULL DEFAULT now(),
     updated_at          timestamptz NOT NULL DEFAULT now()
@@ -870,3 +871,19 @@ CREATE INDEX idx_banter_user_group_memberships_group
     ON banter_user_group_memberships (group_id);
 CREATE INDEX idx_banter_user_group_memberships_user
     ON banter_user_group_memberships (user_id);
+
+-- ── SuperUser Audit Log ─────────────────────────────────────────────
+CREATE TABLE superuser_audit_log (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    superuser_id    uuid NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    action          varchar(100) NOT NULL,
+    target_org_id   uuid,
+    target_user_id  uuid,
+    details         jsonb NOT NULL DEFAULT '{}',
+    ip_address      varchar(45),
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_su_audit_superuser ON superuser_audit_log (superuser_id);
+CREATE INDEX idx_su_audit_action ON superuser_audit_log (action);
+CREATE INDEX idx_su_audit_created_at ON superuser_audit_log (created_at DESC);

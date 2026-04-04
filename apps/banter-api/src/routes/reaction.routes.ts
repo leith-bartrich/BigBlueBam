@@ -7,7 +7,7 @@ import {
   banterMessageReactions,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 
 const toggleReactionSchema = z.object({
@@ -18,7 +18,7 @@ export default async function reactionRoutes(fastify: FastifyInstance) {
   // POST /v1/messages/:id/reactions — toggle reaction
   fastify.post(
     '/v1/messages/:id/reactions',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;

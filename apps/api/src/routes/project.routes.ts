@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createProjectSchema, updateProjectSchema, addProjectMemberSchema } from '@bigbluebam/shared';
 import * as projectService from '../services/project.service.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
 
 export default async function projectRoutes(fastify: FastifyInstance) {
@@ -14,7 +14,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     return reply.send({ data: projects });
   });
 
-  fastify.post('/projects', { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post('/projects', { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] }, async (request, reply) => {
     const data = createProjectSchema.parse(request.body);
     const project = await projectService.createProject(
       request.user!.org_id,
@@ -47,7 +47,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/projects/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       // Check admin role
       const membership = await projectService.getProjectMembership(
@@ -85,7 +85,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/projects/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const membership = await projectService.getProjectMembership(
         request.params.id,
@@ -129,7 +129,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/members',
-    { preHandler: [requireAuth, requireProjectRole('admin')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectRole('admin')] },
     async (request, reply) => {
       const membership = await projectService.getProjectMembership(
         request.params.id,

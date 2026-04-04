@@ -7,7 +7,7 @@ import * as projectService from '../services/project.service.js';
 import { db } from '../db/index.js';
 import { tasks } from '../db/schema/tasks.js';
 import { projects } from '../db/schema/projects.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
 
 export default async function taskRoutes(fastify: FastifyInstance) {
@@ -87,7 +87,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/tasks',
-    { preHandler: [requireAuth, requireProjectRole('admin', 'member')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectRole('admin', 'member')] },
     async (request, reply) => {
       const data = createTaskSchema.parse(request.body);
 
@@ -136,7 +136,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/tasks/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = updateTaskSchema.parse(request.body);
       const task = await taskService.updateTask(request.params.id, data, request.user!.id);
@@ -158,7 +158,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/move',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = moveTaskSchema.parse(request.body);
       const task = await taskService.moveTask(request.params.id, data, request.user!.id);
@@ -180,7 +180,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/tasks/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const task = await taskService.deleteTask(request.params.id, request.user!.id);
       if (!task) {
@@ -200,7 +200,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.post(
     '/tasks/bulk',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = bulkUpdateSchema.parse(request.body);
       const results = await taskService.bulkOperations(data, request.user!.id);
@@ -211,7 +211,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
   // ── POST /tasks/:id/duplicate ─────────────────────────────────────────
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/duplicate',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const bodySchema = z.object({
         include_subtasks: z.boolean().optional().default(false),

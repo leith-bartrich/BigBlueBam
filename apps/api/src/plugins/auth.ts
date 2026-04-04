@@ -16,6 +16,8 @@ export interface AuthUser {
   role: string;
   timezone: string;
   is_active: boolean;
+  is_superuser: boolean;
+  api_key_scope: string | null;
 }
 
 declare module 'fastify' {
@@ -45,6 +47,7 @@ async function authPlugin(fastify: FastifyInstance) {
             role: users.role,
             timezone: users.timezone,
             is_active: users.is_active,
+            is_superuser: users.is_superuser,
           },
         })
         .from(sessions)
@@ -54,7 +57,7 @@ async function authPlugin(fastify: FastifyInstance) {
 
       const row = result[0];
       if (row && new Date(row.session.expires_at) > new Date() && row.user.is_active) {
-        request.user = row.user;
+        request.user = { ...row.user, api_key_scope: null };
         request.sessionId = sessionId;
         return;
       }
@@ -78,6 +81,7 @@ async function authPlugin(fastify: FastifyInstance) {
             role: users.role,
             timezone: users.timezone,
             is_active: users.is_active,
+            is_superuser: users.is_superuser,
           },
         })
         .from(apiKeys)
@@ -91,7 +95,7 @@ async function authPlugin(fastify: FastifyInstance) {
         }
         const valid = await argon2.verify(candidate.apiKey.key_hash, token);
         if (valid && candidate.user.is_active) {
-          request.user = candidate.user;
+          request.user = { ...candidate.user, api_key_scope: candidate.apiKey.scope };
           // Update last_used_at
           await db
             .update(apiKeys)
@@ -120,6 +124,100 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
       },
     });
   }
+}
+
+/** Requires the user to be a SuperUser */
+export async function requireSuperUser(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.user) {
+    return reply.status(401).send({
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required',
+        details: [],
+        request_id: request.id,
+      },
+    });
+  }
+  if (!request.user.is_superuser) {
+    return reply.status(403).send({
+      error: {
+        code: 'FORBIDDEN',
+        message: 'SuperUser access required',
+        details: [],
+        request_id: request.id,
+      },
+    });
+  }
+}
+
+/** Requires the user's role to be at or above the minimum level.
+ *  Hierarchy: owner > admin > member > viewer
+ *  SuperUsers always pass. */
+export function requireMinRole(minRole: 'viewer' | 'member' | 'admin' | 'owner') {
+  const hierarchy = ['viewer', 'member', 'admin', 'owner'];
+  const minLevel = hierarchy.indexOf(minRole);
+
+  return async function checkMinRole(request: FastifyRequest, reply: FastifyReply) {
+    if (!request.user) {
+      return reply.status(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+    if (request.user.is_superuser) return; // SuperUsers bypass role checks
+
+    const userLevel = hierarchy.indexOf(request.user.role);
+    if (userLevel < minLevel) {
+      return reply.status(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: `Requires at least ${minRole} role`,
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+  };
+}
+
+/** Requires the API key scope to allow the given operation type.
+ *  Hierarchy: admin > read_write > read
+ *  Session auth (no API key) always passes.
+ *  SuperUsers always pass. */
+export function requireScope(minScope: 'read' | 'read_write' | 'admin') {
+  const scopeHierarchy = ['read', 'read_write', 'admin'];
+  const minLevel = scopeHierarchy.indexOf(minScope);
+
+  return async function checkScope(request: FastifyRequest, reply: FastifyReply) {
+    if (!request.user) {
+      return reply.status(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+    if (request.user.is_superuser) return;
+    if (request.user.api_key_scope === null) return; // Session auth, no scope restriction
+
+    const userScopeLevel = scopeHierarchy.indexOf(request.user.api_key_scope);
+    if (userScopeLevel < minLevel) {
+      return reply.status(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: `API key requires '${minScope}' scope or higher`,
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+  };
 }
 
 export function requireRole(roles: string[]) {

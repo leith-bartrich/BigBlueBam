@@ -8,7 +8,7 @@ import {
   banterMessages,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
 
 const createChannelSchema = z.object({
@@ -168,7 +168,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels — create channel
   fastify.post(
     '/v1/channels',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const user = request.user!;
       const body = createChannelSchema.parse(request.body);
@@ -333,7 +333,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /v1/channels/:id — update settings
   fastify.patch(
     '/v1/channels/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -417,7 +417,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id — soft delete (archive)
   fastify.delete(
     '/v1/channels/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -484,7 +484,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/join — join public channel
   fastify.post(
     '/v1/channels/:id/join',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -627,7 +627,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/members — add members
   fastify.post(
     '/v1/channels/:id/members',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -709,7 +709,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id/members/:userId — remove member
   fastify.delete(
     '/v1/channels/:id/members/:userId',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id, userId } = request.params as { id: string; userId: string };
       const user = request.user!;

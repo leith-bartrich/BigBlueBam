@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import * as Minio from 'minio';
 import { env } from '../env.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 
 const MAX_FILE_SIZE = 26214400; // 25MB
 
@@ -55,7 +55,7 @@ export default async function fileRoutes(fastify: FastifyInstance) {
   // POST /v1/files/upload — multipart file upload to MinIO
   fastify.post(
     '/v1/files/upload',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const file = await request.file();
 
@@ -129,7 +129,7 @@ export default async function fileRoutes(fastify: FastifyInstance) {
   // POST /v1/files/presigned-upload — generate a presigned PUT URL
   fastify.post(
     '/v1/files/presigned-upload',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const body = z
         .object({

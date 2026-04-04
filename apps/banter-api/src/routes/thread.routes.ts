@@ -7,7 +7,7 @@ import {
   banterChannelMemberships,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 
 const createReplySchema = z.object({
@@ -111,7 +111,7 @@ export default async function threadRoutes(fastify: FastifyInstance) {
   // POST /v1/messages/:id/thread — post reply
   fastify.post(
     '/v1/messages/:id/thread',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;

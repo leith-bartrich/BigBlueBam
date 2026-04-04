@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as orgService from '../services/org.service.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireOrgRole } from '../middleware/authorize.js';
 
 export default async function orgRoutes(fastify: FastifyInstance) {
@@ -23,7 +23,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.patch(
     '/org',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().max(255).optional(),
@@ -59,7 +59,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.post(
     '/org/members/invite',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
       const schema = z.object({
         email: z.string().email().max(320),
@@ -95,7 +95,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { userId: string } }>(
     '/org/members/:userId',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
       const schema = z.object({
         role: z.enum(['member', 'admin', 'viewer']),
@@ -125,7 +125,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { userId: string } }>(
     '/org/members/:userId',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
       if (request.params.userId === request.user!.id) {
         return reply.status(400).send({

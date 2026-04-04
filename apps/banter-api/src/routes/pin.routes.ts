@@ -9,7 +9,7 @@ import {
   banterPins,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 
 const createPinSchema = z.object({
@@ -55,7 +55,7 @@ export default async function pinRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/pins — pin message
   fastify.post(
     '/v1/channels/:id/pins',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -146,7 +146,7 @@ export default async function pinRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id/pins/:messageId — unpin
   fastify.delete(
     '/v1/channels/:id/pins/:messageId',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id, messageId } = request.params as { id: string; messageId: string };
       const user = request.user!;

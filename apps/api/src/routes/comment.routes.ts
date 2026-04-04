@@ -6,7 +6,7 @@ import { comments } from '../db/schema/comments.js';
 import { commentReactions } from '../db/schema/comment-reactions.js';
 import { tasks } from '../db/schema/tasks.js';
 import { users } from '../db/schema/users.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 
 export default async function commentRoutes(fastify: FastifyInstance) {
   fastify.get<{
@@ -108,7 +108,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/comments',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = createCommentSchema.parse(request.body);
 
@@ -136,7 +136,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/comments/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = updateCommentSchema.parse(request.body);
 
@@ -184,7 +184,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/comments/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const [existing] = await db
         .select()

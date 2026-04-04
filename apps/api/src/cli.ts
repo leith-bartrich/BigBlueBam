@@ -18,7 +18,7 @@ function printUsage() {
 BigBlueBam CLI
 
 Usage:
-  cli create-admin --email <email> --password <password> --name <name> --org <org-name>
+  cli create-admin --email <email> --password <password> --name <name> --org <org-name> [--superuser]
 
 Commands:
   create-admin    Create an admin user and organization
@@ -28,16 +28,23 @@ Options:
   --password      User password (min 12 characters)
   --name          Display name
   --org           Organization name
+  --superuser     Grant SuperUser privileges (no value needed)
 `);
 }
 
 function parseArgs(args: string[]): Record<string, string> {
   const result: Record<string, string> = {};
+  const booleanFlags = new Set(['superuser']);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
-    if (arg.startsWith('--') && i + 1 < args.length) {
-      result[arg.slice(2)] = args[i + 1]!;
-      i++;
+    if (arg.startsWith('--')) {
+      const key = arg.slice(2);
+      if (booleanFlags.has(key)) {
+        result[key] = 'true';
+      } else if (i + 1 < args.length) {
+        result[key] = args[i + 1]!;
+        i++;
+      }
     }
   }
   return result;
@@ -80,6 +87,8 @@ async function createAdmin(flags: Record<string, string>) {
       })
       .returning();
 
+    const isSuperuser = flags.superuser === 'true';
+
     const [user] = await db
       .insert(users)
       .values({
@@ -88,6 +97,7 @@ async function createAdmin(flags: Record<string, string>) {
         display_name: name,
         password_hash: passwordHash,
         role: 'owner',
+        is_superuser: isSuperuser,
       })
       .returning();
 
@@ -96,6 +106,9 @@ async function createAdmin(flags: Record<string, string>) {
     console.log(`  Email: ${user!.email}`);
     console.log(`  Org ID: ${org!.id}`);
     console.log(`  Org Slug: ${org!.slug}`);
+    if (isSuperuser) {
+      console.log(`  SuperUser: yes`);
+    }
   } catch (err) {
     console.error('Failed to create admin:', err);
     process.exit(1);

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { banterSettings, banterChannelGroups } from '../db/schema/index.js';
-import { requireAuth, requireRole } from '../plugins/auth.js';
+import { requireAuth, requireRole, requireScope } from '../plugins/auth.js';
 import { broadcastToOrg } from '../services/realtime.js';
 import { logAudit } from '../services/audit.js';
 
@@ -63,7 +63,7 @@ const reorderGroupsSchema = z.object({
 // ── Routes ───────────────────────────────────────────────────────
 
 export default async function adminRoutes(fastify: FastifyInstance) {
-  const adminPreHandler = [requireAuth, requireRole(['owner', 'admin'])];
+  const adminPreHandler = [requireAuth, requireRole(['owner', 'admin']), requireScope('admin')];
 
   // GET /v1/admin/settings
   fastify.get(

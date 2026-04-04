@@ -10,7 +10,7 @@ import {
   banterChannelMemberships,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 import { generateLiveKitToken, buildRoomName } from '../services/livekit-token.js';
 import * as voiceAgent from '../services/voice-agent-client.js';
@@ -31,7 +31,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/calls — start a call/huddle
   fastify.post(
     '/v1/channels/:id/calls',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const { id: channelId } = request.params as { id: string };
       const user = request.user!;
@@ -321,7 +321,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/join — join an active call
   fastify.post(
     '/v1/calls/:id/join',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -417,7 +417,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/leave — leave a call
   fastify.post(
     '/v1/calls/:id/leave',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -495,7 +495,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/end — end call for all
   fastify.post(
     '/v1/calls/:id/end',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -583,7 +583,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // PATCH /v1/calls/:id — update call settings mid-call
   fastify.patch(
     '/v1/calls/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -679,7 +679,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/invite-agent — invite AI agent to a call
   fastify.post(
     '/v1/calls/:id/invite-agent',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -754,7 +754,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/remove-agent — remove AI agent from a call
   fastify.post(
     '/v1/calls/:id/remove-agent',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -893,7 +893,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // PATCH /v1/calls/:id/media-state — update participant's media state (mute, camera, screenshare)
   fastify.patch(
     '/v1/calls/:id/media-state',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
