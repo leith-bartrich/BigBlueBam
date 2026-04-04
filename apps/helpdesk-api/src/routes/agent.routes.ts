@@ -226,7 +226,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   });
 
   // POST /tickets/:id/messages — agent posts a message
-  fastify.post('/tickets/:id/messages', { preHandler: [requireAgentAuth] }, async (request, reply) => {
+  fastify.post('/tickets/:id/messages', {
+    preHandler: [requireAgentAuth],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = agentMessageSchema.parse(request.body);
 
@@ -375,7 +378,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /tickets/:id — update ticket status, priority, category
-  fastify.patch('/tickets/:id', { preHandler: [requireAgentAuth] }, async (request, reply) => {
+  fastify.patch('/tickets/:id', {
+    preHandler: [requireAgentAuth],
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateTicketSchema.parse(request.body);
 
@@ -433,7 +439,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   });
 
   // POST /tickets/:id/close — close a ticket
-  fastify.post('/tickets/:id/close', { preHandler: [requireAgentAuth] }, async (request, reply) => {
+  fastify.post('/tickets/:id/close', {
+    preHandler: [requireAgentAuth],
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const [ticket] = await db

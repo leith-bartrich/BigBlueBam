@@ -349,6 +349,13 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       .limit(1);
 
     if (!ticket) {
+      // HB-51: Intentional anti-enumeration. We return 404 (not 403) for BOTH
+      // "ticket does not exist" AND "ticket exists but belongs to another
+      // customer". Distinguishing these two cases would let an attacker probe
+      // for valid ticket UUIDs owned by other users. The authorization filter
+      // is baked into the WHERE clause above (helpdesk_user_id = user.id), so
+      // any row the caller is not allowed to see is indistinguishable from a
+      // nonexistent row from the client's perspective.
       return reply.status(404).send({
         error: {
           code: 'NOT_FOUND',

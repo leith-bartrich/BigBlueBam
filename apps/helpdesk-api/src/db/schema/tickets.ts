@@ -2,6 +2,25 @@ import { pgTable, uuid, varchar, text, serial, timestamp, index } from 'drizzle-
 import { helpdeskUsers } from './helpdesk-users.js';
 import { tasks, projects } from './bbb-refs.js';
 
+// ============================================================================
+// HB-21: DUAL SCHEMA — KEEP IN SYNC
+// ----------------------------------------------------------------------------
+// This is the helpdesk-api's FULLER view of the `tickets` postgres table
+// (all columns the helpdesk service reads/writes). A minimal view lives in:
+//
+//   apps/api/src/db/schema/tickets.ts
+//
+// Both Drizzle schemas describe the SAME underlying postgres table. Until
+// both services share a common schema package, any column addition/removal
+// or type change on the physical table MUST be reflected in both files to
+// avoid runtime drift (missing columns on select, write errors, etc.).
+//
+// Columns referenced here:
+//   tickets: id, ticket_number, helpdesk_user_id, task_id, project_id,
+//            subject, description, status, priority, category, created_at,
+//            updated_at, resolved_at, closed_at
+// ============================================================================
+
 export const tickets = pgTable(
   'tickets',
   {
