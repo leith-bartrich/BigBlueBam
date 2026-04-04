@@ -6,6 +6,8 @@ import argon2 from 'argon2';
 import { db } from '../db/index.js';
 import { apiKeys } from '../db/schema/api-keys.js';
 import { requireAuth } from '../plugins/auth.js';
+import * as orgService from '../services/org.service.js';
+import { getOrgPermissions, isOrgPrivileged } from '../services/org-permissions.js';
 
 export default async function apiKeyRoutes(fastify: FastifyInstance) {
   fastify.get(
@@ -48,6 +50,34 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
         expires_at: z.string().datetime().optional(),
       });
       const data = schema.parse(request.body);
+
+      // Enforce org-level permissions for non-admin members
+      if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
+        const org = await orgService.getOrganization(request.user!.org_id);
+        const perms = getOrgPermissions(org?.settings as Record<string, unknown> | null);
+
+        if (!perms.members_can_create_api_keys) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to create API keys',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        if (!perms.allowed_api_key_scopes.includes(data.scope)) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: `Your organization does not allow members to create API keys with scope '${data.scope}'`,
+              details: [{ field: 'scope', issue: 'not_allowed' }],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       // Generate a random API key
       const rawKey = randomBytes(32).toString('base64url');

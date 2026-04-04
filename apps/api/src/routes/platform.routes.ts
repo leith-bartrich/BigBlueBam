@@ -107,7 +107,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       await logSuperuserAction(user.id, 'org.created', request.ip, {
         org_name: body.name,
         org_slug: slug,
-      }, org.id);
+      }, org!.id);
 
       return reply.status(201).send({ data: org });
     },
@@ -266,6 +266,78 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       await logSuperuserAction(caller.id, body.is_superuser ? 'user.promoted_superuser' : 'user.demoted_superuser', request.ip, {}, undefined, id);
 
       return reply.send({ data: updated });
+    },
+  );
+
+  // POST /v1/platform/impersonate — start impersonating a user
+  fastify.post(
+    '/v1/platform/impersonate',
+    { preHandler: suPreHandler },
+    async (request, reply) => {
+      const caller = request.user!;
+      const body = z.object({ user_id: z.string().uuid() }).parse(request.body);
+
+      const [targetUser] = await db
+        .select({
+          id: users.id,
+          org_id: users.org_id,
+          email: users.email,
+          display_name: users.display_name,
+          avatar_url: users.avatar_url,
+          role: users.role,
+          timezone: users.timezone,
+          is_active: users.is_active,
+          is_superuser: users.is_superuser,
+          created_at: users.created_at,
+          last_seen_at: users.last_seen_at,
+        })
+        .from(users)
+        .where(eq(users.id, body.user_id))
+        .limit(1);
+
+      if (!targetUser) {
+        return reply.status(404).send({
+          error: { code: 'NOT_FOUND', message: 'User not found', details: [], request_id: request.id },
+        });
+      }
+
+      await logSuperuserAction(
+        caller.id,
+        'user.impersonation_started',
+        request.ip,
+        { target_email: targetUser.email, target_name: targetUser.display_name },
+        targetUser.org_id,
+        targetUser.id,
+      );
+
+      return reply.send({ data: targetUser });
+    },
+  );
+
+  // POST /v1/platform/stop-impersonation — stop impersonating
+  fastify.post(
+    '/v1/platform/stop-impersonation',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      if (!request.isImpersonating) {
+        return reply.status(400).send({
+          error: { code: 'BAD_REQUEST', message: 'Not currently impersonating', details: [], request_id: request.id },
+        });
+      }
+
+      const impersonator = request.impersonator!;
+      const impersonatedUser = request.user!;
+
+      await logSuperuserAction(
+        impersonator.id,
+        'user.impersonation_stopped',
+        request.ip,
+        { target_email: impersonatedUser.email, target_name: impersonatedUser.display_name },
+        impersonatedUser.org_id,
+        impersonatedUser.id,
+      );
+
+      return reply.send({ data: { success: true } });
     },
   );
 

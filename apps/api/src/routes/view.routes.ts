@@ -3,7 +3,8 @@ import { eq, and, or, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { savedViews } from '../db/schema/saved-views.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireProjectRole } from '../middleware/authorize.js';
 
 export default async function viewRoutes(fastify: FastifyInstance) {
   // ── GET /projects/:id/views ───────────────────────────────────────────
@@ -36,7 +37,7 @@ export default async function viewRoutes(fastify: FastifyInstance) {
   // ── POST /projects/:id/views ──────────────────────────────────────────
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/views',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectRole('admin', 'member'), requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const bodySchema = z.object({
         name: z.string().min(1).max(255),
@@ -70,7 +71,7 @@ export default async function viewRoutes(fastify: FastifyInstance) {
   // ── PATCH /views/:id ──────────────────────────────────────────────────
   fastify.patch<{ Params: { id: string } }>(
     '/views/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const bodySchema = z.object({
         name: z.string().min(1).max(255).optional(),
@@ -136,7 +137,7 @@ export default async function viewRoutes(fastify: FastifyInstance) {
   // ── DELETE /views/:id ─────────────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>(
     '/views/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const [existing] = await db
         .select()

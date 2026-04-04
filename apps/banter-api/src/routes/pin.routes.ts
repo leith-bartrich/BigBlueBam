@@ -3,13 +3,12 @@ import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
-  banterChannels,
-  banterChannelMemberships,
   banterMessages,
   banterPins,
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireScope } from '../plugins/auth.js';
+import { requireChannelMember, requireChannelAdmin } from '../middleware/channel-auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 
 const createPinSchema = z.object({
@@ -55,48 +54,11 @@ export default async function pinRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/pins — pin message
   fastify.post(
     '/v1/channels/:id/pins',
-    { preHandler: [requireAuth, requireScope('read_write')] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
       const body = createPinSchema.parse(request.body);
-
-      // Verify channel and membership with admin/owner role
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (!membership) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Must be a member of this channel',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      if (
-        membership.role === 'member' &&
-        !['owner', 'admin'].includes(user.role)
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to pin messages',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       // Verify message belongs to channel
       const [message] = await db
@@ -146,36 +108,9 @@ export default async function pinRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id/pins/:messageId — unpin
   fastify.delete(
     '/v1/channels/:id/pins/:messageId',
-    { preHandler: [requireAuth, requireScope('read_write')] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id, messageId } = request.params as { id: string; messageId: string };
-      const user = request.user!;
-
-      // Verify membership with admin/owner role
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !membership ||
-        (membership.role === 'member' && !['owner', 'admin'].includes(user.role))
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to unpin messages',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       const deleted = await db
         .delete(banterPins)

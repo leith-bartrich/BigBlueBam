@@ -6,9 +6,11 @@ import {
   banterChannels,
   banterChannelMemberships,
   banterMessages,
+  banterSettings,
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireChannelMember, requireChannelAdmin, requireChannelOwner } from '../middleware/channel-auth.js';
 import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
 
 const createChannelSchema = z.object({
@@ -173,6 +175,44 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const user = request.user!;
       const body = createChannelSchema.parse(request.body);
 
+      // Enforce org-level banter permissions for non-admin members
+      const isPrivileged = user.role === 'admin' || user.role === 'owner';
+      if (!isPrivileged) {
+        const [settings] = await db
+          .select({
+            allow_channel_creation: banterSettings.allow_channel_creation,
+          })
+          .from(banterSettings)
+          .where(eq(banterSettings.org_id, user.org_id))
+          .limit(1);
+
+        // Default: 'members' can create channels unless restricted
+        const allowCreation = settings?.allow_channel_creation ?? 'members';
+        if (allowCreation !== 'members') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to create channels',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        // Private channel restriction: piggyback on allow_channel_creation for now.
+        // Admins can always create private channels; members obey the setting above.
+        if (body.type === 'private' && allowCreation !== 'members') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to create private channels',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       // Check if this is the first channel for the org (auto-create #general)
       const existingChannels = await db
         .select({ count: sql<number>`count(*)::int` })
@@ -333,55 +373,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /v1/channels/:id — update settings
   fastify.patch(
     '/v1/channels/:id',
-    { preHandler: [requireAuth, requireScope('read_write')] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const user = request.user!;
       const body = updateChannelSchema.parse(request.body);
-
-      // Verify channel exists and user has permission
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Check membership role
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !membership ||
-        (membership.role === 'member' && !['owner', 'admin'].includes(user.role))
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to update this channel',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       const updateData: Record<string, unknown> = {};
       if (body.name !== undefined) {
@@ -417,53 +412,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id — soft delete (archive)
   fastify.delete(
     '/v1/channels/:id',
-    { preHandler: [requireAuth, requireScope('read_write')] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelOwner] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
-
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Only org admin/owner or channel owner can archive
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !['owner', 'admin'].includes(user.role) &&
-        (!membership || membership.role !== 'owner')
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to archive this channel',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       const [archived] = await db
         .update(banterChannels)
@@ -627,55 +579,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/members — add members
   fastify.post(
     '/v1/channels/:id/members',
-    { preHandler: [requireAuth, requireScope('read_write')] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const user = request.user!;
       const body = addMembersSchema.parse(request.body);
-
-      // Verify channel exists
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Check requester has permission
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !membership ||
-        (membership.role === 'member' && !['owner', 'admin'].includes(user.role))
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to add members',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       // Insert memberships (ignore conflicts)
       let addedCount = 0;
@@ -709,36 +616,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id/members/:userId — remove member
   fastify.delete(
     '/v1/channels/:id/members/:userId',
-    { preHandler: [requireAuth, requireScope('read_write')] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id, userId } = request.params as { id: string; userId: string };
-      const user = request.user!;
-
-      // Check requester has permission
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !membership ||
-        (membership.role === 'member' && !['owner', 'admin'].includes(user.role))
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to remove members',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       const deleted = await db
         .delete(banterChannelMemberships)
@@ -770,55 +650,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /v1/channels/:id/members/:userId — update member role
   fastify.patch(
     '/v1/channels/:id/members/:userId',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelOwner] },
     async (request, reply) => {
       const { id, userId } = request.params as { id: string; userId: string };
-      const user = request.user!;
       const body = z.object({ role: z.enum(['admin', 'member']) }).parse(request.body);
-
-      // Verify channel exists and belongs to org
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Only channel owner or org admin can change member roles
-      const [requesterMembership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !['owner', 'admin'].includes(user.role) &&
-        (!requesterMembership || requesterMembership.role !== 'owner')
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only the channel owner or org admin can update member roles',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       // Verify target membership exists
       const [targetMembership] = await db

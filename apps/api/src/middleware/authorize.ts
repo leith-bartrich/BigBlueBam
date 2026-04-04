@@ -34,6 +34,11 @@ export function requireProjectRole(...roles: string[]) {
       });
     }
 
+    // Guest users are scoped to specific projects. When a guest accepts an
+    // invitation, they are added to project_memberships for their allowed
+    // projects. The membership check below therefore naturally enforces
+    // guest project access — no special-case logic is needed here.
+
     const [membership] = await db
       .select()
       .from(projectMemberships)

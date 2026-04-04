@@ -9,6 +9,7 @@ import {
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireChannelMember } from '../middleware/channel-auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 import { enqueueNotification, extractMentions } from '../services/notification-queue.js';
 
@@ -137,34 +138,11 @@ export default async function messageRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/messages — post message
   fastify.post(
     '/v1/channels/:id/messages',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireChannelMember] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
       const body = createMessageSchema.parse(request.body);
-
-      // Verify membership
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (!membership) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Must be a member of this channel to post',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       // Sanitize content: strip dangerous HTML (script tags, event handlers, javascript: URLs)
       let sanitizedContent = body.content;

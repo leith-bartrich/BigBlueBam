@@ -22,12 +22,16 @@ declare module 'fastify' {
   interface FastifyRequest {
     user: AuthUser | null;
     sessionId: string | null;
+    impersonator: AuthUser | null;  // the SuperUser doing the impersonating
+    isImpersonating: boolean;
   }
 }
 
 async function authPlugin(fastify: FastifyInstance) {
   fastify.decorateRequest('user', null);
   fastify.decorateRequest('sessionId', null);
+  fastify.decorateRequest('impersonator', null);
+  fastify.decorateRequest('isImpersonating', false);
 
   fastify.addHook('preHandler', async (request: FastifyRequest) => {
     // Try session cookie first
@@ -102,6 +106,44 @@ async function authPlugin(fastify: FastifyInstance) {
           return;
         }
       }
+    }
+  });
+
+  // Impersonation hook: runs after auth resolution, allows SuperUsers to act as another user
+  fastify.addHook('preHandler', async (request: FastifyRequest) => {
+    if (request.user && request.user.is_superuser) {
+      const impersonateUserId = request.headers['x-impersonate-user'] as string | undefined;
+      if (impersonateUserId) {
+        const [targetUser] = await db
+          .select({
+            id: users.id,
+            org_id: users.org_id,
+            email: users.email,
+            display_name: users.display_name,
+            avatar_url: users.avatar_url,
+            role: users.role,
+            timezone: users.timezone,
+            is_active: users.is_active,
+            is_superuser: users.is_superuser,
+          })
+          .from(users)
+          .where(eq(users.id, impersonateUserId))
+          .limit(1);
+
+        if (targetUser && targetUser.is_active) {
+          request.impersonator = request.user;
+          request.user = { ...targetUser, api_key_scope: null };
+          request.isImpersonating = true;
+        }
+      }
+    }
+  });
+
+  // Add response headers when impersonating
+  fastify.addHook('onSend', async (request, reply) => {
+    if (request.isImpersonating) {
+      reply.header('X-Impersonating', request.user!.id);
+      reply.header('X-Impersonator', request.impersonator!.id);
     }
   });
 }

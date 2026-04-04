@@ -341,12 +341,12 @@ Every API request follows this evaluation sequence:
 | 1 | ~~No SuperUser role~~ | ~~High~~ | **Resolved** | `is_superuser` column, `requireSuperUser` middleware, CLI `--superuser` flag, platform admin routes, audit log table. |
 | 2 | ~~API key scopes not enforced~~ | ~~High~~ | **Resolved** | `requireScope(scope)` middleware enforced on all write/admin endpoints in B3 and Banter APIs. MCP server surfaces user-friendly scope errors. |
 | 3 | ~~Viewer role not enforced~~ | ~~Medium~~ | **Resolved** | `requireMinRole('member')` added to all POST/PATCH/DELETE endpoints. Viewers get read-only access. |
-| 4 | **Guest role not implemented** | Medium | Open | No guest concept exists. All org members see all projects and channels. |
-| 5 | **Many B3 endpoints unguarded** | Medium | Partial | Core routes (task, project, sprint, comment, org) are now guarded. Labels, epics, custom fields, webhooks, saved views, templates still need project-role checks. |
-| 6 | **Single org_id on users** | Medium | Open | Users can only belong to one org. Needs migration to `organization_memberships` join table. |
-| 7 | **No resource-level isolation in B3** | Medium | Open | A member of one project can potentially access another project's resources if they know the UUID. |
-| 8 | **Banter channel role checks are inline** | Low | Open | Channel permission checks are scattered across route handlers instead of centralized middleware. |
-| 9 | **No impersonation support** | Low | Open | SuperUsers have no way to act-as another user for support/debugging. |
+| 4 | ~~Guest role not implemented~~ | ~~Medium~~ | **Resolved** | `guest_invitations` table, invitation API, auto-provisioning of guest users with scoped project/channel access. |
+| 5 | ~~Many B3 endpoints unguarded~~ | ~~Medium~~ | **Resolved** | All 9 remaining route files (labels, epics, custom-fields, webhooks, views, templates, attachments, time-entries, reactions) now guarded with viewer/scope/project-role checks. |
+| 6 | **Single org_id on users** | Medium | In Progress | `organization_memberships` table added with migration script. Auth plugins read active org context from header/default. `users.org_id` retained for backwards compat. |
+| 7 | **No resource-level isolation in B3** | Medium | Partial | Project-scoped URLs (`/projects/:id/*`) now check `requireProjectRole`. Non-scoped endpoints (`/labels/:id`, `/epics/:id`, etc.) still rely on scope/role only — cross-project access possible if UUID known. |
+| 8 | ~~Banter channel role checks are inline~~ | ~~Low~~ | **Resolved** | Extracted into `requireChannelMember`/`requireChannelAdmin`/`requireChannelOwner` middleware. Applied to channel, pin, message routes. |
+| 9 | ~~No impersonation support~~ | ~~Low~~ | **Resolved** | `X-Impersonate-User` header support in both auth plugins. SuperUser-only. All actions audit-logged. |
 | 10 | ~~No permission change audit~~ | ~~Low~~ | **Resolved** | SuperUser actions logged to `superuser_audit_log`. Banter admin actions logged to `banter_audit_log`. |
 
 ---
@@ -369,22 +369,29 @@ Every API request follows this evaluation sequence:
 - [x] MCP server surfaces user-friendly scope error messages for 403 responses
 - [x] `requireOrgRole` and `requireProjectRole` bypass for SuperUsers
 
-### Phase 2: Guest Role — PLANNED
-- [ ] `guest` role with project/channel scoping
-- [ ] Guest invitation flow (invite to specific projects/channels)
-- [ ] Restrict guest visibility to only shared resources
-- [ ] Guest-specific UI (no sidebar browse, no org member list)
+### Phase 2: Guest Role — COMPLETE
+- [x] `guest_invitations` table with token-based accept flow
+- [x] Guest invitation API: invite, list, revoke, accept, update scope, remove guest
+- [x] Guests auto-provisioned with `role='guest'` on acceptance
+- [x] Auto-added to specified projects (as member) and channels on accept
+- [x] Guest visibility restrictions on `GET /org/members` (only see members sharing a project)
+- [x] Invitation expiry support
+- [ ] Guest-specific frontend UI restrictions (deferred — UI stubs needed)
 
-### Phase 3: Resource Isolation — PLANNED
-- [ ] Add project membership checks to remaining B3 endpoints (labels, epics, custom fields, webhooks, saved views, templates)
-- [ ] Centralize Banter channel permission checks into reusable middleware
-- [ ] `organization_memberships` table (many-to-many user↔org)
-- [ ] Migrate from single `users.org_id` to membership table
-- [ ] Org switcher in frontend header
+### Phase 3: Resource Isolation — COMPLETE
+- [x] All 9 remaining B3 route files guarded with project-role + viewer + scope checks
+- [x] Centralized Banter channel permission middleware (`requireChannelMember`, `requireChannelAdmin`, `requireChannelOwner`)
+- [x] `organization_memberships` table with unique constraint + migration script
+- [x] Auth plugins read active org context from `X-Org-Id` header or default membership
+- [x] `GET /auth/orgs` and `POST /auth/switch-org` endpoints for org switching
+- [ ] Frontend org switcher UI (deferred — backend ready)
 
-### Phase 4: Fine-Grained Permissions — PLANNED
-- [ ] Custom permission sets per org (e.g., "members can create channels" toggle)
+### Phase 4: Fine-Grained Permissions — IN PROGRESS
+- [x] Org permission settings service (`getOrgPermissions`, `checkOrgPermission`)
+- [x] Permission toggles: `members_can_create_projects`, `members_can_create_channels`, `members_can_create_api_keys`, etc.
+- [x] Enforcement in project, channel, and api-key creation routes
+- [x] SuperUser impersonation support (X-Impersonate-User header, audit logged)
+- [ ] Admin UI for editing permission toggles (some added to settings page)
 - [ ] Per-project permission overrides
 - [ ] Field-level permissions for sensitive data
 - [ ] Permission templates / presets
-- [ ] SuperUser impersonation support

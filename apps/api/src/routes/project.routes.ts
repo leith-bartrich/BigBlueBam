@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { createProjectSchema, updateProjectSchema, addProjectMemberSchema } from '@bigbluebam/shared';
 import * as projectService from '../services/project.service.js';
+import * as orgService from '../services/org.service.js';
+import { checkOrgPermission, isOrgPrivileged } from '../services/org-permissions.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
 
@@ -15,6 +17,21 @@ export default async function projectRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/projects', { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] }, async (request, reply) => {
+    // Enforce org-level permission: members_can_create_projects
+    if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
+      const org = await orgService.getOrganization(request.user!.org_id);
+      if (!checkOrgPermission(org?.settings as Record<string, unknown> | null, 'members_can_create_projects')) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Your organization does not allow members to create projects',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    }
+
     const data = createProjectSchema.parse(request.body);
     const project = await projectService.createProject(
       request.user!.org_id,

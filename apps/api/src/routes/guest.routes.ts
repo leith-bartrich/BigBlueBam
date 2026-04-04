@@ -1,0 +1,421 @@
+import type { FastifyInstance } from 'fastify';
+import { eq, and, isNull, gt, inArray, sql } from 'drizzle-orm';
+import { z } from 'zod';
+import { randomBytes } from 'crypto';
+import { db } from '../db/index.js';
+import { guestInvitations } from '../db/schema/guest-invitations.js';
+import { users } from '../db/schema/users.js';
+import { projectMemberships } from '../db/schema/project-memberships.js';
+import { requireAuth, requireScope } from '../plugins/auth.js';
+import { requireOrgRole } from '../middleware/authorize.js';
+
+export default async function guestRoutes(fastify: FastifyInstance) {
+  // ── POST /v1/guests/invite ─────────────────────────────────────────
+  // Create a guest invitation (requires org admin/owner)
+  fastify.post(
+    '/v1/guests/invite',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const schema = z.object({
+        email: z.string().email().max(320),
+        project_ids: z.array(z.string().uuid()).optional(),
+        channel_ids: z.array(z.string()).optional(),
+        expires_in_days: z.number().int().min(1).max(90).default(7),
+      });
+      const data = schema.parse(request.body);
+
+      // Check if there's already a pending invitation for this email in this org
+      const [existing] = await db
+        .select()
+        .from(guestInvitations)
+        .where(
+          and(
+            eq(guestInvitations.org_id, request.user!.org_id),
+            eq(guestInvitations.email, data.email),
+            isNull(guestInvitations.accepted_at),
+            gt(guestInvitations.expires_at, new Date()),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        return reply.status(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'A pending invitation already exists for this email',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Check if the email already belongs to a user in this org
+      const [existingUser] = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.org_id, request.user!.org_id),
+            eq(users.email, data.email),
+          ),
+        )
+        .limit(1);
+
+      if (existingUser) {
+        return reply.status(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'A user with this email already exists in the organization',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const token = randomBytes(48).toString('base64url');
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + data.expires_in_days);
+
+      const [invitation] = await db
+        .insert(guestInvitations)
+        .values({
+          org_id: request.user!.org_id,
+          invited_by: request.user!.id,
+          email: data.email,
+          role: 'guest',
+          project_ids: data.project_ids ?? null,
+          channel_ids: data.channel_ids ?? null,
+          token,
+          expires_at: expiresAt,
+        })
+        .returning();
+
+      return reply.status(201).send({
+        data: {
+          ...invitation,
+          invite_url: `/v1/guests/accept/${token}`,
+        },
+      });
+    },
+  );
+
+  // ── GET /v1/guests/invitations ─────────────────────────────────────
+  // List pending invitations for the org (requires org admin/owner)
+  fastify.get(
+    '/v1/guests/invitations',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const invitations = await db
+        .select({
+          id: guestInvitations.id,
+          email: guestInvitations.email,
+          project_ids: guestInvitations.project_ids,
+          channel_ids: guestInvitations.channel_ids,
+          invited_by: guestInvitations.invited_by,
+          token: guestInvitations.token,
+          accepted_at: guestInvitations.accepted_at,
+          expires_at: guestInvitations.expires_at,
+          created_at: guestInvitations.created_at,
+        })
+        .from(guestInvitations)
+        .where(eq(guestInvitations.org_id, request.user!.org_id))
+        .orderBy(guestInvitations.created_at);
+
+      return reply.send({ data: invitations });
+    },
+  );
+
+  // ── DELETE /v1/guests/invitations/:id ──────────────────────────────
+  // Revoke an invitation (requires org admin/owner)
+  fastify.delete<{ Params: { id: string } }>(
+    '/v1/guests/invitations/:id',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const [deleted] = await db
+        .delete(guestInvitations)
+        .where(
+          and(
+            eq(guestInvitations.id, request.params.id),
+            eq(guestInvitations.org_id, request.user!.org_id),
+          ),
+        )
+        .returning();
+
+      if (!deleted) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Invitation not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: { success: true } });
+    },
+  );
+
+  // ── POST /v1/guests/accept/:token ─────────────────────────────────
+  // Accept an invitation (no auth required — public endpoint)
+  fastify.post<{ Params: { token: string } }>(
+    '/v1/guests/accept/:token',
+    async (request, reply) => {
+      const bodySchema = z.object({
+        display_name: z.string().max(100),
+        password: z.string().min(8).max(128),
+      });
+      const data = bodySchema.parse(request.body);
+
+      // Find the invitation
+      const [invitation] = await db
+        .select()
+        .from(guestInvitations)
+        .where(eq(guestInvitations.token, request.params.token))
+        .limit(1);
+
+      if (!invitation) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Invitation not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (invitation.accepted_at) {
+        return reply.status(410).send({
+          error: {
+            code: 'GONE',
+            message: 'This invitation has already been accepted',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (new Date(invitation.expires_at) < new Date()) {
+        return reply.status(410).send({
+          error: {
+            code: 'GONE',
+            message: 'This invitation has expired',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Hash the password
+      const argon2 = await import('argon2');
+      const passwordHash = await argon2.hash(data.password);
+
+      // Create the guest user account
+      const [guestUser] = await db
+        .insert(users)
+        .values({
+          org_id: invitation.org_id,
+          email: invitation.email,
+          display_name: data.display_name,
+          password_hash: passwordHash,
+          role: 'guest',
+        })
+        .returning();
+
+      // Add the guest to specified projects as 'member' role
+      if (invitation.project_ids && invitation.project_ids.length > 0) {
+        const membershipValues = invitation.project_ids.map((projectId) => ({
+          project_id: projectId,
+          user_id: guestUser!.id,
+          role: 'member',
+        }));
+        await db.insert(projectMemberships).values(membershipValues);
+      }
+
+      // Mark invitation as accepted
+      await db
+        .update(guestInvitations)
+        .set({ accepted_at: new Date() })
+        .where(eq(guestInvitations.id, invitation.id));
+
+      // NOTE: Channel membership auto-add would go here once the Banter
+      // channel_members schema is wired up. For now, channel_ids are stored
+      // on the invitation for future use.
+
+      return reply.status(201).send({
+        data: {
+          id: guestUser!.id,
+          email: guestUser!.email,
+          display_name: guestUser!.display_name,
+          role: guestUser!.role,
+          org_id: guestUser!.org_id,
+          project_ids: invitation.project_ids,
+          channel_ids: invitation.channel_ids,
+        },
+      });
+    },
+  );
+
+  // ── GET /v1/guests ─────────────────────────────────────────────────
+  // List current guest users in the org (requires org admin/owner)
+  fastify.get(
+    '/v1/guests',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const guests = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          display_name: users.display_name,
+          avatar_url: users.avatar_url,
+          role: users.role,
+          is_active: users.is_active,
+          created_at: users.created_at,
+          last_seen_at: users.last_seen_at,
+        })
+        .from(users)
+        .where(
+          and(
+            eq(users.org_id, request.user!.org_id),
+            eq(users.role, 'guest'),
+          ),
+        )
+        .orderBy(users.display_name);
+
+      return reply.send({ data: guests });
+    },
+  );
+
+  // ── PATCH /v1/guests/:id/scope ─────────────────────────────────────
+  // Update a guest's project and channel access (requires org admin/owner)
+  fastify.patch<{ Params: { id: string } }>(
+    '/v1/guests/:id/scope',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const bodySchema = z.object({
+        project_ids: z.array(z.string().uuid()).optional(),
+        channel_ids: z.array(z.string()).optional(),
+      });
+      const data = bodySchema.parse(request.body);
+
+      // Verify the user is a guest in this org
+      const [guestUser] = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.id, request.params.id),
+            eq(users.org_id, request.user!.org_id),
+            eq(users.role, 'guest'),
+          ),
+        )
+        .limit(1);
+
+      if (!guestUser) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Guest user not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Update project memberships if project_ids provided
+      if (data.project_ids !== undefined) {
+        // Remove all existing project memberships for this guest
+        await db
+          .delete(projectMemberships)
+          .where(eq(projectMemberships.user_id, guestUser.id));
+
+        // Add new project memberships
+        if (data.project_ids.length > 0) {
+          const membershipValues = data.project_ids.map((projectId) => ({
+            project_id: projectId,
+            user_id: guestUser.id,
+            role: 'member',
+          }));
+          await db.insert(projectMemberships).values(membershipValues);
+        }
+      }
+
+      // Update the most recent accepted invitation's channel_ids if provided
+      if (data.channel_ids !== undefined) {
+        await db
+          .update(guestInvitations)
+          .set({ channel_ids: data.channel_ids })
+          .where(
+            and(
+              eq(guestInvitations.org_id, request.user!.org_id),
+              eq(guestInvitations.email, guestUser.email),
+            ),
+          );
+      }
+
+      // Fetch updated project memberships
+      const updatedMemberships = await db
+        .select({ project_id: projectMemberships.project_id })
+        .from(projectMemberships)
+        .where(eq(projectMemberships.user_id, guestUser.id));
+
+      return reply.send({
+        data: {
+          id: guestUser.id,
+          email: guestUser.email,
+          display_name: guestUser.display_name,
+          role: guestUser.role,
+          project_ids: updatedMemberships.map((m) => m.project_id),
+          channel_ids: data.channel_ids,
+        },
+      });
+    },
+  );
+
+  // ── DELETE /v1/guests/:id ──────────────────────────────────────────
+  // Remove a guest from the org (deactivate) (requires org admin/owner)
+  fastify.delete<{ Params: { id: string } }>(
+    '/v1/guests/:id',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      // Verify the user is a guest in this org
+      const [guestUser] = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.id, request.params.id),
+            eq(users.org_id, request.user!.org_id),
+            eq(users.role, 'guest'),
+          ),
+        )
+        .limit(1);
+
+      if (!guestUser) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Guest user not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Deactivate the guest rather than deleting
+      const [updated] = await db
+        .update(users)
+        .set({ is_active: false, updated_at: new Date() })
+        .where(eq(users.id, guestUser.id))
+        .returning();
+
+      // Remove all project memberships
+      await db
+        .delete(projectMemberships)
+        .where(eq(projectMemberships.user_id, guestUser.id));
+
+      return reply.send({ data: { success: true } });
+    },
+  );
+}

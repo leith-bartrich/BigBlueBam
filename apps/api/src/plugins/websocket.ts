@@ -107,6 +107,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<AuthUser | 
         role: users.role,
         timezone: users.timezone,
         is_active: users.is_active,
+        is_superuser: users.is_superuser,
       },
     })
     .from(sessions)
@@ -119,7 +120,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<AuthUser | 
   if (new Date(row.session.expires_at) <= new Date()) return null;
   if (!row.user.is_active) return null;
 
-  return row.user;
+  return { ...row.user, api_key_scope: null };
 }
 
 // ── Plugin ───────────────────────────────────────────────────

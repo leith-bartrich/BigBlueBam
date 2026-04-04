@@ -36,6 +36,7 @@ import icalRoutes from './routes/ical.routes.js';
 import viewRoutes from './routes/view.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
 import platformRoutes from './routes/platform.routes.js';
+import guestRoutes from './routes/guest.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -154,6 +155,7 @@ await fastify.register(icalRoutes);
 await fastify.register(viewRoutes);
 await fastify.register(uploadRoutes);
 await fastify.register(platformRoutes);
+await fastify.register(guestRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

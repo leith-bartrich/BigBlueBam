@@ -887,3 +887,42 @@ CREATE TABLE superuser_audit_log (
 CREATE INDEX idx_su_audit_superuser ON superuser_audit_log (superuser_id);
 CREATE INDEX idx_su_audit_action ON superuser_audit_log (action);
 CREATE INDEX idx_su_audit_created_at ON superuser_audit_log (created_at DESC);
+
+-- ── Guest Invitations ──────────────────────────────────────────────
+CREATE TABLE guest_invitations (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id          uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    invited_by      uuid NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    email           varchar(320) NOT NULL,
+    role            varchar(20) NOT NULL DEFAULT 'guest',
+    project_ids     text[],
+    channel_ids     text[],
+    token           varchar(100) NOT NULL UNIQUE,
+    accepted_at     timestamptz,
+    expires_at      timestamptz NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_guest_invitations_org ON guest_invitations (org_id);
+CREATE INDEX idx_guest_invitations_email ON guest_invitations (email);
+CREATE INDEX idx_guest_invitations_token ON guest_invitations (token);
+
+-- ── Organization Memberships (multi-org support) ─────────────────────
+-- Supports many-to-many relationship between users and organizations.
+-- Migration path: users.org_id and users.role remain for backward
+-- compatibility. The migrate-org-memberships.js script backfills this
+-- table from the existing users.org_id/role columns. Once all code reads
+-- from organization_memberships, the users.org_id column can be dropped.
+CREATE TABLE organization_memberships (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    role        varchar(20) NOT NULL DEFAULT 'member',
+    is_default  boolean NOT NULL DEFAULT false,
+    joined_at   timestamptz NOT NULL DEFAULT now(),
+    invited_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(user_id, org_id)
+);
+
+CREATE INDEX idx_org_memberships_user_id ON organization_memberships (user_id);
+CREATE INDEX idx_org_memberships_org_id ON organization_memberships (org_id);

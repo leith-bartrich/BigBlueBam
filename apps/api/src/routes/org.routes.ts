@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { eq, and, inArray, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { projectMemberships } from '../db/schema/project-memberships.js';
+import { users } from '../db/schema/users.js';
 import * as orgService from '../services/org.service.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireOrgRole } from '../middleware/authorize.js';
@@ -52,6 +56,67 @@ export default async function orgRoutes(fastify: FastifyInstance) {
     '/org/members',
     { preHandler: [requireAuth] },
     async (request, reply) => {
+      // Guest users should only see members who share at least one project
+      if (request.user!.role === 'guest') {
+        // Find project IDs the guest belongs to
+        const guestProjects = await db
+          .select({ project_id: projectMemberships.project_id })
+          .from(projectMemberships)
+          .where(eq(projectMemberships.user_id, request.user!.id));
+
+        if (guestProjects.length === 0) {
+          // Guest has no project access — return only themselves
+          const [self] = await db
+            .select({
+              id: users.id,
+              email: users.email,
+              display_name: users.display_name,
+              avatar_url: users.avatar_url,
+              role: users.role,
+              is_active: users.is_active,
+              created_at: users.created_at,
+              last_seen_at: users.last_seen_at,
+            })
+            .from(users)
+            .where(eq(users.id, request.user!.id))
+            .limit(1);
+
+          return reply.send({ data: self ? [self] : [] });
+        }
+
+        const projectIds = guestProjects.map((p) => p.project_id);
+
+        // Find all user IDs who share at least one project with the guest
+        const sharedMembers = await db
+          .selectDistinct({ user_id: projectMemberships.user_id })
+          .from(projectMemberships)
+          .where(inArray(projectMemberships.project_id, projectIds));
+
+        const sharedUserIds = sharedMembers.map((m) => m.user_id);
+
+        const members = await db
+          .select({
+            id: users.id,
+            email: users.email,
+            display_name: users.display_name,
+            avatar_url: users.avatar_url,
+            role: users.role,
+            is_active: users.is_active,
+            created_at: users.created_at,
+            last_seen_at: users.last_seen_at,
+          })
+          .from(users)
+          .where(
+            and(
+              eq(users.org_id, request.user!.org_id),
+              inArray(users.id, sharedUserIds),
+            ),
+          )
+          .orderBy(users.display_name);
+
+        return reply.send({ data: members });
+      }
+
       const members = await orgService.listOrgMembers(request.user!.org_id);
       return reply.send({ data: members });
     },

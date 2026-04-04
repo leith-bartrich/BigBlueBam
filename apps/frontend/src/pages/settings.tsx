@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil, Lock } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -58,7 +58,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk' | 'permissions'>('profile');
   const [displayName, setDisplayName] = useState(user?.display_name ?? '');
   const [timezone, setTimezone] = useState(user?.timezone ?? 'UTC');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
@@ -301,6 +301,84 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     });
   };
 
+  // Permissions tab state
+  interface OrgPermissions {
+    members_can_create_projects: boolean;
+    members_can_delete_own_projects: boolean;
+    members_can_create_channels: boolean;
+    members_can_create_private_channels: boolean;
+    members_can_create_group_dms: boolean;
+    max_file_upload_mb: number;
+    members_can_invite_members: boolean;
+    members_can_create_api_keys: boolean;
+    allowed_api_key_scopes: string[];
+  }
+  const DEFAULT_PERMS: OrgPermissions = {
+    members_can_create_projects: true,
+    members_can_delete_own_projects: false,
+    members_can_create_channels: true,
+    members_can_create_private_channels: true,
+    members_can_create_group_dms: true,
+    max_file_upload_mb: 25,
+    members_can_invite_members: false,
+    members_can_create_api_keys: true,
+    allowed_api_key_scopes: ['read', 'read_write'],
+  };
+  const [permissions, setPermissions] = useState<OrgPermissions>(DEFAULT_PERMS);
+  const [permissionsSaving, setPermissionsSaving] = useState(false);
+  const [permissionsSaved, setPermissionsSaved] = useState(false);
+
+  interface OrgData {
+    id: string;
+    name: string;
+    slug: string;
+    settings: { permissions?: Partial<OrgPermissions>; [key: string]: unknown } | null;
+  }
+  const { data: orgRes } = useQuery({
+    queryKey: ['org'],
+    queryFn: () => api.get<ApiResponse<OrgData>>('/org'),
+    enabled: activeTab === 'permissions',
+  });
+
+  useEffect(() => {
+    if (orgRes?.data) {
+      const existing = orgRes.data.settings?.permissions ?? {};
+      setPermissions({ ...DEFAULT_PERMS, ...existing });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgRes]);
+
+  const canEditPermissions = user?.role === 'admin' || user?.role === 'owner';
+
+  const updatePermissions = useMutation({
+    mutationFn: (perms: OrgPermissions) => {
+      const existingSettings = (orgRes?.data?.settings ?? {}) as Record<string, unknown>;
+      return api.patch<ApiResponse<OrgData>>('/org', {
+        settings: { ...existingSettings, permissions: perms },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] });
+      setPermissionsSaved(true);
+      setTimeout(() => setPermissionsSaved(false), 2000);
+    },
+    onSettled: () => setPermissionsSaving(false),
+  });
+
+  const handleSavePermissions = () => {
+    setPermissionsSaving(true);
+    updatePermissions.mutate(permissions);
+  };
+
+  const toggleApiKeyScope = (scope: string) => {
+    setPermissions((p) => ({
+      ...p,
+      allowed_api_key_scopes: p.allowed_api_key_scopes.includes(scope)
+        ? p.allowed_api_key_scopes.filter((s) => s !== scope)
+        : [...p.allowed_api_key_scopes, scope],
+    }));
+  };
+
   const applyTheme = (newTheme: 'system' | 'light' | 'dark') => {
     setTheme(newTheme);
     localStorage.setItem('bbam-theme', newTheme);
@@ -348,6 +426,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     { id: 'appearance' as const, label: 'Appearance', icon: Sun },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'members' as const, label: 'Members', icon: Users },
+    { id: 'permissions' as const, label: 'Permissions', icon: Lock },
     { id: 'integrations' as const, label: 'Integrations', icon: Plug },
     { id: 'helpdesk' as const, label: 'Helpdesk', icon: Headset },
   ];
@@ -1010,6 +1089,147 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     Contact your server administrator to configure email delivery.
                   </p>
                 </div>
+              </div>
+            )}
+            {activeTab === 'permissions' && (
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Organization Permissions</h2>
+                  <p className="text-sm text-zinc-500">
+                    Control what regular members can do within your organization. Admins and owners are not affected by these settings.
+                  </p>
+                  {!canEditPermissions && (
+                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      You need the admin or owner role to modify these settings.
+                    </p>
+                  )}
+                </div>
+
+                <fieldset disabled={!canEditPermissions} className="space-y-6 disabled:opacity-60">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Projects</h3>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create projects</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_projects}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_projects: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can delete projects they own</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_delete_own_projects}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_delete_own_projects: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Banter</h3>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create channels</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_channels}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_channels: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create private channels</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_private_channels}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_private_channels: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create group DMs</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_group_dms}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_group_dms: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Files</h3>
+                    <label className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">Max file upload size (MB)</span>
+                      <Input
+                        id="max-file-upload-mb"
+                        type="number"
+                        min={1}
+                        max={1024}
+                        value={permissions.max_file_upload_mb}
+                        onChange={(e) => setPermissions((p) => ({ ...p, max_file_upload_mb: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
+                        className="w-24"
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Invitations</h3>
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can invite new members</span>
+                      <input
+                        type="checkbox"
+                        checked={permissions.members_can_invite_members}
+                        onChange={(e) => setPermissions((p) => ({ ...p, members_can_invite_members: e.target.checked }))}
+                        className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">API Keys</h3>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create API keys</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_api_keys}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_api_keys: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <div>
+                        <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-2">Allowed API key scopes for members</p>
+                        <div className="flex flex-wrap gap-3">
+                          {['read', 'read_write', 'admin'].map((scope) => (
+                            <label key={scope} className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                              <input
+                                type="checkbox"
+                                checked={permissions.allowed_api_key_scopes.includes(scope)}
+                                onChange={() => toggleApiKeyScope(scope)}
+                                className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                              />
+                              <span>{scope}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
+
+                {canEditPermissions && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                    <Button onClick={handleSavePermissions} loading={permissionsSaving}>Save Permissions</Button>
+                    {permissionsSaved && <span className="text-sm text-green-600">Saved!</span>}
+                  </div>
+                )}
               </div>
             )}
             {activeTab === 'helpdesk' && (
