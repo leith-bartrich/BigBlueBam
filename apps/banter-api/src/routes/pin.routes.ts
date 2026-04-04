@@ -19,7 +19,7 @@ export default async function pinRoutes(fastify: FastifyInstance) {
   // GET /v1/channels/:id/pins
   fastify.get(
     '/v1/channels/:id/pins',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireChannelMember] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
 
