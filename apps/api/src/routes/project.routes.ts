@@ -84,19 +84,21 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       // Check admin role
-      const membership = await projectService.getProjectMembership(
-        request.params.id,
-        request.user!.id,
-      );
-      if (!membership || membership.role !== 'admin') {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Project admin role required',
-            details: [],
-            request_id: request.id,
-          },
-        });
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership || membership.role !== 'admin') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Project admin role required',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const data = updateProjectSchema.parse(request.body);
@@ -121,19 +123,21 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     '/projects/:id',
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
-      const membership = await projectService.getProjectMembership(
-        request.params.id,
-        request.user!.id,
-      );
-      if (!membership || membership.role !== 'admin') {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Project admin role required',
-            details: [],
-            request_id: request.id,
-          },
-        });
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership || membership.role !== 'admin') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Project admin role required',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const project = await projectService.archiveProject(request.params.id);
@@ -182,19 +186,21 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     '/projects/:id/members',
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectRole('admin')] },
     async (request, reply) => {
-      const membership = await projectService.getProjectMembership(
-        request.params.id,
-        request.user!.id,
-      );
-      if (!membership || membership.role !== 'admin') {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Project admin role required',
-            details: [],
-            request_id: request.id,
-          },
-        });
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership || membership.role !== 'admin') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Project admin role required',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const data = addProjectMemberSchema.parse(request.body);

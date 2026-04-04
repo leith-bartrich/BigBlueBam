@@ -57,6 +57,15 @@ export async function requireChannelMember(request: FastifyRequest, reply: Fasti
     });
   }
 
+  // SuperUsers bypass channel membership requirement
+  if (user.is_superuser) {
+    request.channelContext = {
+      channel,
+      membership: { role: 'owner' } as MembershipRow,
+    };
+    return;
+  }
+
   const [membership] = await db
     .select()
     .from(banterChannelMemberships)
