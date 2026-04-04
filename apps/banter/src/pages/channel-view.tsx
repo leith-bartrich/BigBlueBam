@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Hash,
   Users,
@@ -7,6 +7,7 @@ import {
   Video,
   Settings,
 } from 'lucide-react';
+import { Track } from 'livekit-client';
 import { useChannel } from '@/hooks/use-channels';
 import { useChannelStore } from '@/stores/channel.store';
 import { useRealtimeChannel } from '@/hooks/use-realtime';
@@ -17,6 +18,7 @@ import { MessageCompose } from '@/components/messages/message-compose';
 import { TypingIndicator } from '@/components/messages/typing-indicator';
 import { ChannelSettings } from '@/components/channels/channel-settings';
 import { CallPanel } from '@/components/calls/call-panel';
+import { VideoGrid, type VideoParticipant } from '@/components/calls/video-grid';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -99,6 +101,54 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
 
   // Subscribe to realtime events for this channel
   useRealtimeChannel(channel?.id ?? '');
+
+  // Map LiveKit participants to VideoParticipant objects for the video grid
+  const videoParticipants = useMemo((): VideoParticipant[] => {
+    if (!livekit.isConnected) return [];
+
+    const result: VideoParticipant[] = [];
+
+    // Local participant
+    if (livekit.localParticipant) {
+      const lp = livekit.localParticipant;
+      result.push({
+        id: lp.identity,
+        name: lp.name ?? lp.identity,
+        avatarUrl: null,
+        isSpeaking: livekit.activeSpeakers.includes(lp.identity),
+        isMuted: !lp.isMicrophoneEnabled,
+        isVideoEnabled: lp.isCameraEnabled,
+        isScreenSharing: lp.isScreenShareEnabled,
+        isBot: false,
+        videoTrack:
+          lp.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack ?? null,
+        screenShareTrack:
+          lp.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack ?? null,
+      });
+    }
+
+    // Remote participants
+    for (const rp of livekit.participants) {
+      result.push({
+        id: rp.identity,
+        name: rp.name ?? rp.identity,
+        avatarUrl: null,
+        isSpeaking: livekit.activeSpeakers.includes(rp.identity),
+        isMuted: !rp.isMicrophoneEnabled,
+        isVideoEnabled: rp.isCameraEnabled,
+        isScreenSharing: rp.isScreenShareEnabled,
+        isBot: false,
+        videoTrack:
+          rp.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack ?? null,
+        screenShareTrack:
+          rp.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack ?? null,
+      });
+    }
+
+    return result;
+  }, [livekit.isConnected, livekit.localParticipant, livekit.participants, livekit.activeSpeakers]);
+
+  const showVideoGrid = activeCallType === 'video' && livekit.isConnected && videoParticipants.length > 0;
 
   if (isLoading) {
     return (
@@ -205,6 +255,16 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
           onLeave={leaveCall}
           onOpenDeviceSettings={() => setShowDeviceSettings(true)}
         />
+      )}
+
+      {/* Video grid (shown for video calls when connected) */}
+      {showVideoGrid && (
+        <div className="flex-shrink-0" style={{ height: '60%' }}>
+          <VideoGrid
+            participants={videoParticipants}
+            localParticipantId={livekit.localParticipant?.identity ?? ''}
+          />
+        </div>
       )}
 
       {/* Message timeline */}

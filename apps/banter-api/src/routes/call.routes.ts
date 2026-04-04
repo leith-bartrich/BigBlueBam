@@ -641,6 +641,25 @@ export default async function callRoutes(fastify: FastifyInstance) {
       if (body.recording !== undefined) updateData.recording_enabled = body.recording;
       if (body.transcription !== undefined) updateData.transcription_enabled = body.transcription;
 
+      // Start/stop recording via LiveKit Egress API
+      if (body.recording !== undefined) {
+        try {
+          const { startRecording, stopRecording } = await import('../services/recording.js');
+          if (body.recording && !call.recording_storage_key) {
+            const egressId = await startRecording(
+              call.livekit_room_name,
+              `banter/recordings/${call.id}`,
+            );
+            updateData.recording_storage_key = egressId;
+          } else if (!body.recording && call.recording_storage_key) {
+            await stopRecording(call.recording_storage_key);
+          }
+        } catch (err) {
+          fastify.log.warn({ err }, 'Recording toggle failed — LiveKit Egress may not be available');
+          // Still update the flag in DB even if egress fails
+        }
+      }
+
       const [updated] = await db
         .update(banterCalls)
         .set(updateData)

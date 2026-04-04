@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { Mic, MicOff, MonitorUp, Bot, VideoOff } from 'lucide-react';
 import { cn, generateAvatarInitials } from '@/lib/utils';
 
-interface VideoParticipant {
+export interface VideoParticipant {
   id: string;
   name: string;
   avatarUrl: string | null;
@@ -11,12 +11,49 @@ interface VideoParticipant {
   isVideoEnabled: boolean;
   isScreenSharing: boolean;
   isBot: boolean;
-  // videoTrack and audioTrack would come from LiveKit client SDK when available
+  /** Actual LiveKit camera track reference (null when no video) */
+  videoTrack: MediaStreamTrack | null;
+  /** Actual LiveKit screen share track reference (null when not sharing) */
+  screenShareTrack: MediaStreamTrack | null;
 }
 
 interface VideoGridProps {
   participants: VideoParticipant[];
   localParticipantId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Reusable video track renderer
+// ---------------------------------------------------------------------------
+
+function VideoTrackRenderer({ track, mirror, objectFit }: {
+  track: MediaStreamTrack;
+  mirror?: boolean;
+  objectFit?: 'cover' | 'contain';
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !track) return;
+    const stream = new MediaStream([track]);
+    el.srcObject = stream;
+    return () => { el.srcObject = null; };
+  }, [track]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className={cn(
+        'w-full h-full',
+        objectFit === 'contain' ? 'object-contain' : 'object-cover',
+        mirror && 'scale-x-[-1]',
+      )}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +81,8 @@ function ParticipantTile({
   isLocal: boolean;
   large?: boolean;
 }) {
+  const hasVideo = participant.videoTrack !== null && participant.isVideoEnabled;
+
   return (
     <div
       className={cn(
@@ -55,11 +94,14 @@ function ParticipantTile({
         large ? 'min-h-[320px]' : 'min-h-[160px]',
       )}
     >
-      {/* Video placeholder -- when LiveKit SDK is available, attach the video track here */}
-      {participant.isVideoEnabled ? (
-        <div className="absolute inset-0 bg-zinc-800 flex items-center justify-center">
-          {/* LiveKit <VideoTrack /> would be rendered here */}
-          <span className="text-xs text-zinc-500">Video track</span>
+      {/* Video track or avatar placeholder */}
+      {hasVideo ? (
+        <div className="absolute inset-0">
+          <VideoTrackRenderer
+            track={participant.videoTrack!}
+            mirror={isLocal}
+            objectFit="cover"
+          />
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center gap-2">
@@ -137,19 +179,25 @@ export function ScreenShareView({
 
   return (
     <div className="flex h-full gap-2 p-2">
-      {/* Main screen share area */}
-      <div className="flex-1 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700 flex items-center justify-center min-h-[320px]">
-        {/* LiveKit <VideoTrack source={Track.Source.ScreenShare} /> would render here */}
-        <div className="flex flex-col items-center gap-2 text-zinc-400">
-          <MonitorUp className="h-10 w-10" />
-          <span className="text-sm font-medium">
-            {presenter.name} is sharing their screen
-          </span>
-        </div>
+      {/* Main screen share area — 80% width */}
+      <div className="w-4/5 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700 flex items-center justify-center min-h-[320px]">
+        {presenter.screenShareTrack ? (
+          <VideoTrackRenderer
+            track={presenter.screenShareTrack}
+            objectFit="contain"
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-zinc-400">
+            <MonitorUp className="h-10 w-10" />
+            <span className="text-sm font-medium">
+              {presenter.name} is sharing their screen
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Side strip of participant tiles */}
-      <div className="flex flex-col gap-2 w-48 overflow-y-auto">
+      {/* Side strip of participant tiles — 20% width */}
+      <div className="w-1/5 flex flex-col gap-2 overflow-y-auto">
         <ParticipantTile
           participant={presenter}
           isLocal={presenter.id === localParticipantId}
