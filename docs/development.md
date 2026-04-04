@@ -27,18 +27,22 @@ pnpm install
 cp .env.example .env
 # Edit .env with your local secrets
 
-# Start data services (PostgreSQL, Redis, MinIO)
-docker compose up -d postgres redis minio
+# Start data services (PostgreSQL, Redis, MinIO) + the migrate one-shot
+docker compose up -d postgres redis minio migrate
 
 # Build shared packages
 pnpm --filter @bigbluebam/shared build
 
-# Run database migrations
-pnpm db:migrate
-
 # Start all apps in dev mode
 pnpm dev
 ```
+
+> There is **no `init.sql`**. The postgres container boots with an empty DB; the
+> `migrate` service (running `node dist/migrate.js`) applies every file in
+> `infra/postgres/migrations/` in order and is a `service_completed_successfully`
+> dependency of every DB-using app service. On a normal `docker compose up` you
+> never run the migrate step by hand — it runs automatically before api,
+> banter-api, helpdesk-api, and worker start.
 
 This starts:
 - API server on `http://localhost:4000` internally (proxied at `http://localhost/b3/api/` in production, direct access in dev)
@@ -162,11 +166,17 @@ export const widgets = pgTable('widgets', {
 
 Then export from `apps/api/src/db/schema/index.ts`.
 
-### Step 3: Generate and Apply Migration
+### Step 3: Write and Apply a Migration
+
+Hand-author a new numbered SQL file in `infra/postgres/migrations/`. See the
+[Database Migrations](#database-migrations) section below for the required
+header and idempotency rules.
 
 ```bash
-pnpm db:generate    # Creates SQL migration file
-pnpm db:migrate     # Applies it to the database
+pnpm lint:migrations                       # validate the new file
+docker compose build migrate               # bake the new file into the image
+docker compose run --rm migrate            # apply it to the local DB
+pnpm db:check                              # verify zero drift vs Drizzle
 ```
 
 ### Step 4: Create the Service Layer
@@ -385,39 +395,151 @@ Custom hooks in `apps/frontend/src/hooks/`:
 
 ---
 
-## Database Migrations with Drizzle
+## Database Migrations
+
+BigBlueBam uses **hand-authored, numbered, idempotent SQL migrations** under
+`infra/postgres/migrations/`. The `migrate` service (reuses the api image,
+runs `node dist/migrate.js`) applies them in lex order, tracks each file in
+`schema_migrations` with a SHA-256 checksum of the SQL body, and is a no-op
+once the DB is current. **Migrations are append-only and immutable** — never
+edit an applied migration.
+
+Drizzle schemas under `apps/*/src/db/schema/` are the ORM-side declaration.
+A drift guard (`pnpm db:check`) compares them against the live DB.
 
 ### Workflow
 
 ```mermaid
 graph LR
-    A["Edit schema/*.ts"] --> B["pnpm db:generate"]
-    B --> C["Review migration SQL"]
-    C --> D["pnpm db:migrate<br/>(or docker compose run --rm migrate)"]
-    D --> E["Verify changes"]
+    A["Edit apps/*/src/db/schema/*.ts"] --> B["Write infra/postgres/migrations/NNNN_name.sql<br/>(header + idempotent DDL)"]
+    B --> C["pnpm lint:migrations"]
+    C --> D["docker compose build migrate"]
+    D --> E["docker compose run --rm migrate"]
+    E --> F["pnpm db:check<br/>(zero drift)"]
+    F --> G["Commit schema + migration together"]
 ```
 
 ### Commands
 
 ```bash
-# Generate migration from schema changes
-pnpm db:generate
+# Validate migration files (filename, header, idempotency rules)
+pnpm lint:migrations
 
-# Push schema directly (dev only, skips migration file)
-pnpm db:push
+# Apply migrations to the local DB
+docker compose run --rm migrate
 
-# Apply pending migrations
-pnpm db:migrate
-# or
+# Rebuild the migrate image after adding a new file, then apply
+docker compose build migrate && docker compose run --rm migrate
+
+# Drift guard: Drizzle schemas vs live DB
+pnpm db:check
+```
+
+`pnpm db:check` requires the stack to be up: `docker compose up -d postgres migrate`.
+Exits 1 on missing/extra tables or columns; type mismatches are warnings only.
+CI runs the same check on every PR via `.github/workflows/db-drift.yml`.
+
+### Migration file rules (enforced by `pnpm lint:migrations`)
+
+1. **Filename**: `^[0-9]{4}_[a-z][a-z0-9_]*\.sql$` (e.g. `0007_add_widget_table.sql`).
+2. **Header** (first ~20 lines, SQL comment block) MUST contain:
+   - `-- NNNN_<name>.sql` (matching the filename)
+   - `-- Why: <1–3 sentences on motivation>`
+   - `-- Client impact: none | additive only | expand-contract step N/M | …`
+3. **Idempotent DDL**:
+   - `CREATE TABLE IF NOT EXISTS`
+   - `CREATE [UNIQUE] INDEX IF NOT EXISTS` (or preceded by `DROP INDEX IF EXISTS` within 3 lines)
+   - `ADD COLUMN IF NOT EXISTS`
+   - `DROP TABLE|INDEX|COLUMN IF EXISTS`
+   - `CREATE TRIGGER` must be preceded by `DROP TRIGGER IF EXISTS ... ;` or wrapped in a `DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` block
+4. **Destructive `ALTER`s** (`DROP COLUMN`, `SET NOT NULL`, etc.) wrapped in a guarded `DO $$` block that tolerates re-runs.
+5. **One logical change per migration.** No unrelated drive-bys.
+
+Rare exceptions may be silenced per-line with `-- noqa: <rule-name>`.
+
+**Checksum behavior:** only the SQL *body* is hashed — the `--` header
+comment block is stripped before hashing, so you can edit `-- Why:` /
+`-- Client impact:` text on an applied migration without invalidating it.
+Any change to executable SQL trips the immutability guard.
+
+### Running migrations against a fresh DB
+
+Nothing special — `docker compose up -d` starts postgres (empty), runs the
+`migrate` one-shot, and every app service waits on it. If you wiped volumes
+(`docker compose down -v`, which you generally shouldn't — see the note in
+[CLAUDE.md](../CLAUDE.md)) the next `docker compose up -d` rebuilds from
+`0000_init.sql` forward.
+
+If you just added a new migration file to your working tree:
+
+```bash
+docker compose build migrate
 docker compose run --rm migrate
 ```
 
-### Best Practices
+---
 
-1. **One logical change per migration.** Do not combine unrelated schema changes.
-2. **Never edit an applied migration.** Create a new one instead.
-3. **Add indexes concurrently** for production: `CREATE INDEX CONCURRENTLY ...`
-4. **Test on a production data copy** before applying to production.
+## Local Admin, SuperUser, and Impersonation
+
+### Create an admin (and optionally a SuperUser) via CLI
+
+```bash
+docker compose exec api node dist/cli.js create-admin \
+  --email admin@example.com \
+  --password your-strong-password \
+  --name "Admin User" \
+  --org "My Organization" \
+  --superuser                    # optional: grants platform SuperUser
+```
+
+Passwords must be ≥12 characters. Omit `--superuser` for a normal org owner.
+
+### Promote an existing user to SuperUser
+
+There is no CLI flag for this on an existing user; run SQL directly:
+
+```bash
+docker compose exec postgres psql -U "$POSTGRES_USER" -d bigbluebam \
+  -c "UPDATE users SET is_superuser = true WHERE email = 'you@example.com';"
+```
+
+### The SuperUser console
+
+A SuperUser gets a platform-wide console at [`/b3/superuser`](http://localhost/b3/superuser)
+with cross-org user/org admin and impersonation controls. A context banner
+appears at the top of the BBB SPA whenever a SuperUser is viewing another org
+or impersonating.
+
+### Impersonation in dev
+
+Impersonation is SuperUser-only and time-limited (30 min TTL). There are two ways in:
+
+1. **UI:** from `/b3/superuser`, pick a user and click *Impersonate*. The SPA
+   calls `POST /v1/platform/impersonate`, which creates an
+   `impersonation_sessions` row and then sets the `X-Impersonate-User` header
+   on subsequent requests automatically.
+2. **Manual (API / curl):**
+   ```bash
+   # Start a session as the SuperUser
+   curl -X POST http://localhost/b3/api/v1/platform/impersonate \
+     -H 'Content-Type: application/json' \
+     -b 'session=<superuser-session-cookie>' \
+     -d '{"target_user_id":"<uuid>"}'
+
+   # Now send requests with the impersonation header
+   curl http://localhost/b3/api/v1/me \
+     -b 'session=<superuser-session-cookie>' \
+     -H 'X-Impersonate-User: <target-user-uuid>'
+
+   # Stop
+   curl -X POST http://localhost/b3/api/v1/platform/stop-impersonation \
+     -b 'session=<superuser-session-cookie>'
+   ```
+
+The auth plugin requires both (a) a valid SuperUser session and (b) an active,
+non-expired row in `impersonation_sessions` for the `(superuser_id, target_user_id)`
+pair before honoring `X-Impersonate-User`. All impersonated actions are written
+to the activity log with the impersonator recorded.
 
 ---
 

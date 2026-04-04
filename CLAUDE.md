@@ -36,7 +36,7 @@ apps/
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
 infra/
-  postgres/     — init.sql
+  postgres/     — migrations/ (numbered, idempotent SQL migrations)
   nginx/        — nginx.conf, certs
   livekit/      — LiveKit SFU configuration (livekit.yaml)
   helm/         — Kubernetes Helm chart (bigbluebam/)
@@ -70,6 +70,39 @@ Application containers (api, banter-api, mcp-server, worker, helpdesk-api, front
 
 The test database contains seeded projects, users, tickets, and conversations that are time-consuming to recreate.
 
+## Database Schema & Migrations
+
+**Single source of truth:** `infra/postgres/migrations/NNNN_*.sql` — append-only, idempotent numbered migration files. `0000_init.sql` is the canonical baseline; subsequent files layer schema evolution on top. There is no `init.sql` — the postgres container boots with an empty DB and the `migrate` service creates everything.
+
+The `migrate` service (reuses the api image, runs `node dist/migrate.js`) is a `service_completed_successfully` dependency of every DB-using service — api, helpdesk-api, banter-api, worker. It runs automatically on every `docker compose up`, tracks applied migrations in the `schema_migrations` table with SHA-256 checksums, and is a no-op once the DB is current.
+
+**When you change the schema:**
+
+1. Update the Drizzle schema file in `apps/*/src/db/schema/`.
+2. Add a **new** numbered file in `infra/postgres/migrations/` that applies the change idempotently (use `ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP TRIGGER IF EXISTS ... ; CREATE TRIGGER ...`, or guarded `DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` blocks). **Never edit an existing migration** — the runner records a SHA-256 checksum per file and aborts on mismatch.
+3. Rebuild the api image (`docker compose build api`) so the new migration is baked in, then `docker compose up -d` — the migrate service will apply it before app services start.
+
+Every migration must be idempotent so the same migration file is safe to run against both empty DBs and DBs that may already have the object (e.g., from the historical init.sql bootstrap).
+
+### Drift guard
+
+`pnpm db:check` runs `scripts/db-check.mjs`, which parses every Drizzle `pgTable(...)` declaration across `apps/api`, `apps/helpdesk-api`, and `apps/banter-api`, then diffs the union against the live database pointed to by `DATABASE_URL`. It prints any table/column declared in Drizzle but missing in the DB, or present in the DB but not declared in any Drizzle schema, and exits 1 on drift (type mismatches are warnings only). Start the stack first: `docker compose up -d postgres migrate`.
+
+CI runs it on every PR and every push to `main` via `.github/workflows/db-drift.yml`, against a fresh `postgres:16-alpine` service container with `init.sql` + all migrations applied. **When it fails: do not edit an existing migration.** Update the Drizzle schema file and add a new numbered migration in `infra/postgres/migrations/` with the same change in idempotent form, then rerun.
+
+### Migration conventions
+
+Every file in `infra/postgres/migrations/` MUST:
+
+1. **Filename**: match `^[0-9]{4}_[a-z][a-z0-9_]*\.sql$` (4-digit sequence + snake_case).
+2. **Header**: the first ~20 lines must contain a comment block with the filename marker, a `-- Why:` line (1-3 sentences on motivation), and a `-- Client impact:` line (`none` / `additive only` / `expand-contract step N/M` / …).
+3. **Idempotency**: use `CREATE TABLE IF NOT EXISTS`, `CREATE [UNIQUE] INDEX IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP TABLE/INDEX/COLUMN IF EXISTS`. `CREATE TRIGGER` must be preceded by `DROP TRIGGER IF EXISTS ... ;` or wrapped in a `DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` block.
+4. **Destructive ALTERs** (`DROP COLUMN`, `SET NOT NULL`, etc.) must be wrapped in a guarded `DO $$` block that tolerates re-runs.
+
+Enforced by `pnpm lint:migrations` (`scripts/lint-migrations.mjs`), run in CI by `.github/workflows/db-drift.yml` (job `migration-lint`). Rare exceptions may be silenced per-line with an inline `-- noqa: <rule-name>` comment.
+
+**Checksum behavior:** the runner hashes the SQL *body* only — the leading `--` comment header is stripped before hashing, so editing `-- Why:` / `-- Client impact:` text never invalidates an applied migration. Any change to executable SQL still trips the immutability guard. For the one-time rollout where headers were added to already-applied migrations, rerun the migrate container with `MIGRATE_ALLOW_HEADER_RESTAMP=1` to re-stamp stored checksums.
+
 ## Common Commands
 
 ```bash
@@ -83,7 +116,7 @@ docker compose up -d
 # Start full stack (dev mode with hot reload)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
-# Run database migrations (schema lives in infra/postgres/init.sql, loaded on first start)
+# Run database migrations (schema lives in infra/postgres/migrations/*.sql, applied by the migrate service)
 docker compose run --rm migrate
 
 # Create initial admin user

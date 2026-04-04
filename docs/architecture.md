@@ -22,10 +22,12 @@ graph TB
         subgraph "Application Layer"
             API["api<br/>Fastify v5<br/>REST + WebSocket<br/>:4000"]
             BanterAPI["banter-api<br/>Fastify v5<br/>REST + WebSocket<br/>:4002"]
+            HelpdeskAPI["helpdesk-api<br/>Fastify v5<br/>REST + WebSocket<br/>:4001"]
             MCP["mcp-server<br/>MCP SDK (86 tools)<br/>SSE + Streamable HTTP<br/>:3001"]
             Worker["worker<br/>BullMQ<br/>Background Jobs<br/>(no exposed port)"]
             LiveKit["livekit<br/>SFU Media Server<br/>:7880"]
             VoiceAgent["voice-agent<br/>Python/FastAPI<br/>:4003"]
+            Migrate["migrate (one-shot)<br/>SQL migration runner<br/>infra/postgres/migrations/"]
         end
 
         subgraph "Data Layer"
@@ -41,11 +43,19 @@ graph TB
     Nginx -->|"/b3/ws → WebSocket"| API
     Nginx -->|"/banter/api/ → Reverse Proxy"| BanterAPI
     Nginx -->|"/banter/ws → WebSocket"| BanterAPI
+    Nginx -->|"/helpdesk/api/ → Reverse Proxy"| HelpdeskAPI
+    Nginx -->|"/helpdesk/ws → WebSocket"| HelpdeskAPI
     Nginx -->|"/mcp/ → Reverse Proxy"| MCP
     AIClient -->|"SSE / Streamable HTTP"| Nginx
 
     MCP -->|"Internal HTTP"| API
     MCP -->|"Internal HTTP"| BanterAPI
+    MCP -->|"Internal HTTP"| HelpdeskAPI
+    Migrate -->|"Apply SQL migrations"| PG
+    HelpdeskAPI -->|"SQL"| PG
+    HelpdeskAPI -->|"PubSub / Sessions"| Redis
+    HelpdeskAPI -->|"Enqueue helpdesk-task-create"| Redis
+    HelpdeskAPI -->|"Presigned URLs"| MinIO
     BanterAPI -->|"SQL"| PG
     BanterAPI -->|"Cache / PubSub"| Redis
     BanterAPI -->|"Presigned URLs"| MinIO
@@ -149,13 +159,28 @@ BigBlueBam/
 |   |   |-- Dockerfile
 |   |   +-- package.json
 |   |
-|   +-- worker/           Background job processor
+|   |-- worker/           Background job processor
+|   |   |-- src/
+|   |   |   |-- jobs/         7 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention, helpdesk-task-create)
+|   |   |   |-- utils/
+|   |   |   +-- worker.ts     Entry point
+|   |   |-- Dockerfile
+|   |   +-- package.json
+|   |
+|   |-- helpdesk-api/     Helpdesk Fastify REST API + WebSocket (internal :4001)
+|   |   |-- src/
+|   |   |   |-- routes/       Ticket, agent, auth, file routes
+|   |   |   |-- services/     task-queue.ts (BullMQ producer for helpdesk-task-create)
+|   |   |   |-- ws/           handler.ts (ticket room realtime, typing indicators)
+|   |   |   |-- lib/          broadcast.ts (Redis PubSub publisher)
+|   |   |   +-- server.ts     Entry point
+|   |   +-- Dockerfile
+|   |
+|   +-- helpdesk/         Helpdesk customer portal React SPA
 |       |-- src/
-|       |   |-- jobs/         Job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
-|       |   |-- utils/
-|       |   +-- worker.ts     Entry point
-|       |-- Dockerfile
-|       +-- package.json
+|       |   |-- lib/          websocket.ts (auto-reconnect client), metrics.ts, api.ts
+|       |   +-- ...
+|       +-- Dockerfile
 |
 |-- packages/
 |   +-- shared/           Shared code between all apps
@@ -166,7 +191,8 @@ BigBlueBam/
 |       +-- package.json
 |
 |-- infra/
-|   |-- postgres/         init.sql for database setup
+|   |-- postgres/
+|   |   +-- migrations/       Forward-only numbered SQL migrations (0000_init.sql, 0001_baseline.sql, ...)
 |   |-- nginx/            nginx.conf, TLS certificates
 |   +-- helm/             Kubernetes Helm chart
 |       +-- bigbluebam/
@@ -349,26 +375,40 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph "Network: frontend"
-        FE["frontend<br/><i>nginx (single container)</i><br/>/b3/ → BBB SPA<br/>/helpdesk/ → Helpdesk SPA<br/>Ports: 80, 443"]
-        API2["api<br/>(also on frontend network)"]
-        MCP2["mcp-server<br/>(also on frontend network)"]
+        FE["frontend<br/><i>nginx (single container)</i><br/>/b3/ → BBB SPA<br/>/banter/ → Banter SPA<br/>/helpdesk/ → Helpdesk SPA<br/>Ports: 80, 443"]
+        API2["api (also on frontend network)"]
+        HDAPI2["helpdesk-api (also on frontend network)"]
+        BAPI2["banter-api (also on frontend network)"]
+        MCP2["mcp-server (also on frontend network)"]
     end
 
     subgraph "Network: backend"
-        API["api<br/><i>Fastify v5 + WebSocket</i><br/>Port: 4000<br/>512MB RAM, 1 CPU"]
-        MCP["mcp-server<br/><i>MCP SDK</i><br/>Port: 3001<br/>256MB RAM, 0.5 CPU"]
-        Worker["worker<br/><i>BullMQ processor</i><br/>No exposed port<br/>512MB RAM, 1 CPU"]
-        PG["postgres<br/><i>PostgreSQL 16-alpine</i><br/>Port: 5432<br/>1GB RAM, 1 CPU<br/>Volume: pgdata"]
-        Redis["redis<br/><i>Redis 7-alpine</i><br/>Port: 6379<br/>256MB RAM, 0.25 CPU<br/>Volume: redisdata"]
-        MinIO["minio<br/><i>MinIO latest</i><br/>Ports: 9000, 9001<br/>256MB RAM, 0.25 CPU<br/>Volume: miniodata"]
+        API["api<br/><i>Fastify v5 + WebSocket</i><br/>Port: 4000"]
+        HDAPI["helpdesk-api<br/><i>Fastify v5 + WebSocket</i><br/>Port: 4001"]
+        BAPI["banter-api<br/><i>Fastify v5 + WebSocket</i><br/>Port: 4002"]
+        MCP["mcp-server<br/><i>MCP SDK (86 tools)</i><br/>Port: 3001"]
+        Worker["worker<br/><i>BullMQ processor (7 job types)</i><br/>No exposed port"]
+        Migrate["migrate (one-shot)<br/><i>SQL migration runner</i><br/>service_completed_successfully dep<br/>for api, helpdesk-api, banter-api, worker"]
+        PG["postgres<br/><i>PostgreSQL 16-alpine</i><br/>Port: 5432<br/>Volume: pgdata"]
+        Redis["redis<br/><i>Redis 7-alpine</i><br/>Port: 6379<br/>Volume: redisdata"]
+        MinIO["minio<br/><i>MinIO latest</i><br/>Ports: 9000, 9001<br/>Volume: miniodata"]
     end
 
-    FE ---|"proxy /b3/api/*, /helpdesk/api/*, /mcp/*"| API
+    FE ---|"proxy /b3/*, /banter/*, /helpdesk/*, /mcp/*"| API
+    FE --- HDAPI
+    FE --- BAPI
+    Migrate -->|"apply migrations, record in schema_migrations"| PG
     API -->|"SQL queries"| PG
     API -->|"sessions, cache, pubsub, queues"| Redis
     API -->|"presigned URLs"| MinIO
+    HDAPI -->|"SQL queries"| PG
+    HDAPI -->|"sessions, pubsub, queues"| Redis
+    HDAPI -->|"presigned URLs"| MinIO
+    BAPI -->|"SQL queries"| PG
+    BAPI -->|"sessions, pubsub, queues"| Redis
     MCP -->|"internal HTTP"| API
-    MCP -->|"session cache"| Redis
+    MCP -->|"internal HTTP"| HDAPI
+    MCP -->|"internal HTTP"| BAPI
     Worker -->|"SQL queries"| PG
     Worker -->|"dequeue jobs"| Redis
     Worker -->|"file operations"| MinIO
@@ -386,8 +426,8 @@ graph TB
 
 | Network | Services | Purpose |
 |---|---|---|
-| `frontend` | frontend, api, mcp-server | External-facing services |
-| `backend` | api, mcp-server, worker, postgres, redis, minio | Internal service communication |
+| `frontend` | frontend, api, helpdesk-api, banter-api, mcp-server | External-facing services |
+| `backend` | api, helpdesk-api, banter-api, mcp-server, worker, migrate, postgres, redis, minio, livekit, voice-agent | Internal service communication |
 
 ### Volumes
 
@@ -551,3 +591,79 @@ When a user performs an action:
 - **Field updates**: Last-write-wins with `updated_at` stale check. If the server detects a stale update (client's `updated_at` does not match), it returns HTTP 409. The client refetches and re-applies.
 - **Board position conflicts**: When two users move cards simultaneously, the server determines the final position order and broadcasts an authoritative `task.reordered` event. Both clients reconcile with an animated reflow.
 - **Presence indicators**: User avatars appear on task cards currently being edited by another user, with a colored ring and tooltip.
+
+### Helpdesk Realtime
+
+The helpdesk customer portal has its own WebSocket server (separate from the BBB and Banter hubs) that shares the same Redis PubSub channel (`bigbluebam:events`) so events published from any service can be fanned out to helpdesk clients.
+
+- **Endpoint**: `wss://DOMAIN/helpdesk/ws` (proxied by nginx to `helpdesk-api:4001/helpdesk/ws`).
+- **Authentication**: httpOnly `helpdesk_session` cookie validated against `helpdesk_sessions` + `helpdesk_users` on connect.
+- **Rooms**: every client auto-subscribes to `helpdesk:user:{userId}`. Customers may only subscribe to `ticket:{ticketId}` rooms for tickets they own (server-side ownership check on every `subscribe` message).
+- **Typing indicators**: clients send `typing.start` / `typing.stop` frames; the server throttles per-ticket starts to once every 2 s and re-broadcasts to other members of the ticket room. See `apps/helpdesk-api/src/ws/handler.ts`.
+- **Broadcasts**: `apps/helpdesk-api/src/lib/broadcast.ts` publishes `task.created`, `task.updated`, and `ticket.message.created` events onto the shared Redis channel. Note: Redis pub/sub is not durable — the helpdesk client (`apps/helpdesk/src/lib/websocket.ts`) refetches authoritative state after every reconnect to cover events missed during disconnection.
+- **Client**: `WebSocketManager` in `apps/helpdesk/src/lib/websocket.ts` handles auto-reconnect with exponential backoff (1 s → 30 s), pending-room replay after reconnect, 30 s keepalive ping/pong, and an offline detection hook (`navigator.onLine`).
+
+### Helpdesk → BBB Task Pipeline
+
+Ticket creation on the customer portal emits a BBB task into the configured project. The write path is transactional-first with an async fallback rather than a fire-and-forget write-through:
+
+1. `helpdesk-api` creates the ticket and inline-creates the linked BBB task in the same DB transaction.
+2. On a transient failure (deadlock, connection blip, FK race), the transaction rolls back and the ticket is re-persisted standalone, then a `helpdesk-task-create` BullMQ job is enqueued via `apps/helpdesk-api/src/services/task-queue.ts`.
+3. The shared `worker` container picks the job up and runs `apps/worker/src/jobs/helpdesk-task-create.job.ts`, which retries the task insert and back-links `tickets.task_id`. The job is idempotent — if `tickets.task_id` is already set it is a no-op.
+
+This replaces the earlier "best-effort write-through" pattern and guarantees that every ticket eventually lands as a BBB task without blocking the customer-facing request.
+
+---
+
+## Multi-Org Membership and Request Scoping
+
+A user can belong to many organizations simultaneously. The legacy `users.org_id` FK has been replaced by a join table:
+
+- **`organization_memberships`** — `(user_id, org_id, role, ...)` with a unique constraint on `(user_id, org_id)`. Role hierarchy and permission resolution live in `apps/api/src/services/org-permissions.ts`. See `docs/permissions.md` for the full role matrix.
+- **`sessions.active_org_id`** — persists the user's currently-selected org across requests. Updated by `POST /orgs/switch`, which also rotates the session token.
+- **`X-Org-Id` request header** — clients may override the session's active org on a per-request basis. The auth plugin (`apps/api/src/plugins/auth.ts`) validates the header against the user's memberships and falls back to `sessions.active_org_id`, then to the user's default org.
+- **`request.user.active_org_id`** — resolved once per request and used by all downstream authorization checks and row-level filters.
+
+### SuperUser Subsystem
+
+Platform operators with `users.is_superuser = true` can inspect and mutate any org without being a member of it.
+
+- **Namespace**: `/superuser/*` routes expose cross-org listings, org switcher, and audit surfaces. Non-superuser requests receive 404 (anti-enumeration) rather than 403.
+- **Context switching**: `POST /superuser/context/switch` updates `sessions.active_org_id` to an arbitrary org. When `active_org_id` differs from the SuperUser's home org, `request.user.is_superuser_viewing = true` and all writes are tagged `via_superuser_context` in the activity log.
+- **Audit trail**: every SuperUser context switch, mutation, and impersonation event is appended to `superuser_audit_log` with actor, target org, action, and request metadata.
+
+### Impersonation Flow
+
+Admins (and SuperUsers) can act as another user for support and debugging:
+
+1. **Create** — `POST /impersonation/start` writes an `impersonation_sessions` row with `actor_id`, `target_user_id`, and an expiry. SuperUsers cannot chain (cannot impersonate other SuperUsers).
+2. **Use** — subsequent requests include the `X-Impersonate-User` header; the auth plugin validates the token against `impersonation_sessions` and swaps `request.user` to the target while retaining `impersonator_id` on the request.
+3. **Audit** — every activity log entry written during impersonation carries `impersonator_id` (see the `activity_log.impersonator_id` column added in migration `0004_activity_log_impersonator.sql`).
+
+Further detail on roles, resource isolation, and guest invitations lives in [`docs/permissions.md`](./permissions.md).
+
+---
+
+## Database Migration System
+
+The database is no longer seeded from a single `init.sql` — it is built up forward-only by a numbered migration runner.
+
+```mermaid
+graph LR
+    Files["infra/postgres/migrations/<br/>0000_init.sql<br/>0001_baseline.sql<br/>0002_granular_permissions_and_drift.sql<br/>0003_session_active_org.sql<br/>0004_activity_log_impersonator.sql<br/>0005_projects_created_by.sql<br/>0006_drizzle_drift_sweep.sql<br/>..."]
+    Runner["migrate (one-shot container)<br/>apps/api/src/migrate.ts"]
+    Table["schema_migrations<br/>(id, checksum, applied_at)"]
+    Apps["api / helpdesk-api / banter-api / worker<br/>(wait for migrate to complete)"]
+
+    Files --> Runner
+    Runner -->|"hash SQL body, apply in txn, record"| Table
+    Runner -->|"service_completed_successfully"| Apps
+```
+
+- **Migration files** are SQL, numbered (`NNNN_description.sql`), forward-only, and must be idempotent (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, etc.).
+- **Runner** — `apps/api/src/migrate.ts` reads every file in lexicographic order, computes a SHA-256 checksum of the SQL *body* (stripping the leading comment header so `-- Why:` / `-- Client impact:` notes can be amended in place), and applies any not yet recorded in `schema_migrations`. Each file runs inside a single transaction.
+- **Checksum guard** — if a previously-applied migration's body hash has changed the runner aborts loudly. A one-time `MIGRATE_ALLOW_HEADER_RESTAMP=1` escape hatch exists for the header-refactor rollout.
+- **docker-compose wiring** — a `migrate` one-shot service runs `node dist/migrate.js` against the `migrations/` folder baked into the api image. Every DB-using app (`api`, `helpdesk-api`, `banter-api`, `worker`) declares `migrate: condition: service_completed_successfully` as a depends-on, so migrations always complete before app code that assumes the new schema can boot.
+- **Drift guard** — a `.github/workflows/db-drift.yml` CI workflow diffs the Drizzle schema against the migrations and fails the build if the two drift.
+
+See [`docs/database.md`](./database.md) for the full schema reference.

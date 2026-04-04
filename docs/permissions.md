@@ -91,6 +91,35 @@ All SuperUser actions that cross org boundaries are logged to a dedicated `super
 | `ip_address` | Request origin |
 | `created_at` | Timestamp |
 
+### SuperUser Cross-Organization Access
+
+SuperUsers operate across tenant boundaries via a dedicated `/superuser/*` API namespace and a session-level "active org" context switch. The privilege escalation model is: the `users.is_superuser` flag unlocks (a) the `/superuser/*` routes, guarded by the `require-superuser` middleware, and (b) the ability to set `sessions.active_org_id`, which reroutes ordinary API calls into a target org.
+
+**Three distinct operating modes:**
+
+| Mode | How entered | Behavior |
+|------|-------------|----------|
+| **(a) Home org** | Default — `sessions.active_org_id` is null | SuperUser acts as themselves in their own org. Normal role bypasses apply, but no cross-org scoping. |
+| **(b) Context-switched ("view-as-self")** | `POST /superuser/context/switch { org_id }` | All subsequent non-superuser API calls are scoped to the target org. The user identity stays the SuperUser's own (`actor_id = superuser.id`). Writes are tagged `via_superuser_context: true` in `activity_log.details`. |
+| **(c) Impersonation ("act-as-target-user")** | `X-Impersonate-User` header (SuperUser-only) | The SuperUser acts as a specific target user — `request.user` becomes the target, `request.impersonator` holds the SuperUser. Writes attribute to the target user with `impersonator_id` set on activity_log. Time-limited (30min) with target notifications. |
+
+Modes (b) and (c) are independent and composable: a SuperUser can context-switch into org X and then impersonate user Y within it.
+
+**Impersonation flow (mode c) — two steps:**
+
+1. `POST /v1/platform/impersonate` with the target `user_id`. The SuperUser middleware validates the caller, the target is checked for `is_active` and `!is_superuser` (SU→SU is forbidden), and a row is written to `impersonation_sessions` with a 30-minute `expires_at`. The target user receives a notification that they are being impersonated.
+2. All subsequent requests include the `X-Impersonate-User: <target_user_id>` header. The auth plugin validates that an active (non-ended, non-expired) `impersonation_sessions` row exists for this `(superuser_id, target_user_id)` pair. If so, `request.user` becomes the target and `request.impersonator` holds the SuperUser's AuthUser.
+
+`POST /v1/platform/stop-impersonation` ends all active impersonation sessions for the pair. `GET /v1/platform/impersonation-sessions` lists currently-active impersonations (SuperUser-only).
+
+Responses from impersonated requests include `X-Impersonating: true` and `X-Impersonator: <superuser_id>` headers so clients can visually flag the session. Writes during impersonation attribute to the target user (`actor_id = target.id`) with `impersonator_id` set on `activity_log`. Self-impersonation is a no-op; malformed or missing header silently falls through to normal auth.
+
+**Write attribution in switched context (mode b):** The activity_log row is written with `actor_id = superuser.id` (identity unchanged), plus `details.via_superuser_context = true`. This makes audit queries able to distinguish "org owner did X" from "SuperUser acting in this org did X" without conflating identities.
+
+**Audit trail:** Every call to `/superuser/*` writes a row to `superuser_audit_log` with the `action` field (e.g. `org.list`, `org.view`, `overview.view`, `context.switch`, `context.clear`), the `superuser_id`, optional `target_org_id`/`target_user_id`, request `ip_address`, `user_agent`, and JSONB `details`. This is independent of the per-org `activity_log` — the superuser audit log is the authoritative trail for all cross-org actions.
+
+**Non-SuperUser defense:** The `require-superuser` preHandler returns 401 if there is no authenticated session, and 403 if `request.user.is_superuser !== true`. `POST /superuser/context/switch` is itself guarded by this middleware, so non-SuperUsers cannot set `sessions.active_org_id` through the public API. If `active_org_id` were ever set on a non-SuperUser session (e.g. via a direct DB edit), the auth plugin's org-resolution step still validates membership in the target org before honoring it — a non-SuperUser with a planted `active_org_id` that doesn't match their memberships is fail-closed.
+
 ---
 
 ## 2. Organization Roles
@@ -99,7 +128,22 @@ All SuperUser actions that cross org boundaries are logged to a dedicated `super
 
 Every user belongs to one or more organizations (via `organization_memberships`) and holds a role within each.
 
-> **Current state:** Users have a single `org_id` FK. The planned migration to `organization_memberships` (many-to-many) is tracked as a known TODO. The permission model below is designed for the multi-org future.
+The `organization_memberships` table is the authoritative source for a user's org roles. Each row has `(user_id, org_id, role, is_default, joined_at, invited_by)` with:
+
+- A unique index on `(user_id, org_id)` — a user cannot hold two rows for the same org.
+- A partial unique index on `(user_id) WHERE is_default = true` — at most one default membership per user.
+- A CHECK constraint pinning `role` to one of `owner`, `admin`, `member`, `viewer`, `guest`.
+
+The active-org context for a request is resolved by `resolveOrgContext()` in `apps/api/src/plugins/auth.ts` with this precedence:
+
+1. `X-Org-Id` request header (must be a valid UUID and the user must be a member of that org, otherwise 403).
+2. The user's default membership (`is_default = true`).
+3. The user's first membership by `joined_at` ascending.
+4. Fallback to `users.org_id` if the user has no rows yet (pre-migration backfill path).
+
+Malformed `X-Org-Id` headers are silently ignored; mismatched but well-formed ones fail closed with 403. Non-SuperUsers who somehow have `sessions.active_org_id` set that does not match a membership are also fail-closed — only SuperUsers can cross membership boundaries.
+
+Org switching at runtime is done via `GET /auth/orgs` (list available orgs) and `POST /auth/switch-org` (change `sessions.active_org_id`). Session IDs are rotated on org switch to reduce blast radius of a stolen cookie across contexts.
 
 ### Role: Owner
 
@@ -266,7 +310,9 @@ API keys are issued per-user and carry a scope that restricts what operations th
 
 API keys can also be restricted to specific projects via the `project_ids` array. When set, the key can only access resources within those projects.
 
-> **Current state:** API key scopes are defined in the schema but not enforced in middleware. This is a known gap to be fixed.
+Keys are prefixed with `bbam_`, stored as Argon2id hashes, and looked up via a short random prefix column (`key_prefix`) to bound the number of Argon2 verifications per request. Timing-attack mitigation: `argon2.verify` always runs before the `expires_at` check so that expired-but-valid-hash keys and invalid-hash keys take the same wall-clock time. If more than 3 candidates share a prefix, only the first is verified and a warning is logged (DoS mitigation, P2-11).
+
+`requireScope(minScope)` in `apps/api/src/plugins/auth.ts` is the enforcement point. It is a no-op for session auth (`api_key_scope === null`) and for SuperUsers.
 
 ---
 
@@ -331,6 +377,11 @@ Every API request follows this evaluation sequence:
 | **MCP scope errors** | `formatScopeError()` utility | `apps/mcp-server/src/middleware/scope-check.ts` | Implemented |
 | **Platform admin** | SuperUser-only org CRUD routes | `apps/api/src/routes/platform.routes.ts` | Implemented |
 | **SuperUser audit** | `superuser_audit_log` table | `apps/api/src/db/schema/superuser-audit-log.ts` | Implemented |
+| **SuperUser console** | Cross-org routes (list/detail/overview, context switch/clear) | `apps/api/src/routes/superuser.routes.ts` | Implemented |
+| **Impersonation** | `impersonation_sessions` table + `X-Impersonate-User` header | `apps/api/src/db/schema/impersonation-sessions.ts`, `apps/api/src/plugins/auth.ts`, `apps/api/src/routes/platform.routes.ts` | Implemented |
+| **Org permissions** | Org-settings permission toggles + cache | `apps/api/src/services/org-permissions.ts` | Implemented |
+| **Banter ↔ B3 bridge** | Maps `banter_settings` flat columns onto `organizations.settings.permissions` with cache | `apps/banter-api/src/services/org-permissions-bridge.ts`, `apps/banter-api/src/services/settings-cache.ts` | Implemented |
+| **Session invalidation on org delete** | Cascade delete of all sessions for users in deleted org | `apps/api/src/routes/platform.routes.ts` | Implemented |
 
 ---
 
@@ -343,7 +394,7 @@ Every API request follows this evaluation sequence:
 | 3 | ~~Viewer role not enforced~~ | ~~Medium~~ | **Resolved** | `requireMinRole('member')` added to all POST/PATCH/DELETE endpoints. Viewers get read-only access. |
 | 4 | ~~Guest role not implemented~~ | ~~Medium~~ | **Resolved** | `guest_invitations` table, invitation API, auto-provisioning of guest users with scoped project/channel access. |
 | 5 | ~~Many B3 endpoints unguarded~~ | ~~Medium~~ | **Resolved** | All 9 remaining route files (labels, epics, custom-fields, webhooks, views, templates, attachments, time-entries, reactions) now guarded with viewer/scope/project-role checks. |
-| 6 | **Single org_id on users** | Medium | In Progress | `organization_memberships` table added with migration script. Auth plugins read active org context from header/default. `users.org_id` retained for backwards compat. |
+| 6 | ~~Single org_id on users~~ | ~~Medium~~ | **Resolved** | `organization_memberships` is the authoritative source of roles, with unique indexes, partial default-membership index, and role CHECK constraint. Auth resolves active org from `X-Org-Id` header → default membership → first-joined, falling back to `users.org_id` only for un-backfilled users. `GET /auth/orgs` and `POST /auth/switch-org` expose runtime switching; session IDs rotate on switch. |
 | 7 | **No resource-level isolation in B3** | Medium | Partial | Project-scoped URLs (`/projects/:id/*`) now check `requireProjectRole`. Non-scoped endpoints (`/labels/:id`, `/epics/:id`, etc.) still rely on scope/role only — cross-project access possible if UUID known. |
 | 8 | ~~Banter channel role checks are inline~~ | ~~Low~~ | **Resolved** | Extracted into `requireChannelMember`/`requireChannelAdmin`/`requireChannelOwner` middleware. Applied to channel, pin, message routes. |
 | 9 | ~~No impersonation support~~ | ~~Low~~ | **Resolved** | `X-Impersonate-User` header support in both auth plugins. SuperUser-only. All actions audit-logged. |
@@ -416,4 +467,7 @@ Every API request follows this evaluation sequence:
 - [x] WebSocket auth unified with buildAuthUser()
 - [x] CHECK constraints on all role columns
 - [x] Partial unique index on (user_id, is_default)
+- [x] Timing-safe API key verification (argon2.verify before expiry check)
+- [x] Session invalidation on org delete (cascade-delete sessions for org members)
+- [x] Banter ↔ B3 permission bridge + 30s in-memory cache
 - [ ] Permission templates / presets

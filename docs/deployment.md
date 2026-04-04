@@ -47,10 +47,11 @@ cd BigBlueBam
 cp .env.example .env
 # Edit .env with your secrets
 
-# 2. Start the stack
+# 2. Start the stack — the `migrate` service runs automatically
+#    as a dependency of api / helpdesk-api / banter-api / worker
 docker compose up -d
 
-# 3. Run migrations
+# 3. (Optional) Run migrations explicitly if you want to see the output
 docker compose run --rm migrate
 
 # 4. Create admin user
@@ -88,6 +89,56 @@ cp your-key.pem infra/nginx/key.pem
 # Update .env
 CORS_ORIGIN=https://your-domain.com
 ```
+
+---
+
+## Forward-Only Migration Policy
+
+BigBlueBam uses a **forward-only** schema migration model. This has direct consequences for any operator running the stack:
+
+- **All schema lives in `infra/postgres/migrations/NNNN_*.sql`.** The legacy `infra/postgres/init.sql` has been removed; do not expect it to exist.
+- **Migrations auto-apply on every deploy.** The `migrate` docker-compose service is a `service_completed_successfully` dependency of `api`, `helpdesk-api`, `banter-api`, and `worker`. App containers will not start until the database is at the current schema version.
+- **Upgrades for existing clients are zero-touch.** Pull the new image, `docker compose up -d`, migrations run, services start. There is no manual SQL step.
+- **Migrations are immutable once applied.** The runner records a SHA-256 checksum of each applied migration's SQL body. Editing a file after it has been applied to any environment causes the runner to abort with `CHECKSUM MISMATCH`. If you need to amend applied schema, **create a new migration file**.
+- **No rollback tooling is provided.** There are no `down` scripts. Destructive changes (drop column, drop table, rename) must use the **expand-contract** pattern:
+  1. Additive migration (new column / new table) — old and new code both work
+  2. Deploy application code that writes to both places / reads from the new place
+  3. Backfill migration
+  4. Contract migration (drop old column / old table) in a later release, after all running app versions have been upgraded
+- **Schema changes are additive by default.** A migration should be safe to apply while the previous application version is still serving traffic.
+- **Fresh installs and existing deployments converge on the same list.** There is no "baseline" vs "upgrade" split — the migrations folder is the single source of truth.
+
+### What this means for early clients
+
+If you are running BigBlueBam from a pre-migration-system snapshot (i.e., your database was created from the old `init.sql`), the `0000_init.sql` and subsequent migrations are written to be idempotent (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, etc.). On first run, the migrate service will record all historical migrations as applied without making destructive changes to your existing data.
+
+Inspect what has been applied:
+
+```bash
+docker compose exec postgres psql -U bigbluebam -c \
+  "SELECT id, applied_at FROM schema_migrations ORDER BY id;"
+```
+
+---
+
+## WebSocket Proxy Requirements
+
+BigBlueBam exposes three WebSocket endpoints through nginx:
+
+| Path | Upstream | Purpose |
+|---|---|---|
+| `/b3/ws` | `api:4000` | BBB realtime (tasks, boards, sprints) |
+| `/banter/ws` | `banter-api:4002` | Banter realtime (channels, messages, calls) |
+| `/helpdesk/ws` | `helpdesk-api:4001` | Helpdesk realtime (tickets, typing, presence) |
+
+Any proxy layer in front of nginx (cloud load balancer, CDN, reverse proxy) **must**:
+
+- Forward the `Upgrade: websocket` and `Connection: upgrade` headers unmodified
+- Allow long-lived connections (set idle timeout to at least 60s, preferably 300s+)
+- Not buffer the WebSocket stream (`proxy_buffering off` on nginx-style proxies)
+- Route all three WS paths to the correct backend service
+
+When scaling any of the API services horizontally, cross-instance broadcast is handled by **Redis PubSub** — sticky sessions are *not* required, but Redis must be reachable from every replica.
 
 ---
 
@@ -221,6 +272,14 @@ server {
     location /helpdesk/api/ {
         proxy_pass http://helpdesk_api_backend;
         proxy_http_version 1.1;
+    }
+
+    location /helpdesk/ws {
+        proxy_pass http://helpdesk_api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400s;
     }
 
     location /mcp/ {

@@ -41,12 +41,11 @@ sequenceDiagram
     Dev->>Shell: Copy .env.example to .env
     Dev->>Shell: Edit secrets in .env
     Shell->>Docker: docker compose up -d
-    Docker->>DB: Start PostgreSQL
+    Docker->>DB: Start PostgreSQL (empty)
     Docker->>Docker: Start Redis, MinIO
-    Docker-->>App: Start API (waits for DB healthy)
+    Docker->>DB: migrate service applies SQL migrations
+    Docker-->>App: Start API (waits on migrate completed)
     Docker-->>Docker: Start frontend, MCP, worker
-    Dev->>Shell: docker compose run --rm migrate
-    Shell->>DB: Apply database migrations
     Dev->>Shell: docker compose exec api node dist/cli.js create-admin
     Shell->>App: Create admin user
     Dev->>Shell: Open http://localhost
@@ -112,21 +111,23 @@ Wait for all services to become healthy:
 docker compose ps
 ```
 
-All services should show `healthy` or `running` status.
+All services should show `healthy` or `running` status. The `migrate`
+container runs once, applies every file in `infra/postgres/migrations/` in
+order, then exits 0 — app services depend on it via
+`service_completed_successfully` and won't start until it finishes.
 
-### Step 4: Run Database Migrations
+> There is no `init.sql` bootstrap. PostgreSQL starts empty and the
+> `migrate` service creates the entire schema from the numbered migration
+> files. Re-running `docker compose up -d` is always safe: the migrate
+> service is a no-op when the DB is current.
+
+### Step 4: (Optional) Re-run migrations manually
+
+You only need this when you've added a new migration file to your working
+tree and want to apply it without recreating the stack:
 
 ```bash
-docker compose run --rm migrate
-```
-
-Expected output:
-
-```
-Running migrations...
-Migration 0001_initial_schema applied successfully.
-Migration 0002_activity_log_partitions applied successfully.
-All migrations complete.
+docker compose build migrate && docker compose run --rm migrate
 ```
 
 ### Step 5: Create the Admin User
@@ -137,7 +138,13 @@ docker compose exec api node dist/cli.js create-admin \
   --password your-admin-password \
   --name "Admin User" \
   --org "My Organization"
+  # add --superuser to grant platform SuperUser privileges
 ```
+
+> Passwords must be at least 12 characters. See the
+> [Development Guide](development.md#local-admin-superuser-and-impersonation)
+> for how to promote an existing user to SuperUser, use the `/b3/superuser`
+> console, and impersonate users locally.
 
 Expected output:
 
@@ -243,11 +250,17 @@ docker compose logs -f api mcp-server worker
 # Rebuild after code changes
 docker compose build
 
-# Run database migrations
+# Re-apply SQL migrations (normally automatic on `docker compose up`)
 docker compose run --rm migrate
 
-# Generate new migration from schema changes
-pnpm db:generate
+# Rebuild migrate image after adding a new migration file, then apply
+docker compose build migrate && docker compose run --rm migrate
+
+# Lint migration files (header, filename, idempotency)
+pnpm lint:migrations
+
+# Drift guard: Drizzle schemas vs live DB
+pnpm db:check
 
 # Run all tests
 pnpm test
