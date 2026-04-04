@@ -7,7 +7,7 @@ import { RichTextEditor } from '@/components/common/rich-text-editor';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { api } from '@/lib/api';
-import { ArrowLeft, Loader2, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare } from 'lucide-react';
+import { ArrowLeft, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface TicketDetailPageProps {
@@ -107,8 +107,60 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+      <div className="animate-pulse">
+        {/* Back link placeholder */}
+        <div className="h-4 w-28 bg-zinc-200 dark:bg-zinc-800 rounded mb-6" />
+
+        {/* Header placeholder */}
+        <div className="mb-6">
+          <div className="h-6 w-2/3 bg-zinc-200 dark:bg-zinc-800 rounded mb-3" />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="h-5 w-16 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+            <div className="h-5 w-20 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+            <div className="h-5 w-24 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+            <div className="h-4 w-32 bg-zinc-200 dark:bg-zinc-800 rounded ml-2" />
+          </div>
+        </div>
+
+        {/* Description placeholder */}
+        <div className="mb-6 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
+          <div className="h-3 w-20 bg-zinc-200 dark:bg-zinc-800 rounded mb-3" />
+          <div className="space-y-2">
+            <div className="h-3 w-full bg-zinc-100 dark:bg-zinc-800 rounded" />
+            <div className="h-3 w-5/6 bg-zinc-100 dark:bg-zinc-800 rounded" />
+            <div className="h-3 w-4/6 bg-zinc-100 dark:bg-zinc-800 rounded" />
+          </div>
+        </div>
+
+        {/* Message timeline placeholder */}
+        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+          <div className="p-4 space-y-4 min-h-[200px]">
+            <div className="flex justify-start">
+              <div className="max-w-[75%] w-64 rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5 rounded-bl-sm">
+                <div className="h-3 w-24 bg-zinc-200 dark:bg-zinc-700 rounded mb-2" />
+                <div className="h-3 w-48 bg-zinc-200 dark:bg-zinc-700 rounded mb-1" />
+                <div className="h-3 w-40 bg-zinc-200 dark:bg-zinc-700 rounded" />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <div className="max-w-[75%] w-56 rounded-xl bg-zinc-200 dark:bg-zinc-800 px-4 py-2.5 rounded-br-sm">
+                <div className="h-3 w-20 bg-zinc-300 dark:bg-zinc-700 rounded mb-2" />
+                <div className="h-3 w-40 bg-zinc-300 dark:bg-zinc-700 rounded mb-1" />
+                <div className="h-3 w-32 bg-zinc-300 dark:bg-zinc-700 rounded" />
+              </div>
+            </div>
+            <div className="flex justify-start">
+              <div className="max-w-[75%] w-72 rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5 rounded-bl-sm">
+                <div className="h-3 w-28 bg-zinc-200 dark:bg-zinc-700 rounded mb-2" />
+                <div className="h-3 w-56 bg-zinc-200 dark:bg-zinc-700 rounded mb-1" />
+                <div className="h-3 w-44 bg-zinc-200 dark:bg-zinc-700 rounded" />
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
+            <div className="h-20 w-full bg-zinc-100 dark:bg-zinc-800 rounded-lg" />
+          </div>
+        </div>
       </div>
     );
   }
