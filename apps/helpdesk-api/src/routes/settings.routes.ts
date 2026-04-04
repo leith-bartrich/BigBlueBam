@@ -61,8 +61,37 @@ async function requireAdminAuth(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
-  // GET /helpdesk/settings — return helpdesk config for the org
-  fastify.get('/helpdesk/settings', async (request, reply) => {
+  // GET /helpdesk/public-settings — public, safe-to-expose fields only
+  // Used by the registration form and landing page; no auth required.
+  fastify.get('/helpdesk/public-settings', async (_request, reply) => {
+    const [settings] = await db
+      .select()
+      .from(helpdeskSettings)
+      .limit(1);
+
+    if (!settings) {
+      return reply.send({
+        data: {
+          require_email_verification: false,
+          categories: [],
+          welcome_message: null,
+        },
+      });
+    }
+
+    return reply.send({
+      data: {
+        require_email_verification: settings.require_email_verification,
+        categories: settings.categories,
+        welcome_message: settings.welcome_message,
+      },
+    });
+  });
+
+  // GET /helpdesk/settings — full config (requires admin auth)
+  // Exposes internal fields like default_project_id and allowed_email_domains
+  // that must not leak to unauthenticated callers (HB-13).
+  fastify.get('/helpdesk/settings', { preHandler: [requireAdminAuth] }, async (_request, reply) => {
     const [settings] = await db
       .select()
       .from(helpdeskSettings)

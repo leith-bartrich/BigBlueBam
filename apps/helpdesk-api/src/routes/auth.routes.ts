@@ -25,6 +25,13 @@ const verifyEmailSchema = z.object({
   token: z.string().min(1),
 });
 
+// HB-17: Toggle to enforce email verification at login.
+// Default false for dev; production deployments should set
+// REQUIRE_EMAIL_VERIFICATION=true so unverified helpdesk users cannot log in
+// (only takes effect when helpdesk_settings.require_email_verification is also true).
+const REQUIRE_EMAIL_VERIFICATION =
+  (process.env.REQUIRE_EMAIL_VERIFICATION ?? 'false').toLowerCase() === 'true';
+
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
     httpOnly: true,
@@ -49,7 +56,15 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }
 
   // POST /helpdesk/auth/register
-  fastify.post('/helpdesk/auth/register', async (request, reply) => {
+  // HB-33: 3 attempts per 15 minutes per IP to throttle abuse.
+  fastify.post('/helpdesk/auth/register', {
+    config: {
+      rateLimit: {
+        max: 3,
+        timeWindow: 15 * 60 * 1000,
+      },
+    },
+  }, async (request, reply) => {
     const data = registerSchema.parse(request.body);
 
     // Check if email already taken
@@ -142,7 +157,15 @@ export default async function authRoutes(fastify: FastifyInstance) {
   });
 
   // POST /helpdesk/auth/login
-  fastify.post('/helpdesk/auth/login', async (request, reply) => {
+  // HB-33: 5 attempts per 15 minutes per IP to slow brute-force guessing.
+  fastify.post('/helpdesk/auth/login', {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: 15 * 60 * 1000,
+      },
+    },
+  }, async (request, reply) => {
     const data = loginSchema.parse(request.body);
 
     const [user] = await db
@@ -183,6 +206,27 @@ export default async function authRoutes(fastify: FastifyInstance) {
           request_id: request.id,
         },
       });
+    }
+
+    // HB-17: Enforce email verification at login when both the env-level switch
+    // and the org-level setting are enabled. We leave signup/verify-email flows
+    // alone; email sending remains a TODO tracked with the notification queue.
+    if (REQUIRE_EMAIL_VERIFICATION && !user.email_verified) {
+      const [loginSettings] = await db
+        .select({ require_email_verification: helpdeskSettings.require_email_verification })
+        .from(helpdeskSettings)
+        .limit(1);
+
+      if (loginSettings?.require_email_verification) {
+        return reply.status(403).send({
+          error: {
+            code: 'EMAIL_NOT_VERIFIED',
+            message: 'Please verify your email before logging in.',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
     }
 
     const sessionId = await createSession(user.id);
