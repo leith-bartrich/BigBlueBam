@@ -36,7 +36,17 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-          {error}
+          <div className="font-medium">{error.message}</div>
+          {error.cause && (
+            <div className="mt-1 font-mono text-xs text-red-600/80 break-all">
+              {error.cause}
+            </div>
+          )}
+          {error.requestId && (
+            <div className="mt-1 text-xs text-red-600/60">
+              Request ID: <span className="font-mono">{error.requestId}</span>
+            </div>
+          )}
         </div>
       )}
       <Input

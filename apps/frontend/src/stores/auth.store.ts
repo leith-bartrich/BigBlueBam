@@ -2,16 +2,36 @@ import { create } from 'zustand';
 import type { User } from '@bigbluebam/shared';
 import { api, ApiError } from '@/lib/api';
 
+interface AuthError {
+  message: string;
+  cause?: string;
+  requestId?: string;
+}
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  error: string | null;
+  error: AuthError | null;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; password: string; display_name: string; org_name: string }) => Promise<void>;
   logout: () => Promise<void>;
   fetchMe: () => Promise<void>;
   clearError: () => void;
+}
+
+function toAuthError(err: unknown, fallback: string): AuthError {
+  if (err instanceof ApiError) {
+    const detailCause = err.details && err.details.length > 0
+      ? (err.details[0] as any)?.message ?? JSON.stringify(err.details[0])
+      : undefined;
+    return {
+      message: err.message,
+      cause: detailCause,
+      requestId: err.requestId,
+    };
+  }
+  return { message: fallback };
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -26,8 +46,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const res = await api.post<{ data: { user: User } }>('/auth/login', { email, password });
       set({ user: res.data.user, isAuthenticated: true, isLoading: false });
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Login failed';
-      set({ isLoading: false, error: message });
+      set({ isLoading: false, error: toAuthError(err, 'Login failed') });
       throw err;
     }
   },
@@ -38,8 +57,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const res = await api.post<{ data: { user: User } }>('/auth/register', data);
       set({ user: res.data.user, isAuthenticated: true, isLoading: false });
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Registration failed';
-      set({ isLoading: false, error: message });
+      set({ isLoading: false, error: toAuthError(err, 'Registration failed') });
       throw err;
     }
   },
