@@ -53,7 +53,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const user = request.user!;
 
-      // Auto-create #general if no channels exist for this org
+      // Auto-create #general if no channels exist for this org.
+      // Uses INSERT ... ON CONFLICT DO NOTHING on the unique (org_id, slug) index
+      // to avoid a race where two concurrent requests both try to create #general.
       try {
         const [existing] = await db
           .select({ id: banterChannels.id })
@@ -62,41 +64,59 @@ export default async function channelRoutes(fastify: FastifyInstance) {
           .limit(1);
 
         if (!existing) {
-          const [general] = await db
-            .insert(banterChannels)
-            .values({
-              org_id: user.org_id,
-              name: 'general',
-              slug: 'general',
-              type: 'public',
-              topic: 'General discussion',
-              description: 'The default channel for team communication',
-              is_default: true,
-              created_by: user.id,
-            })
-            .returning();
+          await db.transaction(async (tx) => {
+            // Atomic insert: if another request already created #general, this is a no-op.
+            const inserted = await tx
+              .insert(banterChannels)
+              .values({
+                org_id: user.org_id,
+                name: 'general',
+                slug: 'general',
+                type: 'public',
+                topic: 'General discussion',
+                description: 'The default channel for team communication',
+                is_default: true,
+                created_by: user.id,
+              })
+              .onConflictDoNothing({
+                target: [banterChannels.org_id, banterChannels.slug],
+              })
+              .returning();
 
-          if (general) {
+            const general = inserted[0];
+            if (!general) {
+              // Another concurrent request won the race; nothing to do.
+              return;
+            }
+
             // Add current user as owner
-            await db.insert(banterChannelMemberships).values({
+            await tx.insert(banterChannelMemberships).values({
               channel_id: general.id,
               user_id: user.id,
               role: 'owner',
-            });
+            }).onConflictDoNothing();
 
             // Add all other active org members
-            const orgMembers = await db.execute(
+            const orgMembers = await tx.execute(
               sql`SELECT id FROM users WHERE org_id = ${user.org_id} AND is_active = true AND id != ${user.id}`
             );
             const memberRows = Array.isArray(orgMembers) ? orgMembers : (orgMembers as any).rows ?? [];
             for (const m of memberRows) {
-              await db.insert(banterChannelMemberships).values({
+              await tx.insert(banterChannelMemberships).values({
                 channel_id: general.id,
                 user_id: (m as any).id,
                 role: 'member',
               }).onConflictDoNothing();
             }
-          }
+
+            // Set authoritative member_count from actual memberships
+            await tx
+              .update(banterChannels)
+              .set({
+                member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${general.id})`,
+              })
+              .where(eq(banterChannels.id, general.id));
+          });
         }
       } catch {
         // Don't fail the channel list if auto-creation fails
@@ -176,7 +196,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const body = createChannelSchema.parse(request.body);
 
       // Enforce org-level banter permissions for non-admin members
-      const isPrivileged = user.role === 'admin' || user.role === 'owner';
+      const isPrivileged = user.is_superuser || user.role === 'admin' || user.role === 'owner';
       if (!isPrivileged) {
         const [settings] = await db
           .select({
@@ -491,16 +511,22 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         return reply.send({ data: { channel_id: id, user_id: user.id, already_member: true } });
       }
 
-      await db.insert(banterChannelMemberships).values({
-        channel_id: id,
-        user_id: user.id,
-        role: 'member',
-      });
+      await db.transaction(async (tx) => {
+        await tx.insert(banterChannelMemberships).values({
+          channel_id: id,
+          user_id: user.id,
+          role: 'member',
+        }).onConflictDoNothing();
 
-      await db
-        .update(banterChannels)
-        .set({ member_count: sql`${banterChannels.member_count} + 1` })
-        .where(eq(banterChannels.id, id));
+        // Recompute member_count from authoritative source to avoid drift
+        // under concurrent join/leave operations.
+        await tx
+          .update(banterChannels)
+          .set({
+            member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+          })
+          .where(eq(banterChannels.id, id));
+      });
 
       broadcastToChannel(id, {
         type: 'member.joined',
@@ -517,27 +543,35 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/leave — leave channel
   fastify.post(
     '/v1/channels/:id/leave',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
 
-      const deleted = await db
-        .delete(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .returning();
+      const deleted = await db.transaction(async (tx) => {
+        const removed = await tx
+          .delete(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, id),
+              eq(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .returning();
+
+        if (removed.length > 0) {
+          await tx
+            .update(banterChannels)
+            .set({
+              member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+            })
+            .where(eq(banterChannels.id, id));
+        }
+
+        return removed;
+      });
 
       if (deleted.length > 0) {
-        await db
-          .update(banterChannels)
-          .set({ member_count: sql`GREATEST(${banterChannels.member_count} - 1, 0)` })
-          .where(eq(banterChannels.id, id));
-
         broadcastToChannel(id, {
           type: 'member.left',
           data: { channel_id: id, user_id: user.id },
@@ -584,30 +618,37 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const { id } = request.params as { id: string };
       const body = addMembersSchema.parse(request.body);
 
-      // Insert memberships (ignore conflicts)
-      let addedCount = 0;
-      for (const userId of body.user_ids) {
-        try {
-          await db
-            .insert(banterChannelMemberships)
-            .values({
-              channel_id: id,
-              user_id: userId,
-              role: 'member',
-            })
-            .onConflictDoNothing();
-          addedCount++;
-        } catch {
-          // Skip users that don't exist
+      // Insert memberships (ignore conflicts) and recompute member_count atomically.
+      const addedCount = await db.transaction(async (tx) => {
+        let count = 0;
+        for (const userId of body.user_ids) {
+          try {
+            const inserted = await tx
+              .insert(banterChannelMemberships)
+              .values({
+                channel_id: id,
+                user_id: userId,
+                role: 'member',
+              })
+              .onConflictDoNothing()
+              .returning();
+            if (inserted.length > 0) count++;
+          } catch {
+            // Skip users that don't exist
+          }
         }
-      }
 
-      if (addedCount > 0) {
-        await db
-          .update(banterChannels)
-          .set({ member_count: sql`${banterChannels.member_count} + ${addedCount}` })
-          .where(eq(banterChannels.id, id));
-      }
+        if (count > 0) {
+          await tx
+            .update(banterChannels)
+            .set({
+              member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+            })
+            .where(eq(banterChannels.id, id));
+        }
+
+        return count;
+      });
 
       return reply.send({ data: { added: addedCount } });
     },
@@ -620,22 +661,30 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { id, userId } = request.params as { id: string; userId: string };
 
-      const deleted = await db
-        .delete(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, userId),
-          ),
-        )
-        .returning();
+      const deleted = await db.transaction(async (tx) => {
+        const removed = await tx
+          .delete(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, id),
+              eq(banterChannelMemberships.user_id, userId),
+            ),
+          )
+          .returning();
+
+        if (removed.length > 0) {
+          await tx
+            .update(banterChannels)
+            .set({
+              member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+            })
+            .where(eq(banterChannels.id, id));
+        }
+
+        return removed;
+      });
 
       if (deleted.length > 0) {
-        await db
-          .update(banterChannels)
-          .set({ member_count: sql`GREATEST(${banterChannels.member_count} - 1, 0)` })
-          .where(eq(banterChannels.id, id));
-
         broadcastToChannel(id, {
           type: 'member.left',
           data: { channel_id: id, user_id: userId },
@@ -678,16 +727,30 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Cannot change the owner's role
+      // When demoting an owner, ensure at least one other owner remains.
       if (targetMembership.role === 'owner') {
-        return reply.status(400).send({
-          error: {
-            code: 'BAD_REQUEST',
-            message: 'Cannot change the channel owner role',
-            details: [],
-            request_id: request.id,
-          },
-        });
+        const [ownerCountRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, id),
+              eq(banterChannelMemberships.role, 'owner'),
+              ne(banterChannelMemberships.user_id, userId),
+            ),
+          );
+
+        const otherOwners = ownerCountRow?.count ?? 0;
+        if (otherOwners === 0) {
+          return reply.status(400).send({
+            error: {
+              code: 'BAD_REQUEST',
+              message: 'Cannot demote the last owner of the channel. Transfer ownership first.',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const [updated] = await db
@@ -709,7 +772,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/mark-read — update last_read_message_id
   fastify.post(
     '/v1/channels/:id/mark-read',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireChannelMember] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
