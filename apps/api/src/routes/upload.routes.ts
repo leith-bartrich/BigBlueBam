@@ -3,7 +3,7 @@ import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { env } from '../env.js';
 import { uploadFile, getFileStream, deleteFile } from '../services/upload.service.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole } from '../plugins/auth.js';
 
 const MAX_FILE_SIZE = env.UPLOAD_MAX_FILE_SIZE; // 25MB
 
@@ -33,7 +33,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
   // POST /upload — accept multipart file upload, store in MinIO
   fastify.post(
     '/upload',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member')] },
     async (request, reply) => {
       const file = await request.file();
 

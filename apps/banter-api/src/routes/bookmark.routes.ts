@@ -5,6 +5,8 @@ import { db } from '../db/index.js';
 import {
   banterBookmarks,
   banterMessages,
+  banterChannels,
+  banterChannelMemberships,
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireScope } from '../plugins/auth.js';
@@ -74,6 +76,44 @@ export default async function bookmarkRoutes(fastify: FastifyInstance) {
             request_id: request.id,
           },
         });
+      }
+
+      // Verify user is a member of the message's channel
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(eq(banterChannels.id, message.channel_id))
+        .limit(1);
+
+      const [channelMembership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, message.channel_id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!channelMembership) {
+        const isDm = channel && (channel.type === 'dm' || channel.type === 'group_dm');
+        const hasOrgOverride =
+          !isDm &&
+          channel &&
+          channel.org_id === user.org_id &&
+          (user.is_superuser || ['owner', 'admin'].includes(user.role));
+
+        if (!hasOrgOverride) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Message not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const [bookmark] = await db

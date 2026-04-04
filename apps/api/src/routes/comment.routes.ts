@@ -7,6 +7,7 @@ import { commentReactions } from '../db/schema/comment-reactions.js';
 import { tasks } from '../db/schema/tasks.js';
 import { users } from '../db/schema/users.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
+import * as projectService from '../services/project.service.js';
 
 export default async function commentRoutes(fastify: FastifyInstance) {
   fastify.get<{
@@ -111,6 +112,41 @@ export default async function commentRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = createCommentSchema.parse(request.body);
+
+      // Verify task exists and user is a member of its project
+      const [task] = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, request.params.id))
+        .limit(1);
+
+      if (!task) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Task not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          task.project_id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Task not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       const [comment] = await db
         .insert(comments)
