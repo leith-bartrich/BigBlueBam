@@ -21,6 +21,8 @@ declare module 'fastify' {
  * to `request.channelContext` for downstream use.
  *
  * - If the channel doesn't exist or doesn't belong to the user's org: 404
+ * - If the channel is archived: 404 (archived channels are invisible to members;
+ *   they must be un-archived to interact). SuperUsers bypass this check.
  * - If the channel is private and the user isn't a member: 404 (to avoid leaking existence)
  * - If the channel is public/other and the user isn't a member: 403
  */
@@ -47,6 +49,19 @@ export async function requireChannelMember(request: FastifyRequest, reply: Fasti
     .limit(1);
 
   if (!channel) {
+    return reply.status(404).send({
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Channel not found',
+        details: [],
+        request_id: request.id,
+      },
+    });
+  }
+
+  // Archived channels are invisible to regular users (including members).
+  // SuperUsers bypass this check so they can inspect/un-archive.
+  if (channel.is_archived && !user.is_superuser) {
     return reply.status(404).send({
       error: {
         code: 'NOT_FOUND',

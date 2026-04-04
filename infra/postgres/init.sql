@@ -43,6 +43,7 @@ CREATE TABLE users (
     avatar_url          text,
     password_hash       text,
     role                varchar(50) NOT NULL DEFAULT 'member',
+    CONSTRAINT users_role_check CHECK (role IN ('owner', 'admin', 'member', 'viewer', 'guest')),
     timezone            varchar(100) NOT NULL DEFAULT 'UTC',
     notification_prefs  jsonb,
     is_active           boolean NOT NULL DEFAULT true,
@@ -242,13 +243,14 @@ CREATE TABLE attachments (
 
 -- ── activity_log ─────────────────────────────────────────────────────────
 CREATE TABLE activity_log (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    task_id     uuid REFERENCES tasks(id) ON DELETE SET NULL,
-    actor_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    action      varchar(100) NOT NULL,
-    details     jsonb,
-    created_at  timestamptz NOT NULL DEFAULT now()
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id      uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id         uuid REFERENCES tasks(id) ON DELETE SET NULL,
+    actor_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    impersonator_id uuid REFERENCES users(id) ON DELETE SET NULL,
+    action          varchar(100) NOT NULL,
+    details         jsonb,
+    created_at      timestamptz NOT NULL DEFAULT now()
 );
 
 -- ── custom_field_definitions ─────────────────────────────────────────────
@@ -295,7 +297,7 @@ CREATE TABLE api_keys (
 CREATE TABLE notifications (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
     task_id     uuid REFERENCES tasks(id) ON DELETE SET NULL,
     type        varchar(50) NOT NULL,
     title       varchar(500) NOT NULL,
@@ -604,7 +606,8 @@ CREATE TABLE banter_channel_memberships (
     joined_at             timestamptz NOT NULL DEFAULT now(),
     last_read_message_id  uuid REFERENCES banter_messages(id) ON DELETE SET NULL,
     last_read_at          timestamptz,
-    UNIQUE(channel_id, user_id)
+    UNIQUE(channel_id, user_id),
+    CONSTRAINT banter_channel_memberships_role_check CHECK (role IN ('owner', 'admin', 'member'))
 );
 
 -- ── banter_message_attachments ──────────────────────────────────────────
@@ -889,6 +892,20 @@ CREATE INDEX idx_su_audit_superuser ON superuser_audit_log (superuser_id);
 CREATE INDEX idx_su_audit_action ON superuser_audit_log (action);
 CREATE INDEX idx_su_audit_created_at ON superuser_audit_log (created_at DESC);
 
+-- ── Impersonation Sessions ──────────────────────────────────────────
+CREATE TABLE impersonation_sessions (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    superuser_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_user_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    started_at      timestamptz NOT NULL DEFAULT now(),
+    expires_at      timestamptz NOT NULL,
+    ended_at        timestamptz
+);
+
+CREATE INDEX idx_imp_sessions_superuser ON impersonation_sessions (superuser_id);
+CREATE INDEX idx_imp_sessions_target ON impersonation_sessions (target_user_id);
+CREATE INDEX idx_imp_sessions_active ON impersonation_sessions (superuser_id, target_user_id, ended_at);
+
 -- ── Guest Invitations ──────────────────────────────────────────────
 CREATE TABLE guest_invitations (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -922,11 +939,13 @@ CREATE TABLE organization_memberships (
     is_default  boolean NOT NULL DEFAULT false,
     joined_at   timestamptz NOT NULL DEFAULT now(),
     invited_by  uuid REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE(user_id, org_id)
+    UNIQUE(user_id, org_id),
+    CONSTRAINT org_memberships_role_check CHECK (role IN ('owner', 'admin', 'member', 'viewer', 'guest'))
 );
 
 CREATE INDEX idx_org_memberships_user_id ON organization_memberships (user_id);
 CREATE INDEX idx_org_memberships_org_id ON organization_memberships (org_id);
+CREATE INDEX org_memberships_user_default_idx ON organization_memberships (user_id, is_default);
 -- Enforce at most one default membership per user.
 CREATE UNIQUE INDEX org_memberships_user_default_unique
     ON organization_memberships (user_id)

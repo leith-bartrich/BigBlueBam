@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 
 export const users = pgTable(
@@ -24,5 +25,6 @@ export const users = pgTable(
   (table) => [
     index('users_org_id_idx').on(table.org_id),
     index('users_email_idx').on(table.email),
+    check('users_role_check', sql`role IN ('owner', 'admin', 'member', 'viewer', 'guest')`),
   ],
 );

@@ -6,7 +6,9 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './bbb-refs.js';
 import { banterChannels } from './channels.js';
 import { banterMessages } from './messages.js';
@@ -34,5 +36,9 @@ export const banterChannelMemberships = pgTable(
     uniqueIndex('banter_channel_memberships_unique_idx').on(table.channel_id, table.user_id),
     index('banter_channel_memberships_user_idx').on(table.user_id),
     index('banter_channel_memberships_channel_idx').on(table.channel_id),
+    check(
+      'banter_channel_memberships_role_check',
+      sql`role IN ('owner', 'admin', 'member')`,
+    ),
   ],
 );

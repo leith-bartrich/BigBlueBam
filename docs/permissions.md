@@ -348,6 +348,8 @@ Every API request follows this evaluation sequence:
 | 8 | ~~Banter channel role checks are inline~~ | ~~Low~~ | **Resolved** | Extracted into `requireChannelMember`/`requireChannelAdmin`/`requireChannelOwner` middleware. Applied to channel, pin, message routes. |
 | 9 | ~~No impersonation support~~ | ~~Low~~ | **Resolved** | `X-Impersonate-User` header support in both auth plugins. SuperUser-only. All actions audit-logged. |
 | 10 | ~~No permission change audit~~ | ~~Low~~ | **Resolved** | SuperUser actions logged to `superuser_audit_log`. Banter admin actions logged to `banter_audit_log`. |
+| 11 | **UI permission mismatch (P2-3)** | Low | Open | Frontend surfaces actions (buttons, menu items) that the API rejects for viewers/guests. Server-side enforcement is correct; UI should hide/disable actions based on the caller's role to avoid 403s after click. |
+| 12 | **UI permission mismatch (P2-4)** | Low | Open | Banter channel admin/owner-only controls (e.g. archive, rename, member management) are visible to regular channel members. API blocks the mutation, but the UI should gate these controls on `channelMembership.role` / org role. |
 
 ---
 
