@@ -9,7 +9,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
   SESSION_SECRET: z.string().min(32),
-  SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(604800), // 7 days
+  SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(86400), // 1 day (helpdesk customers are higher-risk: unverified email, global pool)
 
   HELPDESK_URL: z.string().default('http://localhost:8080'),
 

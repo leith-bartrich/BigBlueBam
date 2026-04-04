@@ -3,6 +3,8 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
+import websocket from '@fastify/websocket';
+import Redis from 'ioredis';
 import { env } from './env.js';
 import { db, connection } from './db/index.js';
 import helpdeskAuthPlugin from './plugins/auth.js';
@@ -11,6 +13,7 @@ import ticketRoutes from './routes/ticket.routes.js';
 import agentRoutes from './routes/agent.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import helpdeskUploadRoutes from './routes/upload.routes.js';
+import websocketHandler from './ws/handler.js';
 import { sql } from 'drizzle-orm';
 
 const fastify = Fastify({
@@ -21,8 +24,22 @@ const fastify = Fastify({
         ? { target: 'pino-pretty', options: { colorize: true } }
         : undefined,
   },
+  // HB-48: request ID generated here should be forwarded in any future
+  // cross-service HTTP calls via the `X-Request-ID` header. Currently moot
+  // since helpdesk writes directly to BBB's DB and does not make outbound
+  // service-to-service HTTP calls.
   genReqId: () => crypto.randomUUID(),
+  // HB-22: prevent hung connections when DB queries stall
+  requestTimeout: 30000,
 });
+
+// Redis client for health checks
+const healthRedis = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: 1,
+  lazyConnect: true,
+  enableOfflineQueue: false,
+});
+healthRedis.connect().catch(() => {});
 
 // Error handler
 fastify.setErrorHandler(async (error, request, reply) => {
@@ -63,7 +80,12 @@ await fastify.register(cookie, {
 await fastify.register(rateLimit, {
   max: env.RATE_LIMIT_MAX,
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
+  // HB-25: prefer authenticated user id so a single customer can't bypass
+  // limits by switching IPs. Falls back to IP for unauthenticated requests.
+  keyGenerator: (req: any) => req.helpdeskUser?.id ?? req.ip,
 });
+
+await fastify.register(websocket);
 
 // Auth plugin
 await fastify.register(helpdeskAuthPlugin);
@@ -74,13 +96,18 @@ fastify.get('/health', async () => {
 });
 
 fastify.get('/health/ready', async (_request, reply) => {
-  const checks: Record<string, string> = {};
+  const checks: Record<string, string> = { database: 'ok', redis: 'ok' };
 
   try {
     await db.execute(sql`SELECT 1`);
-    checks.database = 'ok';
   } catch {
-    checks.database = 'error';
+    checks.database = 'fail';
+  }
+
+  try {
+    await healthRedis.ping();
+  } catch {
+    checks.redis = 'fail';
   }
 
   const allOk = Object.values(checks).every((v) => v === 'ok');
@@ -99,6 +126,7 @@ await fastify.register(ticketRoutes);
 await fastify.register(agentRoutes);
 await fastify.register(settingsRoutes);
 await fastify.register(helpdeskUploadRoutes);
+await fastify.register(websocketHandler);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
@@ -107,6 +135,7 @@ for (const signal of signals) {
     fastify.log.info(`Received ${signal}, shutting down gracefully...`);
     await fastify.close();
     await connection.end();
+    healthRedis.disconnect();
     process.exit(0);
   });
 }
