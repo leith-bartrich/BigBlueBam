@@ -10,6 +10,7 @@ import { processSprintCloseJob, type SprintCloseJobData } from './jobs/sprint-cl
 import { processExportJob, type ExportJobData } from './jobs/export.job.js';
 import { processBanterNotificationJob, type BanterNotificationJobData } from './jobs/banter-notification.job.js';
 import { processBanterRetentionJob, type BanterRetentionJobData } from './jobs/banter-retention.job.js';
+import { processHelpdeskTaskCreateJob, type HelpdeskTaskCreateJobData } from './jobs/helpdesk-task-create.job.js';
 
 const env = loadEnv();
 
@@ -138,6 +139,23 @@ banterRetentionWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'banter-retention', err }, 'Job failed');
 });
 
+// Helpdesk task-create worker (HB-23 — async fallback for ticket→task creation)
+const helpdeskTaskCreateWorker = new Worker<HelpdeskTaskCreateJobData>(
+  'helpdesk-task-create',
+  async (job: Job<HelpdeskTaskCreateJobData>) => {
+    await processHelpdeskTaskCreateJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+
+helpdeskTaskCreateWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'helpdesk-task-create' }, 'Job completed');
+});
+
+helpdeskTaskCreateWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'helpdesk-task-create', err }, 'Job failed');
+});
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -159,10 +177,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'analytics'] },
   'All workers started',
 );
 
