@@ -6,6 +6,8 @@ import { db } from '../db/index.js';
 import { guestInvitations } from '../db/schema/guest-invitations.js';
 import { users } from '../db/schema/users.js';
 import { projectMemberships } from '../db/schema/project-memberships.js';
+import { notifications } from '../db/schema/notifications.js';
+import { organizations } from '../db/schema/organizations.js';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireOrgRole } from '../middleware/authorize.js';
 
@@ -24,10 +26,13 @@ export default async function guestRoutes(fastify: FastifyInstance) {
       });
       const data = schema.parse(request.body);
 
-      // Check if there's already a pending invitation for this email in this org
-      const [existing] = await db
-        .select()
-        .from(guestInvitations)
+      // (P1-31) Prevent scope-escalation via duplicate invitations: revoke any
+      // existing pending invitations for the same (org_id, email) tuple by
+      // expiring them immediately. This ensures only one pending invitation
+      // with one scope exists at a time for a given email in an org.
+      const revoked = await db
+        .update(guestInvitations)
+        .set({ expires_at: new Date() })
         .where(
           and(
             eq(guestInvitations.org_id, request.user!.org_id),
@@ -36,17 +41,13 @@ export default async function guestRoutes(fastify: FastifyInstance) {
             gt(guestInvitations.expires_at, new Date()),
           ),
         )
-        .limit(1);
+        .returning({ id: guestInvitations.id });
 
-      if (existing) {
-        return reply.status(409).send({
-          error: {
-            code: 'CONFLICT',
-            message: 'A pending invitation already exists for this email',
-            details: [],
-            request_id: request.id,
-          },
-        });
+      if (revoked.length > 0) {
+        request.log.warn(
+          { org_id: request.user!.org_id, email: data.email, revoked_count: revoked.length },
+          'Revoked existing pending guest invitation(s) before issuing new one (P1-31)',
+        );
       }
 
       // Check if the email already belongs to a user in this org
@@ -90,6 +91,14 @@ export default async function guestRoutes(fastify: FastifyInstance) {
         })
         .returning();
 
+      // ⚠️ SECURITY WARNING (P1-30): This response currently returns the raw
+      // invitation token (both in `token` and embedded in `invite_url`) to the
+      // admin who created the invitation. In production, invitation tokens
+      // MUST be delivered to the invitee via email only — exposing them in
+      // the admin API response is a leakage risk (browser history, logs,
+      // screenshots, XSS exfiltration). Once SMTP is wired up, this handler
+      // must stop returning the token and instead trigger an email dispatch.
+      // Until then, this is knowingly insecure and gated behind admin scope.
       return reply.status(201).send({
         data: {
           ...invitation,
@@ -158,8 +167,18 @@ export default async function guestRoutes(fastify: FastifyInstance) {
 
   // ── POST /v1/guests/accept/:token ─────────────────────────────────
   // Accept an invitation (no auth required — public endpoint)
+  // (P1-29) Rate-limited to prevent brute-force token enumeration:
+  // 5 attempts per 15 minutes per IP.
   fastify.post<{ Params: { token: string } }>(
     '/v1/guests/accept/:token',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
     async (request, reply) => {
       const bodySchema = z.object({
         email: z.string().email().max(320),
@@ -388,6 +407,27 @@ export default async function guestRoutes(fastify: FastifyInstance) {
         .from(projectMemberships)
         .where(eq(projectMemberships.user_id, guestUser.id));
 
+      // (P2-14) Notify the guest that their scope has been updated.
+      // The notifications table requires project_id (notNull), so we attach
+      // the notification to one of the guest's current project memberships.
+      // If the guest has no project memberships left, skip the notification.
+      const notifyProjectId = updatedMemberships[0]?.project_id ?? null;
+      if (notifyProjectId) {
+        const [org] = await db
+          .select({ name: organizations.name })
+          .from(organizations)
+          .where(eq(organizations.id, request.user!.org_id))
+          .limit(1);
+        const orgName = org?.name ?? 'the organization';
+        await db.insert(notifications).values({
+          user_id: guestUser.id,
+          project_id: notifyProjectId,
+          type: 'guest_scope_updated',
+          title: 'Your access scope has been updated',
+          body: `An admin updated your access scope in ${orgName}.`,
+        });
+      }
+
       return reply.send({
         data: {
           id: guestUser.id,
@@ -431,17 +471,21 @@ export default async function guestRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Deactivate the guest rather than deleting
-      const [updated] = await db
-        .update(users)
-        .set({ is_active: false, updated_at: new Date() })
-        .where(eq(users.id, guestUser.id))
-        .returning();
+      // (P2-18) Atomically deactivate the guest and remove all project
+      // memberships in a single transaction. If either step fails, neither
+      // is persisted, preventing the guest from being left in a half-removed
+      // state (e.g., still able to access projects but marked inactive, or
+      // memberships wiped but account still active).
+      await db.transaction(async (tx) => {
+        await tx
+          .update(users)
+          .set({ is_active: false, updated_at: new Date() })
+          .where(eq(users.id, guestUser.id));
 
-      // Remove all project memberships
-      await db
-        .delete(projectMemberships)
-        .where(eq(projectMemberships.user_id, guestUser.id));
+        await tx
+          .delete(projectMemberships)
+          .where(eq(projectMemberships.user_id, guestUser.id));
+      });
 
       return reply.send({ data: { success: true } });
     },
