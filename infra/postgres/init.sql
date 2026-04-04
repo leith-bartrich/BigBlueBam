@@ -384,6 +384,13 @@ CREATE TRIGGER trg_saved_views_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── Helpdesk Tables ─────────────────────────────────────────────────
+-- HB-5 (partial): helpdesk_users is a single global customer pool with no org_id FK.
+-- Known limitation: customers are not scoped to an organization, so the same email
+-- cannot have distinct records per org. A future migration will add org_id (or a
+-- many-to-many membership table) to support per-org customer isolation.
+-- HB-44 migration note (next deploy): rename email_verification_token to
+-- email_verification_token_hash and backfill with sha256(token) for any in-flight
+-- verification rows. Plaintext storage is a known gap until that migration lands.
 CREATE TABLE helpdesk_users (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email varchar(320) UNIQUE NOT NULL,
@@ -396,6 +403,8 @@ CREATE TABLE helpdesk_users (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
+COMMENT ON TABLE helpdesk_users IS 'HB-5: Single global customer pool. No org_id column yet — customers are shared across all organizations. Tracked for future migration.';
+COMMENT ON COLUMN helpdesk_users.email_verification_token IS 'HB-44: Currently plaintext. Pending migration to email_verification_token_hash (sha256). Do not expose via API.';
 
 CREATE TRIGGER trg_helpdesk_users_updated_at
     BEFORE UPDATE ON helpdesk_users
@@ -411,7 +420,7 @@ CREATE TABLE helpdesk_sessions (
 CREATE TABLE tickets (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     ticket_number serial UNIQUE,
-    helpdesk_user_id uuid NOT NULL REFERENCES helpdesk_users(id),
+    helpdesk_user_id uuid NOT NULL REFERENCES helpdesk_users(id) ON DELETE CASCADE,
     task_id uuid REFERENCES tasks(id) ON DELETE SET NULL,
     project_id uuid REFERENCES projects(id) ON DELETE SET NULL,
     subject varchar(500) NOT NULL,
