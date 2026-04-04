@@ -30,7 +30,8 @@ interface ChannelState {
   activeCallToken: string | null;
   activeCallRoomName: string | null;
   activeCallType: 'voice' | 'video' | 'huddle' | null;
-  setActiveCall: (callId: string, token: string, roomName: string, type: 'voice' | 'video' | 'huddle') => void;
+  activeCallLivekitUrl: string | null;
+  setActiveCall: (callId: string, token: string, roomName: string, type: 'voice' | 'video' | 'huddle', livekitUrl: string) => void;
   clearActiveCall: () => void;
 }
 
@@ -70,8 +71,9 @@ export const useChannelStore = create<ChannelState>((set) => ({
   activeCallToken: null,
   activeCallRoomName: null,
   activeCallType: null,
-  setActiveCall: (callId, token, roomName, type) =>
-    set({ activeCallId: callId, activeCallToken: token, activeCallRoomName: roomName, activeCallType: type }),
+  activeCallLivekitUrl: null,
+  setActiveCall: (callId, token, roomName, type, livekitUrl) =>
+    set({ activeCallId: callId, activeCallToken: token, activeCallRoomName: roomName, activeCallType: type, activeCallLivekitUrl: livekitUrl }),
   clearActiveCall: () =>
-    set({ activeCallId: null, activeCallToken: null, activeCallRoomName: null, activeCallType: null }),
+    set({ activeCallId: null, activeCallToken: null, activeCallRoomName: null, activeCallType: null, activeCallLivekitUrl: null }),
 }));

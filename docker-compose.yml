@@ -256,6 +256,7 @@ services:
       LIVEKIT_HOST: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+      LIVEKIT_WS_URL: ${LIVEKIT_WS_URL:-ws://localhost:7880}
       BBB_API_INTERNAL_URL: http://api:4000
       VOICE_AGENT_URL: http://voice-agent:4003
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
