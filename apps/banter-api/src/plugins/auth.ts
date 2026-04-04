@@ -361,18 +361,8 @@ export function requireRole(roles: string[]) {
   };
 }
 
-const ROLE_HIERARCHY: Record<string, number> = {
-  owner: 4,
-  admin: 3,
-  member: 2,
-  viewer: 1,
-};
-
-const SCOPE_HIERARCHY: Record<string, number> = {
-  admin: 3,
-  read_write: 2,
-  read: 1,
-};
+const ROLE_HIERARCHY = ['viewer', 'member', 'admin', 'owner'] as const;
+const SCOPE_HIERARCHY = ['read', 'read_write', 'admin'] as const;
 
 export function requireSuperUser() {
   return async function checkSuperUser(request: FastifyRequest, reply: FastifyReply) {
@@ -412,8 +402,8 @@ export function requireMinRole(minRole: string) {
       });
     }
     if (request.user.is_superuser) return;
-    const userLevel = ROLE_HIERARCHY[request.user.role] ?? 0;
-    const requiredLevel = ROLE_HIERARCHY[minRole] ?? 0;
+    const userLevel = ROLE_HIERARCHY.indexOf(request.user.role as (typeof ROLE_HIERARCHY)[number]);
+    const requiredLevel = ROLE_HIERARCHY.indexOf(minRole as (typeof ROLE_HIERARCHY)[number]);
     if (userLevel < requiredLevel) {
       return reply.status(403).send({
         error: {
@@ -443,8 +433,10 @@ export function requireScope(minScope: string) {
     if (request.user.api_key_scope === null) return;
     // SuperUsers bypass scope check
     if (request.user.is_superuser) return;
-    const scopeLevel = SCOPE_HIERARCHY[request.user.api_key_scope] ?? 0;
-    const requiredLevel = SCOPE_HIERARCHY[minScope] ?? 0;
+    const scopeLevel = SCOPE_HIERARCHY.indexOf(
+      request.user.api_key_scope as (typeof SCOPE_HIERARCHY)[number],
+    );
+    const requiredLevel = SCOPE_HIERARCHY.indexOf(minScope as (typeof SCOPE_HIERARCHY)[number]);
     if (scopeLevel < requiredLevel) {
       return reply.status(403).send({
         error: {

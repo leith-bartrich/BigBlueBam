@@ -248,13 +248,17 @@ export async function getProjectMembers(projectId: string) {
       avatar_url: usersTable.avatar_url,
       role: projectMemberships.role,
       joined_at: projectMemberships.joined_at,
+      user_role: usersTable.role,
     })
     .from(projectMemberships)
     .innerJoin(usersTable, eq(projectMemberships.user_id, usersTable.id))
     .where(eq(projectMemberships.project_id, projectId))
     .orderBy(usersTable.display_name);
 
-  return result;
+  return result.map(({ user_role, ...rest }) => ({
+    ...rest,
+    is_guest: user_role === 'guest',
+  }));
 }
 
 export async function addProjectMember(projectId: string, userId: string, role: string) {

@@ -148,7 +148,16 @@ export default async function authRoutes(fastify: FastifyInstance) {
     });
   });
 
-  fastify.post('/auth/switch-org', { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post('/auth/switch-org', {
+    preHandler: [requireAuth],
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+        keyGenerator: (req) => req.user?.id ?? req.ip,
+      },
+    },
+  }, async (request, reply) => {
     const bodySchema = z.object({ org_id: z.string().uuid() });
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) {
