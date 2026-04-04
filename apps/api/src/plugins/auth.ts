@@ -246,7 +246,20 @@ async function authPlugin(fastify: FastifyInstance) {
         .where(eq(apiKeys.key_prefix, prefix))
         .limit(10);
 
-      for (const candidate of candidates) {
+      // DoS mitigation: prefix collisions for an 8-char random prefix are
+      // vanishingly rare. Seeing >3 candidates for a single prefix is a
+      // strong signal of an attacker trying to force multiple Argon2
+      // verifications per request. In that case, log a warning and only
+      // verify the first candidate.
+      const verifyCandidates = candidates.length > 3 ? candidates.slice(0, 1) : candidates;
+      if (candidates.length > 3) {
+        request.log.warn(
+          { prefix, candidate_count: candidates.length },
+          'Suspicious number of API key candidates for prefix; limiting to first candidate',
+        );
+      }
+
+      for (const candidate of verifyCandidates) {
         if (candidate.apiKey.expires_at && new Date(candidate.apiKey.expires_at) < new Date()) {
           continue;
         }
@@ -409,6 +422,10 @@ export function requireScope(minScope: 'read' | 'read_write' | 'admin') {
   const scopeHierarchy = ['read', 'read_write', 'admin'];
   const minLevel = scopeHierarchy.indexOf(minScope);
 
+  // Known limitation (P1-23): Scope is cached at auth time; revoked keys
+  // remain valid until request completes. Re-querying on every scope check
+  // would add a DB round-trip to every authorized call — the window is
+  // bounded by request duration so we accept this trade-off.
   return async function checkScope(request: FastifyRequest, reply: FastifyReply) {
     if (!request.user) {
       return reply.status(401).send({

@@ -5,6 +5,15 @@ import argon2 from 'argon2';
 import { db } from '../db/index.js';
 import { sessions, users, apiKeys, organizationMemberships } from '../db/schema/index.js';
 
+const UUID_REGEX_HEADER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export class OrgMembershipError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OrgMembershipError';
+  }
+}
+
 export interface OrgMembership {
   org_id: string;
   role: string;
@@ -73,6 +82,11 @@ async function resolveOrgContext(
     .where(eq(organizationMemberships.user_id, userId));
 
   if (rows.length === 0) {
+    // User hasn't been backfilled yet — fall back to users.org_id/role.
+    // If users.org_id is also NULL/empty, the user has no valid org context.
+    if (!fallbackOrgId) {
+      throw new OrgMembershipError('User has no organization memberships and no fallback org_id');
+    }
     return {
       memberships: [
         { org_id: fallbackOrgId, role: fallbackRole, is_default: true },
@@ -93,6 +107,11 @@ async function resolveOrgContext(
   let active: OrgMembership | undefined;
   if (requestedOrgId) {
     active = memberships.find((m) => m.org_id === requestedOrgId);
+    if (!active) {
+      throw new OrgMembershipError(
+        `User is not a member of the requested organization: ${requestedOrgId}`,
+      );
+    }
   }
   if (!active) {
     active = memberships.find((m) => m.is_default);
@@ -110,9 +129,13 @@ async function resolveOrgContext(
 
 function getRequestedOrgId(request: FastifyRequest): string | undefined {
   const header = request.headers['x-org-id'];
-  if (typeof header === 'string' && header.length > 0) return header;
-  if (Array.isArray(header) && header.length > 0) return header[0];
-  return undefined;
+  let value: string | undefined;
+  if (typeof header === 'string' && header.length > 0) value = header;
+  else if (Array.isArray(header) && header.length > 0) value = header[0];
+  if (!value) return undefined;
+  // Validate UUID shape; silently ignore malformed header values.
+  if (value.length !== 36 || !UUID_REGEX_HEADER.test(value)) return undefined;
+  return value;
 }
 
 async function buildAuthUser(
@@ -159,7 +182,8 @@ async function authPlugin(fastify: FastifyInstance) {
   fastify.decorateRequest('impersonator', null);
   fastify.decorateRequest('isImpersonating', false);
 
-  fastify.addHook('preHandler', async (request: FastifyRequest) => {
+  fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
     // Try session cookie first
     const sessionId = request.cookies?.session;
     if (sessionId) {
@@ -224,14 +248,29 @@ async function authPlugin(fastify: FastifyInstance) {
         const valid = await argon2.verify(candidate.apiKey.key_hash, token);
         if (valid && candidate.user.is_active) {
           request.user = await buildAuthUser(candidate.user, candidate.apiKey.scope, request);
-          // Update last_used_at
-          await db
-            .update(apiKeys)
+          // Update last_used_at — fire-and-forget, log errors but don't block the response.
+          db.update(apiKeys)
             .set({ last_used_at: new Date() })
-            .where(eq(apiKeys.id, candidate.apiKey.id));
+            .where(eq(apiKeys.id, candidate.apiKey.id))
+            .catch((err) => {
+              console.warn('Failed to update api_keys.last_used_at:', err);
+            });
           return;
         }
       }
+    }
+    } catch (err) {
+      if (err instanceof OrgMembershipError) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: err.message,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      throw err;
     }
   });
 
