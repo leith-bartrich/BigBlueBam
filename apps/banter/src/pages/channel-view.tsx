@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Hash,
   Users,
@@ -7,13 +7,19 @@ import {
   Video,
   Settings,
 } from 'lucide-react';
+import { Track } from 'livekit-client';
 import { useChannel } from '@/hooks/use-channels';
 import { useChannelStore } from '@/stores/channel.store';
 import { useRealtimeChannel } from '@/hooks/use-realtime';
+import { useLiveKit } from '@/hooks/use-livekit';
+import { useDevices } from '@/hooks/use-devices';
 import { MessageTimeline } from '@/components/messages/message-timeline';
 import { MessageCompose } from '@/components/messages/message-compose';
 import { TypingIndicator } from '@/components/messages/typing-indicator';
 import { ChannelSettings } from '@/components/channels/channel-settings';
+import { CallPanel } from '@/components/calls/call-panel';
+import { DeviceSettingsDialog } from '@/components/calls/device-settings-dialog';
+import { VideoGrid, type VideoParticipant } from '@/components/calls/video-grid';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -28,11 +34,26 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
   const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
   const clearUnread = useChannelStore((s) => s.clearUnread);
   const activeCallId = useChannelStore((s) => s.activeCallId);
+  const activeCallToken = useChannelStore((s) => s.activeCallToken);
+  const activeCallRoomName = useChannelStore((s) => s.activeCallRoomName);
+  const activeCallType = useChannelStore((s) => s.activeCallType);
   const setActiveCall = useChannelStore((s) => s.setActiveCall);
   const clearActiveCall = useChannelStore((s) => s.clearActiveCall);
   const [showSettings, setShowSettings] = useState(false);
+  const [showDeviceSettings, setShowDeviceSettings] = useState(false);
   const [callLoading, setCallLoading] = useState<'voice' | 'video' | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+
+  const activeCallLivekitUrl = useChannelStore((s) => s.activeCallLivekitUrl);
+
+  // LiveKit connection — only connects when we have a valid token and URL
+  const livekit = useLiveKit({
+    serverUrl: activeCallLivekitUrl ?? undefined,
+    token: activeCallId && activeCallToken ? activeCallToken : null,
+  });
+
+  // Device selection
+  const devices = useDevices();
 
   const startCall = useCallback(
     async (callType: 'voice' | 'video') => {
@@ -40,16 +61,16 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
       setCallLoading(callType);
       setCallError(null);
       try {
-        // API type mapping: 'voice' stays 'voice', 'video' stays 'video'
         const res = await api.post<{
           data: {
             call: { id: string; livekit_room_name: string; type: string };
             token: string;
+            livekit_url: string;
             existing: boolean;
           };
         }>(`/channels/${channel.id}/calls`, { type: callType });
-        const { call, token } = res.data;
-        setActiveCall(call.id, token, call.livekit_room_name, callType);
+        const { call, token, livekit_url } = res.data;
+        setActiveCall(call.id, token, call.livekit_room_name, callType, livekit_url);
       } catch (err: any) {
         setCallError(err?.message ?? 'Failed to start call');
         setTimeout(() => setCallError(null), 3000);
@@ -62,11 +83,13 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
 
   const leaveCall = useCallback(async () => {
     if (!activeCallId) return;
+    // Disconnect from LiveKit first, then notify the API
+    livekit.disconnect();
     try {
       await api.post(`/calls/${activeCallId}/leave`);
     } catch {}
     clearActiveCall();
-  }, [activeCallId, clearActiveCall]);
+  }, [activeCallId, clearActiveCall, livekit]);
 
   // Set active channel for thread panel and unread tracking
   useEffect(() => {
@@ -79,6 +102,54 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
 
   // Subscribe to realtime events for this channel
   useRealtimeChannel(channel?.id ?? '');
+
+  // Map LiveKit participants to VideoParticipant objects for the video grid
+  const videoParticipants = useMemo((): VideoParticipant[] => {
+    if (!livekit.isConnected) return [];
+
+    const result: VideoParticipant[] = [];
+
+    // Local participant
+    if (livekit.localParticipant) {
+      const lp = livekit.localParticipant;
+      result.push({
+        id: lp.identity,
+        name: lp.name ?? lp.identity,
+        avatarUrl: null,
+        isSpeaking: livekit.activeSpeakers.includes(lp.identity),
+        isMuted: !lp.isMicrophoneEnabled,
+        isVideoEnabled: lp.isCameraEnabled,
+        isScreenSharing: lp.isScreenShareEnabled,
+        isBot: false,
+        videoTrack:
+          lp.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack ?? null,
+        screenShareTrack:
+          lp.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack ?? null,
+      });
+    }
+
+    // Remote participants
+    for (const rp of livekit.participants) {
+      result.push({
+        id: rp.identity,
+        name: rp.name ?? rp.identity,
+        avatarUrl: null,
+        isSpeaking: livekit.activeSpeakers.includes(rp.identity),
+        isMuted: !rp.isMicrophoneEnabled,
+        isVideoEnabled: rp.isCameraEnabled,
+        isScreenSharing: rp.isScreenShareEnabled,
+        isBot: false,
+        videoTrack:
+          rp.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack ?? null,
+        screenShareTrack:
+          rp.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack ?? null,
+      });
+    }
+
+    return result;
+  }, [livekit.isConnected, livekit.localParticipant, livekit.participants, livekit.activeSpeakers]);
+
+  const showVideoGrid = activeCallType === 'video' && livekit.isConnected && videoParticipants.length > 0;
 
   if (isLoading) {
     return (
@@ -153,6 +224,50 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
         </div>
       </header>
 
+      {/* Call panel (shown when a call is active) */}
+      {activeCallId && activeCallToken && (
+        <CallPanel
+          participants={livekit.participants.map((p) => ({
+            id: p.identity,
+            name: p.name ?? p.identity,
+            isSpeaking: livekit.activeSpeakers.includes(p.identity),
+            isMuted: !p.isMicrophoneEnabled,
+            isBot: false,
+            hasVideo: p.isCameraEnabled,
+          }))}
+          localParticipantId={livekit.localParticipant?.identity ?? null}
+          activeSpeakers={livekit.activeSpeakers}
+          isMuted={livekit.isMuted}
+          isCameraOn={livekit.isCameraOn}
+          isScreenSharing={livekit.isScreenSharing}
+          isConnected={livekit.isConnected}
+          isRecording={false}
+          isTranscribing={false}
+          callType={activeCallType ?? 'voice'}
+          connectionError={livekit.connectionError}
+          onToggleMute={livekit.toggleMute}
+          onToggleCamera={livekit.toggleCamera}
+          onToggleScreenShare={livekit.toggleScreenShare}
+          onInviteAgent={async () => {
+            if (activeCallId) {
+              try { await api.post(`/calls/${activeCallId}/invite-agent`); } catch {}
+            }
+          }}
+          onLeave={leaveCall}
+          onOpenDeviceSettings={() => setShowDeviceSettings(true)}
+        />
+      )}
+
+      {/* Video grid (shown for video calls when connected) */}
+      {showVideoGrid && (
+        <div className="flex-shrink-0" style={{ height: '60%' }}>
+          <VideoGrid
+            participants={videoParticipants}
+            localParticipantId={livekit.localParticipant?.identity ?? ''}
+          />
+        </div>
+      )}
+
       {/* Message timeline */}
       <div className="flex-1 min-h-0">
         <MessageTimeline channelId={channel.id} onNavigate={onNavigate} />
@@ -167,6 +282,34 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
       {/* Channel settings modal */}
       {showSettings && (
         <ChannelSettings channel={channel} onClose={() => setShowSettings(false)} onNavigate={onNavigate} />
+      )}
+
+      {/* Device settings dialog */}
+      {showDeviceSettings && (
+        <DeviceSettingsDialog
+          open={showDeviceSettings}
+          onClose={() => setShowDeviceSettings(false)}
+          audioInputs={devices.audioInputs}
+          audioOutputs={devices.audioOutputs}
+          videoInputs={devices.videoInputs}
+          selectedMicId={devices.selectedMicId}
+          selectedSpeakerId={devices.selectedSpeakerId}
+          selectedCameraId={devices.selectedCameraId}
+          onSelectMic={(id) => {
+            devices.setSelectedMic(id);
+            livekit.setMicrophoneDevice(id);
+          }}
+          onSelectSpeaker={(id) => {
+            devices.setSelectedSpeaker(id);
+            livekit.setSpeakerDevice(id);
+          }}
+          onSelectCamera={(id) => {
+            devices.setSelectedCamera(id);
+            livekit.setCameraDevice(id);
+          }}
+          onRequestPermissions={devices.requestPermissions}
+          hasPermission={devices.hasPermission}
+        />
       )}
     </div>
   );

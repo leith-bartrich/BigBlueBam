@@ -14,6 +14,7 @@ import { requireAuth } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 import { generateLiveKitToken, buildRoomName } from '../services/livekit-token.js';
 import * as voiceAgent from '../services/voice-agent-client.js';
+import { env } from '../env.js';
 
 const startCallSchema = z.object({
   type: z.enum(['voice', 'video', 'huddle']),
@@ -119,6 +120,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
             data: {
               call: existingHuddle,
               token,
+              livekit_url: env.LIVEKIT_WS_URL,
               existing: true,
             },
           });
@@ -197,6 +199,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
         data: {
           call,
           token,
+          livekit_url: env.LIVEKIT_WS_URL,
           existing: false,
         },
       });
@@ -407,7 +410,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
-      return reply.send({ data: { call, token } });
+      return reply.send({ data: { call, token, livekit_url: env.LIVEKIT_WS_URL } });
     },
   );
 
@@ -638,6 +641,25 @@ export default async function callRoutes(fastify: FastifyInstance) {
       if (body.recording !== undefined) updateData.recording_enabled = body.recording;
       if (body.transcription !== undefined) updateData.transcription_enabled = body.transcription;
 
+      // Start/stop recording via LiveKit Egress API
+      if (body.recording !== undefined) {
+        try {
+          const { startRecording, stopRecording } = await import('../services/recording.js');
+          if (body.recording && !call.recording_storage_key) {
+            const egressId = await startRecording(
+              call.livekit_room_name,
+              `banter/recordings/${call.id}`,
+            );
+            updateData.recording_storage_key = egressId;
+          } else if (!body.recording && call.recording_storage_key) {
+            await stopRecording(call.recording_storage_key);
+          }
+        } catch (err) {
+          fastify.log.warn({ err }, 'Recording toggle failed — LiveKit Egress may not be available');
+          // Still update the flag in DB even if egress fails
+        }
+      }
+
       const [updated] = await db
         .update(banterCalls)
         .set(updateData)
@@ -865,6 +887,79 @@ export default async function callRoutes(fastify: FastifyInstance) {
         .orderBy(banterCallTranscripts.started_at);
 
       return reply.send({ data: segments });
+    },
+  );
+
+  // PATCH /v1/calls/:id/media-state — update participant's media state (mute, camera, screenshare)
+  fastify.patch(
+    '/v1/calls/:id/media-state',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const user = request.user!;
+      const body = z
+        .object({
+          has_audio: z.boolean().optional(),
+          has_video: z.boolean().optional(),
+          has_screen_share: z.boolean().optional(),
+        })
+        .parse(request.body);
+
+      // Find the active participant record
+      const [participant] = await db
+        .select()
+        .from(banterCallParticipants)
+        .where(
+          and(
+            eq(banterCallParticipants.call_id, id),
+            eq(banterCallParticipants.user_id, user.id),
+            isNull(banterCallParticipants.left_at),
+          ),
+        )
+        .orderBy(desc(banterCallParticipants.joined_at))
+        .limit(1);
+
+      if (!participant) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'You are not an active participant in this call',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (body.has_audio !== undefined) updateData.has_audio = body.has_audio;
+      if (body.has_video !== undefined) updateData.has_video = body.has_video;
+      if (body.has_screen_share !== undefined) updateData.has_screen_share = body.has_screen_share;
+
+      await db
+        .update(banterCallParticipants)
+        .set(updateData)
+        .where(eq(banterCallParticipants.id, participant.id));
+
+      // Find the call's channel to broadcast
+      const [call] = await db
+        .select({ channel_id: banterCalls.channel_id })
+        .from(banterCalls)
+        .where(eq(banterCalls.id, id))
+        .limit(1);
+
+      if (call) {
+        broadcastToChannel(call.channel_id, {
+          type: 'call.participant_media_changed',
+          data: {
+            call_id: id,
+            user_id: user.id,
+            ...body,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return reply.send({ data: { success: true } });
     },
   );
 }

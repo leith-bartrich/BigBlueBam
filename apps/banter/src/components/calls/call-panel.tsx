@@ -6,49 +6,82 @@ import {
   Bot,
   Users,
   Circle,
+  Video,
+  VideoOff,
+  Monitor,
+  Settings,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Participant {
   id: string;
   name: string;
-  avatar_url?: string;
-  is_speaking: boolean;
-  is_muted: boolean;
-  is_bot: boolean;
+  isSpeaking: boolean;
+  isMuted: boolean;
+  isBot: boolean;
+  hasVideo: boolean;
 }
 
 interface CallPanelProps {
-  callId: string;
-  channelId: string;
+  // LiveKit state
   participants: Participant[];
-  onLeave: () => void;
-  onToggleMute: () => void;
-  onInviteAgent: () => void;
+  localParticipantId: string | null;
+  activeSpeakers: string[];
   isMuted: boolean;
-  isRecording?: boolean;
-  isTranscribing?: boolean;
+  isCameraOn: boolean;
+  isScreenSharing: boolean;
+  isConnected: boolean;
+  isRecording: boolean;
+  isTranscribing: boolean;
+  callType: 'voice' | 'video' | 'huddle';
+  connectionError: string | null;
+  // Callbacks
+  onToggleMute: () => void;
+  onToggleCamera: () => void;
+  onToggleScreenShare: () => void;
   onToggleRecording?: () => void;
-  callType?: 'voice' | 'video' | 'huddle';
+  onInviteAgent: () => void;
+  onLeave: () => void;
+  // Device selection
+  onOpenDeviceSettings?: () => void;
 }
 
 export function CallPanel({
-  callId: _callId,
-  channelId: _channelId,
   participants,
-  onLeave,
-  onToggleMute,
-  onInviteAgent,
+  localParticipantId: _localParticipantId,
+  activeSpeakers: _activeSpeakers,
   isMuted,
-  isRecording = false,
-  isTranscribing = false,
+  isCameraOn,
+  isScreenSharing,
+  isConnected,
+  isRecording,
+  isTranscribing,
+  callType,
+  connectionError,
+  onToggleMute,
+  onToggleCamera,
+  onToggleScreenShare,
   onToggleRecording,
-  callType = 'voice',
+  onInviteAgent,
+  onLeave,
+  onOpenDeviceSettings,
 }: CallPanelProps) {
   const [showParticipants, setShowParticipants] = useState(true);
 
   return (
     <div className="border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900">
+      {/* Connection error banner */}
+      {connectionError && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
+          <AlertCircle className="h-3 w-3 text-red-500 flex-shrink-0" />
+          <span className="text-xs font-medium text-red-600 dark:text-red-400">
+            {connectionError}
+          </span>
+        </div>
+      )}
+
       {/* Recording consent indicator */}
       {isRecording && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
@@ -70,9 +103,23 @@ export function CallPanel({
       {/* Call header bar */}
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+          {/* Connection status indicator */}
+          {isConnected ? (
+            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+          ) : connectionError ? (
+            <div className="h-2 w-2 rounded-full bg-red-500" />
+          ) : (
+            <Loader2 className="h-3 w-3 text-amber-500 animate-spin" />
+          )}
           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            {callType === 'huddle' ? 'Huddle' : callType === 'video' ? 'Video call' : 'Voice call'} in progress
+            {!isConnected && !connectionError
+              ? 'Connecting...'
+              : callType === 'huddle'
+                ? 'Huddle'
+                : callType === 'video'
+                  ? 'Video call'
+                  : 'Voice call'}{' '}
+            {isConnected && 'in progress'}
           </span>
           <span className="text-xs text-zinc-500">
             {participants.length} participant{participants.length !== 1 ? 's' : ''}
@@ -108,6 +155,36 @@ export function CallPanel({
             {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </button>
 
+          {/* Camera toggle (video calls) */}
+          {(callType === 'video' || callType === 'huddle') && (
+            <button
+              onClick={onToggleCamera}
+              className={cn(
+                'p-2 rounded-md transition-colors',
+                !isCameraOn
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-600'
+                  : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800',
+              )}
+              title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
+            >
+              {isCameraOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+            </button>
+          )}
+
+          {/* Screen share toggle */}
+          <button
+            onClick={onToggleScreenShare}
+            className={cn(
+              'p-2 rounded-md transition-colors',
+              isScreenSharing
+                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
+                : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800',
+            )}
+            title={isScreenSharing ? 'Stop sharing screen' : 'Share screen'}
+          >
+            <Monitor className="h-4 w-4" />
+          </button>
+
           {/* Record toggle */}
           {onToggleRecording && (
             <button
@@ -132,6 +209,17 @@ export function CallPanel({
           >
             <Bot className="h-4 w-4" />
           </button>
+
+          {/* Device settings */}
+          {onOpenDeviceSettings && (
+            <button
+              onClick={onOpenDeviceSettings}
+              className="p-2 rounded-md text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Audio & video settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
 
           {/* Leave call */}
           <button
@@ -173,19 +261,13 @@ function ParticipantBubble({ participant }: { participant: Participant }) {
         <div
           className={cn(
             'h-10 w-10 rounded-full flex items-center justify-center text-xs font-semibold transition-all',
-            participant.is_bot
+            participant.isBot
               ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
               : 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300',
-            participant.is_speaking && 'ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-zinc-900',
+            participant.isSpeaking && 'ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-zinc-900',
           )}
         >
-          {participant.avatar_url ? (
-            <img
-              src={participant.avatar_url}
-              alt={participant.name}
-              className="h-full w-full rounded-full object-cover"
-            />
-          ) : participant.is_bot ? (
+          {participant.isBot ? (
             <Bot className="h-4 w-4" />
           ) : (
             initials
@@ -193,9 +275,16 @@ function ParticipantBubble({ participant }: { participant: Participant }) {
         </div>
 
         {/* Muted indicator */}
-        {participant.is_muted && (
+        {participant.isMuted && (
           <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 flex items-center justify-center">
             <MicOff className="h-2.5 w-2.5 text-white" />
+          </div>
+        )}
+
+        {/* Video indicator */}
+        {participant.hasVideo && (
+          <div className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-blue-500 flex items-center justify-center">
+            <Video className="h-2.5 w-2.5 text-white" />
           </div>
         )}
       </div>

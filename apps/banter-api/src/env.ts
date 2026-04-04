@@ -28,6 +28,8 @@ const envSchema = z.object({
   LIVEKIT_HOST: z.string().default(''),
   LIVEKIT_API_KEY: z.string().default(''),
   LIVEKIT_API_SECRET: z.string().default(''),
+  // Client-facing LiveKit WebSocket URL (what the browser connects to)
+  LIVEKIT_WS_URL: z.string().default('ws://localhost:7880'),
 
   // Internal service URLs
   BBB_API_INTERNAL_URL: z.string().default('http://api:4000'),

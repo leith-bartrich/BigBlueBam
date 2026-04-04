@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { postActivityFeedMessage } from '../services/activity-feed.js';
+import { writeTranscriptSegment } from '../services/transcription.js';
 
 const feedMessageSchema = z.object({
   org_id: z.string().uuid(),
@@ -61,6 +62,36 @@ export default async function internalRoutes(fastify: FastifyInstance) {
           entity_type: body.entity_type,
           entity_id: body.entity_id,
         },
+      });
+
+      return reply.send({ data: { success: true } });
+    },
+  );
+
+  // POST /v1/internal/transcript — receive a transcript segment from the voice agent
+  fastify.post(
+    '/v1/internal/transcript',
+    async (request, reply) => {
+      const body = z
+        .object({
+          call_id: z.string().uuid(),
+          speaker_id: z.string().uuid(),
+          content: z.string().min(1),
+          started_at: z.string().datetime(),
+          ended_at: z.string().datetime().optional(),
+          confidence: z.number().min(0).max(1).optional(),
+          is_final: z.boolean(),
+        })
+        .parse(request.body);
+
+      await writeTranscriptSegment({
+        call_id: body.call_id,
+        speaker_id: body.speaker_id,
+        content: body.content,
+        started_at: new Date(body.started_at),
+        ended_at: body.ended_at ? new Date(body.ended_at) : undefined,
+        confidence: body.confidence,
+        is_final: body.is_final,
       });
 
       return reply.send({ data: { success: true } });

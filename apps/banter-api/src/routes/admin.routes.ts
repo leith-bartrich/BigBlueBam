@@ -135,6 +135,38 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         details: { changed_fields: Object.keys(body) },
       }).catch(() => {});
 
+      // Fire-and-forget: push voice config to the voice agent service
+      // if any voice-related fields were changed
+      const voiceFields = [
+        'stt_provider', 'stt_provider_config',
+        'tts_provider', 'tts_provider_config',
+        'ai_voice_agent_llm_provider', 'ai_voice_agent_llm_config',
+      ];
+      const changedFields = Object.keys(body);
+      const hasVoiceChanges = changedFields.some((f) => voiceFields.includes(f));
+
+      if (hasVoiceChanges && settings) {
+        const voiceAgentUrl = process.env.VOICE_AGENT_URL ?? 'http://voice-agent:8000';
+        fetch(`${voiceAgentUrl}/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stt_provider: settings.stt_provider ?? null,
+            stt_config: settings.stt_provider_config ?? {},
+            tts_provider: settings.tts_provider ?? null,
+            tts_config: settings.tts_provider_config ?? {},
+            llm_provider: settings.ai_voice_agent_llm_provider ?? null,
+            llm_config: settings.ai_voice_agent_llm_config ?? {},
+          }),
+          signal: AbortSignal.timeout(5000),
+        }).catch((pushErr) => {
+          fastify.log.warn(
+            { err: pushErr },
+            'Failed to push voice config to voice agent (fire-and-forget)',
+          );
+        });
+      }
+
       return reply.send({ data: settings });
     },
   );
@@ -347,6 +379,90 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           error: {
             code: 'TTS_TEST_FAILED',
             message: `TTS provider test failed: ${(err as Error).message}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    },
+  );
+
+  // POST /v1/admin/settings/push-voice-config — push STT/TTS/LLM config to voice agent
+  fastify.post(
+    '/v1/admin/settings/push-voice-config',
+    { preHandler: adminPreHandler },
+    async (request, reply) => {
+      const user = request.user!;
+
+      const [settings] = await db
+        .select()
+        .from(banterSettings)
+        .where(eq(banterSettings.org_id, user.org_id))
+        .limit(1);
+
+      if (!settings) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'No settings found for this organization. Save settings first.',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const voiceAgentUrl = process.env.VOICE_AGENT_URL ?? 'http://voice-agent:8000';
+
+      try {
+        const payload = {
+          stt_provider: settings.stt_provider ?? null,
+          stt_config: settings.stt_provider_config ?? {},
+          tts_provider: settings.tts_provider ?? null,
+          tts_config: settings.tts_provider_config ?? {},
+          llm_provider: settings.ai_voice_agent_llm_provider ?? null,
+          llm_config: settings.ai_voice_agent_llm_config ?? {},
+        };
+
+        const res = await fetch(`${voiceAgentUrl}/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          return reply.status(502).send({
+            error: {
+              code: 'VOICE_AGENT_ERROR',
+              message: `Voice agent responded with status ${res.status}: ${body}`,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        const result = await res.json();
+
+        logAudit({
+          org_id: user.org_id,
+          user_id: user.id,
+          action: 'banter.voice_config.pushed',
+          entity_type: 'banter_settings',
+          entity_id: settings.id,
+          details: {
+            stt_provider: settings.stt_provider,
+            tts_provider: settings.tts_provider,
+            llm_provider: settings.ai_voice_agent_llm_provider,
+          },
+        }).catch(() => {});
+
+        return reply.send({ data: { success: true, voice_agent_response: result } });
+      } catch (err) {
+        return reply.status(502).send({
+          error: {
+            code: 'VOICE_AGENT_UNREACHABLE',
+            message: `Failed to reach voice agent: ${(err as Error).message}`,
             details: [],
             request_id: request.id,
           },
