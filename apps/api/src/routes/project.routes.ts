@@ -19,7 +19,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
   fastify.post('/projects', { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] }, async (request, reply) => {
     // Enforce org-level permission: members_can_create_projects
     if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
-      const org = await orgService.getOrganization(request.user!.org_id);
+      const org = await orgService.getOrganizationCached(request.user!.org_id);
       if (!checkOrgPermission(org?.settings as Record<string, unknown> | null, 'members_can_create_projects')) {
         return reply.status(403).send({
           error: {
@@ -144,7 +144,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
         // they created, and only if the org permission allows it.
         if (!isOrgPrivileged(request.user!.role)) {
           const existingProject = await projectService.getProject(request.params.id);
-          const org = await orgService.getOrganization(request.user!.org_id);
+          const org = await orgService.getOrganizationCached(request.user!.org_id);
           const permitted = checkOrgPermission(
             org?.settings as Record<string, unknown> | null,
             'members_can_delete_own_projects',

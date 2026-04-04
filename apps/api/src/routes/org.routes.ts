@@ -130,7 +130,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       // Allow org admins/owners/superusers, OR members if the org permission
       // `members_can_invite_members` is enabled.
       if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
-        const org = await orgService.getOrganization(request.user!.org_id);
+        const org = await orgService.getOrganizationCached(request.user!.org_id);
         const allowed = checkOrgPermission(
           org?.settings as Record<string, unknown> | null,
           'members_can_invite_members',

@@ -1,8 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { registerSchema, loginSchema, updateProfileSchema } from '@bigbluebam/shared';
+import { eq, and } from 'drizzle-orm';
+import { z } from 'zod';
 import * as authService from '../services/auth.service.js';
 import { requireAuth } from '../plugins/auth.js';
 import { env } from '../env.js';
+import { db } from '../db/index.js';
+import { organizationMemberships } from '../db/schema/organization-memberships.js';
+import { organizations } from '../db/schema/organizations.js';
 
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
@@ -106,6 +111,112 @@ export default async function authRoutes(fastify: FastifyInstance) {
         timezone: user.timezone,
         notification_prefs: user.notification_prefs,
         created_at: user.created_at.toISOString(),
+      },
+    });
+  });
+
+  fastify.get('/auth/orgs', { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
+
+    const memberships = await db
+      .select({
+        org_id: organizationMemberships.org_id,
+        role: organizationMemberships.role,
+        is_default: organizationMemberships.is_default,
+        joined_at: organizationMemberships.joined_at,
+        org_name: organizations.name,
+        org_slug: organizations.slug,
+        org_logo_url: organizations.logo_url,
+      })
+      .from(organizationMemberships)
+      .innerJoin(organizations, eq(organizationMemberships.org_id, organizations.id))
+      .where(eq(organizationMemberships.user_id, userId));
+
+    return reply.send({
+      data: {
+        active_org_id: request.user!.active_org_id,
+        organizations: memberships.map((m) => ({
+          org_id: m.org_id,
+          name: m.org_name,
+          slug: m.org_slug,
+          logo_url: m.org_logo_url,
+          role: m.role,
+          is_default: m.is_default,
+          joined_at: m.joined_at.toISOString(),
+        })),
+      },
+    });
+  });
+
+  fastify.post('/auth/switch-org', { preHandler: [requireAuth] }, async (request, reply) => {
+    const bodySchema = z.object({ org_id: z.string().uuid() });
+    const parsed = bodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: parsed.error.issues.map((i) => ({
+            field: i.path.join('.'),
+            issue: i.message,
+          })),
+          request_id: request.id,
+        },
+      });
+    }
+
+    const { org_id } = parsed.data;
+    const userId = request.user!.id;
+
+    // Verify the user is a member of the requested org
+    const [membership] = await db
+      .select({
+        org_id: organizationMemberships.org_id,
+        role: organizationMemberships.role,
+        is_default: organizationMemberships.is_default,
+        org_name: organizations.name,
+        org_slug: organizations.slug,
+      })
+      .from(organizationMemberships)
+      .innerJoin(organizations, eq(organizationMemberships.org_id, organizations.id))
+      .where(
+        and(
+          eq(organizationMemberships.user_id, userId),
+          eq(organizationMemberships.org_id, org_id),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      return reply.status(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You are not a member of that organization',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Rotate the session: delete the old one and issue a new session ID.
+    // This mitigates session fixation risks across org context changes.
+    if (request.sessionId) {
+      await authService.logout(request.sessionId);
+    }
+    const newSession = await authService.createSession(userId);
+    reply.setCookie('session', newSession.id, cookieOptions);
+
+    return reply.send({
+      data: {
+        active_org_id: membership.org_id,
+        organization: {
+          id: membership.org_id,
+          name: membership.org_name,
+          slug: membership.org_slug,
+        },
+        role: membership.role,
+        is_default: membership.is_default,
+        cache_bust: Date.now().toString(),
       },
     });
   });

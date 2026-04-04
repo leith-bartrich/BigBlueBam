@@ -14,6 +14,28 @@ export async function getOrganization(orgId: string) {
   return org ?? null;
 }
 
+// Simple in-memory cache for org settings reads used by permission checks.
+// Not a true LRU — bounded via periodic cleanup when size crosses threshold.
+type CachedOrg = Awaited<ReturnType<typeof getOrganization>>;
+const orgCache = new Map<string, { data: NonNullable<CachedOrg>; expires: number }>();
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
+export async function getOrganizationCached(orgId: string) {
+  const cached = orgCache.get(orgId);
+  if (cached && cached.expires > Date.now()) {
+    return cached.data;
+  }
+  const org = await getOrganization(orgId);
+  if (org) {
+    orgCache.set(orgId, { data: org, expires: Date.now() + CACHE_TTL_MS });
+  }
+  return org;
+}
+
+export function invalidateOrgCache(orgId: string) {
+  orgCache.delete(orgId);
+}
+
 export async function updateOrganization(
   orgId: string,
   data: { name?: string; logo_url?: string | null; settings?: Record<string, unknown> },
@@ -28,6 +50,8 @@ export async function updateOrganization(
     .set(updateValues)
     .where(eq(organizations.id, orgId))
     .returning();
+
+  invalidateOrgCache(orgId);
 
   return org ?? null;
 }
