@@ -1,5 +1,21 @@
--- BigBlueBam – PostgreSQL initialization
--- =========================================================================
+-- ─────────────────────────────────────────────────────────────────────────
+-- 0000_init.sql — baseline schema
+-- ─────────────────────────────────────────────────────────────────────────
+-- Why: Canonical baseline schema — creates every table, index, trigger,
+--      and extension the product requires. Replaces the old init.sql
+--      bootstrap so fresh DBs and existing ones both converge here.
+-- Client impact: none (additive only; fully idempotent).
+-- ─────────────────────────────────────────────────────────────────────────
+-- This is the canonical baseline. It replaces what used to live in
+-- infra/postgres/init.sql. Every object is created idempotently so this
+-- migration is safe to run against an empty DB OR an existing DB that was
+-- bootstrapped from the old init.sql.
+--
+-- After this migration applies, migrations 0001..N layer drift fixes and
+-- schema evolution on top. All future schema changes go into NEW numbered
+-- migrations — NEVER modify an already-applied migration.
+-- ─────────────────────────────────────────────────────────────────────────
+
 
 -- Extensions
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -19,7 +35,7 @@ $$ LANGUAGE plpgsql;
 -- =========================================================================
 
 -- ── organizations ────────────────────────────────────────────────────────
-CREATE TABLE organizations (
+CREATE TABLE IF NOT EXISTS organizations (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name        varchar(255) NOT NULL,
     slug        varchar(255) NOT NULL UNIQUE,
@@ -30,12 +46,13 @@ CREATE TABLE organizations (
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_organizations_updated_at ON organizations;
 CREATE TRIGGER trg_organizations_updated_at
     BEFORE UPDATE ON organizations
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── users ────────────────────────────────────────────────────────────────
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id              uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     email               varchar(255) NOT NULL UNIQUE,
@@ -53,20 +70,23 @@ CREATE TABLE users (
     updated_at          timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── sessions ─────────────────────────────────────────────────────────────
-CREATE TABLE sessions (
-    id          text PRIMARY KEY,
-    user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at  timestamptz NOT NULL,
-    data        jsonb
+CREATE TABLE IF NOT EXISTS sessions (
+    id              text PRIMARY KEY,
+    user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at      timestamptz NOT NULL,
+    data            jsonb,
+    active_org_id   uuid REFERENCES organizations(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS sessions_active_org_id_idx ON sessions (active_org_id);
 
 -- ── projects ─────────────────────────────────────────────────────────────
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
     id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id                      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name                        varchar(255) NOT NULL,
@@ -85,12 +105,13 @@ CREATE TABLE projects (
     UNIQUE(org_id, slug)
 );
 
+DROP TRIGGER IF EXISTS trg_projects_updated_at ON projects;
 CREATE TRIGGER trg_projects_updated_at
     BEFORE UPDATE ON projects
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── project_memberships ──────────────────────────────────────────────────
-CREATE TABLE project_memberships (
+CREATE TABLE IF NOT EXISTS project_memberships (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -100,7 +121,7 @@ CREATE TABLE project_memberships (
 );
 
 -- ── task_states ──────────────────────────────────────────────────────────
-CREATE TABLE task_states (
+CREATE TABLE IF NOT EXISTS task_states (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name        varchar(100) NOT NULL,
@@ -115,7 +136,7 @@ CREATE TABLE task_states (
 );
 
 -- ── phases ───────────────────────────────────────────────────────────────
-CREATE TABLE phases (
+CREATE TABLE IF NOT EXISTS phases (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id          uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name                varchar(255) NOT NULL,
@@ -132,7 +153,7 @@ CREATE TABLE phases (
 );
 
 -- ── sprints ──────────────────────────────────────────────────────────────
-CREATE TABLE sprints (
+CREATE TABLE IF NOT EXISTS sprints (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name        varchar(255) NOT NULL,
@@ -148,7 +169,7 @@ CREATE TABLE sprints (
 );
 
 -- ── labels ───────────────────────────────────────────────────────────────
-CREATE TABLE labels (
+CREATE TABLE IF NOT EXISTS labels (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name        varchar(100) NOT NULL,
@@ -160,7 +181,7 @@ CREATE TABLE labels (
 );
 
 -- ── epics ────────────────────────────────────────────────────────────────
-CREATE TABLE epics (
+CREATE TABLE IF NOT EXISTS epics (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name        varchar(255) NOT NULL,
@@ -174,7 +195,7 @@ CREATE TABLE epics (
 );
 
 -- ── tasks ────────────────────────────────────────────────────────────────
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id              uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     human_id                varchar(50) NOT NULL,
@@ -212,12 +233,13 @@ CREATE TABLE tasks (
     updated_at              timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_tasks_updated_at ON tasks;
 CREATE TRIGGER trg_tasks_updated_at
     BEFORE UPDATE ON tasks
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── comments ─────────────────────────────────────────────────────────────
-CREATE TABLE comments (
+CREATE TABLE IF NOT EXISTS comments (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     task_id     uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     author_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -229,7 +251,7 @@ CREATE TABLE comments (
 );
 
 -- ── attachments ──────────────────────────────────────────────────────────
-CREATE TABLE attachments (
+CREATE TABLE IF NOT EXISTS attachments (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     task_id         uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     uploader_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -242,7 +264,7 @@ CREATE TABLE attachments (
 );
 
 -- ── activity_log ─────────────────────────────────────────────────────────
-CREATE TABLE activity_log (
+CREATE TABLE IF NOT EXISTS activity_log (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id      uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     task_id         uuid REFERENCES tasks(id) ON DELETE SET NULL,
@@ -254,7 +276,7 @@ CREATE TABLE activity_log (
 );
 
 -- ── custom_field_definitions ─────────────────────────────────────────────
-CREATE TABLE custom_field_definitions (
+CREATE TABLE IF NOT EXISTS custom_field_definitions (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id          uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name                varchar(255) NOT NULL,
@@ -268,7 +290,7 @@ CREATE TABLE custom_field_definitions (
 );
 
 -- ── sprint_tasks ─────────────────────────────────────────────────────────
-CREATE TABLE sprint_tasks (
+CREATE TABLE IF NOT EXISTS sprint_tasks (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     sprint_id               uuid NOT NULL REFERENCES sprints(id) ON DELETE CASCADE,
     task_id                 uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -280,7 +302,7 @@ CREATE TABLE sprint_tasks (
 );
 
 -- ── api_keys ─────────────────────────────────────────────────────────────
-CREATE TABLE api_keys (
+CREATE TABLE IF NOT EXISTS api_keys (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name        varchar(255) NOT NULL,
@@ -294,7 +316,7 @@ CREATE TABLE api_keys (
 );
 
 -- ── notifications ────────────────────────────────────────────────────────
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
@@ -307,7 +329,7 @@ CREATE TABLE notifications (
 );
 
 -- ── time_entries ─────────────────────────────────────────────────────────
-CREATE TABLE time_entries (
+CREATE TABLE IF NOT EXISTS time_entries (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     task_id     uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -318,7 +340,7 @@ CREATE TABLE time_entries (
 );
 
 -- ── webhooks ────────────────────────────────────────────────────────────
-CREATE TABLE webhooks (
+CREATE TABLE IF NOT EXISTS webhooks (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     url         text NOT NULL,
@@ -329,12 +351,13 @@ CREATE TABLE webhooks (
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_webhooks_updated_at ON webhooks;
 CREATE TRIGGER trg_webhooks_updated_at
     BEFORE UPDATE ON webhooks
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── task_templates ──────────────────────────────────────────────────────
-CREATE TABLE task_templates (
+CREATE TABLE IF NOT EXISTS task_templates (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id      uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name            varchar(255) NOT NULL,
@@ -350,12 +373,13 @@ CREATE TABLE task_templates (
     updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_task_templates_updated_at ON task_templates;
 CREATE TRIGGER trg_task_templates_updated_at
     BEFORE UPDATE ON task_templates
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── comment_reactions ───────────────────────────────────────────────────
-CREATE TABLE comment_reactions (
+CREATE TABLE IF NOT EXISTS comment_reactions (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     comment_id  uuid NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -365,7 +389,7 @@ CREATE TABLE comment_reactions (
 );
 
 -- ── saved_views ─────────────────────────────────────────────────────────
-CREATE TABLE saved_views (
+CREATE TABLE IF NOT EXISTS saved_views (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -379,6 +403,7 @@ CREATE TABLE saved_views (
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_saved_views_updated_at ON saved_views;
 CREATE TRIGGER trg_saved_views_updated_at
     BEFORE UPDATE ON saved_views
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -391,7 +416,7 @@ CREATE TRIGGER trg_saved_views_updated_at
 -- HB-44 migration note (next deploy): rename email_verification_token to
 -- email_verification_token_hash and backfill with sha256(token) for any in-flight
 -- verification rows. Plaintext storage is a known gap until that migration lands.
-CREATE TABLE helpdesk_users (
+CREATE TABLE IF NOT EXISTS helpdesk_users (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email varchar(320) UNIQUE NOT NULL,
     display_name varchar(100) NOT NULL,
@@ -406,18 +431,19 @@ CREATE TABLE helpdesk_users (
 COMMENT ON TABLE helpdesk_users IS 'HB-5: Single global customer pool. No org_id column yet — customers are shared across all organizations. Tracked for future migration.';
 COMMENT ON COLUMN helpdesk_users.email_verification_token IS 'HB-44: Currently plaintext. Pending migration to email_verification_token_hash (sha256). Do not expose via API.';
 
+DROP TRIGGER IF EXISTS trg_helpdesk_users_updated_at ON helpdesk_users;
 CREATE TRIGGER trg_helpdesk_users_updated_at
     BEFORE UPDATE ON helpdesk_users
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TABLE helpdesk_sessions (
+CREATE TABLE IF NOT EXISTS helpdesk_sessions (
     id text PRIMARY KEY,
     user_id uuid NOT NULL REFERENCES helpdesk_users(id) ON DELETE CASCADE,
     expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE tickets (
+CREATE TABLE IF NOT EXISTS tickets (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     ticket_number serial UNIQUE,
     helpdesk_user_id uuid NOT NULL REFERENCES helpdesk_users(id) ON DELETE CASCADE,
@@ -434,11 +460,12 @@ CREATE TABLE tickets (
     closed_at timestamptz
 );
 
+DROP TRIGGER IF EXISTS trg_tickets_updated_at ON tickets;
 CREATE TRIGGER trg_tickets_updated_at
     BEFORE UPDATE ON tickets
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TABLE ticket_messages (
+CREATE TABLE IF NOT EXISTS ticket_messages (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     ticket_id uuid NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
     author_type varchar(20) NOT NULL,
@@ -449,7 +476,7 @@ CREATE TABLE ticket_messages (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE helpdesk_settings (
+CREATE TABLE IF NOT EXISTS helpdesk_settings (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
     require_email_verification boolean NOT NULL DEFAULT false,
@@ -466,68 +493,69 @@ CREATE TABLE helpdesk_settings (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_helpdesk_settings_updated_at ON helpdesk_settings;
 CREATE TRIGGER trg_helpdesk_settings_updated_at
     BEFORE UPDATE ON helpdesk_settings
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE INDEX idx_tickets_helpdesk_user ON tickets (helpdesk_user_id);
-CREATE INDEX idx_tickets_task_id ON tickets (task_id);
-CREATE INDEX idx_tickets_status ON tickets (status);
-CREATE INDEX idx_ticket_messages_ticket ON ticket_messages (ticket_id, created_at);
-CREATE INDEX idx_helpdesk_sessions_user ON helpdesk_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_helpdesk_user ON tickets (helpdesk_user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_task_id ON tickets (task_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status);
+CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_helpdesk_sessions_user ON helpdesk_sessions (user_id);
 
 -- =========================================================================
 -- Indexes
 -- =========================================================================
 
 -- tasks
-CREATE INDEX idx_tasks_board
+CREATE INDEX IF NOT EXISTS idx_tasks_board
     ON tasks (project_id, sprint_id, phase_id, position);
-CREATE UNIQUE INDEX idx_tasks_human_id
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_human_id
     ON tasks (project_id, human_id);
-CREATE INDEX idx_tasks_assignee_state
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee_state
     ON tasks (assignee_id, state_id);
-CREATE INDEX idx_tasks_due_date
+CREATE INDEX IF NOT EXISTS idx_tasks_due_date
     ON tasks (project_id, due_date);
-CREATE INDEX idx_tasks_labels
+CREATE INDEX IF NOT EXISTS idx_tasks_labels
     ON tasks USING GIN (labels);
-CREATE INDEX idx_tasks_fulltext
+CREATE INDEX IF NOT EXISTS idx_tasks_fulltext
     ON tasks USING GIN (to_tsvector('english', coalesce(description_plain, '')));
 
 -- activity_log
-CREATE INDEX idx_activity_project_time
+CREATE INDEX IF NOT EXISTS idx_activity_project_time
     ON activity_log (project_id, created_at);
-CREATE INDEX idx_activity_task_time
+CREATE INDEX IF NOT EXISTS idx_activity_task_time
     ON activity_log (task_id, created_at);
 
 -- notifications
-CREATE INDEX idx_notifications_user_unread
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
     ON notifications (user_id, is_read, created_at);
 
 -- time_entries
-CREATE INDEX idx_time_entries_task_id
+CREATE INDEX IF NOT EXISTS idx_time_entries_task_id
     ON time_entries (task_id);
-CREATE INDEX idx_time_entries_user_id
+CREATE INDEX IF NOT EXISTS idx_time_entries_user_id
     ON time_entries (user_id);
-CREATE INDEX idx_time_entries_user_date
+CREATE INDEX IF NOT EXISTS idx_time_entries_user_date
     ON time_entries (user_id, date);
 
 -- webhooks
-CREATE INDEX idx_webhooks_project_id
+CREATE INDEX IF NOT EXISTS idx_webhooks_project_id
     ON webhooks (project_id);
 
 -- task_templates
-CREATE INDEX idx_task_templates_project_id
+CREATE INDEX IF NOT EXISTS idx_task_templates_project_id
     ON task_templates (project_id);
 
 -- comment_reactions
-CREATE INDEX idx_comment_reactions_comment_id
+CREATE INDEX IF NOT EXISTS idx_comment_reactions_comment_id
     ON comment_reactions (comment_id);
 
 -- saved_views
-CREATE INDEX idx_saved_views_project_id
+CREATE INDEX IF NOT EXISTS idx_saved_views_project_id
     ON saved_views (project_id);
-CREATE INDEX idx_saved_views_user_id
+CREATE INDEX IF NOT EXISTS idx_saved_views_user_id
     ON saved_views (user_id);
 
 -- =========================================================================
@@ -535,7 +563,7 @@ CREATE INDEX idx_saved_views_user_id
 -- =========================================================================
 
 -- ── banter_channel_groups ───────────────────────────────────────────────
-CREATE TABLE banter_channel_groups (
+CREATE TABLE IF NOT EXISTS banter_channel_groups (
     id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id                uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name                  varchar(100) NOT NULL,
@@ -546,7 +574,7 @@ CREATE TABLE banter_channel_groups (
 );
 
 -- ── banter_channels ─────────────────────────────────────────────────────
-CREATE TABLE banter_channels (
+CREATE TABLE IF NOT EXISTS banter_channels (
     id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id                  uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name                    varchar(80) NOT NULL,
@@ -573,12 +601,13 @@ CREATE TABLE banter_channels (
     UNIQUE(org_id, slug)
 );
 
+DROP TRIGGER IF EXISTS trg_banter_channels_updated_at ON banter_channels;
 CREATE TRIGGER trg_banter_channels_updated_at
     BEFORE UPDATE ON banter_channels
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── banter_messages ─────────────────────────────────────────────────────
-CREATE TABLE banter_messages (
+CREATE TABLE IF NOT EXISTS banter_messages (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id        uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
     author_id         uuid NOT NULL REFERENCES users(id),
@@ -605,7 +634,7 @@ CREATE TABLE banter_messages (
 );
 
 -- ── banter_channel_memberships ──────────────────────────────────────────
-CREATE TABLE banter_channel_memberships (
+CREATE TABLE IF NOT EXISTS banter_channel_memberships (
     id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id            uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
     user_id               uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -620,7 +649,7 @@ CREATE TABLE banter_channel_memberships (
 );
 
 -- ── banter_message_attachments ──────────────────────────────────────────
-CREATE TABLE banter_message_attachments (
+CREATE TABLE IF NOT EXISTS banter_message_attachments (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     message_id        uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
     uploader_id       uuid NOT NULL REFERENCES users(id),
@@ -636,7 +665,7 @@ CREATE TABLE banter_message_attachments (
 );
 
 -- ── banter_message_reactions ────────────────────────────────────────────
-CREATE TABLE banter_message_reactions (
+CREATE TABLE IF NOT EXISTS banter_message_reactions (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     message_id  uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -646,7 +675,7 @@ CREATE TABLE banter_message_reactions (
 );
 
 -- ── banter_pins ─────────────────────────────────────────────────────────
-CREATE TABLE banter_pins (
+CREATE TABLE IF NOT EXISTS banter_pins (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id  uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
     message_id  uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
@@ -656,7 +685,7 @@ CREATE TABLE banter_pins (
 );
 
 -- ── banter_bookmarks ────────────────────────────────────────────────────
-CREATE TABLE banter_bookmarks (
+CREATE TABLE IF NOT EXISTS banter_bookmarks (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     message_id  uuid NOT NULL REFERENCES banter_messages(id) ON DELETE CASCADE,
@@ -666,7 +695,7 @@ CREATE TABLE banter_bookmarks (
 );
 
 -- ── banter_calls ────────────────────────────────────────────────────────
-CREATE TABLE banter_calls (
+CREATE TABLE IF NOT EXISTS banter_calls (
     id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id               uuid NOT NULL REFERENCES banter_channels(id) ON DELETE CASCADE,
     started_by               uuid NOT NULL REFERENCES users(id),
@@ -687,21 +716,25 @@ CREATE TABLE banter_calls (
 );
 
 -- One active huddle per channel
-CREATE UNIQUE INDEX idx_banter_calls_active_huddle
+CREATE UNIQUE INDEX IF NOT EXISTS idx_banter_calls_active_huddle
     ON banter_calls (channel_id) WHERE type = 'huddle' AND status = 'active';
 
 -- Add FK for active_huddle_id now that banter_calls exists
-ALTER TABLE banter_channels
-    ADD CONSTRAINT fk_banter_channels_active_huddle
-    FOREIGN KEY (active_huddle_id) REFERENCES banter_calls(id) ON DELETE SET NULL;
+DO $$ BEGIN
+    ALTER TABLE banter_channels
+        ADD CONSTRAINT fk_banter_channels_active_huddle
+        FOREIGN KEY (active_huddle_id) REFERENCES banter_calls(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Add FK for banter_messages.call_id
-ALTER TABLE banter_messages
-    ADD CONSTRAINT fk_banter_messages_call_id
-    FOREIGN KEY (call_id) REFERENCES banter_calls(id) ON DELETE SET NULL;
+DO $$ BEGIN
+    ALTER TABLE banter_messages
+        ADD CONSTRAINT fk_banter_messages_call_id
+        FOREIGN KEY (call_id) REFERENCES banter_calls(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ── banter_call_participants ────────────────────────────────────────────
-CREATE TABLE banter_call_participants (
+CREATE TABLE IF NOT EXISTS banter_call_participants (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     call_id             uuid NOT NULL REFERENCES banter_calls(id) ON DELETE CASCADE,
     user_id             uuid NOT NULL REFERENCES users(id),
@@ -718,7 +751,7 @@ CREATE TABLE banter_call_participants (
 );
 
 -- ── banter_call_transcripts ─────────────────────────────────────────────
-CREATE TABLE banter_call_transcripts (
+CREATE TABLE IF NOT EXISTS banter_call_transcripts (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     call_id     uuid NOT NULL REFERENCES banter_calls(id) ON DELETE CASCADE,
     speaker_id  uuid NOT NULL REFERENCES users(id),
@@ -730,7 +763,7 @@ CREATE TABLE banter_call_transcripts (
 );
 
 -- ── banter_user_groups ──────────────────────────────────────────────────
-CREATE TABLE banter_user_groups (
+CREATE TABLE IF NOT EXISTS banter_user_groups (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name        varchar(80) NOT NULL,
@@ -742,12 +775,13 @@ CREATE TABLE banter_user_groups (
     UNIQUE(org_id, handle)
 );
 
+DROP TRIGGER IF EXISTS trg_banter_user_groups_updated_at ON banter_user_groups;
 CREATE TRIGGER trg_banter_user_groups_updated_at
     BEFORE UPDATE ON banter_user_groups
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── banter_user_group_memberships ───────────────────────────────────────
-CREATE TABLE banter_user_group_memberships (
+CREATE TABLE IF NOT EXISTS banter_user_group_memberships (
     id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id  uuid NOT NULL REFERENCES banter_user_groups(id) ON DELETE CASCADE,
     user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -756,7 +790,7 @@ CREATE TABLE banter_user_group_memberships (
 );
 
 -- ── banter_user_preferences ─────────────────────────────────────────────
-CREATE TABLE banter_user_preferences (
+CREATE TABLE IF NOT EXISTS banter_user_preferences (
     id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id                     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
     default_notification_level  varchar(20) NOT NULL DEFAULT 'mentions',
@@ -772,12 +806,13 @@ CREATE TABLE banter_user_preferences (
     updated_at                  timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_banter_user_preferences_updated_at ON banter_user_preferences;
 CREATE TRIGGER trg_banter_user_preferences_updated_at
     BEFORE UPDATE ON banter_user_preferences
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ── banter_settings ─────────────────────────────────────────────────────
-CREATE TABLE banter_settings (
+CREATE TABLE IF NOT EXISTS banter_settings (
     id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id                      uuid NOT NULL REFERENCES organizations(id) UNIQUE,
     default_channel_id          uuid REFERENCES banter_channels(id) ON DELETE SET NULL,
@@ -813,80 +848,97 @@ CREATE TABLE banter_settings (
     updated_at                  timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_banter_settings_updated_at ON banter_settings;
 CREATE TRIGGER trg_banter_settings_updated_at
     BEFORE UPDATE ON banter_settings
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- banter_audit_log (append-only record of banter-side admin actions)
+CREATE TABLE IF NOT EXISTS banter_audit_log (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id          uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action          varchar(100) NOT NULL,
+    entity_type     varchar(50) NOT NULL,
+    entity_id       uuid,
+    details         jsonb,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_banter_audit_org_time  ON banter_audit_log (org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_banter_audit_user_time ON banter_audit_log (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_banter_audit_action    ON banter_audit_log (action);
 
 -- =========================================================================
 -- Banter Indexes
 -- =========================================================================
 
 -- banter_channels
-CREATE INDEX idx_banter_channels_org_type
+CREATE INDEX IF NOT EXISTS idx_banter_channels_org_type
     ON banter_channels (org_id, type, is_archived);
-CREATE INDEX idx_banter_channels_org_last_message
+CREATE INDEX IF NOT EXISTS idx_banter_channels_org_last_message
     ON banter_channels (org_id, last_message_at DESC);
 
 -- banter_channel_memberships
-CREATE INDEX idx_banter_channel_memberships_user
+CREATE INDEX IF NOT EXISTS idx_banter_channel_memberships_user
     ON banter_channel_memberships (user_id);
-CREATE INDEX idx_banter_channel_memberships_channel
+CREATE INDEX IF NOT EXISTS idx_banter_channel_memberships_channel
     ON banter_channel_memberships (channel_id);
 
 -- banter_messages
-CREATE INDEX idx_banter_messages_channel_created
+CREATE INDEX IF NOT EXISTS idx_banter_messages_channel_created
     ON banter_messages (channel_id, created_at);
-CREATE INDEX idx_banter_messages_channel_thread
+CREATE INDEX IF NOT EXISTS idx_banter_messages_channel_thread
     ON banter_messages (channel_id, thread_parent_id, created_at);
-CREATE INDEX idx_banter_messages_author
+CREATE INDEX IF NOT EXISTS idx_banter_messages_author
     ON banter_messages (author_id, created_at);
-CREATE INDEX idx_banter_messages_channel_id
+CREATE INDEX IF NOT EXISTS idx_banter_messages_channel_id
     ON banter_messages (channel_id, id);
 
 -- banter_message_attachments
-CREATE INDEX idx_banter_message_attachments_message
+CREATE INDEX IF NOT EXISTS idx_banter_message_attachments_message
     ON banter_message_attachments (message_id);
 
 -- banter_message_reactions
-CREATE INDEX idx_banter_message_reactions_message
+CREATE INDEX IF NOT EXISTS idx_banter_message_reactions_message
     ON banter_message_reactions (message_id);
 
 -- banter_pins
-CREATE INDEX idx_banter_pins_channel
+CREATE INDEX IF NOT EXISTS idx_banter_pins_channel
     ON banter_pins (channel_id);
 
 -- banter_bookmarks
-CREATE INDEX idx_banter_bookmarks_user
+CREATE INDEX IF NOT EXISTS idx_banter_bookmarks_user
     ON banter_bookmarks (user_id);
 
 -- banter_calls
-CREATE INDEX idx_banter_calls_channel_status
+CREATE INDEX IF NOT EXISTS idx_banter_calls_channel_status
     ON banter_calls (channel_id, status);
-CREATE INDEX idx_banter_calls_channel_started
+CREATE INDEX IF NOT EXISTS idx_banter_calls_channel_started
     ON banter_calls (channel_id, started_at DESC);
-CREATE INDEX idx_banter_calls_started_by
+CREATE INDEX IF NOT EXISTS idx_banter_calls_started_by
     ON banter_calls (started_by, started_at DESC);
 
 -- banter_call_participants
-CREATE INDEX idx_banter_call_participants_call
+CREATE INDEX IF NOT EXISTS idx_banter_call_participants_call
     ON banter_call_participants (call_id, left_at NULLS FIRST);
 
 -- banter_call_transcripts
-CREATE INDEX idx_banter_call_transcripts_call
+CREATE INDEX IF NOT EXISTS idx_banter_call_transcripts_call
     ON banter_call_transcripts (call_id, started_at);
 
 -- banter_user_groups
-CREATE INDEX idx_banter_user_groups_org
+CREATE INDEX IF NOT EXISTS idx_banter_user_groups_org
     ON banter_user_groups (org_id);
 
 -- banter_user_group_memberships
-CREATE INDEX idx_banter_user_group_memberships_group
+CREATE INDEX IF NOT EXISTS idx_banter_user_group_memberships_group
     ON banter_user_group_memberships (group_id);
-CREATE INDEX idx_banter_user_group_memberships_user
+CREATE INDEX IF NOT EXISTS idx_banter_user_group_memberships_user
     ON banter_user_group_memberships (user_id);
 
 -- ── SuperUser Audit Log ─────────────────────────────────────────────
-CREATE TABLE superuser_audit_log (
+CREATE TABLE IF NOT EXISTS superuser_audit_log (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     superuser_id    uuid NOT NULL REFERENCES users(id) ON DELETE SET NULL,
     action          varchar(100) NOT NULL,
@@ -897,12 +949,12 @@ CREATE TABLE superuser_audit_log (
     created_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_su_audit_superuser ON superuser_audit_log (superuser_id);
-CREATE INDEX idx_su_audit_action ON superuser_audit_log (action);
-CREATE INDEX idx_su_audit_created_at ON superuser_audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_su_audit_superuser ON superuser_audit_log (superuser_id);
+CREATE INDEX IF NOT EXISTS idx_su_audit_action ON superuser_audit_log (action);
+CREATE INDEX IF NOT EXISTS idx_su_audit_created_at ON superuser_audit_log (created_at DESC);
 
 -- ── Impersonation Sessions ──────────────────────────────────────────
-CREATE TABLE impersonation_sessions (
+CREATE TABLE IF NOT EXISTS impersonation_sessions (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     superuser_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     target_user_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -911,12 +963,12 @@ CREATE TABLE impersonation_sessions (
     ended_at        timestamptz
 );
 
-CREATE INDEX idx_imp_sessions_superuser ON impersonation_sessions (superuser_id);
-CREATE INDEX idx_imp_sessions_target ON impersonation_sessions (target_user_id);
-CREATE INDEX idx_imp_sessions_active ON impersonation_sessions (superuser_id, target_user_id, ended_at);
+CREATE INDEX IF NOT EXISTS idx_imp_sessions_superuser ON impersonation_sessions (superuser_id);
+CREATE INDEX IF NOT EXISTS idx_imp_sessions_target ON impersonation_sessions (target_user_id);
+CREATE INDEX IF NOT EXISTS idx_imp_sessions_active ON impersonation_sessions (superuser_id, target_user_id, ended_at);
 
 -- ── Guest Invitations ──────────────────────────────────────────────
-CREATE TABLE guest_invitations (
+CREATE TABLE IF NOT EXISTS guest_invitations (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id          uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     invited_by      uuid NOT NULL REFERENCES users(id) ON DELETE SET NULL,
@@ -930,9 +982,9 @@ CREATE TABLE guest_invitations (
     created_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_guest_invitations_org ON guest_invitations (org_id);
-CREATE INDEX idx_guest_invitations_email ON guest_invitations (email);
-CREATE INDEX idx_guest_invitations_token ON guest_invitations (token);
+CREATE INDEX IF NOT EXISTS idx_guest_invitations_org ON guest_invitations (org_id);
+CREATE INDEX IF NOT EXISTS idx_guest_invitations_email ON guest_invitations (email);
+CREATE INDEX IF NOT EXISTS idx_guest_invitations_token ON guest_invitations (token);
 
 -- ── Organization Memberships (multi-org support) ─────────────────────
 -- Supports many-to-many relationship between users and organizations.
@@ -940,7 +992,7 @@ CREATE INDEX idx_guest_invitations_token ON guest_invitations (token);
 -- compatibility. The migrate-org-memberships.js script backfills this
 -- table from the existing users.org_id/role columns. Once all code reads
 -- from organization_memberships, the users.org_id column can be dropped.
-CREATE TABLE organization_memberships (
+CREATE TABLE IF NOT EXISTS organization_memberships (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -952,10 +1004,10 @@ CREATE TABLE organization_memberships (
     CONSTRAINT org_memberships_role_check CHECK (role IN ('owner', 'admin', 'member', 'viewer', 'guest'))
 );
 
-CREATE INDEX idx_org_memberships_user_id ON organization_memberships (user_id);
-CREATE INDEX idx_org_memberships_org_id ON organization_memberships (org_id);
-CREATE INDEX org_memberships_user_default_idx ON organization_memberships (user_id, is_default);
+CREATE INDEX IF NOT EXISTS idx_org_memberships_user_id ON organization_memberships (user_id);
+CREATE INDEX IF NOT EXISTS idx_org_memberships_org_id ON organization_memberships (org_id);
+CREATE INDEX IF NOT EXISTS org_memberships_user_default_idx ON organization_memberships (user_id, is_default);
 -- Enforce at most one default membership per user.
-CREATE UNIQUE INDEX org_memberships_user_default_unique
+CREATE UNIQUE INDEX IF NOT EXISTS org_memberships_user_default_unique
     ON organization_memberships (user_id)
     WHERE is_default = true;
