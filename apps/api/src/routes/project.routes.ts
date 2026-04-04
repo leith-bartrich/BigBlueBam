@@ -58,6 +58,23 @@ export default async function projectRoutes(fastify: FastifyInstance) {
         });
       }
 
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Project not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       return reply.send({ data: project });
     },
   );
@@ -139,6 +156,23 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     '/projects/:id/members',
     { preHandler: [requireAuth] },
     async (request, reply) => {
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Project not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       const members = await projectService.getProjectMembers(request.params.id);
       return reply.send({ data: members });
     },
