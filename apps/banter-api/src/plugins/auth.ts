@@ -3,7 +3,13 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq } from 'drizzle-orm';
 import argon2 from 'argon2';
 import { db } from '../db/index.js';
-import { sessions, users, apiKeys } from '../db/schema/index.js';
+import { sessions, users, apiKeys, organizationMemberships } from '../db/schema/index.js';
+
+export interface OrgMembership {
+  org_id: string;
+  role: string;
+  is_default: boolean;
+}
 
 export interface AuthUser {
   id: string;
@@ -16,15 +22,135 @@ export interface AuthUser {
   is_active: boolean;
   is_superuser: boolean;
   api_key_scope: string | null;
+  org_memberships: OrgMembership[];
+  active_org_id: string;
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
     user: AuthUser | null;
     sessionId: string | null;
-    impersonator: AuthUser | null;  // the SuperUser doing the impersonating
+    impersonator: AuthUser | null;
     isImpersonating: boolean;
   }
+}
+
+interface BaseUserRow {
+  id: string;
+  org_id: string;
+  email: string;
+  display_name: string;
+  avatar_url: string | null;
+  role: string;
+  timezone: string;
+  is_active: boolean;
+  is_superuser: boolean;
+}
+
+/**
+ * Resolves the active organization context for a user.
+ *
+ * Precedence:
+ *   1. X-Org-Id request header (if user is a member of that org)
+ *   2. The user's default membership (is_default=true)
+ *   3. The user's first membership (by joined_at)
+ *   4. Fallback to users.org_id if no memberships exist yet (pre-migration)
+ */
+async function resolveOrgContext(
+  userId: string,
+  fallbackOrgId: string,
+  fallbackRole: string,
+  requestedOrgId: string | undefined,
+): Promise<{ memberships: OrgMembership[]; activeOrgId: string; activeRole: string }> {
+  const rows = await db
+    .select({
+      org_id: organizationMemberships.org_id,
+      role: organizationMemberships.role,
+      is_default: organizationMemberships.is_default,
+      joined_at: organizationMemberships.joined_at,
+    })
+    .from(organizationMemberships)
+    .where(eq(organizationMemberships.user_id, userId));
+
+  if (rows.length === 0) {
+    return {
+      memberships: [
+        { org_id: fallbackOrgId, role: fallbackRole, is_default: true },
+      ],
+      activeOrgId: fallbackOrgId,
+      activeRole: fallbackRole,
+    };
+  }
+
+  rows.sort((a, b) => new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime());
+
+  const memberships: OrgMembership[] = rows.map((r) => ({
+    org_id: r.org_id,
+    role: r.role,
+    is_default: r.is_default,
+  }));
+
+  let active: OrgMembership | undefined;
+  if (requestedOrgId) {
+    active = memberships.find((m) => m.org_id === requestedOrgId);
+  }
+  if (!active) {
+    active = memberships.find((m) => m.is_default);
+  }
+  if (!active) {
+    active = memberships[0];
+  }
+
+  return {
+    memberships,
+    activeOrgId: active!.org_id,
+    activeRole: active!.role,
+  };
+}
+
+function getRequestedOrgId(request: FastifyRequest): string | undefined {
+  const header = request.headers['x-org-id'];
+  if (typeof header === 'string' && header.length > 0) return header;
+  if (Array.isArray(header) && header.length > 0) return header[0];
+  return undefined;
+}
+
+async function buildAuthUser(
+  row: BaseUserRow,
+  apiKeyScope: string | null,
+  request: FastifyRequest,
+): Promise<AuthUser> {
+  const requestedOrgId = getRequestedOrgId(request);
+  const { memberships, activeOrgId, activeRole } = await resolveOrgContext(
+    row.id,
+    row.org_id,
+    row.role,
+    requestedOrgId,
+  );
+
+  return {
+    id: row.id,
+    org_id: activeOrgId,
+    email: row.email,
+    display_name: row.display_name,
+    avatar_url: row.avatar_url,
+    role: activeRole,
+    timezone: row.timezone,
+    is_active: row.is_active,
+    is_superuser: row.is_superuser,
+    api_key_scope: apiKeyScope,
+    org_memberships: memberships,
+    active_org_id: activeOrgId,
+  };
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getImpersonateHeader(request: FastifyRequest): string | undefined {
+  const header = request.headers['x-impersonate-user'];
+  if (typeof header === 'string' && header.length > 0) return header;
+  if (Array.isArray(header) && header.length > 0) return header[0];
+  return undefined;
 }
 
 async function authPlugin(fastify: FastifyInstance) {
@@ -59,7 +185,7 @@ async function authPlugin(fastify: FastifyInstance) {
 
       const row = result[0];
       if (row && new Date(row.session.expires_at) > new Date() && row.user.is_active) {
-        request.user = { ...row.user, api_key_scope: null };
+        request.user = await buildAuthUser(row.user, null, request);
         request.sessionId = sessionId;
         return;
       }
@@ -97,7 +223,7 @@ async function authPlugin(fastify: FastifyInstance) {
         }
         const valid = await argon2.verify(candidate.apiKey.key_hash, token);
         if (valid && candidate.user.is_active) {
-          request.user = { ...candidate.user, api_key_scope: candidate.apiKey.scope };
+          request.user = await buildAuthUser(candidate.user, candidate.apiKey.scope, request);
           // Update last_used_at
           await db
             .update(apiKeys)
@@ -109,41 +235,45 @@ async function authPlugin(fastify: FastifyInstance) {
     }
   });
 
-  // Impersonation hook: runs after auth resolution, allows SuperUsers to act as another user
+  // Impersonation hook: runs AFTER main auth, only SuperUsers can impersonate
   fastify.addHook('preHandler', async (request: FastifyRequest) => {
-    if (request.user && request.user.is_superuser) {
-      const impersonateUserId = request.headers['x-impersonate-user'] as string | undefined;
-      if (impersonateUserId) {
-        const [targetUser] = await db
-          .select({
-            id: users.id,
-            org_id: users.org_id,
-            email: users.email,
-            display_name: users.display_name,
-            avatar_url: users.avatar_url,
-            role: users.role,
-            timezone: users.timezone,
-            is_active: users.is_active,
-            is_superuser: users.is_superuser,
-          })
-          .from(users)
-          .where(eq(users.id, impersonateUserId))
-          .limit(1);
+    const impersonateHeader = getImpersonateHeader(request);
+    if (!impersonateHeader) return;
+    if (!request.user || request.user.is_superuser !== true) return;
+    if (typeof impersonateHeader !== 'string' || impersonateHeader.length !== 36) return;
+    if (!UUID_REGEX.test(impersonateHeader)) return;
+    if (impersonateHeader === request.user.id) return;
 
-        if (targetUser && targetUser.is_active) {
-          request.impersonator = request.user;
-          request.user = { ...targetUser, api_key_scope: null };
-          request.isImpersonating = true;
-        }
-      }
-    }
+    const result = await db
+      .select({
+        id: users.id,
+        org_id: users.org_id,
+        email: users.email,
+        display_name: users.display_name,
+        avatar_url: users.avatar_url,
+        role: users.role,
+        timezone: users.timezone,
+        is_active: users.is_active,
+        is_superuser: users.is_superuser,
+      })
+      .from(users)
+      .where(eq(users.id, impersonateHeader))
+      .limit(1);
+
+    const target = result[0];
+    if (!target) return;
+    if (!target.is_active) return;
+    if (target.is_superuser) return;
+
+    request.impersonator = request.user;
+    request.user = await buildAuthUser(target, null, request);
+    request.isImpersonating = true;
   });
 
-  // Add response headers when impersonating
-  fastify.addHook('onSend', async (request, reply) => {
-    if (request.isImpersonating) {
-      reply.header('X-Impersonating', request.user!.id);
-      reply.header('X-Impersonator', request.impersonator!.id);
+  fastify.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.isImpersonating && request.impersonator) {
+      reply.header('X-Impersonating', 'true');
+      reply.header('X-Impersonator', request.impersonator.id);
     }
   });
 }

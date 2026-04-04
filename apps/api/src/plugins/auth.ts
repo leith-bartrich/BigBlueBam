@@ -150,6 +150,15 @@ async function buildAuthUser(
   };
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getImpersonateHeader(request: FastifyRequest): string | undefined {
+  const header = request.headers['x-impersonate-user'];
+  if (typeof header === 'string' && header.length > 0) return header;
+  if (Array.isArray(header) && header.length > 0) return header[0];
+  return undefined;
+}
+
 async function authPlugin(fastify: FastifyInstance) {
   fastify.decorateRequest('user', null);
   fastify.decorateRequest('sessionId', null);
@@ -229,6 +238,51 @@ async function authPlugin(fastify: FastifyInstance) {
           return;
         }
       }
+    }
+  });
+
+  // Impersonation hook: runs AFTER main auth, only SuperUsers can impersonate
+  fastify.addHook('preHandler', async (request: FastifyRequest) => {
+    const impersonateHeader = getImpersonateHeader(request);
+    if (!impersonateHeader) return;
+    // Silently ignore if not a superuser
+    if (!request.user || request.user.is_superuser !== true) return;
+    // Validate UUID shape
+    if (typeof impersonateHeader !== 'string' || impersonateHeader.length !== 36) return;
+    if (!UUID_REGEX.test(impersonateHeader)) return;
+    // No-op on self-impersonation
+    if (impersonateHeader === request.user.id) return;
+
+    const result = await db
+      .select({
+        id: users.id,
+        org_id: users.org_id,
+        email: users.email,
+        display_name: users.display_name,
+        avatar_url: users.avatar_url,
+        role: users.role,
+        timezone: users.timezone,
+        is_active: users.is_active,
+        is_superuser: users.is_superuser,
+      })
+      .from(users)
+      .where(eq(users.id, impersonateHeader))
+      .limit(1);
+
+    const target = result[0];
+    if (!target) return;
+    if (!target.is_active) return;
+    if (target.is_superuser) return; // prevent SU impersonation chaining
+
+    request.impersonator = request.user;
+    request.user = await buildAuthUser(target, null, request);
+    request.isImpersonating = true;
+  });
+
+  fastify.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.isImpersonating && request.impersonator) {
+      reply.header('X-Impersonating', 'true');
+      reply.header('X-Impersonator', request.impersonator.id);
     }
   });
 }
