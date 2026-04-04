@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTicket, usePostMessage, useReopenTicket } from '@/hooks/use-tickets';
 import { useRealtimeTicket } from '@/hooks/use-realtime-ticket';
+import { useTicketMessages } from '@/hooks/use-ticket-messages';
+import { useSendTyping } from '@/hooks/use-typing';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/common/button';
 import { StatusBadge, PriorityBadge } from '@/components/common/badge';
 import { RichTextEditor } from '@/components/common/rich-text-editor';
+import { LoadOlderMessages } from '@/components/load-older-messages';
+import { TypingIndicator } from '@/components/typing-indicator';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { api } from '@/lib/api';
@@ -22,6 +26,8 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
   const postMessage = usePostMessage(ticketId);
   const reopenTicket = useReopenTicket(ticketId);
   const { user } = useAuthStore();
+  const { visibleMessages, hasMore, loadMore, totalMessages } = useTicketMessages(ticketId);
+  const { sendTyping } = useSendTyping(ticketId);
 
   const [replyText, setReplyText] = useState('');
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
@@ -85,7 +91,7 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ticket?.messages]);
+  }, [visibleMessages]);
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,7 +197,7 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
 
   const timeline: TimelineItem[] = [];
 
-  for (const msg of ticket.messages) {
+  for (const msg of visibleMessages) {
     timeline.push({ kind: 'message', data: msg });
   }
 
@@ -356,6 +362,13 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
       {/* Message timeline */}
       <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
         <div className="p-4 space-y-4 min-h-[200px] max-h-[600px] overflow-y-auto">
+          {hasMore && (
+            <LoadOlderMessages
+              hasMore={hasMore}
+              remaining={totalMessages - visibleMessages.length}
+              onClick={loadMore}
+            />
+          )}
           {timeline.length === 0 && (
             <p className="text-center text-sm text-zinc-400 py-8">No messages yet.</p>
           )}
@@ -421,10 +434,14 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
         {/* Reply box */}
         {!isClosedOrResolved && (
           <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
+            <TypingIndicator ticketId={ticketId} />
             <form onSubmit={handleSendReply} className="space-y-3">
               <RichTextEditor
                 value={replyText}
-                onChange={setReplyText}
+                onChange={(v) => {
+                  setReplyText(v);
+                  sendTyping();
+                }}
                 placeholder="Type your reply..."
                 minRows={2}
                 onImageUpload={async (file) => {

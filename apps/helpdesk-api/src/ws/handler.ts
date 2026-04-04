@@ -11,11 +11,16 @@ import { env } from '../env.js';
 interface ConnectedClient {
   ws: WebSocket;
   userId: string;
+  userName: string;
   rooms: Set<string>;
   pingInterval?: NodeJS.Timeout;
+  /** Last time this client emitted typing.start per ticket (ms epoch) — server-side throttle. */
+  lastTypingAt: Map<string, number>;
 }
 
 const clients = new Map<WebSocket, ConnectedClient>();
+
+const TYPING_THROTTLE_MS = 2000;
 
 function broadcastToRoom(room: string, message: string, excludeWs?: WebSocket) {
   for (const [ws, client] of clients) {
@@ -94,6 +99,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     }
 
     const userId = row.user.id;
+    const userName = row.user.display_name;
 
     // Auto-subscribe to personal user room
     const defaultRooms = new Set([`helpdesk:user:${userId}`]);
@@ -101,7 +107,9 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     const client: ConnectedClient = {
       ws: socket,
       userId,
+      userName,
       rooms: defaultRooms,
+      lastTypingAt: new Map(),
     };
     clients.set(socket, client);
 
@@ -181,6 +189,45 @@ export default async function websocketHandler(fastify: FastifyInstance) {
                 }),
               );
             }
+            break;
+          }
+          case 'typing.start':
+          case 'typing.stop': {
+            const ticketId = (msg.ticketId ?? msg.ticket_id) as string | undefined;
+            if (!ticketId) break;
+
+            // Verify access: customers can only signal typing on tickets they own.
+            const ticketRows = await db
+              .select({ helpdesk_user_id: tickets.helpdesk_user_id })
+              .from(tickets)
+              .where(eq(tickets.id, ticketId))
+              .limit(1);
+            const ticket = ticketRows[0];
+            if (!ticket || ticket.helpdesk_user_id !== userId) break;
+
+            // Server-side throttle (only applies to typing.start; stop is always forwarded).
+            if (msg.type === 'typing.start') {
+              const last = client.lastTypingAt.get(ticketId) ?? 0;
+              const now = Date.now();
+              if (now - last < TYPING_THROTTLE_MS) break;
+              client.lastTypingAt.set(ticketId, now);
+            } else {
+              // Reset throttle on explicit stop so the next start is emitted immediately.
+              client.lastTypingAt.delete(ticketId);
+            }
+
+            const room = `ticket:${ticketId}`;
+            const payload = JSON.stringify({
+              type: msg.type,
+              payload: {
+                ticket_id: ticketId,
+                user_id: userId,
+                display_name: userName,
+              },
+              room,
+              timestamp: new Date().toISOString(),
+            });
+            broadcastToRoom(room, payload, socket);
             break;
           }
           case 'unsubscribe': {
