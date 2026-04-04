@@ -1,4 +1,12 @@
-/** Default org permission settings. Applied when a setting is not explicitly configured. */
+/** Default org permission settings. Applied when a setting is not explicitly configured.
+ *
+ * TODO (P2-1 unification): These permissions are ALSO partially duplicated in
+ * banter_settings (apps/banter-api/src/db/schema/settings.ts) as flat columns
+ * like `allow_channel_creation`, `allow_group_dm`, `max_file_size_mb`. That
+ * divergence is mapped by apps/banter-api/src/services/org-permissions-bridge.ts
+ * (see its doc comment for the full field mapping). The long-term plan is to
+ * consolidate onto organizations.settings.permissions with a namespaced
+ * `banter.*` sub-object, then drop the redundant banter_settings columns. */
 export const DEFAULT_ORG_PERMISSIONS = {
   // Project permissions
   members_can_create_projects: true,

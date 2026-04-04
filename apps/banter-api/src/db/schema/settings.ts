@@ -11,6 +11,22 @@ import {
 import { organizations } from './bbb-refs.js';
 import { banterChannels } from './channels.js';
 
+/**
+ * banter_settings — per-org banter (chat) configuration.
+ *
+ * TODO (P2-1 unification): Several fields here overlap with the OrgPermissions
+ * object stored in organizations.settings.permissions (see
+ * apps/api/src/services/org-permissions.ts — DEFAULT_ORG_PERMISSIONS). Notably:
+ *   - allow_channel_creation  ↔  members_can_create_channels /
+ *                                members_can_create_private_channels
+ *   - allow_group_dm          ↔  members_can_create_group_dms
+ *   - max_file_size_mb        ↔  max_file_upload_mb
+ *
+ * Reads of these overlapping fields should go through
+ * apps/banter-api/src/services/org-permissions-bridge.ts
+ * (getEffectiveBanterPermissions) so there is a single normalized code path.
+ * See that file's doc comment for the full mapping and the unification plan.
+ */
 export const banterSettings = pgTable('banter_settings', {
   id: uuid('id').primaryKey().defaultRandom(),
   org_id: uuid('org_id')

@@ -6,6 +6,7 @@ import { banterSettings, banterChannelGroups } from '../db/schema/index.js';
 import { requireAuth, requireRole, requireScope } from '../plugins/auth.js';
 import { broadcastToOrg } from '../services/realtime.js';
 import { logAudit } from '../services/audit.js';
+import { invalidateBanterSettingsCache } from '../services/settings-cache.js';
 
 // ── Schemas ──────────────────────────────────────────────────────
 
@@ -119,6 +120,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .where(eq(banterSettings.org_id, user.org_id))
           .returning();
       }
+
+      // Invalidate the in-memory settings cache so subsequent permission
+      // reads on this instance see the update immediately (other instances
+      // wait out their 30s TTL — acceptable for low-churn settings).
+      invalidateBanterSettingsCache(user.org_id);
 
       broadcastToOrg(user.org_id, {
         type: 'settings.updated',

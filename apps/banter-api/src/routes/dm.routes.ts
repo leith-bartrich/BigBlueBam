@@ -5,10 +5,10 @@ import { db } from '../db/index.js';
 import {
   banterChannels,
   banterChannelMemberships,
-  banterSettings,
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
 
 const createDmSchema = z.object({
   user_id: z.string().uuid(),
@@ -147,15 +147,10 @@ export default async function dmRoutes(fastify: FastifyInstance) {
       // Admins/owners/superusers always allowed.
       const isPrivileged = user.role === 'admin' || user.role === 'owner' || user.is_superuser;
       if (!isPrivileged) {
-        const [settings] = await db
-          .select({ allow_group_dm: banterSettings.allow_group_dm })
-          .from(banterSettings)
-          .where(eq(banterSettings.org_id, user.org_id))
-          .limit(1);
-
-        // Default: allowed unless the org explicitly disables group DMs.
-        const allowed = settings?.allow_group_dm ?? true;
-        if (!allowed) {
+        // Cached + normalized via the bridge. See
+        // services/org-permissions-bridge.ts for the full mapping.
+        const perms = await getEffectiveBanterPermissions(user.org_id);
+        if (!perms.members_can_create_group_dms) {
           return reply.status(403).send({
             error: {
               code: 'FORBIDDEN',

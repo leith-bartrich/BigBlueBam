@@ -2,12 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import * as Minio from 'minio';
-import { db } from '../db/index.js';
-import { banterSettings } from '../db/schema/index.js';
 import { env } from '../env.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { getBanterSettingsCached } from '../services/settings-cache.js';
 
 const DEFAULT_MAX_FILE_SIZE_MB = 25;
 // Absolute cap: the multipart plugin needs a static ceiling. Org-specific
@@ -15,11 +13,7 @@ const DEFAULT_MAX_FILE_SIZE_MB = 25;
 const ABSOLUTE_MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB hard ceiling
 
 async function getOrgMaxFileSizeBytes(orgId: string): Promise<number> {
-  const [settings] = await db
-    .select({ max_file_size_mb: banterSettings.max_file_size_mb })
-    .from(banterSettings)
-    .where(eq(banterSettings.org_id, orgId))
-    .limit(1);
+  const settings = await getBanterSettingsCached(orgId);
   const mb = settings?.max_file_size_mb ?? DEFAULT_MAX_FILE_SIZE_MB;
   return mb * 1024 * 1024;
 }
