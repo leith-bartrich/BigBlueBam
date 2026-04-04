@@ -388,12 +388,31 @@ Every API request follows this evaluation sequence:
 - [x] `GET /auth/orgs` and `POST /auth/switch-org` endpoints for org switching
 - [ ] Frontend org switcher UI (deferred — backend ready)
 
-### Phase 4: Fine-Grained Permissions — IN PROGRESS
+### Phase 4: Fine-Grained Permissions — MOSTLY COMPLETE
 - [x] Org permission settings service (`getOrgPermissions`, `checkOrgPermission`)
-- [x] Permission toggles: `members_can_create_projects`, `members_can_create_channels`, `members_can_create_api_keys`, etc.
-- [x] Enforcement in project, channel, and api-key creation routes
-- [x] SuperUser impersonation support (X-Impersonate-User header, audit logged)
-- [ ] Admin UI for editing permission toggles (some added to settings page)
+- [x] All 9 permission toggles enforced: `members_can_create_projects`, `members_can_delete_own_projects`, `members_can_create_channels`, `members_can_create_private_channels`, `members_can_create_group_dms`, `members_can_invite_members`, `members_can_create_api_keys`, `max_file_upload_mb`, `allowed_api_key_scopes`
+- [x] Type coercion bug fixed (string "false" no longer treated as truthy)
+- [x] 30-second in-memory cache with invalidation on updates
+- [x] SuperUser impersonation with X-Impersonate-User header, time-limited sessions (30min), active sessions dashboard, target notifications, impersonator_id on activity_log
+- [x] Guest role security: rate-limited token acceptance, atomic TOCTOU-free claim, email verification, duplicate prevention, scope update notifications
+- [x] DM target validation (same-org + is_active)
+- [x] Session rotation on org switch
+- [x] Archived channels hidden from members
+- [x] Last-owner protection on channel ownership demotion
+- [x] DoS protection on API key verification
+- [x] Transactional role updates with row-level locks
+- [ ] Admin UI for editing permission toggles (backend ready; some UI in place)
 - [ ] Per-project permission overrides
 - [ ] Field-level permissions for sensitive data
+
+### Phase 5: Security Hardening — COMPLETE (from 82-finding audit)
+- [x] 10 GET endpoints fixed: cross-resource UUID enumeration data leakage closed (tasks, projects, project members, messages, threads, reactions, pins, call history, call transcripts, private channel search)
+- [x] API key privilege escalation blocked (scope hierarchy check + org policy enforcement)
+- [x] All race conditions addressed (guest accept TOCTOU, #general auto-create, org owner demotion, channel ownership, member count desync)
+- [x] SuperUser bypasses added to all middlewares and inline checks
+- [x] Fail-closed X-Org-Id validation (UUID regex + membership enforcement)
+- [x] Clock skew tolerance on session expiry
+- [x] WebSocket auth unified with buildAuthUser()
+- [x] CHECK constraints on all role columns
+- [x] Partial unique index on (user_id, is_default)
 - [ ] Permission templates / presets
