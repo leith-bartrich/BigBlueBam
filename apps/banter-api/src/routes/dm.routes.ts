@@ -38,6 +38,24 @@ export default async function dmRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // P2-9: Validate target exists, is active, and belongs to the same org.
+      const [targetUser] = await db
+        .select({ id: users.id, is_active: users.is_active, org_id: users.org_id })
+        .from(users)
+        .where(eq(users.id, body.user_id))
+        .limit(1);
+
+      if (!targetUser || !targetUser.is_active || targetUser.org_id !== user.org_id) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'Invalid DM target',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
       // Check if DM already exists between these two users
       const existingDms = await db
         .select({ channel_id: banterChannelMemberships.channel_id })
@@ -160,6 +178,26 @@ export default async function dmRoutes(fastify: FastifyInstance) {
             request_id: request.id,
           },
         });
+      }
+
+      // P2-9: Validate all targets exist, are active, and belong to the same org.
+      const targets = await db
+        .select({ id: users.id, is_active: users.is_active, org_id: users.org_id })
+        .from(users)
+        .where(inArray(users.id, body.user_ids));
+
+      for (const userId of body.user_ids) {
+        const target = targets.find((t) => t.id === userId);
+        if (!target || !target.is_active || target.org_id !== user.org_id) {
+          return reply.status(400).send({
+            error: {
+              code: 'BAD_REQUEST',
+              message: 'Invalid DM target',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       // Get display names for channel name

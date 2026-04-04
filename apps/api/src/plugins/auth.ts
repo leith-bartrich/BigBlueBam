@@ -187,6 +187,11 @@ async function authPlugin(fastify: FastifyInstance) {
   fastify.decorateRequest('impersonator', null);
   fastify.decorateRequest('isImpersonating', false);
 
+  // P1-19: is_active is checked at this auth preHandler on every request
+  // (the JOIN fetches users.is_active fresh each time). Long-running handlers
+  // may continue with stale is_active=true if a user is deactivated after
+  // this check passes. For typical request durations (<100ms) the window is
+  // negligible; we accept this trade-off rather than re-querying mid-handler.
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
     // Try session cookie first
