@@ -98,6 +98,10 @@ export interface User {
   notification_prefs: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  org_id?: string;
+  active_org_id?: string;
+  is_superuser?: boolean;
+  role?: string;
 }
 
 export interface Project {

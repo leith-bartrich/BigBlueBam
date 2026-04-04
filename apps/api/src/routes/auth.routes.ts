@@ -33,6 +33,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
           display_name: result.user.display_name,
           role: result.user.role,
           org_id: result.user.org_id,
+          is_superuser: result.user.is_superuser,
+          active_org_id: result.user.org_id,
         },
         organization: {
           id: result.org.id,
@@ -59,6 +61,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
             display_name: result.user.display_name,
             role: result.user.role,
             org_id: result.user.org_id,
+            is_superuser: result.user.is_superuser,
+            active_org_id: result.user.org_id,
           },
         },
       });
@@ -108,6 +112,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
         avatar_url: user.avatar_url,
         role: user.role,
         org_id: user.org_id,
+        active_org_id: request.user!.active_org_id,
+        is_superuser: user.is_superuser,
         timezone: user.timezone,
         notification_prefs: user.notification_prefs,
         created_at: user.created_at.toISOString(),

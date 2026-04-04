@@ -9,6 +9,7 @@ import { MyWorkPage } from '@/pages/my-work';
 import { ProjectDashboardPage } from '@/pages/project-dashboard';
 import { AuditLogPage } from '@/pages/audit-log';
 import { SprintReportPage } from '@/pages/sprint-report';
+import { SuperuserPage } from '@/pages/superuser';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -20,7 +21,8 @@ type Route =
   | { page: 'audit-log'; projectId: string }
   | { page: 'sprint-report'; projectId: string; sprintId: string }
   | { page: 'settings' }
-  | { page: 'my-work' };
+  | { page: 'my-work' }
+  | { page: 'superuser' };
 
 const BASE_PATH = '/b3';
 
@@ -53,6 +55,7 @@ function parseRoute(path: string): Route {
   if (p === '/login') return { page: 'login' };
   if (p === '/settings') return { page: 'settings' };
   if (p === '/my-work') return { page: 'my-work' };
+  if (p === '/superuser') return { page: 'superuser' };
   return { page: 'dashboard' };
 }
 
@@ -124,6 +127,8 @@ export function App() {
       return <SettingsPage onNavigate={navigate} />;
     case 'my-work':
       return <MyWorkPage onNavigate={navigate} />;
+    case 'superuser':
+      return <SuperuserPage onNavigate={navigate} />;
     case 'login':
     case 'register':
     case 'dashboard':
