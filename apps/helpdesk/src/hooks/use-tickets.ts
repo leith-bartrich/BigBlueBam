@@ -134,6 +134,25 @@ export function usePostMessage(ticketId: string) {
   });
 }
 
+/**
+ * Subscribes the tickets list query to realtime events so that the list
+ * re-fetches when messages are posted or ticket statuses change anywhere.
+ */
+export function useRealtimeTicketsList() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['helpdesk', 'tickets'] });
+    };
+    const unsub1 = ws.on('ticket.message.created', invalidate);
+    const unsub2 = ws.on('ticket.status.changed', invalidate);
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [queryClient]);
+}
+
 export function useReopenTicket(ticketId: string) {
   const queryClient = useQueryClient();
   return useMutation({
