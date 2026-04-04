@@ -5,7 +5,7 @@ import { randomBytes } from 'crypto';
 import argon2 from 'argon2';
 import { db } from '../db/index.js';
 import { apiKeys } from '../db/schema/api-keys.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole } from '../plugins/auth.js';
 import * as orgService from '../services/org.service.js';
 import { getOrgPermissions, isOrgPrivileged } from '../services/org-permissions.js';
 
@@ -41,15 +41,32 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
 
   fastify.post(
     '/auth/api-keys',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member')] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().max(255),
-        scope: z.enum(['read', 'write', 'admin']).default('read'),
+        scope: z.enum(['read', 'read_write', 'admin']).default('read'),
         project_ids: z.array(z.string().uuid()).optional(),
         expires_at: z.string().datetime().optional(),
       });
-      const data = schema.parse(request.body);
+      const body = schema.parse(request.body);
+
+      // If using API key auth, the caller's API key scope must be >= the requested scope
+      if (request.user!.api_key_scope !== null) {
+        const scopeHierarchy = ['read', 'read_write', 'admin'];
+        const callerLevel = scopeHierarchy.indexOf(request.user!.api_key_scope);
+        const requestedLevel = scopeHierarchy.indexOf(body.scope);
+        if (requestedLevel > callerLevel) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: `Cannot create API key with '${body.scope}' scope — your API key only has '${request.user!.api_key_scope}' scope`,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       // Enforce org-level permissions for non-admin members
       if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
@@ -67,17 +84,20 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
           });
         }
 
-        if (!perms.allowed_api_key_scopes.includes(data.scope)) {
+        const allowedScopes = perms.allowed_api_key_scopes || ['read', 'read_write'];
+        if (!allowedScopes.includes(body.scope)) {
           return reply.status(403).send({
             error: {
               code: 'FORBIDDEN',
-              message: `Your organization does not allow members to create API keys with scope '${data.scope}'`,
-              details: [{ field: 'scope', issue: 'not_allowed' }],
+              message: `Scope '${body.scope}' is not allowed for your role in this organization`,
+              details: [],
               request_id: request.id,
             },
           });
         }
       }
+
+      const data = body;
 
       // Generate a random API key
       const rawKey = randomBytes(32).toString('base64url');
@@ -114,7 +134,7 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/auth/api-keys/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member')] },
     async (request, reply) => {
       // Ensure the key belongs to the current user
       const [existing] = await db
