@@ -143,10 +143,19 @@ export default async function authRoutes(fastify: FastifyInstance) {
         email: user.email,
         display_name: user.display_name,
         avatar_url: user.avatar_url,
-        role: user.role,
-        org_id: user.org_id,
+        // Resolved per-request role for the user's CURRENT active org (not
+        // the legacy users.role which tracks the home org only). For
+        // multi-org users this is the membership role in whichever org
+        // they've switched into.
+        role: request.user!.role,
+        org_id: request.user!.org_id,
         active_org_id: request.user!.active_org_id,
         is_superuser: user.is_superuser,
+        // True when the user is a SuperUser viewing an org they are NOT a
+        // native member of (via sessions.active_org_id). Used by the UI
+        // to label confirm dialogs ("you will not be demoted") and show
+        // the cross-org banner.
+        is_superuser_viewing: request.user!.is_superuser_viewing,
         timezone: user.timezone,
         notification_prefs: user.notification_prefs,
         created_at: user.created_at.toISOString(),
@@ -252,6 +261,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
       await authService.logout(request.sessionId);
     }
     const newSession = await authService.createSession(userId);
+    // Persist the chosen org on the new session so the auth plugin uses it
+    // on subsequent requests. Without this the new session's active_org_id
+    // is NULL and every request falls back to the user's default membership,
+    // making the switch appear to have no effect.
+    await authService.setSessionActiveOrgId(newSession.id, membership.org_id);
     reply.setCookie('session', newSession.id, cookieOptions);
     issueCsrfToken(reply);
 

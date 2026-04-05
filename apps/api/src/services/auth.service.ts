@@ -99,6 +99,21 @@ export async function logout(sessionId: string) {
   await db.delete(sessions).where(eq(sessions.id, sessionId));
 }
 
+/**
+ * Persist an `active_org_id` on the given session. Used by /auth/switch-org
+ * to record which org the user has asked to operate in — the auth plugin
+ * reads this on every subsequent request and scopes the request to that
+ * org (subject to membership verification).
+ *
+ * Pass `null` to clear it (revert to the user's default-membership org).
+ */
+export async function setSessionActiveOrgId(sessionId: string, orgId: string | null) {
+  await db
+    .update(sessions)
+    .set({ active_org_id: orgId })
+    .where(eq(sessions.id, sessionId));
+}
+
 export async function createSession(userId: string) {
   const sessionId = nanoid(48);
   const expiresAt = new Date(Date.now() + env.SESSION_TTL_SECONDS * 1000);

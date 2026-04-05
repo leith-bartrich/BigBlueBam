@@ -1,12 +1,12 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { projectMemberships } from '../db/schema/project-memberships.js';
 import { users } from '../db/schema/users.js';
 import * as orgService from '../services/org.service.js';
 import { checkOrgPermission, isOrgPrivileged } from '../services/org-permissions.js';
-import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
+import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireOrgRole } from '../middleware/authorize.js';
 
 export default async function orgRoutes(fastify: FastifyInstance) {
@@ -23,7 +23,18 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       });
     }
 
-    return reply.send({ data: org });
+    // The People UI needs these counts to render the "no active owner"
+    // banner + a member-count badge. Returning them on the base /org
+    // response avoids an extra round-trip.
+    const counts = await orgService.getOrgMemberCounts(request.user!.org_id);
+
+    return reply.send({
+      data: {
+        ...org,
+        active_owner_count: counts.active_owner_count,
+        member_count: counts.member_count,
+      },
+    });
   });
 
   fastify.patch(
@@ -120,6 +131,332 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
       const members = await orgService.listOrgMembers(request.user!.org_id);
       return reply.send({ data: members });
+    },
+  );
+
+  // Shared handler for translating service errors to HTTP responses.
+  const handleRankError = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    err: unknown,
+  ): boolean => {
+    if (err instanceof orgService.InsufficientRankError) {
+      reply.status(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: err.message,
+          details: [],
+          request_id: request.id,
+        },
+      });
+      return true;
+    }
+    if (err instanceof orgService.CrossOrgProjectError) {
+      reply.status(400).send({
+        error: {
+          code: 'BAD_REQUEST',
+          message: err.message,
+          details: err.projectIds.map((id) => ({ field: 'project_id', issue: `not in current org: ${id}` })),
+          request_id: request.id,
+        },
+      });
+      return true;
+    }
+    return false;
+  };
+
+  fastify.get<{ Params: { userId: string } }>(
+    '/org/members/:userId',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const detail = await orgService.getOrgMemberDetail(
+        request.user!.org_id,
+        request.params.userId,
+      );
+      if (!detail) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Member not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      return reply.send({ data: detail });
+    },
+  );
+
+  fastify.patch<{ Params: { userId: string } }>(
+    '/org/members/:userId/profile',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const schema = z.object({
+        display_name: z.string().max(100).optional(),
+        timezone: z.string().max(50).optional(),
+      });
+      const data = schema.parse(request.body ?? {});
+
+      try {
+        const updated = await orgService.updateMemberProfile(
+          request.user!.org_id,
+          request.params.userId,
+          data,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (!updated) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        return reply.send({ data: updated });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.patch<{ Params: { userId: string } }>(
+    '/org/members/:userId/active',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const schema = z.object({ is_active: z.boolean() });
+      const data = schema.parse(request.body);
+
+      try {
+        const result = await orgService.setMemberActive(
+          request.user!.org_id,
+          request.params.userId,
+          data.is_active,
+          {
+            callerUserId: request.user!.id,
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (!result) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        request.log.info(
+          {
+            event: data.is_active ? 'admin.member_enabled' : 'admin.member_disabled',
+            caller_id: request.user!.id,
+            target_id: request.params.userId,
+            org_id: request.user!.org_id,
+          },
+          'Admin changed member active status',
+        );
+
+        return reply.send({ data: result });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.post<{ Params: { userId: string } }>(
+    '/org/members/:userId/transfer-ownership',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      try {
+        const result = await orgService.transferOwnership({
+          orgId: request.user!.org_id,
+          callerUserId: request.user!.id,
+          targetUserId: request.params.userId,
+          callerIsSuperuser: request.user!.is_superuser,
+        });
+
+        request.log.info(
+          {
+            event: 'admin.ownership_transferred',
+            caller_id: request.user!.id,
+            previous_owner_id: result.previous_owner_id,
+            new_owner_id: result.new_owner_id,
+            org_id: result.org_id,
+          },
+          'Organization ownership transferred',
+        );
+
+        return reply.send({ data: result });
+      } catch (err) {
+        if (err instanceof orgService.TransferOwnershipError) {
+          const status =
+            err.code === 'TARGET_NOT_MEMBER'
+              ? 404
+              : err.code === 'CANNOT_TRANSFER_TO_SELF'
+                ? 400
+                : 403;
+          return reply.status(status).send({
+            error: {
+              code:
+                err.code === 'TARGET_NOT_MEMBER'
+                  ? 'NOT_FOUND'
+                  : err.code === 'CANNOT_TRANSFER_TO_SELF'
+                    ? 'BAD_REQUEST'
+                    : 'FORBIDDEN',
+              message: err.message,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.get<{ Params: { userId: string } }>(
+    '/org/members/:userId/projects',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const rows = await orgService.getMemberProjectsInOrg(
+        request.user!.org_id,
+        request.params.userId,
+      );
+      if (rows === null) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Member not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      return reply.send({ data: rows });
+    },
+  );
+
+  fastify.post<{ Params: { userId: string } }>(
+    '/org/members/:userId/projects',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const schema = z.object({
+        assignments: z
+          .array(
+            z.object({
+              project_id: z.string().uuid(),
+              role: z.enum(['admin', 'member', 'viewer']),
+            }),
+          )
+          .min(1),
+      });
+      const data = schema.parse(request.body);
+
+      try {
+        const result = await orgService.addMemberToProjects(
+          request.user!.org_id,
+          request.params.userId,
+          data.assignments,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        return reply.send({ data: result });
+      } catch (err) {
+        if (
+          err instanceof orgService.InsufficientRankError &&
+          err.message === 'Target user is not a member of this organization'
+        ) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.patch<{ Params: { userId: string; projectId: string } }>(
+    '/org/members/:userId/projects/:projectId',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const schema = z.object({ role: z.enum(['admin', 'member', 'viewer']) });
+      const data = schema.parse(request.body);
+
+      try {
+        const updated = await orgService.updateMemberProjectRole(
+          request.user!.org_id,
+          request.params.userId,
+          request.params.projectId,
+          data.role,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (!updated) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Project membership not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        return reply.send({ data: updated });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { userId: string; projectId: string } }>(
+    '/org/members/:userId/projects/:projectId',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      try {
+        const removed = await orgService.removeMemberFromProject(
+          request.user!.org_id,
+          request.params.userId,
+          request.params.projectId,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (removed === null || removed === false) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Project membership not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        return reply.send({ data: { success: true } });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
     },
   );
 
@@ -266,24 +603,33 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       });
       const data = schema.parse(request.body);
 
-      const user = await orgService.updateMemberRole(
-        request.user!.org_id,
-        request.params.userId,
-        data.role,
-      );
-
-      if (!user) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Member not found',
-            details: [],
-            request_id: request.id,
+      try {
+        const user = await orgService.updateMemberRole(
+          request.user!.org_id,
+          request.params.userId,
+          data.role,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
           },
-        });
-      }
+        );
 
-      return reply.send({ data: user });
+        if (!user) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        return reply.send({ data: user });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
     },
   );
 
@@ -302,23 +648,32 @@ export default async function orgRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const deleted = await orgService.removeMember(
-        request.user!.org_id,
-        request.params.userId,
-      );
-
-      if (!deleted) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Member not found',
-            details: [],
-            request_id: request.id,
+      try {
+        const deleted = await orgService.removeMember(
+          request.user!.org_id,
+          request.params.userId,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
           },
-        });
-      }
+        );
 
-      return reply.send({ data: { success: true } });
+        if (!deleted) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        return reply.send({ data: { success: true } });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
     },
   );
 }

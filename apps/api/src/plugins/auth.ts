@@ -199,27 +199,36 @@ export async function buildAuthUser(
     keyScopedRole = keyMembership?.role ?? 'viewer';
   }
 
-  // SuperUser context switch: if this user is a SuperUser AND their session
-  // has an active_org_id set (via POST /superuser/context/switch), that org
-  // takes precedence over membership-derived org context — SuperUsers can
-  // view any org, regardless of membership. Non-SuperUsers with an
-  // activeOrgId set on their session are defensively ignored here (this
-  // should never happen — the switch endpoint only accepts SuperUsers).
+  // Session-level active_org_id. Set by /auth/switch-org (regular users) and
+  // /superuser/context/switch (SuperUsers). We honor it here so both flows
+  // pin the request's org context to whatever the user last selected.
+  //
+  //   - For a regular user: only honor if they are STILL a member of that
+  //     org (membership may have been revoked since the switch). Otherwise
+  //     silently fall back to the membership-resolved default — the switch
+  //     effectively expires.
+  //   - For a SuperUser: honor ANY active_org_id, even an org they aren't
+  //     a member of (that's the point of SuperUser cross-org visibility).
+  //     Their membership role in the target, if any, is preserved; if they
+  //     aren't a member we mark them as 'owner' for the switched context
+  //     and flip the is_superuser_viewing banner flag.
   let finalOrgId = keyScopedOrgId ?? activeOrgId;
   let finalRole = keyScopedRole ?? activeRole;
   let isSuperuserViewing = false;
-  if (row.is_superuser && sessionActiveOrgId) {
-    // Only flip the context if it actually differs from the membership-
-    // resolved default. Matching active_org_id == default org is a no-op.
-    if (sessionActiveOrgId !== activeOrgId) {
+  if (sessionActiveOrgId && sessionActiveOrgId !== activeOrgId) {
+    const existingMembership = memberships.find((m) => m.org_id === sessionActiveOrgId);
+    if (row.is_superuser) {
       finalOrgId = sessionActiveOrgId;
-      // Preserve the SuperUser's membership role when switching to an org
-      // they happen to be a member of; otherwise mark them as 'owner' for
-      // that session context (SuperUsers effectively bypass org roles).
-      const existingMembership = memberships.find((m) => m.org_id === sessionActiveOrgId);
       finalRole = existingMembership?.role ?? 'owner';
-      isSuperuserViewing = true;
+      // Only light the cross-org banner when the SU is viewing an org they
+      // are NOT a native member of — normal multi-org members who use the
+      // switcher shouldn't see the "viewing as SuperUser" banner.
+      isSuperuserViewing = !existingMembership;
+    } else if (existingMembership) {
+      finalOrgId = sessionActiveOrgId;
+      finalRole = existingMembership.role;
     }
+    // non-SU with no matching membership: leave finalOrgId on the default.
   }
 
   return {

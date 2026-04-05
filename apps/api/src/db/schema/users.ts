@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 
@@ -19,6 +19,8 @@ export const users = pgTable(
     is_active: boolean('is_active').default(true).notNull(),
     is_superuser: boolean('is_superuser').default(false).notNull(),
     last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
+    disabled_at: timestamp('disabled_at', { withTimezone: true }),
+    disabled_by: uuid('disabled_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

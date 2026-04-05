@@ -101,6 +101,7 @@ export interface User {
   org_id?: string;
   active_org_id?: string;
   is_superuser?: boolean;
+  is_superuser_viewing?: boolean;
   role?: string;
 }
 
