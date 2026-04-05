@@ -8,6 +8,7 @@ import { tickets, ticketMessages } from '../db/schema/tickets.js';
 import type { CreateTaskInput, UpdateTaskInput, MoveTaskInput, BulkUpdateInput } from '@bigbluebam/shared';
 import { broadcastToProject } from './realtime.service.js';
 import { logActivity } from './activity.service.js';
+import { postToSlack, taskDeepLink } from './slack-notify.service.js';
 import { env } from '../env.js';
 
 // Lazy-initialized Redis publisher for cross-service events (e.g. ticket sync
@@ -101,6 +102,12 @@ export async function createTask(
 
   // Log activity
   logActivity(projectId, reporterId, 'task.created', task!.id, { title: task!.title }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
+
+  // Slack outbound notification (fire-and-forget)
+  postToSlack(projectId, {
+    event_type: 'task.created',
+    text: `:new: Task created: *<${taskDeepLink(projectId, task!.id)}|${task!.human_id}>* — ${task!.title}`,
+  }).catch(() => {});
 
   return task!;
 }
@@ -374,6 +381,17 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
         from_phase: existingTask?.phase_id,
         to_phase: data.phase_id,
       }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
+    }
+
+    // Slack outbound notification on entering a terminal phase.
+    // Only fire when the task TRANSITIONED into terminal this move (i.e.
+    // it wasn't already in a terminal phase) so we don't spam on reorders
+    // within the Done column.
+    if (phase?.is_terminal && existingTask && existingTask.phase_id !== data.phase_id) {
+      postToSlack(task.project_id, {
+        event_type: 'task.completed',
+        text: `:white_check_mark: Task completed: *<${taskDeepLink(task.project_id, task.id)}|${task.human_id}>* — ${task.title}`,
+      }).catch(() => {});
     }
   }
 

@@ -8,6 +8,7 @@ import { taskStates } from '../db/schema/task-states.js';
 import { sprintTasks } from '../db/schema/sprint-tasks.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
+import { postToSlack } from '../services/slack-notify.service.js';
 
 export default async function sprintRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
@@ -168,6 +169,14 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         .where(eq(sprints.id, request.params.id))
         .returning();
 
+      // Slack outbound notification (fire-and-forget)
+      if (updated) {
+        postToSlack(updated.project_id, {
+          event_type: 'sprint.started',
+          text: `:rocket: Sprint started: *${updated.name}*${updated.goal ? ` — ${updated.goal}` : ''}`,
+        }).catch(() => {});
+      }
+
       return reply.send({ data: updated });
     },
   );
@@ -302,6 +311,14 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         .from(sprints)
         .where(eq(sprints.id, request.params.id))
         .limit(1);
+
+      // Slack outbound notification (fire-and-forget)
+      if (completed) {
+        postToSlack(completed.project_id, {
+          event_type: 'sprint.completed',
+          text: `:checkered_flag: Sprint completed: *${completed.name}* — velocity: ${completed.velocity ?? 0} pts`,
+        }).catch(() => {});
+      }
 
       return reply.send({ data: completed });
     },

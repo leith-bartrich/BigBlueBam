@@ -41,6 +41,10 @@ import guestRoutes from './routes/guest.routes.js';
 import superuserRoutes from './routes/superuser.routes.js';
 import emailVerifyRoutes from './routes/email-verify.routes.js';
 import internalHelpdeskRoutes from './routes/internal-helpdesk.routes.js';
+import slackWebhookRoutes from './routes/slack-webhook.routes.js';
+import slackIntegrationRoutes from './routes/slack-integration.routes.js';
+import githubWebhookRoutes from './routes/github-webhook.routes.js';
+import githubIntegrationRoutes from './routes/github-integration.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -167,6 +171,10 @@ await fastify.register(guestRoutes);
 await fastify.register(superuserRoutes, { prefix: '/superuser' });
 await fastify.register(emailVerifyRoutes);
 await fastify.register(internalHelpdeskRoutes, { prefix: '/internal/helpdesk' });
+await fastify.register(slackWebhookRoutes);
+await fastify.register(slackIntegrationRoutes);
+await fastify.register(githubWebhookRoutes);
+await fastify.register(githubIntegrationRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
