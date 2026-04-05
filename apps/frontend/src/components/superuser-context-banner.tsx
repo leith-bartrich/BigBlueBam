@@ -13,11 +13,12 @@ export function SuperuserContextBanner() {
   const queryClient = useQueryClient();
   const [clearing, setClearing] = useState(false);
 
-  const isViewing =
-    user?.is_superuser === true &&
-    !!user.active_org_id &&
-    !!user.org_id &&
-    user.active_org_id !== user.org_id;
+  // is_superuser_viewing is the authoritative signal from the auth plugin:
+  // it's set ONLY when a SuperUser is in an org they are NOT a native member
+  // of (via sessions.active_org_id). Checking active_org_id !== org_id no
+  // longer works because /auth/me now returns the resolved per-request
+  // org_id (== active_org_id) for consistency across multi-org users.
+  const isViewing = user?.is_superuser_viewing === true && !!user.active_org_id;
 
   const { data: orgDetail } = useQuery({
     queryKey: ['superuser', 'organizations', user?.active_org_id],

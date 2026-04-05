@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Search, LogOut, ChevronRight, Bell, CheckCheck, MessageCircle } from 'lucide-react';
+import { Search, LogOut, ChevronRight, Bell, CheckCheck, MessageCircle, AlertTriangle, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './sidebar';
 import { Avatar } from '@/components/common/avatar';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { SuperuserContextBanner } from '@/components/superuser-context-banner';
+import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { useAuthStore } from '@/stores/auth.store';
+import { useOrgSummary } from '@/hooks/use-org-summary';
 import { api } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
 
@@ -31,6 +33,36 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const { data: orgSummary } = useOrgSummary();
+  const orgId = orgSummary?.id;
+  const dismissKey = orgId ? `no-owner-banner-dismissed:${orgId}` : null;
+  const [noOwnerDismissed, setNoOwnerDismissed] = useState(false);
+  useEffect(() => {
+    if (!dismissKey) {
+      setNoOwnerDismissed(false);
+      return;
+    }
+    try {
+      setNoOwnerDismissed(sessionStorage.getItem(dismissKey) !== null);
+    } catch {
+      setNoOwnerDismissed(false);
+    }
+  }, [dismissKey]);
+
+  const dismissNoOwnerBanner = () => {
+    if (!dismissKey) return;
+    try {
+      sessionStorage.setItem(dismissKey, String(Date.now()));
+    } catch {
+      // ignore
+    }
+    setNoOwnerDismissed(true);
+  };
+
+  const showNoOwnerBanner =
+    !!orgSummary && orgSummary.active_owner_count === 0 && !noOwnerDismissed;
+  const canManageOwners = user?.role === 'owner' || user?.role === 'admin';
 
   const { data: notificationsRes } = useQuery({
     queryKey: ['notifications'],
@@ -73,6 +105,34 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
 
       <div className="flex flex-col flex-1 overflow-hidden">
         <SuperuserContextBanner />
+        {showNoOwnerBanner && (
+          <div className="flex items-center gap-3 px-6 py-2.5 border-b border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300 shrink-0">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <p className="text-sm flex-1">
+              {canManageOwners ? (
+                <>This organization has no active owner. Any admin can promote a member to owner from the People page.</>
+              ) : (
+                <>This organization has no active owner. An admin can promote a member to owner from the People page.</>
+              )}
+            </p>
+            {canManageOwners && (
+              <button
+                onClick={() => onNavigate('/people')}
+                className="shrink-0 rounded-full border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/40 dark:text-red-200 dark:hover:bg-red-900/70 transition-colors"
+              >
+                Go to People
+              </button>
+            )}
+            <button
+              onClick={dismissNoOwnerBanner}
+              className="shrink-0 rounded-md p-1 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
+              title="Dismiss"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <header className="flex items-center justify-between h-14 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0">
           <div className="flex items-center gap-4">
             {/* Cross-app navigation */}
@@ -122,6 +182,7 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
           </div>
 
           <div className="flex items-center gap-4">
+            <OrgSwitcher />
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
               <input
@@ -210,6 +271,9 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
                 <p className="text-xs text-zinc-500">{user?.email}</p>
               </div>
               <DropdownMenuItem onSelect={() => onNavigate('/settings')}>Settings</DropdownMenuItem>
+              {(user?.role === 'owner' || user?.role === 'admin' || user?.is_superuser === true) && (
+                <DropdownMenuItem onSelect={() => onNavigate('/people')}>People</DropdownMenuItem>
+              )}
               {user?.is_superuser === true && (
                 <DropdownMenuItem onSelect={() => onNavigate('/superuser')}>SuperUser Console</DropdownMenuItem>
               )}

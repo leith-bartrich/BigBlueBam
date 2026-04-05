@@ -46,9 +46,15 @@ class ApiClient {
       }
     }
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = {};
+    // Only set Content-Type when we actually have a body to send.
+    // Fastify rejects requests that declare application/json but send no
+    // body with "Body cannot be empty when content-type is set to
+    // 'application/json'" — hits any body-less POST (e.g. transfer-
+    // ownership, context/clear).
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (MUTATING_METHODS.has(method)) {
       const csrfToken = readCsrfToken();
@@ -59,7 +65,7 @@ class ApiClient {
       method,
       headers,
       credentials: 'include',
-      body: body ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
     if (!response.ok) {

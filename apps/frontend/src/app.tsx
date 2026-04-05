@@ -10,6 +10,8 @@ import { ProjectDashboardPage } from '@/pages/project-dashboard';
 import { AuditLogPage } from '@/pages/audit-log';
 import { SprintReportPage } from '@/pages/sprint-report';
 import { SuperuserPage } from '@/pages/superuser';
+import { PeoplePage } from '@/pages/people';
+import { PersonDetailPage } from '@/pages/people/detail';
 import { GuestAcceptPage } from '@/pages/guest-accept';
 import { Loader2 } from 'lucide-react';
 
@@ -24,6 +26,8 @@ type Route =
   | { page: 'settings' }
   | { page: 'my-work' }
   | { page: 'superuser' }
+  | { page: 'people' }
+  | { page: 'person-detail'; userId: string }
   | { page: 'guest-accept'; token: string };
 
 const BASE_PATH = '/b3';
@@ -57,6 +61,11 @@ function parseRoute(path: string): Route {
   if (sprintReportMatch) {
     return { page: 'sprint-report', projectId: sprintReportMatch[1]!, sprintId: sprintReportMatch[2]! };
   }
+  const personDetailMatch = p.match(/^\/people\/([^/]+)$/);
+  if (personDetailMatch) {
+    return { page: 'person-detail', userId: personDetailMatch[1]! };
+  }
+  if (p === '/people' || p === '/people/') return { page: 'people' };
   if (p === '/register') return { page: 'register' };
   if (p === '/login') return { page: 'login' };
   if (p === '/settings') return { page: 'settings' };
@@ -141,6 +150,10 @@ export function App() {
       return <MyWorkPage onNavigate={navigate} />;
     case 'superuser':
       return <SuperuserPage onNavigate={navigate} />;
+    case 'people':
+      return <PeoplePage onNavigate={navigate} />;
+    case 'person-detail':
+      return <PersonDetailPage userId={route.userId} onNavigate={navigate} />;
     case 'login':
     case 'register':
     case 'dashboard':

@@ -1,24 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil, Lock, KeyRound } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Users, Trash2, Plug, Copy, Check, Plus, Headset, Pencil, Lock } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { Select } from '@/components/common/select';
-import { Dialog } from '@/components/common/dialog';
 import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-
-interface OrgMember {
-  id: string;
-  email: string;
-  display_name: string;
-  avatar_url: string | null;
-  role: string;
-  created_at: string;
-}
 
 interface ApiKeyData {
   id: string;
@@ -68,13 +58,6 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Members tab state
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteDisplayName, setInviteDisplayName] = useState('');
-  const [inviteRole, setInviteRole] = useState('member');
-  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-
   // Integrations tab state
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [showCreateKey, setShowCreateKey] = useState(false);
@@ -88,7 +71,6 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [editingWebhookId, setEditingWebhookId] = useState<string | null>(null);
   const [editWebhookUrl, setEditWebhookUrl] = useState('');
   const [editWebhookEvents, setEditWebhookEvents] = useState<string[]>([]);
-  const [inviteSuccessMessage, setInviteSuccessMessage] = useState<string | null>(null);
 
   // Helpdesk tab state
   const [helpdeskRequireVerification, setHelpdeskRequireVerification] = useState(false);
@@ -101,91 +83,6 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [helpdeskNotifyOnReply, setHelpdeskNotifyOnReply] = useState(true);
   const [helpdeskSaving, setHelpdeskSaving] = useState(false);
   const [helpdeskSaved, setHelpdeskSaved] = useState(false);
-
-  // Fetch org members
-  const { data: membersRes, isLoading: membersLoading } = useQuery({
-    queryKey: ['org-members'],
-    queryFn: () => api.get<PaginatedResponse<OrgMember>>('/org/members'),
-    enabled: activeTab === 'members',
-  });
-  const orgMembers = membersRes?.data ?? [];
-
-  // Invite member mutation
-  // Reset-password dialog state
-  const [resetPwTarget, setResetPwTarget] = useState<OrgMember | null>(null);
-  const [resetPwMode, setResetPwMode] = useState<'generate' | 'manual'>('generate');
-  const [resetPwManual, setResetPwManual] = useState('');
-  const [resetPwResult, setResetPwResult] = useState<string | null>(null);
-  const [resetPwCopied, setResetPwCopied] = useState(false);
-
-  const resetMemberPassword = useMutation({
-    mutationFn: ({ userId, password }: { userId: string; password?: string }) =>
-      api.post<ApiResponse<{ user_id: string; email: string; password: string; generated: boolean }>>(
-        `/org/members/${userId}/reset-password`,
-        password ? { password } : {},
-      ),
-    onSuccess: (response) => {
-      setResetPwResult(response.data.password);
-      setResetPwCopied(false);
-    },
-  });
-
-  const closeResetPwDialog = () => {
-    setResetPwTarget(null);
-    setResetPwMode('generate');
-    setResetPwManual('');
-    setResetPwResult(null);
-    setResetPwCopied(false);
-    resetMemberPassword.reset();
-  };
-
-  const canResetMember = (member: OrgMember): boolean => {
-    if (member.id === user?.id) return false; // not your own
-    if (user?.is_superuser) return true;
-    const hierarchy = ['guest', 'viewer', 'member', 'admin', 'owner'];
-    const callerLevel = hierarchy.indexOf(user?.role ?? '');
-    const targetLevel = hierarchy.indexOf(member.role);
-    const adminLevel = hierarchy.indexOf('admin');
-    return callerLevel >= adminLevel && callerLevel >= targetLevel;
-  };
-
-  const inviteMember = useMutation({
-    mutationFn: (data: { email: string; display_name?: string; role: string }) =>
-      api.post<ApiResponse<OrgMember & { was_existing: boolean }>>('/org/members/invite', data),
-    onSuccess: (response, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['org-members'] });
-      if (response.data.was_existing) {
-        setInviteSuccessMessage(
-          `Added ${variables.email} to this organization. They can sign in with their existing password.`,
-        );
-      } else {
-        setInviteSuccessMessage(
-          `User created. Share these credentials with them:\n- Email: ${variables.email}\n- They will need to set up a password via the admin.`,
-        );
-      }
-      setInviteEmail('');
-      setInviteDisplayName('');
-      setInviteRole('member');
-    },
-  });
-
-  // Update role mutation
-  const updateRole = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      api.patch<ApiResponse<OrgMember>>(`/org/members/${userId}`, { role }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members'] });
-    },
-  });
-
-  // Remove member mutation
-  const removeMember = useMutation({
-    mutationFn: (userId: string) => api.delete(`/org/members/${userId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members'] });
-      setConfirmRemoveId(null);
-    },
-  });
 
   // Fetch projects for integrations
   const { data: projectsRes } = useQuery({
@@ -456,21 +353,6 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     }
   };
 
-  const handleInvite = () => {
-    if (!inviteEmail.trim()) return;
-    inviteMember.mutate({
-      email: inviteEmail.trim(),
-      display_name: inviteDisplayName.trim() || undefined,
-      role: inviteRole,
-    });
-  };
-
-  const roleOptions = [
-    { value: 'member', label: 'Member' },
-    { value: 'admin', label: 'Admin' },
-    { value: 'viewer', label: 'Viewer' },
-  ];
-
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
     { id: 'appearance' as const, label: 'Appearance', icon: Sun },
@@ -606,283 +488,15 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
             )}
 
             {activeTab === 'members' && (
-              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Organization Members</h2>
-                    <p className="text-sm text-zinc-500">Manage who has access to your organization.</p>
-                  </div>
-                  <Button size="sm" onClick={() => setShowInviteForm((v) => !v)}>
-                    <UserPlus className="h-4 w-4" />
-                    Invite Member
-                  </Button>
-                </div>
-
-                {showInviteForm && (
-                  <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-3">
-                    <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Invite a new member</h3>
-                    <div className="flex gap-3 items-end flex-wrap">
-                      <Input
-                        id="invite-email"
-                        label="Email"
-                        type="email"
-                        placeholder="user@example.com"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        className="w-56"
-                      />
-                      <Input
-                        id="invite-name"
-                        label="Display Name"
-                        placeholder="Optional"
-                        value={inviteDisplayName}
-                        onChange={(e) => setInviteDisplayName(e.target.value)}
-                        className="w-44"
-                      />
-                      <Select
-                        label="Role"
-                        options={[
-                          { value: 'member', label: 'Member' },
-                          { value: 'admin', label: 'Admin' },
-                        ]}
-                        value={inviteRole}
-                        onValueChange={setInviteRole}
-                        className="w-32"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={handleInvite}
-                        loading={inviteMember.isPending}
-                        disabled={!inviteEmail.trim()}
-                      >
-                        Create User
-                      </Button>
-                    </div>
-                    {inviteMember.isError && (
-                      <p className="text-sm text-red-600">
-                        {(inviteMember.error as any)?.message ?? 'Failed to invite member.'}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {inviteSuccessMessage && (
-                  <div className="p-4 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950 space-y-2">
-                    <p className="text-sm text-green-800 dark:text-green-200 whitespace-pre-line">
-                      {inviteSuccessMessage}
-                    </p>
-                    <button
-                      onClick={() => {
-                        setInviteSuccessMessage(null);
-                        setShowInviteForm(false);
-                      }}
-                      className="text-xs text-green-700 dark:text-green-300 underline"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                )}
-
-                {membersLoading ? (
-                  <p className="text-sm text-zinc-400">Loading members...</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-zinc-200 dark:border-zinc-700 text-left">
-                          <th className="pb-2 font-medium text-zinc-500">Name</th>
-                          <th className="pb-2 font-medium text-zinc-500">Email</th>
-                          <th className="pb-2 font-medium text-zinc-500">Role</th>
-                          <th className="pb-2 font-medium text-zinc-500">Joined</th>
-                          <th className="pb-2 font-medium text-zinc-500 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {orgMembers.map((member) => {
-                          const isCurrentUser = member.id === user?.id;
-                          return (
-                            <tr key={member.id} className="border-b border-zinc-100 dark:border-zinc-800">
-                              <td className="py-3 text-zinc-900 dark:text-zinc-100">{member.display_name || '-'}</td>
-                              <td className="py-3 text-zinc-600 dark:text-zinc-400">{member.email}</td>
-                              <td className="py-3">
-                                {isCurrentUser ? (
-                                  <span className="text-zinc-600 dark:text-zinc-400 capitalize">{member.role}</span>
-                                ) : (
-                                  <Select
-                                    options={roleOptions}
-                                    value={member.role}
-                                    onValueChange={(val) => updateRole.mutate({ userId: member.id, role: val })}
-                                    className="w-28"
-                                  />
-                                )}
-                              </td>
-                              <td className="py-3 text-zinc-500">{formatDate(member.created_at)}</td>
-                              <td className="py-3 text-right">
-                                {!isCurrentUser && (
-                                  <>
-                                    {confirmRemoveId === member.id ? (
-                                      <div className="flex items-center justify-end gap-2">
-                                        <span className="text-xs text-zinc-500">Remove?</span>
-                                        <Button
-                                          size="sm"
-                                          variant="danger"
-                                          onClick={() => removeMember.mutate(member.id)}
-                                          loading={removeMember.isPending}
-                                        >
-                                          Yes
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => setConfirmRemoveId(null)}
-                                        >
-                                          No
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center justify-end gap-1">
-                                        {canResetMember(member) && (
-                                          <button
-                                            onClick={() => setResetPwTarget(member)}
-                                            className="p-1.5 rounded-md text-zinc-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                                            title="Reset password"
-                                          >
-                                            <KeyRound className="h-4 w-4" />
-                                          </button>
-                                        )}
-                                        <button
-                                          onClick={() => setConfirmRemoveId(member.id)}
-                                          className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-                                          title="Remove member"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {orgMembers.length === 0 && (
-                      <p className="text-sm text-zinc-400 py-4 text-center">No members found.</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Reset password dialog */}
-                <Dialog
-                  open={!!resetPwTarget}
-                  onOpenChange={(open) => { if (!open) closeResetPwDialog(); }}
-                  title={resetPwResult ? 'Password reset complete' : 'Reset password'}
-                  description={
-                    resetPwResult
-                      ? `Share this password with ${resetPwTarget?.email}. It will not be shown again. Their active sessions have been signed out.`
-                      : `Reset the password for ${resetPwTarget?.display_name || resetPwTarget?.email}.`
-                  }
-                >
-                  {!resetPwResult ? (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (!resetPwTarget) return;
-                        resetMemberPassword.mutate({
-                          userId: resetPwTarget.id,
-                          password: resetPwMode === 'manual' ? resetPwManual : undefined,
-                        });
-                      }}
-                      className="space-y-4"
-                    >
-                      <div className="space-y-2">
-                        <label className="flex items-start gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            checked={resetPwMode === 'generate'}
-                            onChange={() => setResetPwMode('generate')}
-                            className="mt-1"
-                          />
-                          <div>
-                            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Auto-generate a strong password</div>
-                            <div className="text-xs text-zinc-500">16 chars, alphanumeric, no confusable glyphs</div>
-                          </div>
-                        </label>
-                        <label className="flex items-start gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            checked={resetPwMode === 'manual'}
-                            onChange={() => setResetPwMode('manual')}
-                            className="mt-1"
-                          />
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Enter a password manually</div>
-                            <div className="text-xs text-zinc-500 mb-2">Minimum 12 characters</div>
-                            {resetPwMode === 'manual' && (
-                              <Input
-                                type="text"
-                                value={resetPwManual}
-                                onChange={(e) => setResetPwManual(e.target.value)}
-                                placeholder="new password"
-                                minLength={12}
-                                autoFocus
-                              />
-                            )}
-                          </div>
-                        </label>
-                      </div>
-
-                      {resetMemberPassword.isError && (
-                        <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300">
-                          {(resetMemberPassword.error as Error)?.message || 'Reset failed'}
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-end gap-2 pt-2">
-                        <Button type="button" variant="ghost" onClick={closeResetPwDialog}>
-                          Cancel
-                        </Button>
-                        <Button
-                          type="submit"
-                          loading={resetMemberPassword.isPending}
-                          disabled={resetPwMode === 'manual' && resetPwManual.length < 12}
-                        >
-                          Reset password
-                        </Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-200">
-                        This password is shown <strong>only once</strong>. Copy it now.
-                      </div>
-                      <div className="flex items-stretch gap-2">
-                        <code className="flex-1 rounded-md bg-zinc-100 dark:bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-900 dark:text-zinc-100 break-all">
-                          {resetPwResult}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(resetPwResult);
-                            setResetPwCopied(true);
-                            setTimeout(() => setResetPwCopied(false), 2000);
-                          }}
-                          className="shrink-0 rounded-md border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-                          title="Copy to clipboard"
-                        >
-                          {resetPwCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-end">
-                        <Button onClick={closeResetPwDialog}>Done</Button>
-                      </div>
-                    </div>
-                  )}
-                </Dialog>
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-8 text-center space-y-3">
+                <Users className="h-10 w-10 text-zinc-400 mx-auto" />
+                <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Member management has moved</h2>
+                <p className="text-sm text-zinc-500 max-w-md mx-auto">
+                  Invite, edit, and manage members on the dedicated People page.
+                </p>
+                <Button onClick={() => onNavigate('/people')}>Go to People</Button>
               </div>
             )}
-
             {activeTab === 'integrations' && (
               <div className="space-y-6">
                 {/* Calendar Feeds */}

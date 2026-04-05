@@ -51,7 +51,10 @@ describe('ApiClient', () => {
       );
     });
 
-    it('includes Content-Type application/json header', async () => {
+    it('omits Content-Type on bodyless requests', async () => {
+      // Fastify rejects body-less requests that declare Content-Type:
+      // application/json with "Body cannot be empty". The client only sets
+      // Content-Type when it has a body to send (POST/PATCH with body arg).
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
@@ -60,12 +63,18 @@ describe('ApiClient', () => {
 
       await api.get('/test');
 
+      const callArgs = mockFetch.mock.calls[0]![1];
+      const headers = (callArgs.headers ?? {}) as Record<string, string>;
+      expect(headers['Content-Type']).toBeUndefined();
+    });
+
+    it('sets Content-Type on POST with a body', async () => {
+      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+      await api.post('/test', { foo: 'bar' });
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          headers: expect.objectContaining({
-            'Content-Type': 'application/json',
-          }),
+          headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
         }),
       );
     });
