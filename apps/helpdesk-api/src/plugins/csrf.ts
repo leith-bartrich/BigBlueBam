@@ -51,6 +51,18 @@ function tokensMatch(a: string, b: string): boolean {
 }
 
 async function helpdeskCsrfPlugin(fastify: FastifyInstance) {
+  // Auto-heal: any request with a session cookie (helpdesk OR BBB admin)
+  // but no csrf_token cookie gets one issued on the response, so users
+  // whose sessions predate CSRF rollout don't have to log out+in.
+  fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+    const hasSession =
+      !!request.cookies?.helpdesk_session || !!request.cookies?.session;
+    if (!hasSession) return;
+    const existing = request.cookies?.[CSRF_COOKIE_NAME];
+    if (existing) return;
+    issueCsrfToken(reply);
+  });
+
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     const method = request.method.toUpperCase();
     if (!MUTATING_METHODS.has(method)) return;

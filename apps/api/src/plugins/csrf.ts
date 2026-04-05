@@ -67,6 +67,20 @@ function tokensMatch(a: string, b: string): boolean {
 }
 
 async function csrfPlugin(fastify: FastifyInstance) {
+  // Auto-heal: any request with a session cookie but no csrf_token cookie
+  // gets one issued on the response. This covers stale sessions that
+  // predate the CSRF rollout (logged-in users don't have to log out+in
+  // just to pick up the new cookie). Runs on ALL requests, not just
+  // mutating ones, so a GET /auth/me on app mount is enough to get the
+  // SPA into the token-carrying state before its first POST.
+  fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+    const sessionCookie = request.cookies?.session;
+    if (!sessionCookie) return;
+    const existing = request.cookies?.[CSRF_COOKIE_NAME];
+    if (existing) return;
+    issueCsrfToken(reply);
+  });
+
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     const method = request.method.toUpperCase();
     if (!MUTATING_METHODS.has(method)) return;
