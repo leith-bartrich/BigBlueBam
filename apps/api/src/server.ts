@@ -40,6 +40,7 @@ import platformRoutes from './routes/platform.routes.js';
 import guestRoutes from './routes/guest.routes.js';
 import superuserRoutes from './routes/superuser.routes.js';
 import emailVerifyRoutes from './routes/email-verify.routes.js';
+import internalHelpdeskRoutes from './routes/internal-helpdesk.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -165,6 +166,7 @@ await fastify.register(platformRoutes);
 await fastify.register(guestRoutes);
 await fastify.register(superuserRoutes, { prefix: '/superuser' });
 await fastify.register(emailVerifyRoutes);
+await fastify.register(internalHelpdeskRoutes, { prefix: '/internal/helpdesk' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

@@ -600,18 +600,28 @@ The helpdesk customer portal has its own WebSocket server (separate from the BBB
 - **Authentication**: httpOnly `helpdesk_session` cookie validated against `helpdesk_sessions` + `helpdesk_users` on connect.
 - **Rooms**: every client auto-subscribes to `helpdesk:user:{userId}`. Customers may only subscribe to `ticket:{ticketId}` rooms for tickets they own (server-side ownership check on every `subscribe` message).
 - **Typing indicators**: clients send `typing.start` / `typing.stop` frames; the server throttles per-ticket starts to once every 2 s and re-broadcasts to other members of the ticket room. See `apps/helpdesk-api/src/ws/handler.ts`.
-- **Broadcasts**: `apps/helpdesk-api/src/lib/broadcast.ts` publishes `task.created`, `task.updated`, and `ticket.message.created` events onto the shared Redis channel. Note: Redis pub/sub is not durable — the helpdesk client (`apps/helpdesk/src/lib/websocket.ts`) refetches authoritative state after every reconnect to cover events missed during disconnection.
+- **Broadcasts**: `apps/helpdesk-api/src/lib/broadcast.ts` publishes BBB-facing `task.created` / `task.updated` events; `apps/helpdesk-api/src/services/realtime.ts` publishes customer-facing `ticket.message.created`, `ticket.status.changed`, and `ticket.updated` events onto the shared Redis channel. Both go to the same `bigbluebam:events` channel and are fanned out by each service's WebSocket hub.
+- **Durable event log (HB-47)**: customer-facing ticket broadcasts persist to `helpdesk_ticket_events` (bigserial id, ticket_id, event_type, payload, created_at) BEFORE publishing to Redis PubSub. The DB row is the source of truth; PubSub is the push-optimization for connected clients. On DB write failure the server logs at error and still publishes (live push beats a silent drop). Clients persist the highest event id they have seen in localStorage; on every WS connect the server sends `welcome` with the current `latest_id`, and clients whose stored value is behind send `resume` with their `last_seen_id` to replay up to 200 events at a time via the WebSocket (with `has_more`/`latest_id` flow control). Two REST endpoints provide the same replay out-of-band: `GET /helpdesk/tickets/:id/events?since=<id>` (per-ticket) and `GET /helpdesk/events?since=<id>` (across all tickets owned by the caller). The table is unbounded today; a future worker job should trim rows older than N days.
 - **Client**: `WebSocketManager` in `apps/helpdesk/src/lib/websocket.ts` handles auto-reconnect with exponential backoff (1 s → 30 s), pending-room replay after reconnect, 30 s keepalive ping/pong, and an offline detection hook (`navigator.onLine`).
 
 ### Helpdesk → BBB Task Pipeline
 
-Ticket creation on the customer portal emits a BBB task into the configured project. The write path is transactional-first with an async fallback rather than a fire-and-forget write-through:
+Ticket creation on the customer portal emits a BBB task into the configured project. **HB-7**: helpdesk-api no longer writes directly to BBB tables — every BBB-side write (task creation, comment, phase transition) goes through BBB's internal service API with shared-secret auth. The data boundary is now enforced at the network layer, not just by convention.
 
-1. `helpdesk-api` creates the ticket and inline-creates the linked BBB task in the same DB transaction.
-2. On a transient failure (deadlock, connection blip, FK race), the transaction rolls back and the ticket is re-persisted standalone, then a `helpdesk-task-create` BullMQ job is enqueued via `apps/helpdesk-api/src/services/task-queue.ts`.
-3. The shared `worker` container picks the job up and runs `apps/worker/src/jobs/helpdesk-task-create.job.ts`, which retries the task insert and back-links `tickets.task_id`. The job is idempotent — if `tickets.task_id` is already set it is a no-op.
+1. `helpdesk-api` persists the ticket standalone.
+2. `helpdesk-api` POSTs to `/internal/helpdesk/tasks` on BBB API (`apps/api/src/routes/internal-helpdesk.routes.ts`), authenticating with the `X-Internal-Token` header (shared secret `INTERNAL_HELPDESK_SECRET`). BBB validates the token in a timing-safe compare and checks that the source IP is on the internal Docker network.
+3. BBB API creates the task, applies the "Support Ticket" label, writes an `activity_log` row attributed to the seeded `HELPDESK_SYSTEM_USER_ID` (UUID `00000000-0000-0000-0000-000000000001`, seeded by migration `0014_helpdesk_system_user.sql`), and returns the new task id + human id.
+4. helpdesk-api back-links `tickets.task_id`.
 
-This replaces the earlier "best-effort write-through" pattern and guarantees that every ticket eventually lands as a BBB task without blocking the customer-facing request.
+The same internal surface carries the other helpdesk-driven mutations:
+
+- `POST /internal/helpdesk/comments` — mirror a ticket message onto the linked task as a system comment.
+- `POST /internal/helpdesk/tasks/:id/move-to-terminal-phase` — invoked when the customer closes their ticket.
+- `POST /internal/helpdesk/tasks/:id/reopen` — invoked when a ticket is reopened.
+
+All four endpoints log at info level with `caller='helpdesk-api'` for ops visibility, and every mutation is attributed to `HELPDESK_SYSTEM_USER_ID` in `activity_log`, so BBB users can filter the audit trail to show (or hide) helpdesk-originated writes.
+
+When the BBB call fails transiently, the ticket is already persisted and the existing `helpdesk-task-create` BullMQ fallback (`apps/worker/src/jobs/helpdesk-task-create.job.ts`) can re-drive creation asynchronously.
 
 ---
 

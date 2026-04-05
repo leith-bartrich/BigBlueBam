@@ -1,22 +1,32 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { eq, and, asc, desc, sql, gte, lt, or } from 'drizzle-orm';
+import { eq, and, asc, desc, gte, gt, lt, or, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { tickets } from '../db/schema/tickets.js';
 import { ticketMessages } from '../db/schema/ticket-messages.js';
 import { ticketActivityLog } from '../db/schema/ticket-activity-log.js';
+import { helpdeskTicketEvents } from '../db/schema/ticket-events.js';
 import { logTicketActivity } from '../lib/ticket-activity.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
-import { tasks, projects, phases, labels } from '../db/schema/bbb-refs.js';
+import { phases } from '../db/schema/bbb-refs.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
 import { broadcastTaskCreated, broadcastTicketStatusChanged } from '../lib/broadcast.js';
 import { mirrorTicketMessageToTask, mirrorTicketClosedToTask } from '../lib/task-sync.js';
+import { bbbClient } from '../lib/bbb-client.js';
 import { stripHtml } from '../lib/strip-html.js';
 import {
   broadcastTicketMessage,
   broadcastTicketStatusChanged as broadcastTicketStatusChangedRT,
+  broadcastTicketUpdated,
 } from '../services/realtime.js';
+
+// HB-55: ticket_messages.author_id is NOT NULL and has no FK, so we use the
+// nil UUID as the author_id for server-generated "system" messages emitted
+// by the duplicate/merge flows. A matching author_name gives the UI
+// something sensible to render.
+const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
+const SYSTEM_AUTHOR_NAME = 'System';
 
 const createTicketSchema = z.object({
   subject: z.string().min(1).max(500),
@@ -137,169 +147,108 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
 
     const projectId: string | null = settings?.default_project_id ?? null;
 
-    // HB-9: Wrap task + ticket creation in a single transaction so partial
-    // failure doesn't leave orphaned tasks or tickets behind.
+    // HB-7: Task creation now goes through BBB's /internal/helpdesk/* API
+    // rather than direct SQL. The request ordering is: (1) persist the
+    // ticket standalone; (2) call bbb-client to create the task; (3)
+    // back-link ticket.task_id. If (2) fails the ticket remains without
+    // a task_id — the next client retry / admin action can re-trigger
+    // task creation, and the existing async worker fallback (HB-23) is
+    // still available for manual re-enqueue. We keep the HB-37 phase
+    // validation on the helpdesk side because helpdesk settings store
+    // default_phase_id locally; if the configured phase is invalid we
+    // simply don't pass it and let BBB pick a start phase.
     try {
-      const result = await db.transaction(async (tx) => {
-        let taskId: string | null = null;
-        let fullTaskForBroadcast: Record<string, unknown> | null = null;
-
-        // If we have a default project, create a BBB task
-        if (projectId) {
-          // Get project for task_id_prefix and sequence
-          const [project] = await tx
-            .select()
-            .from(projects)
-            .where(eq(projects.id, projectId))
-            .limit(1);
-
-          if (project) {
-            // HB-37: Validate default_phase_id — ensure it exists and belongs to the project.
-            // If invalid, fall back to the project's is_start=true phase. If none, abort.
-            let phaseId: string | null = null;
-            if (settings?.default_phase_id) {
-              const [configuredPhase] = await tx
-                .select({ id: phases.id })
-                .from(phases)
-                .where(
-                  and(
-                    eq(phases.id, settings.default_phase_id),
-                    eq(phases.project_id, project.id),
-                  ),
-                )
-                .limit(1);
-              if (configuredPhase) {
-                phaseId = configuredPhase.id;
-              }
-            }
-
-            if (!phaseId) {
-              const [startPhase] = await tx
-                .select({ id: phases.id })
-                .from(phases)
-                .where(and(eq(phases.project_id, project.id), eq(phases.is_start, true)))
-                .orderBy(phases.position)
-                .limit(1);
-              if (startPhase) {
-                phaseId = startPhase.id;
-              }
-            }
-
-            if (!phaseId) {
-              // No valid phase — abort rather than create an orphan task with NULL phase_id.
-              throw new Error('NO_VALID_PHASE');
-            }
-
-            // Increment task_id_sequence atomically
-            const [updated] = await tx
-              .update(projects)
-              .set({
-                task_id_sequence: sql`${projects.task_id_sequence} + 1`,
-              })
-              .where(eq(projects.id, project.id))
-              .returning({ task_id_sequence: projects.task_id_sequence });
-
-            const seq = updated?.task_id_sequence ?? 1;
-            const humanId = `${project.task_id_prefix}-${seq}`;
-
-            // Find or create "Support Ticket" label
-            let [supportLabel] = await tx
-              .select()
-              .from(labels)
-              .where(and(eq(labels.project_id, projectId), eq(labels.name, 'Support Ticket')))
-              .limit(1);
-
-            if (!supportLabel) {
-              [supportLabel] = await tx
-                .insert(labels)
-                .values({
-                  project_id: projectId,
-                  name: 'Support Ticket',
-                  color: '#6366f1',
-                  description: 'Ticket submitted via helpdesk portal',
-                })
-                .returning();
-            }
-
-            const labelIds = supportLabel ? [supportLabel.id] : [];
-
-            // HB-36: Identify the helpdesk customer via custom_fields so BBB
-            // users can trace the task back to its reporter. reporter_id is
-            // intentionally left unset (helpdesk users are not BBB users).
-            const initialCustomFields = {
-              helpdesk_customer_email: user.email,
-              helpdesk_customer_id: user.id,
-            };
-
-            // Create the BBB task
-            const [task] = await tx
-              .insert(tasks)
-              .values({
-                project_id: projectId,
-                human_id: humanId,
-                title: safeSubject,
-                description: safeDescription,
-                description_plain: plainDescription,
-                phase_id: phaseId,
-                priority: data.priority,
-                labels: labelIds,
-                custom_fields: initialCustomFields,
-              })
-              .returning();
-
-            if (!task) {
-              throw new Error('TASK_INSERT_FAILED');
-            }
-
-            taskId = task.id;
-            fullTaskForBroadcast = task as Record<string, unknown>;
-          }
-        }
-
-        // Create the ticket (inside the same transaction)
-        const [ticket] = await tx
-          .insert(tickets)
-          .values({
-            helpdesk_user_id: user.id,
-            task_id: taskId,
-            project_id: projectId,
-            subject: safeSubject,
-            description: safeDescription,
-            priority: data.priority,
-            category: data.category ?? null,
-          })
-          .returning();
-
-        if (!ticket) {
-          throw new Error('TICKET_INSERT_FAILED');
-        }
-
-        // Update task custom_fields with ticket reference (same transaction)
-        if (taskId && projectId) {
-          const [updatedTask] = await tx
-            .update(tasks)
-            .set({
-              custom_fields: {
-                helpdesk_customer_email: user.email,
-                helpdesk_customer_id: user.id,
-                helpdesk_ticket_id: ticket.id,
-                helpdesk_ticket_number: ticket.ticket_number,
-              },
-            })
-            .where(eq(tasks.id, taskId))
-            .returning();
-          if (updatedTask) {
-            fullTaskForBroadcast = updatedTask as Record<string, unknown>;
-          }
-        }
-
-        return { ticket, taskId, fullTaskForBroadcast };
-      });
-
-      // Broadcast after commit so consumers don't see uncommitted state.
-      if (result.taskId && projectId && result.fullTaskForBroadcast) {
-        await broadcastTaskCreated(projectId, result.fullTaskForBroadcast);
+      // Resolve + validate helpdesk-configured phase (if any) so we can
+      // surface a 500 CONFIGURATION_ERROR early when the admin-configured
+      // phase no longer exists AND the project has no start phase.
+      let resolvedPhaseId: string | null = null;
+      if (projectId && settings?.default_phase_id) {
+        const [configuredPhase] = await db
+          .select({ id: phases.id })
+          .from(phases)
+          .where(
+            and(
+              eq(phases.id, settings.default_phase_id),
+              eq(phases.project_id, projectId),
+            ),
+          )
+          .limit(1);
+        if (configuredPhase) resolvedPhaseId = configuredPhase.id;
       }
+
+      // Create the ticket first, standalone. task_id is back-linked after
+      // the remote BBB call succeeds.
+      const [ticket] = await db
+        .insert(tickets)
+        .values({
+          helpdesk_user_id: user.id,
+          task_id: null,
+          project_id: projectId,
+          subject: safeSubject,
+          description: safeDescription,
+          priority: data.priority,
+          category: data.category ?? null,
+        })
+        .returning();
+
+      if (!ticket) {
+        throw new Error('TICKET_INSERT_FAILED');
+      }
+
+      // If we have a default project, create the BBB task via the
+      // internal API. Failure is logged but does not fail the request —
+      // the ticket exists and the customer sees it; task linkage can be
+      // reconciled later.
+      let taskIdFromBbb: string | null = null;
+      if (projectId) {
+        try {
+          const created = await bbbClient.createTaskFromTicket(
+            {
+              project_id: projectId,
+              phase_id: resolvedPhaseId,
+              title: safeSubject,
+              description: safeDescription,
+              description_plain: plainDescription,
+              priority: data.priority,
+              ticket_id: ticket.id,
+              ticket_number: ticket.ticket_number ?? undefined,
+              customer_email: user.email,
+              customer_name: user.display_name,
+              customer_id: user.id,
+            },
+            request.log,
+          );
+          taskIdFromBbb = created.id;
+
+          // Back-link ticket.task_id.
+          await db
+            .update(tickets)
+            .set({ task_id: taskIdFromBbb, updated_at: new Date() })
+            .where(eq(tickets.id, ticket.id));
+        } catch (bbbErr) {
+          const err = bbbErr as Error & { status?: number; body?: unknown };
+          // If BBB returned a 422 CONFIGURATION_ERROR (no valid phase)
+          // that is a setup error worth surfacing — but we've already
+          // created the ticket, so we respond 201 with a warning rather
+          // than failing. Log at warn; task will have to be created
+          // manually by an admin.
+          request.log.warn(
+            { err, status: err.status, ticketId: ticket.id, projectId },
+            'Helpdesk ticket created but BBB task creation failed; ticket is unlinked',
+          );
+        }
+      }
+
+      // HB-50 compat: if we have a task, broadcast so BBB boards refresh.
+      if (taskIdFromBbb && projectId) {
+        await broadcastTaskCreated(projectId, {
+          id: taskIdFromBbb,
+          project_id: projectId,
+        });
+      }
+
+      // Normalise shape with prior transaction-based `result` object.
+      const result = { ticket, taskId: taskIdFromBbb };
 
       // HB-45: audit ticket creation.
       await logTicketActivity({
@@ -324,7 +273,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
           status: result.ticket.status,
           priority: result.ticket.priority,
           category: result.ticket.category,
-          task_id: result.ticket.task_id,
+          task_id: result.taskId ?? result.ticket.task_id,
           created_at: result.ticket.created_at,
           updated_at: result.ticket.updated_at,
         },
@@ -395,10 +344,61 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       )
       .orderBy(ticketMessages.created_at);
 
+    // HB-55: expand duplicate/merge relationships for the UI. Two shapes:
+    //   - `duplicate_of`: the primary ticket this one points at (if any),
+    //     so the customer can see "Duplicate of #123" with a clickable link.
+    //   - `duplicates`: the tickets that point at THIS ticket as their
+    //     primary (reverse lookup via idx_tickets_duplicate_of). This lets
+    //     the primary show "merged from #X, #Y". These are fetched
+    //     unconditionally (not ownership-filtered) because the mere
+    //     existence of a merged ticket number does not leak sensitive data
+    //     and the primary's owner needs to see the full picture.
+    let duplicateOfPayload: { id: string; ticket_number: number; subject: string } | null = null;
+    if (ticket.duplicate_of) {
+      const [primary] = await db
+        .select({
+          id: tickets.id,
+          ticket_number: tickets.ticket_number,
+          subject: tickets.subject,
+        })
+        .from(tickets)
+        .where(eq(tickets.id, ticket.duplicate_of))
+        .limit(1);
+      if (primary && primary.ticket_number !== null) {
+        duplicateOfPayload = {
+          id: primary.id,
+          ticket_number: primary.ticket_number,
+          subject: primary.subject,
+        };
+      }
+    }
+
+    const duplicatesRows = await db
+      .select({
+        id: tickets.id,
+        ticket_number: tickets.ticket_number,
+        subject: tickets.subject,
+        merged_at: tickets.merged_at,
+      })
+      .from(tickets)
+      .where(eq(tickets.duplicate_of, id))
+      .orderBy(desc(tickets.merged_at));
+
+    const duplicatesPayload = duplicatesRows
+      .filter((r) => r.ticket_number !== null)
+      .map((r) => ({
+        id: r.id,
+        ticket_number: r.ticket_number as number,
+        subject: r.subject,
+        merged_at: r.merged_at,
+      }));
+
     return reply.send({
       data: {
         ...ticket,
         messages,
+        duplicate_of: duplicateOfPayload,
+        duplicates: duplicatesPayload,
       },
     });
   });
@@ -816,45 +816,377 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // HB-16: Move the linked BBB task to a terminal phase so the board reflects
-    // that the customer closed their ticket. Best-effort — don't fail the close.
-    if (ticket.task_id) {
+    // HB-16 + HB-7: Move the linked BBB task to a terminal phase via the
+    // internal API. Best-effort — don't fail the close.
+    if (ticket.task_id && ticket.project_id) {
       try {
-        const [linkedTask] = await db
-          .select({ id: tasks.id, project_id: tasks.project_id })
-          .from(tasks)
-          .where(eq(tasks.id, ticket.task_id))
-          .limit(1);
-
-        if (linkedTask) {
-          const [terminalPhase] = await db
-            .select({ id: phases.id })
-            .from(phases)
-            .where(
-              and(eq(phases.project_id, linkedTask.project_id), eq(phases.is_terminal, true)),
-            )
-            .orderBy(phases.position)
-            .limit(1);
-
-          if (terminalPhase) {
-            await db
-              .update(tasks)
-              .set({ phase_id: terminalPhase.id, updated_at: new Date() })
-              .where(eq(tasks.id, linkedTask.id));
-
-            await broadcastTicketStatusChanged(linkedTask.project_id, linkedTask.id, 'closed');
-          } else {
-            request.log.warn(
-              { projectId: linkedTask.project_id, taskId: linkedTask.id },
-              'No terminal phase found for project; linked task phase not updated on ticket close',
-            );
-          }
-        }
+        await bbbClient.moveTaskToTerminal(ticket.task_id, request.log);
+        await broadcastTicketStatusChanged(ticket.project_id, ticket.task_id, 'closed');
       } catch (err) {
         request.log.warn({ err, ticketId: id }, 'Failed to move linked task to terminal phase');
       }
     }
 
     return reply.send({ data: updated });
+  });
+
+  // GET /helpdesk/tickets/:id/events — HB-47: replay the durable event log
+  // for a single ticket. Clients persist the id of the last event they
+  // processed and call this on reconnect to catch up on anything they
+  // missed while the WebSocket was down.
+  //
+  // Query params:
+  //   ?since=<eventId>  — numeric bigserial id; returns events with id > since
+  //   ?limit=<1..500>    — page size, defaults to 100
+  //
+  // Response:
+  //   { data: TicketEvent[], has_more: boolean, latest_id: number | null }
+  //
+  // Ownership is enforced against tickets.helpdesk_user_id, same 404-
+  // everywhere pattern as the other ticket routes (HB-51 anti-enumeration).
+  fastify.get(
+    '/helpdesk/tickets/:id/events',
+    {
+      preHandler: [requireHelpdeskAuth],
+      config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const user = request.helpdeskUser!;
+      const { id } = request.params as { id: string };
+      const query = z
+        .object({
+          since: z.coerce.number().int().min(0).default(0),
+          limit: z.coerce.number().int().min(1).max(500).default(100),
+        })
+        .parse(request.query ?? {});
+
+      const [ticket] = await db
+        .select({ id: tickets.id })
+        .from(tickets)
+        .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
+        .limit(1);
+
+      if (!ticket) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Ticket not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const rows = await db
+        .select({
+          id: helpdeskTicketEvents.id,
+          ticket_id: helpdeskTicketEvents.ticket_id,
+          event_type: helpdeskTicketEvents.event_type,
+          payload: helpdeskTicketEvents.payload,
+          created_at: helpdeskTicketEvents.created_at,
+        })
+        .from(helpdeskTicketEvents)
+        .where(
+          and(
+            eq(helpdeskTicketEvents.ticket_id, id),
+            gt(helpdeskTicketEvents.id, query.since),
+          ),
+        )
+        .orderBy(asc(helpdeskTicketEvents.id))
+        .limit(query.limit + 1);
+
+      const hasMore = rows.length > query.limit;
+      const page = hasMore ? rows.slice(0, query.limit) : rows;
+      const latestId = page.length > 0 ? page[page.length - 1]!.id : null;
+
+      return reply.send({
+        data: page,
+        has_more: hasMore,
+        latest_id: latestId,
+      });
+    },
+  );
+
+  // GET /helpdesk/events — HB-47: replay the durable event log across ALL
+  // tickets owned by the caller. The customer portal subscribes to a list
+  // of tickets at once (the ticket-list view) and uses this on reconnect
+  // to catch up without issuing one request per ticket.
+  //
+  // Scoped to `ticket_id IN (SELECT id FROM tickets WHERE helpdesk_user_id = :caller)`
+  // so a customer can only ever replay events for their own tickets.
+  fastify.get(
+    '/helpdesk/events',
+    {
+      preHandler: [requireHelpdeskAuth],
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const user = request.helpdeskUser!;
+      const query = z
+        .object({
+          since: z.coerce.number().int().min(0).default(0),
+          limit: z.coerce.number().int().min(1).max(500).default(100),
+        })
+        .parse(request.query ?? {});
+
+      // Materialize the caller's ticket ids — used both to scope the event
+      // query and to short-circuit when the caller has no tickets at all.
+      const ownedTickets = await db
+        .select({ id: tickets.id })
+        .from(tickets)
+        .where(eq(tickets.helpdesk_user_id, user.id));
+
+      if (ownedTickets.length === 0) {
+        return reply.send({ data: [], has_more: false, latest_id: null });
+      }
+
+      const ownedIds = ownedTickets.map((t) => t.id);
+
+      const rows = await db
+        .select({
+          id: helpdeskTicketEvents.id,
+          ticket_id: helpdeskTicketEvents.ticket_id,
+          event_type: helpdeskTicketEvents.event_type,
+          payload: helpdeskTicketEvents.payload,
+          created_at: helpdeskTicketEvents.created_at,
+        })
+        .from(helpdeskTicketEvents)
+        .where(
+          and(
+            inArray(helpdeskTicketEvents.ticket_id, ownedIds),
+            gt(helpdeskTicketEvents.id, query.since),
+          ),
+        )
+        .orderBy(asc(helpdeskTicketEvents.id))
+        .limit(query.limit + 1);
+
+      const hasMore = rows.length > query.limit;
+      const page = hasMore ? rows.slice(0, query.limit) : rows;
+      const latestId = page.length > 0 ? page[page.length - 1]!.id : null;
+
+      return reply.send({
+        data: page,
+        has_more: hasMore,
+        latest_id: latestId,
+      });
+    },
+  );
+
+  // HB-55: POST /helpdesk/tickets/:id/mark-duplicate — customer-side flag
+  // marking the current ticket as a duplicate of another one they own.
+  // This is purely annotative (no message merge) and sets only
+  // `duplicate_of`; `merged_at` / `merged_by` stay NULL. A customer merge
+  // (POST /.../messages moved across tickets) is an agent-only action via
+  // /agents/tickets/:id/merge.
+  //
+  // The primary ticket is identified by its human-readable `ticket_number`
+  // (what the customer sees in the UI), NOT by uuid — customers should not
+  // need to inspect ids. We validate ownership of BOTH the source and the
+  // primary so the endpoint cannot be used to enumerate other users'
+  // ticket numbers (HB-51 anti-enumeration: we return 404 in both the
+  // "primary not found" and "primary owned by someone else" cases).
+  fastify.post('/helpdesk/tickets/:id/mark-duplicate', { preHandler: [requireHelpdeskAuth] }, async (request, reply) => {
+    const user = request.helpdeskUser!;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({ primary_ticket_number: z.union([z.string().min(1), z.number().int().positive()]) })
+      .parse(request.body ?? {});
+
+    // Normalize: strip a leading '#' and coerce to integer. Reject anything
+    // that isn't a positive integer after stripping.
+    const raw = String(body.primary_ticket_number).trim().replace(/^#/, '');
+    const parsedNumber = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsedNumber) || parsedNumber <= 0 || String(parsedNumber) !== raw) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'primary_ticket_number must be a positive integer',
+          details: [{ field: 'primary_ticket_number', issue: 'invalid' }],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Load source (with ownership).
+    const [source] = await db
+      .select()
+      .from(tickets)
+      .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
+      .limit(1);
+
+    if (!source) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    // Load primary by ticket_number (with ownership — anti-enumeration).
+    const [primary] = await db
+      .select()
+      .from(tickets)
+      .where(
+        and(
+          eq(tickets.ticket_number, parsedNumber),
+          eq(tickets.helpdesk_user_id, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (!primary) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Primary ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    if (primary.id === source.id) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A ticket cannot be a duplicate of itself',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // No chains: primary must not itself be a duplicate.
+    if (primary.duplicate_of) {
+      return reply.status(400).send({
+        error: {
+          code: 'PRIMARY_IS_DUPLICATE',
+          message: 'The specified primary ticket is itself marked as a duplicate. Point at its primary instead.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Primary must not be closed/archived.
+    if (primary.status === 'closed') {
+      return reply.status(400).send({
+        error: {
+          code: 'PRIMARY_CLOSED',
+          message: 'The specified primary ticket is closed and cannot accept duplicates.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    const [updated] = await db
+      .update(tickets)
+      .set({ duplicate_of: primary.id, updated_at: new Date() })
+      .where(and(eq(tickets.id, source.id), eq(tickets.helpdesk_user_id, user.id)))
+      .returning({ id: tickets.id, duplicate_of: tickets.duplicate_of });
+
+    if (!updated) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    // System message on the source ticket (customer-visible) recording
+    // the annotation. author_id is the nil UUID so this renders as a
+    // neutral "System" note rather than attributed to any user.
+    await db.insert(ticketMessages).values({
+      ticket_id: source.id,
+      author_type: 'system',
+      author_id: SYSTEM_AUTHOR_ID,
+      author_name: SYSTEM_AUTHOR_NAME,
+      body: `Marked as duplicate of #${primary.ticket_number} by customer`,
+      is_internal: false,
+    });
+
+    await broadcastTicketUpdated(source.id, {
+      event: 'ticket.marked_duplicate',
+      duplicate_of: primary.id,
+      primary_number: primary.ticket_number,
+    });
+
+    await logTicketActivity({
+      ticketId: source.id,
+      actorType: 'customer',
+      actorId: user.id,
+      action: 'ticket.marked_duplicate',
+      details: { primary_id: primary.id, primary_number: primary.ticket_number },
+      logger: request.log,
+    });
+
+    return reply.send({
+      data: {
+        id: source.id,
+        duplicate_of: primary.id,
+        primary_number: primary.ticket_number,
+      },
+    });
+  });
+
+  // HB-55: DELETE /helpdesk/tickets/:id/mark-duplicate — customer unmarks
+  // their ticket. Clears duplicate_of only; does NOT touch merged_at /
+  // merged_by (an agent-merged ticket cannot be un-merged by the customer
+  // since the message move has already happened — clearing the flag would
+  // desynchronize the primary's conversation from the now-orphan source).
+  // So if merged_at IS NOT NULL, we reject with 409.
+  fastify.delete('/helpdesk/tickets/:id/mark-duplicate', { preHandler: [requireHelpdeskAuth] }, async (request, reply) => {
+    const user = request.helpdeskUser!;
+    const { id } = request.params as { id: string };
+
+    const [source] = await db
+      .select()
+      .from(tickets)
+      .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
+      .limit(1);
+
+    if (!source) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    if (!source.duplicate_of) {
+      // Already not a duplicate — idempotent success.
+      return reply.send({ data: { id: source.id, duplicate_of: null } });
+    }
+
+    if (source.merged_at) {
+      return reply.status(409).send({
+        error: {
+          code: 'CONFLICT',
+          message: 'Ticket has been merged by an agent and cannot be unmarked.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    await db
+      .update(tickets)
+      .set({ duplicate_of: null, updated_at: new Date() })
+      .where(and(eq(tickets.id, source.id), eq(tickets.helpdesk_user_id, user.id)));
+
+    await db.insert(ticketMessages).values({
+      ticket_id: source.id,
+      author_type: 'system',
+      author_id: SYSTEM_AUTHOR_ID,
+      author_name: SYSTEM_AUTHOR_NAME,
+      body: 'Duplicate flag cleared by customer',
+      is_internal: false,
+    });
+
+    await broadcastTicketUpdated(source.id, {
+      event: 'ticket.duplicate_cleared',
+      duplicate_of: null,
+    });
+
+    await logTicketActivity({
+      ticketId: source.id,
+      actorType: 'customer',
+      actorId: user.id,
+      action: 'ticket.duplicate_cleared',
+      details: { previous_primary_id: source.duplicate_of },
+      logger: request.log,
+    });
+
+    return reply.send({ data: { id: source.id, duplicate_of: null } });
   });
 }

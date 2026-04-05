@@ -46,6 +46,11 @@ const envSchema = z.object({
 
   // Public URL used to build invitation acceptance links in emails.
   FRONTEND_URL: z.string().default('http://localhost/b3'),
+
+  // HB-7: Shared secret used by helpdesk-api to authenticate to the
+  // /internal/helpdesk/* surface. Must be at least 32 chars. Both apps
+  // must receive the same value.
+  INTERNAL_HELPDESK_SECRET: z.string().min(32),
 });
 
 export type Env = z.infer<typeof envSchema>;

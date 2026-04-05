@@ -100,6 +100,7 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@bigbluebam.com}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost/b3}
+      INTERNAL_HELPDESK_SECRET: ${INTERNAL_HELPDESK_SECRET:?INTERNAL_HELPDESK_SECRET is required}
     ports:
       - "${API_PORT:-4000}:4000"
     healthcheck:
@@ -227,6 +228,8 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       EMAIL_FROM: ${SMTP_FROM:-noreply@bigbluebam.io}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      BBB_API_INTERNAL_URL: http://api:4000
+      INTERNAL_HELPDESK_SECRET: ${INTERNAL_HELPDESK_SECRET:?INTERNAL_HELPDESK_SECRET is required}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4001/health"]
       interval: 15s
