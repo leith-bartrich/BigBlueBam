@@ -1,26 +1,18 @@
 # Future Work
 
-What's genuinely unfinished on `main`. Updated: 2026-04-05.
+What's genuinely unfinished on `main`. Updated: 2026-04-04.
 
-Both audits are now fully closed:
+Both audits are fully closed:
 - **Helpdesk↔BBB:** 53/57 resolved, 3 partial, 1 deferred, **0 open**
 - **Permissions:** 81/82 resolved, 1 partial (documented tradeoff), **0 open**
 
----
-
-## Un-started from the original design doc
-
-These are real feature roadmap items — net-new work, not cleanup.
-
-### Phase 6 — Reporting & Integrations
-- **Burndown / velocity / CFD charts** — sprint reports exist in data but no chart UI
-- **GitHub integration** — commit linking (`BBB-247` in a commit message auto-attaches to the task), PR auto-transitions
-- **Slack integration** — bot + slash commands (separate from Banter's internal messaging)
-
-### Phase 7 — Scale & Polish
-- **Accessibility audit** — no formal a11y pass has been done
-- **Board virtualization** — large boards (500+ cards) may have render perf issues; virtualize rows
-- **Redis caching layer** — some hot paths (org settings, project listings) could be cached for read-heavy workloads
+Phase 6 & 7 roadmap items now landed on main:
+- Burndown / velocity / CFD charts (SVG, `/projects/:id/reports`)
+- GitHub integration (HMAC webhook, task-ref commit/PR linking, PR phase transitions)
+- Slack integration (outbound notifications + slash commands)
+- Accessibility audit pass (aria-labels on icon buttons, skip link, focus management)
+- Board column virtualization (gated at 50+ tasks, dnd-kit safe)
+- Redis caching layer (org settings 60s, user project listings 30s)
 
 ---
 
