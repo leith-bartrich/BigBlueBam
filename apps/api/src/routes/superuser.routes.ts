@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { randomBytes } from 'node:crypto';
+import { z } from 'zod';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import {
   superuserListOrgsQuerySchema,
@@ -17,6 +19,34 @@ import { requireAuth } from '../plugins/auth.js';
 import { requireSuperuser } from '../middleware/require-superuser.js';
 import { logSuperuserAction } from '../services/superuser-audit.service.js';
 import { setActiveOrgId, clearActiveOrgId } from '../services/session.service.js';
+import {
+  listUsers,
+  getUserDetail,
+  userExists,
+  orgExists,
+  findMembership,
+  addMembership,
+  removeMembership,
+  updateMembershipRole,
+  countUserMemberships,
+  setDefaultOrg,
+  listUserSessions,
+  findUserSession,
+  deleteSession,
+  deleteAllUserSessions,
+  findUserByEmail,
+  initiateEmailChange,
+  listUserProjects,
+  listAuditLog,
+} from '../services/superuser-users.service.js';
+import {
+  sendEmailVerificationEmail,
+  sendEmailChangeNoticeEmail,
+} from '../lib/email-queue.js';
+
+const ROLE_VALUES = ['owner', 'admin', 'member', 'viewer', 'guest'] as const;
+const roleSchema = z.enum(ROLE_VALUES);
+const uuidSchema = z.string().uuid();
 
 // ─── Cursor helpers (base64 JSON {created_at, id}) ──────────────────────────
 
@@ -450,6 +480,637 @@ export default async function superuserRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({ ok: true });
+    },
+  );
+
+  // ─── GET /superuser/users ────────────────────────────────────────────────
+  fastify.get<{
+    Querystring: {
+      search?: string;
+      limit?: string;
+      cursor?: string;
+      is_active?: string;
+      is_superuser?: string;
+    };
+  }>(
+    '/users',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const q = request.query;
+      const limit = Math.min(
+        Math.max(parseInt(q.limit ?? '50', 10) || 50, 1),
+        100,
+      );
+      const search = q.search?.trim() || undefined;
+      const is_active =
+        q.is_active === 'true' ? true : q.is_active === 'false' ? false : undefined;
+      const is_superuser =
+        q.is_superuser === 'true'
+          ? true
+          : q.is_superuser === 'false'
+            ? false
+            : undefined;
+
+      const result = await listUsers({
+        search,
+        limit,
+        cursor: q.cursor,
+        is_active,
+        is_superuser,
+      });
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.list',
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: {
+          search: search ?? null,
+          limit,
+          returned: result.data.length,
+          is_active: is_active ?? null,
+          is_superuser: is_superuser ?? null,
+        },
+      });
+
+      return reply.send(result);
+    },
+  );
+
+  // ─── GET /superuser/users/:id ────────────────────────────────────────────
+  fastify.get<{ Params: { id: string } }>(
+    '/users/:id',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (!uuidSchema.safeParse(id).success) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const detail = await getUserDetail(id);
+      if (!detail) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.view',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+      });
+
+      return reply.send({ data: detail });
+    },
+  );
+
+  // ─── POST /superuser/users/:id/memberships ───────────────────────────────
+  fastify.post<{
+    Params: { id: string };
+    Body: { org_id: string; role: string };
+  }>(
+    '/users/:id/memberships',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const bodySchema = z.object({
+        org_id: z.string().uuid(),
+        role: roleSchema,
+      });
+      const parsed = bodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid body',
+            details: parsed.error.errors.map((e) => ({
+              path: e.path.join('.'),
+              message: e.message,
+            })),
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (!(await userExists(id))) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      if (!(await orgExists(parsed.data.org_id))) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Organization not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const existing = await findMembership(id, parsed.data.org_id);
+      if (existing) {
+        return reply.status(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'User is already a member of this organization',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await addMembership(id, parsed.data.org_id, parsed.data.role);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.membership.add',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { org_id: parsed.data.org_id, role: parsed.data.role },
+      });
+
+      return reply.status(201).send({
+        data: {
+          user_id: id,
+          org_id: parsed.data.org_id,
+          role: parsed.data.role,
+          is_default: false,
+        },
+      });
+    },
+  );
+
+  // ─── DELETE /superuser/users/:id/memberships/:orgId ──────────────────────
+  fastify.delete<{ Params: { id: string; orgId: string } }>(
+    '/users/:id/memberships/:orgId',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id, orgId } = request.params;
+
+      const existing = await findMembership(id, orgId);
+      if (!existing) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Membership not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const count = await countUserMemberships(id);
+      if (count <= 1) {
+        return reply.status(400).send({
+          error: {
+            code: 'LAST_MEMBERSHIP',
+            message: 'Cannot remove the user\'s last organization membership',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await removeMembership(id, orgId);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.membership.remove',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { org_id: orgId, previous_role: existing.role },
+      });
+
+      return reply.status(204).send();
+    },
+  );
+
+  // ─── PATCH /superuser/users/:id/memberships/:orgId ───────────────────────
+  fastify.patch<{
+    Params: { id: string; orgId: string };
+    Body: { role: string };
+  }>(
+    '/users/:id/memberships/:orgId',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id, orgId } = request.params;
+      const bodySchema = z.object({ role: roleSchema });
+      const parsed = bodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid body',
+            details: parsed.error.errors.map((e) => ({
+              path: e.path.join('.'),
+              message: e.message,
+            })),
+            request_id: request.id,
+          },
+        });
+      }
+
+      const existing = await findMembership(id, orgId);
+      if (!existing) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Membership not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const fromRole = existing.role;
+      await updateMembershipRole(id, orgId, parsed.data.role);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.membership.role_change',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: {
+          org_id: orgId,
+          from_role: fromRole,
+          to_role: parsed.data.role,
+        },
+      });
+
+      return reply.send({
+        data: {
+          user_id: id,
+          org_id: orgId,
+          role: parsed.data.role,
+          is_default: existing.is_default,
+        },
+      });
+    },
+  );
+
+  // ─── POST /superuser/users/:id/set-default-org ───────────────────────────
+  fastify.post<{
+    Params: { id: string };
+    Body: { org_id: string };
+  }>(
+    '/users/:id/set-default-org',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const bodySchema = z.object({ org_id: z.string().uuid() });
+      const parsed = bodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid body',
+            details: parsed.error.errors.map((e) => ({
+              path: e.path.join('.'),
+              message: e.message,
+            })),
+            request_id: request.id,
+          },
+        });
+      }
+
+      const existing = await findMembership(id, parsed.data.org_id);
+      if (!existing) {
+        return reply.status(400).send({
+          error: {
+            code: 'NOT_A_MEMBER',
+            message: 'User is not a member of that organization',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await setDefaultOrg(id, parsed.data.org_id);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.default_org.change',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { org_id: parsed.data.org_id },
+      });
+
+      return reply.send({
+        data: { user_id: id, default_org_id: parsed.data.org_id },
+      });
+    },
+  );
+
+  // ─── GET /superuser/users/:id/sessions ───────────────────────────────────
+  fastify.get<{ Params: { id: string } }>(
+    '/users/:id/sessions',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (!(await userExists(id))) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const rows = await listUserSessions(id);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.sessions.view',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { count: rows.length },
+      });
+
+      return reply.send({ data: rows });
+    },
+  );
+
+  // ─── DELETE /superuser/users/:id/sessions/:sessionId ─────────────────────
+  fastify.delete<{ Params: { id: string; sessionId: string } }>(
+    '/users/:id/sessions/:sessionId',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id, sessionId } = request.params;
+
+      const found = await findUserSession(id, sessionId);
+      if (!found) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Session not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await deleteSession(sessionId);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.sessions.revoke',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { session_id: sessionId },
+      });
+
+      return reply.status(204).send();
+    },
+  );
+
+  // ─── POST /superuser/users/:id/sessions/revoke-all ───────────────────────
+  fastify.post<{ Params: { id: string } }>(
+    '/users/:id/sessions/revoke-all',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (!(await userExists(id))) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const revoked = await deleteAllUserSessions(id);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.sessions.revoke_all',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { revoked },
+      });
+
+      return reply.send({ data: { revoked } });
+    },
+  );
+
+  // ─── PATCH /superuser/users/:id/email ────────────────────────────────────
+  fastify.patch<{
+    Params: { id: string };
+    Body: { new_email: string };
+  }>(
+    '/users/:id/email',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const bodySchema = z.object({
+        new_email: z.string().email().max(320),
+      });
+      const parsed = bodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid body',
+            details: parsed.error.errors.map((e) => ({
+              path: e.path.join('.'),
+              message: e.message,
+            })),
+            request_id: request.id,
+          },
+        });
+      }
+
+      const newEmail = parsed.data.new_email.toLowerCase().trim();
+
+      const [current] = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          display_name: users.display_name,
+        })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+
+      if (!current) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Check if the new email is already in use by another user.
+      const taken = await findUserByEmail(newEmail);
+      if (taken && taken.id !== id) {
+        return reply.status(400).send({
+          error: {
+            code: 'EMAIL_TAKEN',
+            message: 'That email is already in use',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const token = randomBytes(32).toString('base64url');
+
+      await initiateEmailChange(id, newEmail, token);
+
+      const verificationSent = await sendEmailVerificationEmail({
+        to: newEmail,
+        token,
+        userName: current.display_name,
+      });
+      await sendEmailChangeNoticeEmail({
+        to: current.email,
+        userName: current.display_name,
+        newEmail,
+      });
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.email.change_requested',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { old_email: current.email, new_email: newEmail },
+      });
+
+      return reply.send({
+        data: {
+          user_id: id,
+          pending_email: newEmail,
+          email_sent: verificationSent,
+        },
+      });
+    },
+  );
+
+  // ─── GET /superuser/users/:id/projects ───────────────────────────────────
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { scope?: string };
+  }>(
+    '/users/:id/projects',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const scope: 'active' | 'all' =
+        request.query.scope === 'all' ? 'all' : 'active';
+
+      if (!(await userExists(id))) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const callerActiveOrgId = request.user?.active_org_id ?? null;
+      const rows = await listUserProjects(id, scope, callerActiveOrgId);
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.projects.view',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { scope, count: rows.length },
+      });
+
+      return reply.send({ data: rows });
+    },
+  );
+
+  // ─── GET /superuser/audit-log ────────────────────────────────────────────
+  fastify.get<{
+    Querystring: {
+      target_user_id?: string;
+      superuser_id?: string;
+      action?: string;
+      limit?: string;
+      cursor?: string;
+    };
+  }>(
+    '/audit-log',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const q = request.query;
+      const limit = Math.min(
+        Math.max(parseInt(q.limit ?? '50', 10) || 50, 1),
+        200,
+      );
+
+      const result = await listAuditLog({
+        target_user_id: q.target_user_id,
+        superuser_id: q.superuser_id,
+        action: q.action,
+        limit,
+        cursor: q.cursor,
+      });
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'audit_log.view',
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: {
+          target_user_id: q.target_user_id ?? null,
+          superuser_id: q.superuser_id ?? null,
+          action_filter: q.action ?? null,
+          limit,
+          returned: result.data.length,
+        },
+      });
+
+      return reply.send(result);
     },
   );
 }

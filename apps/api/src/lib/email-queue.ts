@@ -105,3 +105,122 @@ If you weren't expecting this invitation, you can safely ignore this email.`;
     return false;
   }
 }
+
+// ─── Email verification (used by SuperUser email change flow) ──────────────
+
+export interface EmailVerificationParams {
+  to: string;
+  token: string;
+  userName: string;
+}
+
+/**
+ * Enqueue a verification email to a user's NEW address after a SuperUser
+ * (or self-service flow) has initiated an email change. The recipient
+ * clicks the link inside to confirm ownership of the new address.
+ */
+export async function sendEmailVerificationEmail(
+  params: EmailVerificationParams,
+): Promise<boolean> {
+  const { to, token, userName } = params;
+  const verifyUrl = `${env.FRONTEND_URL.replace(/\/$/, '')}/verify-email/${token}`;
+
+  const safeName = escapeHtml(userName);
+  const safeUrl = escapeHtml(verifyUrl);
+
+  const subject = 'Verify your new email address for BigBlueBam';
+  const html = `<!doctype html>
+<html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#111;">
+<h2>Verify your new email</h2>
+<p>Hi ${safeName},</p>
+<p>An email change has been initiated on your BigBlueBam account.
+Please confirm ownership of this new email address by clicking the
+button below. This link will expire in 7 days.</p>
+<p>
+  <a href="${safeUrl}"
+     style="display:inline-block;padding:10px 16px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;">
+    Verify email
+  </a>
+</p>
+<p>Or copy this link into your browser:<br/><code>${safeUrl}</code></p>
+<p style="color:#666;font-size:12px;">If you did not expect this, you can safely ignore this email — nothing will change until you click the link.</p>
+</body></html>`;
+
+  const text = `Hi ${userName},
+
+An email change has been initiated on your BigBlueBam account.
+Verify this new address: ${verifyUrl}
+
+This link expires in 7 days. If you did not expect this, ignore this email.`;
+
+  try {
+    await getQueue().add(
+      'email-verification',
+      { to, subject, html, text },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    );
+    return isSmtpConfigured();
+  } catch {
+    return false;
+  }
+}
+
+export interface EmailChangeNoticeParams {
+  to: string;
+  userName: string;
+  newEmail: string;
+}
+
+/**
+ * Enqueue a courtesy notice to a user's OLD (current) email warning that
+ * an email-change request was initiated. Non-blocking — the outgoing
+ * change is controlled entirely by the verification link sent to the NEW
+ * address.
+ */
+export async function sendEmailChangeNoticeEmail(
+  params: EmailChangeNoticeParams,
+): Promise<boolean> {
+  const { to, userName, newEmail } = params;
+
+  const safeName = escapeHtml(userName);
+  const safeNew = escapeHtml(newEmail);
+
+  const subject = 'Email change requested on your BigBlueBam account';
+  const html = `<!doctype html>
+<html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#111;">
+<h2>Email change requested</h2>
+<p>Hi ${safeName},</p>
+<p>Someone has requested that your BigBlueBam account email be changed to
+<strong>${safeNew}</strong>.</p>
+<p>No change has been made yet — the new address must be verified first.
+If you did not request this, please contact your organization administrator
+immediately.</p>
+</body></html>`;
+
+  const text = `Hi ${userName},
+
+Someone has requested that your BigBlueBam account email be changed to ${newEmail}.
+No change has been made yet — the new address must be verified first.
+If you did not request this, please contact your organization administrator immediately.`;
+
+  try {
+    await getQueue().add(
+      'email-change-notice',
+      { to, subject, html, text },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    );
+    return isSmtpConfigured();
+  } catch {
+    return false;
+  }
+}

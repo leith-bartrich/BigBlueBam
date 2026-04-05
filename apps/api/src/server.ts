@@ -39,6 +39,7 @@ import uploadRoutes from './routes/upload.routes.js';
 import platformRoutes from './routes/platform.routes.js';
 import guestRoutes from './routes/guest.routes.js';
 import superuserRoutes from './routes/superuser.routes.js';
+import emailVerifyRoutes from './routes/email-verify.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -163,6 +164,7 @@ await fastify.register(uploadRoutes);
 await fastify.register(platformRoutes);
 await fastify.register(guestRoutes);
 await fastify.register(superuserRoutes, { prefix: '/superuser' });
+await fastify.register(emailVerifyRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
