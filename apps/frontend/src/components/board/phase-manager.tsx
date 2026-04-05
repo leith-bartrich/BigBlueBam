@@ -211,18 +211,20 @@ export function PhaseManager({ open, onOpenChange, projectId }: PhaseManagerProp
                     <button
                       onClick={() => handleMoveUp(index)}
                       disabled={index === 0 || reorderPhases.isPending}
-                      className="p-0.5 rounded text-zinc-400 hover:text-zinc-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-0.5 rounded text-zinc-500 hover:text-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                       title="Move up"
+                      aria-label={`Move phase ${phase.name} up`}
                     >
-                      <ArrowUp className="h-3 w-3" />
+                      <ArrowUp className="h-3 w-3" aria-hidden="true" />
                     </button>
                     <button
                       onClick={() => handleMoveDown(index)}
                       disabled={index === phases.length - 1 || reorderPhases.isPending}
-                      className="p-0.5 rounded text-zinc-400 hover:text-zinc-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-0.5 rounded text-zinc-500 hover:text-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                       title="Move down"
+                      aria-label={`Move phase ${phase.name} down`}
                     >
-                      <ArrowDown className="h-3 w-3" />
+                      <ArrowDown className="h-3 w-3" aria-hidden="true" />
                     </button>
                   </div>
 
@@ -293,37 +295,42 @@ export function PhaseManager({ open, onOpenChange, projectId }: PhaseManagerProp
                   {/* is_start toggle */}
                   <button
                     onClick={() => handleToggle(phase, 'is_start')}
-                    className={`p-1 rounded shrink-0 transition-colors ${
+                    aria-pressed={phase.is_start}
+                    aria-label={phase.is_start ? `Unset ${phase.name} as start phase` : `Set ${phase.name} as start phase`}
+                    className={`p-1 rounded shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                       phase.is_start
                         ? 'text-green-600 bg-green-50 dark:bg-green-950'
-                        : 'text-zinc-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-950'
+                        : 'text-zinc-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-950'
                     }`}
                     title={phase.is_start ? 'Start phase (click to unset)' : 'Set as start phase'}
                   >
-                    <Play className="h-3.5 w-3.5" />
+                    <Play className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
 
                   {/* is_terminal toggle */}
                   <button
                     onClick={() => handleToggle(phase, 'is_terminal')}
-                    className={`p-1 rounded shrink-0 transition-colors ${
+                    aria-pressed={phase.is_terminal}
+                    aria-label={phase.is_terminal ? `Unset ${phase.name} as terminal phase` : `Set ${phase.name} as terminal phase`}
+                    className={`p-1 rounded shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                       phase.is_terminal
                         ? 'text-blue-600 bg-blue-50 dark:bg-blue-950'
-                        : 'text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950'
+                        : 'text-zinc-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950'
                     }`}
                     title={phase.is_terminal ? 'Terminal phase (click to unset)' : 'Set as terminal phase'}
                   >
-                    <Flag className="h-3.5 w-3.5" />
+                    <Flag className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
 
                   {/* Delete */}
                   <button
                     onClick={() => handleDelete(phase)}
                     disabled={deletePhase.isPending}
-                    className="p-1 rounded text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors shrink-0"
+                    className="p-1 rounded text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     title="Delete phase"
+                    aria-label={`Delete phase ${phase.name}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
               );

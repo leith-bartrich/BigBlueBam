@@ -105,10 +105,11 @@ export function SavedViewsPanel({
                     e.stopPropagation();
                     deleteView.mutate(view.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 dark:hover:bg-red-950 transition-all"
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded hover:bg-red-50 dark:hover:bg-red-950 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                   title="Delete view"
+                  aria-label={`Delete view ${view.name}`}
                 >
-                  <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                  <Trash2 className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
                 </button>
               </div>
             ))

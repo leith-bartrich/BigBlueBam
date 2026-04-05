@@ -196,8 +196,9 @@ export function RichTextEditor({
             type="button"
             onClick={() => handleFormat(btn.action)}
             disabled={uploading}
-            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200/60 dark:hover:text-zinc-300 dark:hover:bg-zinc-700/60 transition-colors disabled:opacity-50"
+            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200/60 dark:hover:text-zinc-300 dark:hover:bg-zinc-700/60 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             title={btn.label}
+            aria-label={btn.label}
           >
             {btn.action === 'image' && uploading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -212,10 +213,12 @@ export function RichTextEditor({
         <button
           type="button"
           onClick={() => setPreview(!preview)}
-          className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200/60 dark:hover:text-zinc-300 dark:hover:bg-zinc-700/60 transition-colors"
+          className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 hover:bg-zinc-200/60 dark:hover:text-zinc-300 dark:hover:bg-zinc-700/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           title={preview ? 'Edit' : 'Preview'}
+          aria-label={preview ? 'Switch to edit mode' : 'Switch to preview mode'}
+          aria-pressed={preview}
         >
-          {preview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          {preview ? <EyeOff className="h-3.5 w-3.5" aria-hidden="true" /> : <Eye className="h-3.5 w-3.5" aria-hidden="true" />}
         </button>
       </div>
 

@@ -30,6 +30,9 @@ import {
   Link2,
   Settings2,
   MessageSquareShare,
+  GitCommit,
+  GitPullRequest,
+  ExternalLink,
 } from 'lucide-react';
 import type { Task, Priority, ApiResponse, PaginatedResponse } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
@@ -278,6 +281,24 @@ export function TaskDetailDrawer({
   });
   const attachments = attachmentsRes?.data ?? [];
 
+  // Fetch GitHub refs (commits + PRs linked to this task)
+  interface GithubRef {
+    id: string;
+    ref_type: 'commit' | 'pull_request';
+    ref_id: string;
+    ref_url: string;
+    ref_title: string | null;
+    author_name: string | null;
+    status: string | null;
+    created_at: string;
+  }
+  const { data: githubRefsRes } = useQuery({
+    queryKey: ['task-github-refs', task?.id],
+    queryFn: () => api.get<{ data: GithubRef[] }>(`/tasks/${task!.id}/github-refs`),
+    enabled: !!task?.id && open,
+  });
+  const githubRefs = githubRefsRes?.data ?? [];
+
   // Upload and attach file
   const uploadAttachment = useMutation({
     mutationFn: async (file: File) => {
@@ -479,14 +500,15 @@ export function TaskDetailDrawer({
                   <div className="flex items-center gap-3">
                     <button
                       onClick={handleCopyHumanId}
-                      className="flex items-center gap-1.5 text-sm font-mono text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                      className="flex items-center gap-1.5 text-sm font-mono text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
                       title="Copy task ID"
+                      aria-label={`Copy task ID ${humanId}`}
                     >
                       {humanId}
                       {copiedId ? (
-                        <Check className="h-3.5 w-3.5 text-green-500" />
+                        <Check className="h-3.5 w-3.5 text-green-600" aria-hidden="true" />
                       ) : (
-                        <Copy className="h-3.5 w-3.5" />
+                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                       )}
                     </button>
                     {stateOptions.length > 0 ? (
@@ -512,17 +534,21 @@ export function TaskDetailDrawer({
                     <div className="relative">
                       <button
                         onClick={() => setShowShareBanter((v) => !v)}
-                        className="rounded-md p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                         title="Share to Banter"
+                        aria-label="Share to Banter"
+                        aria-haspopup="dialog"
+                        aria-expanded={showShareBanter}
                       >
-                        <MessageSquareShare className="h-4.5 w-4.5" />
+                        <MessageSquareShare className="h-4.5 w-4.5" aria-hidden="true" />
                       </button>
                       {showShareBanter && (
                         <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700 p-4 space-y-3">
                           <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Share to Banter</h4>
                           <div>
-                            <label className="text-xs font-medium text-zinc-500 mb-1 block">Channel</label>
+                            <label htmlFor="share-banter-channel" className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1 block">Channel</label>
                             <select
+                              id="share-banter-channel"
                               value={banterChannelId}
                               onChange={(e) => setBanterChannelId(e.target.value)}
                               className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-zinc-100"
@@ -534,8 +560,9 @@ export function TaskDetailDrawer({
                             </select>
                           </div>
                           <div>
-                            <label className="text-xs font-medium text-zinc-500 mb-1 block">Message (optional)</label>
+                            <label htmlFor="share-banter-message" className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1 block">Message (optional)</label>
                             <textarea
+                              id="share-banter-message"
                               value={banterMessage}
                               onChange={(e) => setBanterMessage(e.target.value)}
                               placeholder="Add a note..."
@@ -564,13 +591,17 @@ export function TaskDetailDrawer({
                     <button
                       onClick={() => duplicateTask.mutate()}
                       disabled={duplicateTask.isPending}
-                      className="rounded-md p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                      className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
                       title="Duplicate task"
+                      aria-label="Duplicate task"
                     >
-                      <CopyPlus className="h-4.5 w-4.5" />
+                      <CopyPlus className="h-4.5 w-4.5" aria-hidden="true" />
                     </button>
-                    <RadixDialog.Close className="rounded-md p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                      <X className="h-5 w-5" />
+                    <RadixDialog.Close
+                      aria-label="Close task details"
+                      className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    >
+                      <X className="h-5 w-5" aria-hidden="true" />
                     </RadixDialog.Close>
                   </div>
                 </div>
@@ -830,23 +861,87 @@ export function TaskDetailDrawer({
                                     <a
                                       href={att.url}
                                       download={att.filename}
-                                      className="p-1 rounded text-zinc-400 hover:text-primary-600 transition-colors"
+                                      className="p-1 rounded text-zinc-500 hover:text-primary-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                                       title="Download"
+                                      aria-label={`Download ${att.filename}`}
                                     >
-                                      <Download className="h-4 w-4" />
+                                      <Download className="h-4 w-4" aria-hidden="true" />
                                     </a>
                                     <button
                                       onClick={() => deleteAttachment.mutate(att.id)}
-                                      className="p-1 rounded text-zinc-400 hover:text-red-600 transition-colors"
+                                      className="p-1 rounded text-zinc-500 hover:text-red-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                                       title="Delete attachment"
+                                      aria-label={`Delete attachment ${att.filename}`}
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <Trash2 className="h-4 w-4" aria-hidden="true" />
                                     </button>
                                   </div>
                                 ))}
                               </div>
                             )}
                           </div>
+
+                          {/* GitHub refs */}
+                          {githubRefs.length > 0 && (
+                            <div>
+                              <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-1.5">
+                                <GitPullRequest className="h-4 w-4" />
+                                Linked
+                                <span className="text-zinc-400">({githubRefs.length})</span>
+                              </h3>
+                              <div className="space-y-2">
+                                {githubRefs.map((ref) => {
+                                  const isCommit = ref.ref_type === 'commit';
+                                  const statusColor =
+                                    ref.status === 'merged'
+                                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                                      : ref.status === 'closed'
+                                        ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                                        : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300';
+                                  return (
+                                    <div
+                                      key={ref.id}
+                                      className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 py-2"
+                                    >
+                                      {isCommit ? (
+                                        <GitCommit className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                      ) : (
+                                        <GitPullRequest className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                      )}
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm text-zinc-700 dark:text-zinc-300 truncate">
+                                          {ref.ref_title ?? (isCommit ? ref.ref_id.slice(0, 7) : `#${ref.ref_id}`)}
+                                        </p>
+                                        <p className="text-xs text-zinc-400 flex items-center gap-1.5">
+                                          {isCommit ? (
+                                            <span className="font-mono">{ref.ref_id.slice(0, 7)}</span>
+                                          ) : (
+                                            <span>#{ref.ref_id}</span>
+                                          )}
+                                          {ref.author_name && <span>&middot; {ref.author_name}</span>}
+                                          {!isCommit && ref.status && (
+                                            <span className={cn('inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium capitalize', statusColor)}>
+                                              {ref.status}
+                                            </span>
+                                          )}
+                                        </p>
+                                      </div>
+                                      <a
+                                        href={ref.ref_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1 rounded text-zinc-500 hover:text-primary-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                                        title="View on GitHub"
+                                        aria-label="View on GitHub (opens in new tab)"
+                                      >
+                                        <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                                      </a>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Banter mentions */}
                           <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3">
@@ -919,8 +1014,9 @@ export function TaskDetailDrawer({
                                           onClick={() =>
                                             toggleReaction.mutate({ commentId: comment.id, emoji })
                                           }
-                                          className="opacity-40 hover:opacity-100 rounded p-0.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-all"
+                                          className="opacity-40 hover:opacity-100 rounded p-0.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:opacity-100"
                                           title={`React with ${emoji}`}
+                                          aria-label={`React with ${emoji}`}
                                         >
                                           {emoji}
                                         </button>

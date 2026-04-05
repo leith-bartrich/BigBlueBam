@@ -97,6 +97,12 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:rounded-md focus:bg-primary-600 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+      >
+        Skip to main content
+      </a>
       <Sidebar
         currentProjectId={currentProjectId}
         onNavigate={onNavigate}
@@ -184,10 +190,11 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
           <div className="flex items-center gap-4">
             <OrgSwitcher />
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" aria-hidden="true" />
               <input
-                type="text"
+                type="search"
                 placeholder="Search tasks..."
+                aria-label="Search tasks"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-64 rounded-lg border border-zinc-200 bg-zinc-50 pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
@@ -198,18 +205,22 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
               href="/banter/"
               className="relative rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
               title="Banter — unread messages"
+              aria-label="Banter, view unread messages"
             >
-              <MessageCircle className="h-4.5 w-4.5" />
+              <MessageCircle className="h-4.5 w-4.5" aria-hidden="true" />
               <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-primary-500 ring-2 ring-white dark:ring-zinc-900" />
             </a>
 
             <div className="relative" ref={notifRef}>
               <button
                 onClick={() => setShowNotifications((prev) => !prev)}
-                className="relative rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                className="relative rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 title="Notifications"
+                aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+                aria-haspopup="menu"
+                aria-expanded={showNotifications}
               >
-                <Bell className="h-4.5 w-4.5" />
+                <Bell className="h-4.5 w-4.5" aria-hidden="true" />
                 {unreadCount > 0 && (
                   <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                     {unreadCount > 99 ? '99+' : unreadCount}
@@ -217,7 +228,7 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
                 )}
               </button>
               {showNotifications && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-80 max-h-96 overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700">
+                <div role="menu" aria-label="Notifications" className="absolute right-0 top-full mt-1 z-50 w-80 max-h-96 overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl dark:bg-zinc-800 dark:border-zinc-700">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-700">
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Notifications</h3>
                     {unreadCount > 0 && (
@@ -261,7 +272,10 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
 
             <DropdownMenu
               trigger={
-                <button className="flex items-center gap-2 rounded-lg p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                <button
+                  className="flex items-center gap-2 rounded-lg p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  aria-label="User menu"
+                >
                   <Avatar src={user?.avatar_url} name={user?.display_name} size="sm" />
                 </button>
               }
@@ -286,7 +300,7 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus:outline-none">
           {children}
         </main>
       </div>

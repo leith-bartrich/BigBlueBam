@@ -561,10 +561,12 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
                           <DropdownMenu
                             trigger={
                               <button
-                                className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                                className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                                 title="Actions"
+                                aria-label="User actions"
+                                aria-haspopup="menu"
                               >
-                                <MoreHorizontal className="h-4 w-4" />
+                                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                               </button>
                             }
                           >
