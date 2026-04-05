@@ -270,27 +270,9 @@ Session cookie is set.
 
 Request schema: `loginSchema` in [`packages/shared/src/schemas/auth.ts`](../packages/shared/src/schemas/auth.ts).
 
-#### `POST /auth/login/oauth`
-
-Initiate OAuth2 flow. Returns redirect URL.
-
-**Request:** `{ "provider": "google" | "github" | "microsoft" }`
-
 #### `POST /auth/logout`
 
 Destroy session. Clears cookie.
-
-#### `POST /auth/forgot-password`
-
-Send password reset email. **Request:** `{ "email": "..." }`
-
-#### `POST /auth/reset-password`
-
-Complete password reset. **Request:** `{ "token": "...", "new_password": "..." }`
-
-#### `POST /auth/magic-link`
-
-Send passwordless login link. **Request:** `{ "email": "..." }`
 
 #### `GET /auth/me`
 
@@ -372,18 +354,6 @@ Switch the current session's active org context. The session cookie is **rotated
 #### `PATCH /auth/me`
 
 Update profile fields: `display_name`, `avatar_url`, `timezone`, `notification_prefs`.
-
-#### `POST /auth/me/2fa/enable`
-
-Begin TOTP setup. Returns QR code URI and secret.
-
-#### `POST /auth/me/2fa/verify`
-
-Confirm TOTP setup with a valid code.
-
-#### `DELETE /auth/me/2fa`
-
-Disable 2FA. Requires current password.
 
 ---
 
