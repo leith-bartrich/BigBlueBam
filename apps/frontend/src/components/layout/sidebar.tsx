@@ -1,4 +1,4 @@
-import { LayoutDashboard, Settings, User, Plus, Shield, Users } from 'lucide-react';
+import { LayoutDashboard, Settings, User, Plus, Shield, Users, UsersRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/hooks/use-projects';
 import { useAuthStore } from '@/stores/auth.store';
@@ -82,6 +82,15 @@ export function Sidebar({ currentProjectId, onNavigate, onCreateProject }: Sideb
           >
             <Shield className="h-4 w-4" />
             SuperUser
+          </button>
+        )}
+        {user?.is_superuser === true && (
+          <button
+            onClick={() => onNavigate('/superuser/people')}
+            className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-red-300 hover:bg-sidebar-hover transition-colors"
+          >
+            <UsersRound className="h-4 w-4" />
+            All users
           </button>
         )}
         {(user?.role === 'owner' || user?.role === 'admin' || user?.is_superuser === true) && (

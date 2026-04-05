@@ -10,6 +10,8 @@ import { ProjectDashboardPage } from '@/pages/project-dashboard';
 import { AuditLogPage } from '@/pages/audit-log';
 import { SprintReportPage } from '@/pages/sprint-report';
 import { SuperuserPage } from '@/pages/superuser';
+import { SuperuserPeopleListPage } from '@/pages/superuser/people-list';
+import { SuperuserPeopleDetailPage } from '@/pages/superuser/people-detail';
 import { PeoplePage } from '@/pages/people';
 import { PersonDetailPage } from '@/pages/people/detail';
 import { GuestAcceptPage } from '@/pages/guest-accept';
@@ -26,6 +28,8 @@ type Route =
   | { page: 'settings' }
   | { page: 'my-work' }
   | { page: 'superuser' }
+  | { page: 'superuser-people' }
+  | { page: 'superuser-person-detail'; userId: string }
   | { page: 'people' }
   | { page: 'person-detail'; userId: string }
   | { page: 'guest-accept'; token: string };
@@ -60,6 +64,13 @@ function parseRoute(path: string): Route {
   const sprintReportMatch = p.match(/^\/projects\/([^/]+)\/sprints\/([^/]+)\/report$/);
   if (sprintReportMatch) {
     return { page: 'sprint-report', projectId: sprintReportMatch[1]!, sprintId: sprintReportMatch[2]! };
+  }
+  const superuserPersonMatch = p.match(/^\/superuser\/people\/([^/]+)$/);
+  if (superuserPersonMatch) {
+    return { page: 'superuser-person-detail', userId: superuserPersonMatch[1]! };
+  }
+  if (p === '/superuser/people' || p === '/superuser/people/') {
+    return { page: 'superuser-people' };
   }
   const personDetailMatch = p.match(/^\/people\/([^/]+)$/);
   if (personDetailMatch) {
@@ -150,6 +161,10 @@ export function App() {
       return <MyWorkPage onNavigate={navigate} />;
     case 'superuser':
       return <SuperuserPage onNavigate={navigate} />;
+    case 'superuser-people':
+      return <SuperuserPeopleListPage onNavigate={navigate} />;
+    case 'superuser-person-detail':
+      return <SuperuserPeopleDetailPage userId={route.userId} onNavigate={navigate} />;
     case 'people':
       return <PeoplePage onNavigate={navigate} />;
     case 'person-detail':
