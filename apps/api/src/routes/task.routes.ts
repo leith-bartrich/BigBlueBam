@@ -116,6 +116,54 @@ export default async function taskRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // Resolve a human-readable task ref (e.g. "MAGE-38") to its task id +
+  // project id. Used by the cross-app task-reference linking: when Banter
+  // renders "MAGE-38" as a link, it targets /b3/tasks/ref/MAGE-38 which
+  // hits this endpoint (via a tiny frontend resolver page) and bounces
+  // to the right project board with the task drawer open.
+  fastify.get<{ Params: { ref: string } }>(
+    '/tasks/by-ref/:ref',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      // Normalize: uppercase prefix, drop accidental '#' / whitespace.
+      const raw = request.params.ref.trim().replace(/^#/, '');
+      const match = /^([A-Za-z]{2,10})-(\d+)$/.exec(raw);
+      if (!match) {
+        return reply.status(400).send({
+          error: {
+            code: 'INVALID_REF',
+            message: 'Task reference must look like PREFIX-123',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      const humanId = `${match[1]!.toUpperCase()}-${match[2]!}`;
+      const task = await taskService.getTaskByHumanId(humanId);
+      if (!task) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Task not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      // Membership gate is handled in the caller's project-scoped navigation;
+      // here we only expose id + project_id + human_id + title so the client
+      // can redirect. No privileged fields.
+      return reply.send({
+        data: {
+          id: task.id,
+          project_id: task.project_id,
+          human_id: task.human_id,
+          title: task.title,
+        },
+      });
+    },
+  );
+
   fastify.get<{ Params: { id: string } }>(
     '/tasks/:id',
     { preHandler: [requireAuth] },

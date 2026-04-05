@@ -53,7 +53,23 @@ const SWIMLANE_OPTIONS = [
 
 export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
   const [selectedSprintId, setSelectedSprintId] = useState<string | undefined>();
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  // Initial task selection honors a `?task=<uuid>` query param so external
+  // links (Banter "MAGE-38" refs, email links, etc.) can deep-link into a
+  // specific task's drawer on first load. The param is consumed once then
+  // cleared from the URL to keep subsequent navigation clean.
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const taskParam = new URLSearchParams(window.location.search).get('task');
+    return taskParam && /^[0-9a-f]{8}-/i.test(taskParam) ? taskParam : null;
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('task')) {
+      url.searchParams.delete('task');
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, []);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createDialogPhaseId, setCreateDialogPhaseId] = useState<string | undefined>();
   const [filters, setFilters] = useState<{ assignee_id?: string; priority?: string; state_id?: string; search?: string }>({});

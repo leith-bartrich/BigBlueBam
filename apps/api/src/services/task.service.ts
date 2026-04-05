@@ -124,6 +124,23 @@ export async function getTask(taskId: string) {
   return task ?? null;
 }
 
+/** Look up a task by its human-readable id (e.g. "MAGE-38"). Matches the
+ *  full tasks.human_id column exactly, which already encodes the project
+ *  prefix + sequence number. Returns null if no such ref exists. */
+export async function getTaskByHumanId(humanId: string) {
+  const [task] = await db
+    .select({
+      id: tasks.id,
+      project_id: tasks.project_id,
+      human_id: tasks.human_id,
+      title: tasks.title,
+    })
+    .from(tasks)
+    .where(eq(tasks.human_id, humanId))
+    .limit(1);
+  return task ?? null;
+}
+
 export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?: string, impersonatorId?: string | null, viaSuperuserContext?: boolean) {
   const updateValues: Record<string, unknown> = {
     updated_at: new Date(),

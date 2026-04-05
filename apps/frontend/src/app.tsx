@@ -16,6 +16,7 @@ import { PeoplePage } from '@/pages/people';
 import { PersonDetailPage } from '@/pages/people/detail';
 import { GuestAcceptPage } from '@/pages/guest-accept';
 import { PasswordChangePage } from '@/pages/password-change';
+import { TaskRefResolverPage } from '@/pages/task-ref-resolver';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -34,7 +35,8 @@ type Route =
   | { page: 'superuser-person-detail'; userId: string }
   | { page: 'people' }
   | { page: 'person-detail'; userId: string }
-  | { page: 'guest-accept'; token: string };
+  | { page: 'guest-accept'; token: string }
+  | { page: 'task-ref'; ref: string };
 
 const BASE_PATH = '/b3';
 
@@ -50,6 +52,10 @@ function parseRoute(path: string): Route {
   const guestAcceptMatch = p.match(/^\/guests\/accept\/(.+)$/);
   if (guestAcceptMatch) {
     return { page: 'guest-accept', token: guestAcceptMatch[1]! };
+  }
+  const taskRefMatch = p.match(/^\/tasks\/ref\/([^/]+)$/);
+  if (taskRefMatch) {
+    return { page: 'task-ref', ref: decodeURIComponent(taskRefMatch[1]!) };
   }
   const boardMatch = p.match(/^\/projects\/([^/]+)\/board$/);
   if (boardMatch) {
@@ -198,6 +204,8 @@ export function App() {
       return <PeoplePage onNavigate={navigate} />;
     case 'person-detail':
       return <PersonDetailPage userId={route.userId} onNavigate={navigate} />;
+    case 'task-ref':
+      return <TaskRefResolverPage ref={route.ref} onNavigate={navigate} />;
     case 'login':
     case 'register':
     case 'dashboard':

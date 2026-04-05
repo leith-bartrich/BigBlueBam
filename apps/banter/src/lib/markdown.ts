@@ -44,10 +44,16 @@ export function markdownToHtml(md: string): string {
   // @mentions
   html = html.replace(/@(\w+)/g, '<span class="mention-highlight">@$1</span>');
 
-  // BBB task references: BBB-123 → clickable link to task
+  // BBB task references: PREFIX-123 → clickable link that resolves to
+  // the task's project board via /b3/tasks/ref/<REF>. Works with ANY
+  // project prefix (MAGE-38, FRND-7, etc.) — matches the tasks.human_id
+  // column format. Case-sensitive (prefixes are stored uppercase).
   html = html.replace(
-    /\bBBB-(\d+)\b/g,
-    '<a href="/b3/tasks/$1" class="rich-text-link task-reference" title="View task BBB-$1">BBB-$1</a>',
+    /\b([A-Z]{2,10})-(\d+)\b/g,
+    (_m, prefix: string, num: string) => {
+      const ref = `${prefix}-${num}`;
+      return `<a href="/b3/tasks/ref/${ref}" class="rich-text-link task-reference" title="View task ${ref}">${ref}</a>`;
+    },
   );
 
   // Process line-by-line for headings and lists
