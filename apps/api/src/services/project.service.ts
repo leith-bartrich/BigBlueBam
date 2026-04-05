@@ -311,6 +311,27 @@ export async function addProjectMember(projectId: string, userId: string, role: 
   return membership!;
 }
 
+/**
+ * Returns the project's org_id and the list of user_ids with a membership
+ * row. Used by the route layer to know which `bbb:user:*:projects` cache
+ * keys to invalidate after a project create/update/archive.
+ */
+export async function getProjectOrgAndMemberIds(
+  projectId: string,
+): Promise<{ org_id: string; user_ids: string[] } | null> {
+  const [project] = await db
+    .select({ org_id: projects.org_id })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) return null;
+  const rows = await db
+    .select({ user_id: projectMemberships.user_id })
+    .from(projectMemberships)
+    .where(eq(projectMemberships.project_id, projectId));
+  return { org_id: project.org_id, user_ids: rows.map((r) => r.user_id) };
+}
+
 export async function getProjectMembership(projectId: string, userId: string) {
   const [membership] = await db
     .select()

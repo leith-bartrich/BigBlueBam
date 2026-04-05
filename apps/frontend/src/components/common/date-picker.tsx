@@ -158,9 +158,10 @@ export function DatePicker({ value, onChange, label, placeholder = 'Pick a date.
               <button
                 type="button"
                 onClick={prevMonth}
-                className="rounded-md p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                aria-label="Previous month"
+                className="rounded-md p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
-                <ChevronLeft className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                <ChevronLeft className="h-4 w-4 text-zinc-600 dark:text-zinc-400" aria-hidden="true" />
               </button>
               <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                 {MONTHS[viewMonth]} {viewYear}
@@ -168,9 +169,10 @@ export function DatePicker({ value, onChange, label, placeholder = 'Pick a date.
               <button
                 type="button"
                 onClick={nextMonth}
-                className="rounded-md p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                aria-label="Next month"
+                className="rounded-md p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
-                <ChevronRight className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                <ChevronRight className="h-4 w-4 text-zinc-600 dark:text-zinc-400" aria-hidden="true" />
               </button>
             </div>
 

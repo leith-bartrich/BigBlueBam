@@ -51,8 +51,11 @@ export function Dialog({ open, onOpenChange, title, description, children, class
                       </RadixDialog.Description>
                     )}
                   </div>
-                  <RadixDialog.Close className="rounded-md p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                    <X className="h-4 w-4" />
+                  <RadixDialog.Close
+                    aria-label="Close dialog"
+                    className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
                   </RadixDialog.Close>
                 </div>
                 {children}

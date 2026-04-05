@@ -43,8 +43,11 @@ function MultiSelectDropdown({ label, options, selectedValues, onToggle }: Multi
     <div ref={ref} className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label={hasSelections ? `${label}, ${selectedValues.length} selected` : label}
         className={cn(
-          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors',
+          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
           hasSelections
             ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-zinc-800 dark:text-primary-400'
             : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-400',
@@ -56,20 +59,23 @@ function MultiSelectDropdown({ label, options, selectedValues, onToggle }: Multi
             {selectedValues.length}
           </span>
         )}
-        <ChevronDown className="h-3.5 w-3.5" />
+        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 z-50 min-w-[200px] rounded-lg border border-zinc-200 bg-white shadow-lg dark:bg-zinc-900 dark:border-zinc-700 py-1">
+        <div role="listbox" aria-multiselectable="true" aria-label={label} className="absolute top-full left-0 mt-1 z-50 min-w-[200px] rounded-lg border border-zinc-200 bg-white shadow-lg dark:bg-zinc-900 dark:border-zinc-700 py-1">
           {options.map((option) => {
             const isSelected = selectedValues.includes(option.value);
             return (
               <button
                 key={option.value}
                 onClick={() => onToggle(option.value)}
-                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                role="option"
+                aria-selected={isSelected}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:bg-zinc-50 dark:focus-visible:bg-zinc-800"
               >
                 <div
+                  aria-hidden="true"
                   className={cn(
                     'flex items-center justify-center h-4 w-4 rounded border transition-colors',
                     isSelected

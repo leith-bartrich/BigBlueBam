@@ -182,7 +182,9 @@ export function CreateTaskDialog({
                     key={label.id}
                     type="button"
                     onClick={() => toggleLabel(label.id)}
-                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ${
+                    aria-pressed={isSelected}
+                    aria-label={`${isSelected ? 'Remove' : 'Add'} label ${label.name}`}
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                       isSelected
                         ? 'border-transparent ring-2 ring-primary-500 ring-offset-1'
                         : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'

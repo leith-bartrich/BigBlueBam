@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ArrowLeft, Target, CheckCircle2, TrendingUp, ArrowRight, Loader2, MessageSquareShare } from 'lucide-react';
+import { ArrowLeft, Target, CheckCircle2, TrendingUp, ArrowRight, Loader2, MessageSquareShare, BarChart3 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
@@ -109,6 +109,14 @@ export function SprintReportPage({ projectId, sprintId, onNavigate }: SprintRepo
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Board
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onNavigate(`/projects/${projectId}/reports`)}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Project Reports
           </Button>
         </div>
 

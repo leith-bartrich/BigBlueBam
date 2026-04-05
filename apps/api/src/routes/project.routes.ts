@@ -1,17 +1,53 @@
 import type { FastifyInstance } from 'fastify';
+import type Redis from 'ioredis';
 import { createProjectSchema, updateProjectSchema, addProjectMemberSchema } from '@bigbluebam/shared';
 import * as projectService from '../services/project.service.js';
 import * as orgService from '../services/org.service.js';
 import { checkOrgPermission, isOrgPrivileged } from '../services/org-permissions.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
+import { cacheGetOrSet, cacheInvalidate, CACHE_KEYS } from '../lib/cache.js';
+
+const USER_PROJECTS_TTL_SECONDS = 30;
+
+/**
+ * Drop every `bbb:user:<userId>:projects` key for a given project's members.
+ * Called after any write that could change a user's visible project list
+ * (create, update, archive, add-member). Best-effort — never throws.
+ */
+async function invalidateProjectListsForProject(redis: Redis, projectId: string): Promise<void> {
+  const info = await projectService.getProjectOrgAndMemberIds(projectId);
+  if (!info) return;
+  await Promise.all(
+    info.user_ids.map((uid) =>
+      cacheInvalidate(redis, `${CACHE_KEYS.userProjects(uid)}:org:${info.org_id}`),
+    ),
+  );
+}
+
+function userProjectsKey(userId: string, orgId: string): string {
+  return `${CACHE_KEYS.userProjects(userId)}:org:${orgId}`;
+}
 
 export default async function projectRoutes(fastify: FastifyInstance) {
   fastify.get('/projects', { preHandler: [requireAuth] }, async (request, reply) => {
-    const projects = await projectService.listProjects(
-      request.user!.org_id,
-      request.user!.id,
-      request.user!.is_superuser,
+    // SuperUsers see every project in the org; skip caching for them so
+    // they don't share a key space with regular members whose views may
+    // legitimately differ.
+    if (request.user!.is_superuser) {
+      const projects = await projectService.listProjects(
+        request.user!.org_id,
+        request.user!.id,
+        true,
+      );
+      return reply.send({ data: projects });
+    }
+
+    const projects = await cacheGetOrSet(
+      fastify.redis,
+      userProjectsKey(request.user!.id, request.user!.org_id),
+      USER_PROJECTS_TTL_SECONDS,
+      () => projectService.listProjects(request.user!.org_id, request.user!.id, false),
     );
 
     return reply.send({ data: projects });
@@ -20,7 +56,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
   fastify.post('/projects', { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] }, async (request, reply) => {
     // Enforce org-level permission: members_can_create_projects
     if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
-      const org = await orgService.getOrganizationCached(request.user!.org_id);
+      const org = await orgService.getOrganizationCached(fastify.redis, request.user!.org_id);
       if (!checkOrgPermission(org?.settings as Record<string, unknown> | null, 'members_can_create_projects')) {
         return reply.status(403).send({
           error: {
@@ -38,6 +74,11 @@ export default async function projectRoutes(fastify: FastifyInstance) {
       request.user!.org_id,
       data,
       request.user!.id,
+    );
+    // Creator's project list just gained a row — drop their cached copy.
+    await cacheInvalidate(
+      fastify.redis,
+      userProjectsKey(request.user!.id, request.user!.org_id),
     );
 
     return reply.status(201).send({ data: project });
@@ -104,6 +145,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
 
       const data = updateProjectSchema.parse(request.body);
       const project = await projectService.updateProject(request.params.id, data);
+      await invalidateProjectListsForProject(fastify.redis, request.params.id);
 
       if (!project) {
         return reply.status(404).send({
@@ -145,7 +187,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
         // they created, and only if the org permission allows it.
         if (!isOrgPrivileged(request.user!.role)) {
           const existingProject = await projectService.getProject(request.params.id);
-          const org = await orgService.getOrganizationCached(request.user!.org_id);
+          const org = await orgService.getOrganizationCached(fastify.redis, request.user!.org_id);
           const permitted = checkOrgPermission(
             org?.settings as Record<string, unknown> | null,
             'members_can_delete_own_projects',
@@ -167,6 +209,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
       }
 
       const project = await projectService.archiveProject(request.params.id);
+      await invalidateProjectListsForProject(fastify.redis, request.params.id);
       if (!project) {
         return reply.status(404).send({
           error: {
@@ -235,6 +278,7 @@ export default async function projectRoutes(fastify: FastifyInstance) {
         data.user_id,
         data.role,
       );
+      await invalidateProjectListsForProject(fastify.redis, request.params.id);
 
       return reply.status(201).send({ data: newMembership });
     },

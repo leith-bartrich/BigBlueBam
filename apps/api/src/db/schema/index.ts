@@ -27,3 +27,5 @@ export { impersonationSessions } from './impersonation-sessions.js';
 export { guestInvitations } from './guest-invitations.js';
 export { organizationMemberships } from './organization-memberships.js';
 export { loginHistory } from './login-history.js';
+export { slackIntegrations } from './slack-integrations.js';
+export { githubIntegrations, taskGithubRefs } from './github-integrations.js';

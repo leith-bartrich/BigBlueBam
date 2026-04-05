@@ -11,7 +11,7 @@ import { requireOrgRole } from '../middleware/authorize.js';
 
 export default async function orgRoutes(fastify: FastifyInstance) {
   fastify.get('/org', { preHandler: [requireAuth] }, async (request, reply) => {
-    const org = await orgService.getOrganization(request.user!.org_id);
+    const org = await orgService.getOrganizationCached(fastify.redis, request.user!.org_id);
     if (!org) {
       return reply.status(404).send({
         error: {
@@ -49,6 +49,8 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       const data = schema.parse(request.body);
 
       const org = await orgService.updateOrganization(request.user!.org_id, data);
+      // Drop the Redis-cached copy so the next reader picks up new settings.
+      orgService.invalidateOrgCache(request.user!.org_id, fastify.redis);
       if (!org) {
         return reply.status(404).send({
           error: {
@@ -749,7 +751,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       // Allow org admins/owners/superusers, OR members if the org permission
       // `members_can_invite_members` is enabled.
       if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
-        const org = await orgService.getOrganizationCached(request.user!.org_id);
+        const org = await orgService.getOrganizationCached(fastify.redis, request.user!.org_id);
         const allowed = checkOrgPermission(
           org?.settings as Record<string, unknown> | null,
           'members_can_invite_members',

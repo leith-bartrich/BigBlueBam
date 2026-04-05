@@ -46,9 +46,11 @@ export function Sidebar({ currentProjectId, onNavigate, onCreateProject }: Sideb
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider px-3">Projects</span>
             <button
               onClick={onCreateProject}
-              className="rounded-md p-1 text-zinc-500 hover:text-zinc-300 hover:bg-sidebar-hover transition-colors"
+              className="rounded-md p-1 text-zinc-500 hover:text-zinc-300 hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              aria-label="Create project"
+              title="Create project"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
           {projects.map((project) => (

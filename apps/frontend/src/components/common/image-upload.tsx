@@ -93,8 +93,9 @@ export function ImageUpload({ onUpload, endpoint, className, size = 'sm' }: Imag
         type="button"
         onClick={handleClick}
         disabled={uploading}
-        className={className ?? `p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:text-zinc-300 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}
+        className={className ?? `p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:text-zinc-300 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}
         title="Upload image"
+        aria-label={uploading ? `Uploading image ${progress}%` : 'Upload image'}
       >
         {uploading ? (
           <span className="flex items-center gap-1">

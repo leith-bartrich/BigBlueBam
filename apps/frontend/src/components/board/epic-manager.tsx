@@ -101,10 +101,11 @@ export function EpicManager({ open, onOpenChange, projectId }: EpicManagerProps)
                       deleteEpic.mutate(epic.id);
                     }
                   }}
-                  className="p-1 rounded text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors shrink-0"
+                  className="p-1 rounded text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                   title="Delete epic"
+                  aria-label={`Delete epic ${epic.name}`}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>
             ))}

@@ -98,9 +98,10 @@ export function SprintSelector({ sprints, activeSprint, selectedSprintId, onSele
               }}
               loading={deleteSprint.isPending}
               title="Delete this sprint"
+              aria-label="Delete this sprint"
               className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </>
         )}
@@ -109,9 +110,11 @@ export function SprintSelector({ sprints, activeSprint, selectedSprintId, onSele
           size="sm"
           variant="ghost"
           onClick={() => setShowCreateForm((v) => !v)}
-          title="Create sprint"
+          title={showCreateForm ? 'Cancel' : 'Create sprint'}
+          aria-label={showCreateForm ? 'Cancel create sprint' : 'Create sprint'}
+          aria-expanded={showCreateForm}
         >
-          {showCreateForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {showCreateForm ? <X className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
         </Button>
 
         {selected && (

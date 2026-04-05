@@ -33,6 +33,20 @@ interface WebhookData {
   updated_at: string;
 }
 
+interface SlackIntegrationData {
+  id: string;
+  project_id: string;
+  webhook_url: string;
+  notify_on_task_created: boolean;
+  notify_on_task_completed: boolean;
+  notify_on_sprint_started: boolean;
+  notify_on_sprint_completed: boolean;
+  slash_command_token: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 const WEBHOOK_EVENT_TYPES = [
   'task.created',
   'task.updated',
@@ -71,6 +85,26 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [editingWebhookId, setEditingWebhookId] = useState<string | null>(null);
   const [editWebhookUrl, setEditWebhookUrl] = useState('');
   const [editWebhookEvents, setEditWebhookEvents] = useState<string[]>([]);
+
+  // Slack integration state (per project, editing one at a time)
+  const [slackProjectId, setSlackProjectId] = useState<string>('');
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState('');
+  const [slackToken, setSlackToken] = useState('');
+  const [slackNotifyTaskCreated, setSlackNotifyTaskCreated] = useState(true);
+  const [slackNotifyTaskCompleted, setSlackNotifyTaskCompleted] = useState(true);
+  const [slackNotifySprintStarted, setSlackNotifySprintStarted] = useState(true);
+  const [slackNotifySprintCompleted, setSlackNotifySprintCompleted] = useState(true);
+  const [slackEnabled, setSlackEnabled] = useState(true);
+  const [slackTestStatus, setSlackTestStatus] = useState<string | null>(null);
+
+  // GitHub integration state (per project, editing one at a time)
+  const [ghProjectId, setGhProjectId] = useState<string>('');
+  const [ghRepoOwner, setGhRepoOwner] = useState('');
+  const [ghRepoName, setGhRepoName] = useState('');
+  const [ghOpenPhaseId, setGhOpenPhaseId] = useState<string>('');
+  const [ghMergedPhaseId, setGhMergedPhaseId] = useState<string>('');
+  const [ghEnabled, setGhEnabled] = useState(true);
+  const [ghRevealedSecret, setGhRevealedSecret] = useState<string | null>(null);
 
   // Helpdesk tab state
   const [helpdeskRequireVerification, setHelpdeskRequireVerification] = useState(false);
@@ -238,6 +272,142 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-webhooks'] });
       setEditingWebhookId(null);
+    },
+  });
+
+  // Slack integration: fetch current config for selected project
+  const { data: slackIntegrationRes } = useQuery({
+    queryKey: ['slack-integration', slackProjectId],
+    queryFn: () => api.get<{ data: SlackIntegrationData | null }>(`/projects/${slackProjectId}/slack-integration`),
+    enabled: activeTab === 'integrations' && !!slackProjectId,
+  });
+
+  // Load fetched slack config into form state when project changes
+  useEffect(() => {
+    if (!slackProjectId) return;
+    const row = slackIntegrationRes?.data;
+    if (row) {
+      setSlackWebhookUrl(row.webhook_url);
+      setSlackToken(row.slash_command_token ?? '');
+      setSlackNotifyTaskCreated(row.notify_on_task_created);
+      setSlackNotifyTaskCompleted(row.notify_on_task_completed);
+      setSlackNotifySprintStarted(row.notify_on_sprint_started);
+      setSlackNotifySprintCompleted(row.notify_on_sprint_completed);
+      setSlackEnabled(row.enabled);
+    } else {
+      setSlackWebhookUrl('');
+      setSlackToken('');
+      setSlackNotifyTaskCreated(true);
+      setSlackNotifyTaskCompleted(true);
+      setSlackNotifySprintStarted(true);
+      setSlackNotifySprintCompleted(true);
+      setSlackEnabled(true);
+    }
+    setSlackTestStatus(null);
+  }, [slackIntegrationRes, slackProjectId]);
+
+  // Save Slack integration mutation (upsert)
+  const saveSlack = useMutation({
+    mutationFn: () =>
+      api.put(`/projects/${slackProjectId}/slack-integration`, {
+        webhook_url: slackWebhookUrl,
+        slash_command_token: slackToken || null,
+        notify_on_task_created: slackNotifyTaskCreated,
+        notify_on_task_completed: slackNotifyTaskCompleted,
+        notify_on_sprint_started: slackNotifySprintStarted,
+        notify_on_sprint_completed: slackNotifySprintCompleted,
+        enabled: slackEnabled,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['slack-integration', slackProjectId] });
+    },
+  });
+
+  // Delete Slack integration mutation
+  const deleteSlack = useMutation({
+    mutationFn: () => api.delete(`/projects/${slackProjectId}/slack-integration`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['slack-integration', slackProjectId] });
+    },
+  });
+
+  // Send test message mutation
+  const testSlack = useMutation({
+    mutationFn: () => api.post<{ data: { ok: boolean; status: number } }>(`/projects/${slackProjectId}/slack-integration/test`, {}),
+    onSuccess: (res) => {
+      setSlackTestStatus(res.data.ok ? `OK (${res.data.status})` : `Failed (${res.data.status})`);
+    },
+    onError: () => {
+      setSlackTestStatus('Failed — see server logs');
+    },
+  });
+
+  // GitHub integration: fetch current config + phases for selected project
+  interface GithubIntegrationData {
+    id: string;
+    project_id: string;
+    repo_owner: string;
+    repo_name: string;
+    transition_on_pr_open_phase_id: string | null;
+    transition_on_pr_merged_phase_id: string | null;
+    enabled: boolean;
+    webhook_secret?: string | null;
+  }
+  const { data: ghIntegrationRes } = useQuery({
+    queryKey: ['github-integration', ghProjectId],
+    queryFn: () => api.get<{ data: GithubIntegrationData | null }>(`/projects/${ghProjectId}/github-integration`),
+    enabled: activeTab === 'integrations' && !!ghProjectId,
+  });
+  const { data: ghPhasesRes } = useQuery({
+    queryKey: ['project-phases', ghProjectId],
+    queryFn: () => api.get<{ data: { id: string; name: string }[] }>(`/projects/${ghProjectId}/phases`),
+    enabled: activeTab === 'integrations' && !!ghProjectId,
+  });
+  const ghPhases = ghPhasesRes?.data ?? [];
+
+  useEffect(() => {
+    if (!ghProjectId) return;
+    const row = ghIntegrationRes?.data;
+    if (row) {
+      setGhRepoOwner(row.repo_owner);
+      setGhRepoName(row.repo_name);
+      setGhOpenPhaseId(row.transition_on_pr_open_phase_id ?? '');
+      setGhMergedPhaseId(row.transition_on_pr_merged_phase_id ?? '');
+      setGhEnabled(row.enabled);
+    } else {
+      setGhRepoOwner('');
+      setGhRepoName('');
+      setGhOpenPhaseId('');
+      setGhMergedPhaseId('');
+      setGhEnabled(true);
+    }
+    setGhRevealedSecret(null);
+  }, [ghIntegrationRes, ghProjectId]);
+
+  const saveGithub = useMutation({
+    mutationFn: (opts: { regenerate?: boolean }) =>
+      api.put<{ data: GithubIntegrationData & { webhook_secret: string | null } }>(
+        `/projects/${ghProjectId}/github-integration`,
+        {
+          repo_owner: ghRepoOwner.trim(),
+          repo_name: ghRepoName.trim(),
+          transition_on_pr_open_phase_id: ghOpenPhaseId || null,
+          transition_on_pr_merged_phase_id: ghMergedPhaseId || null,
+          enabled: ghEnabled,
+          regenerate_secret: opts.regenerate === true ? true : undefined,
+        },
+      ),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['github-integration', ghProjectId] });
+      if (res.data.webhook_secret) setGhRevealedSecret(res.data.webhook_secret);
+    },
+  });
+
+  const deleteGithub = useMutation({
+    mutationFn: () => api.delete(`/projects/${ghProjectId}/github-integration`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['github-integration', ghProjectId] });
+      setGhRevealedSecret(null);
     },
   });
 
@@ -871,6 +1041,281 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                   })}
                   {projects.length === 0 && (
                     <p className="text-sm text-zinc-400">No projects found.</p>
+                  )}
+                </div>
+
+                {/* Slack Integration */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Slack</h2>
+                    <p className="text-sm text-zinc-500">
+                      Send task and sprint events to a Slack channel via an incoming webhook URL.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1 block">Project</label>
+                    <Select
+                      value={slackProjectId}
+                      onChange={(e) => setSlackProjectId(e.target.value)}
+                    >
+                      <option value="">Select a project…</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  {slackProjectId && (
+                    <>
+                      <Input
+                        id="slack-webhook-url"
+                        label="Incoming webhook URL"
+                        type="password"
+                        placeholder="https://hooks.slack.com/services/T00/B00/XXX"
+                        value={slackWebhookUrl}
+                        onChange={(e) => setSlackWebhookUrl(e.target.value)}
+                      />
+                      <Input
+                        id="slack-token"
+                        label="Slash command verification token (optional)"
+                        type="password"
+                        placeholder="Leave blank if not using /bbb"
+                        value={slackToken}
+                        onChange={(e) => setSlackToken(e.target.value)}
+                      />
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Notify on</label>
+                        {[
+                          ['task.created', slackNotifyTaskCreated, setSlackNotifyTaskCreated] as const,
+                          ['task.completed', slackNotifyTaskCompleted, setSlackNotifyTaskCompleted] as const,
+                          ['sprint.started', slackNotifySprintStarted, setSlackNotifySprintStarted] as const,
+                          ['sprint.completed', slackNotifySprintCompleted, setSlackNotifySprintCompleted] as const,
+                        ].map(([label, val, setter]) => (
+                          <label key={label} className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                            <input
+                              type="checkbox"
+                              checked={val}
+                              onChange={(e) => setter(e.target.checked)}
+                              className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                        <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                          <input
+                            type="checkbox"
+                            checked={slackEnabled}
+                            onChange={(e) => setSlackEnabled(e.target.checked)}
+                            className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                          />
+                          Integration enabled
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          onClick={() => saveSlack.mutate()}
+                          loading={saveSlack.isPending}
+                          disabled={!slackWebhookUrl.trim()}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => testSlack.mutate()}
+                          loading={testSlack.isPending}
+                          disabled={!slackIntegrationRes?.data}
+                        >
+                          Send test message
+                        </Button>
+                        {slackIntegrationRes?.data && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteSlack.mutate()}
+                            loading={deleteSlack.isPending}
+                          >
+                            Disconnect
+                          </Button>
+                        )}
+                        {slackTestStatus && (
+                          <span className="text-xs text-zinc-500">Test: {slackTestStatus}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <div className="text-xs text-zinc-500 space-y-1 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                    <p>
+                      <strong>Incoming webhook:</strong> In your Slack workspace → Apps → Incoming Webhooks →
+                      Add to channel → copy URL here.
+                    </p>
+                    <p>
+                      <strong>Slash command:</strong> Apps → Create App → Slash Commands → add <code className="font-mono">/bbb</code>
+                      {' '}with request URL <code className="font-mono">/b3/api/webhooks/slack/command</code>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* GitHub Integration */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">GitHub</h2>
+                    <p className="text-sm text-zinc-500">
+                      Auto-link commits and pull requests that mention a task (e.g. <code className="font-mono text-xs">MAGE-38</code>), and optionally transition tasks when PRs open or merge.
+                    </p>
+                  </div>
+
+                  <Select
+                    label="Project"
+                    options={[
+                      { value: '', label: 'Select a project…' },
+                      ...projects.map((p) => ({ value: p.id, label: p.name })),
+                    ]}
+                    value={ghProjectId}
+                    onValueChange={setGhProjectId}
+                  />
+
+                  {ghProjectId && (
+                    <div className="space-y-4 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Input
+                          id="gh-repo-owner"
+                          label="Repo Owner"
+                          placeholder="octocat"
+                          value={ghRepoOwner}
+                          onChange={(e) => setGhRepoOwner(e.target.value)}
+                        />
+                        <Input
+                          id="gh-repo-name"
+                          label="Repo Name"
+                          placeholder="hello-world"
+                          value={ghRepoName}
+                          onChange={(e) => setGhRepoName(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Select
+                          label="Move to phase when PR opens"
+                          options={[
+                            { value: '', label: '— none —' },
+                            ...ghPhases.map((p) => ({ value: p.id, label: p.name })),
+                          ]}
+                          value={ghOpenPhaseId}
+                          onValueChange={setGhOpenPhaseId}
+                        />
+                        <Select
+                          label="Move to phase when PR merges"
+                          options={[
+                            { value: '', label: '— none —' },
+                            ...ghPhases.map((p) => ({ value: p.id, label: p.name })),
+                          ]}
+                          value={ghMergedPhaseId}
+                          onValueChange={setGhMergedPhaseId}
+                        />
+                      </div>
+
+                      <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                        <input
+                          type="checkbox"
+                          checked={ghEnabled}
+                          onChange={(e) => setGhEnabled(e.target.checked)}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        Enabled
+                      </label>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => saveGithub.mutate({})}
+                          loading={saveGithub.isPending}
+                          disabled={!ghRepoOwner.trim() || !ghRepoName.trim()}
+                        >
+                          {ghIntegrationRes?.data ? 'Save Changes' : 'Connect GitHub'}
+                        </Button>
+                        {ghIntegrationRes?.data && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => saveGithub.mutate({ regenerate: true })}
+                              loading={saveGithub.isPending}
+                            >
+                              Regenerate Secret
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => deleteGithub.mutate()}
+                              loading={deleteGithub.isPending}
+                            >
+                              Disconnect
+                            </Button>
+                          </>
+                        )}
+                      </div>
+
+                      {ghRevealedSecret && (
+                        <div className="p-4 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950 space-y-3">
+                          <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                            Webhook secret generated. Copy it now — it will not be shown again.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 text-xs bg-white dark:bg-zinc-900 rounded px-3 py-2 font-mono border border-green-200 dark:border-green-800 break-all">
+                              {ghRevealedSecret}
+                            </code>
+                            <button
+                              onClick={() => handleCopyUrl(ghRevealedSecret)}
+                              className="shrink-0 rounded-md p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                            >
+                              {copiedUrl === ghRevealedSecret ? (
+                                <Check className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                          <div className="text-xs text-green-900 dark:text-green-100 space-y-1.5">
+                            <p className="font-semibold">Setup instructions</p>
+                            <p>In your GitHub repo → <strong>Settings</strong> → <strong>Webhooks</strong> → <strong>Add webhook</strong>:</p>
+                            <ul className="list-disc list-inside space-y-0.5 ml-1">
+                              <li>
+                                <strong>Payload URL:</strong>{' '}
+                                <code className="font-mono bg-white/60 dark:bg-zinc-900/60 px-1 rounded">
+                                  {window.location.origin}/b3/api/webhooks/github
+                                </code>
+                              </li>
+                              <li><strong>Content type:</strong> <code className="font-mono">application/json</code></li>
+                              <li><strong>Secret:</strong> (the value above)</li>
+                              <li><strong>Events:</strong> check "Pushes" and "Pull requests"</li>
+                              <li><strong>Active:</strong> checked</li>
+                            </ul>
+                          </div>
+                          <button
+                            onClick={() => setGhRevealedSecret(null)}
+                            className="text-xs text-green-700 dark:text-green-300 underline"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+
+                      {ghIntegrationRes?.data && !ghRevealedSecret && (
+                        <div className="text-xs text-zinc-500 space-y-1">
+                          <p>
+                            <strong>Payload URL:</strong>{' '}
+                            <code className="font-mono">{window.location.origin}/b3/api/webhooks/github</code>
+                          </p>
+                          <p>Secret is set. Use "Regenerate Secret" if you need to rotate it.</p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
