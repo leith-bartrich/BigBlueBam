@@ -9,6 +9,7 @@ import {
   Trash2,
   KeyRound,
   Lock,
+  LogOut,
   Plus,
   Loader2,
   X as XIcon,
@@ -24,7 +25,15 @@ import { Badge } from '@/components/common/badge';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/lib/api';
-import { peopleApi, canActOn, type ProjectMemberRole, type PersonProjectMembership } from '@/lib/api/people';
+import {
+  peopleApi,
+  canActOn,
+  type ProjectMemberRole,
+  type PersonProjectMembership,
+  type ApiKeyRecord,
+  type ApiKeyScope,
+  type ActivityEntry,
+} from '@/lib/api/people';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 
 interface PersonDetailPageProps {
@@ -32,7 +41,13 @@ interface PersonDetailPageProps {
   onNavigate: (path: string) => void;
 }
 
-type DetailTab = 'overview' | 'projects';
+type DetailTab = 'overview' | 'projects' | 'access' | 'activity';
+
+const API_KEY_SCOPE_OPTIONS: { value: ApiKeyScope; label: string }[] = [
+  { value: 'read', label: 'Read' },
+  { value: 'read_write', label: 'Read / Write' },
+  { value: 'admin', label: 'Admin' },
+];
 
 const PROJECT_ROLE_OPTIONS: { value: ProjectMemberRole; label: string }[] = [
   { value: 'admin', label: 'Admin' },
@@ -282,6 +297,16 @@ export function PersonDetailPage({ userId, onNavigate }: PersonDetailPageProps) 
           <TabButton active={tab === 'projects'} onClick={() => setTab('projects')}>
             Projects
           </TabButton>
+          {(canAct || isSelf) && (
+            <TabButton active={tab === 'access'} onClick={() => setTab('access')}>
+              Access
+            </TabButton>
+          )}
+          {canAct && (
+            <TabButton active={tab === 'activity'} onClick={() => setTab('activity')}>
+              Activity
+            </TabButton>
+          )}
         </div>
 
         {tab === 'overview' && (
@@ -413,6 +438,17 @@ export function PersonDetailPage({ userId, onNavigate }: PersonDetailPageProps) 
             onAddClick={() => setShowAddProjects(true)}
           />
         )}
+
+        {tab === 'access' && (canAct || isSelf) && (
+          <AccessTab
+            userId={userId}
+            canAct={canAct}
+            isSelf={isSelf}
+            onOpenReset={() => setResetOpen(true)}
+          />
+        )}
+
+        {tab === 'activity' && canAct && <ActivityTab userId={userId} />}
       </div>
 
       {/* Add-projects modal */}
@@ -886,5 +922,559 @@ function AddProjectsDialog({ userId, onClose }: { userId: string; onClose: () =>
         </div>
       </div>
     </Dialog>
+  );
+}
+
+// --- Access tab ---
+
+function AccessTab({
+  userId,
+  canAct,
+  isSelf,
+  onOpenReset,
+}: {
+  userId: string;
+  canAct: boolean;
+  isSelf: boolean;
+  onOpenReset: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  // Admin actions that require caller to OUTRANK target — not available when
+  // acting on self (canAct is false for self anyway; double-gate for clarity).
+  const adminActionsAllowed = canAct && !isSelf;
+
+  const [confirmForceChange, setConfirmForceChange] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [forceSuccess, setForceSuccess] = useState(false);
+  const [revokedCount, setRevokedCount] = useState<number | null>(null);
+
+  const forceChange = useMutation({
+    mutationFn: () => peopleApi.forcePasswordChange(userId),
+    onSuccess: () => {
+      setConfirmForceChange(false);
+      setForceSuccess(true);
+      setTimeout(() => setForceSuccess(false), 5000);
+    },
+  });
+
+  const signOutAll = useMutation({
+    mutationFn: () => peopleApi.signOutEverywhere(userId),
+    onSuccess: (res) => {
+      setConfirmSignOut(false);
+      setRevokedCount(res.data.revoked);
+      setTimeout(() => setRevokedCount(null), 5000);
+    },
+  });
+
+  // --- API keys ---
+  const { data: keysRes, isLoading: keysLoading } = useQuery({
+    queryKey: ['people', 'member', userId, 'api-keys'],
+    queryFn: () => peopleApi.listApiKeys(userId),
+  });
+  const keys = keysRes?.data ?? [];
+
+  const invalidateKeys = () =>
+    queryClient.invalidateQueries({ queryKey: ['people', 'member', userId, 'api-keys'] });
+
+  const revokeKey = useMutation({
+    mutationFn: (keyId: string) => peopleApi.revokeApiKey(userId, keyId),
+    onSuccess: invalidateKeys,
+  });
+
+  const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null);
+  const [showCreateKey, setShowCreateKey] = useState(false);
+
+  return (
+    <div className="space-y-5">
+      {/* Password card — admin-only, only when acting on someone ranked strictly below */}
+      {adminActionsAllowed && (
+        <Card title="Password & sessions">
+          {forceSuccess && (
+            <div className="mb-3 rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800 dark:bg-green-950 dark:border-green-900 dark:text-green-200">
+              User will be forced to set a new password on their next login.
+            </div>
+          )}
+          {revokedCount != null && (
+            <div className="mb-3 rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800 dark:bg-green-950 dark:border-green-900 dark:text-green-200">
+              Revoked {revokedCount} session{revokedCount === 1 ? '' : 's'}.
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={onOpenReset}>
+              <KeyRound className="h-4 w-4" /> Reset password
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirmForceChange(true)}>
+              <Lock className="h-4 w-4" /> Force password change
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirmSignOut(true)}>
+              <LogOut className="h-4 w-4" /> Sign out everywhere
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* API keys card */}
+      <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">API keys</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Tokens for programmatic access. Shown once at creation.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setShowCreateKey(true)}>
+            <Plus className="h-4 w-4" /> Create API key
+          </Button>
+        </div>
+
+        {keysLoading ? (
+          <p className="px-6 py-10 text-center text-sm text-zinc-400">Loading...</p>
+        ) : keys.length === 0 ? (
+          <p className="px-6 py-10 text-center text-sm text-zinc-400">No API keys yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 dark:bg-zinc-800/50">
+                <tr className="border-b border-zinc-200 dark:border-zinc-700 text-left">
+                  <th className="px-4 py-2.5 font-medium text-zinc-500">Name</th>
+                  <th className="px-4 py-2.5 font-medium text-zinc-500">Scope</th>
+                  <th className="px-4 py-2.5 font-medium text-zinc-500">Prefix</th>
+                  <th className="px-4 py-2.5 font-medium text-zinc-500">Last used</th>
+                  <th className="px-4 py-2.5 font-medium text-zinc-500">Expires</th>
+                  <th className="px-4 py-2.5 font-medium text-zinc-500">Created</th>
+                  <th className="px-4 py-2.5 font-medium text-zinc-500 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keys.map((k: ApiKeyRecord) => (
+                  <tr key={k.id} className="border-b border-zinc-100 dark:border-zinc-800">
+                    <td className="px-4 py-2.5 font-medium text-zinc-900 dark:text-zinc-100">
+                      {k.name}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Badge
+                        variant={
+                          k.scope === 'admin'
+                            ? 'danger'
+                            : k.scope === 'read_write'
+                            ? 'info'
+                            : 'default'
+                        }
+                      >
+                        {k.scope}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-zinc-600 dark:text-zinc-400">
+                      {k.key_prefix}
+                    </td>
+                    <td className="px-4 py-2.5 text-zinc-500">
+                      {k.last_used_at ? formatRelativeTime(k.last_used_at) : 'Never'}
+                    </td>
+                    <td className="px-4 py-2.5 text-zinc-500">
+                      {k.expires_at ? formatDate(k.expires_at) : 'Never'}
+                    </td>
+                    <td className="px-4 py-2.5 text-zinc-500">{formatDate(k.created_at)}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      {revokeConfirmId === k.id ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400 mr-1">
+                            Revoke?
+                          </span>
+                          <button
+                            onClick={() => {
+                              revokeKey.mutate(k.id, {
+                                onSuccess: () => setRevokeConfirmId(null),
+                              });
+                            }}
+                            disabled={revokeKey.isPending}
+                            className="rounded-md border border-red-200 dark:border-red-900 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setRevokeConfirmId(null)}
+                            className="rounded-md border border-zinc-200 dark:border-zinc-700 px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setRevokeConfirmId(k.id)}
+                          className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                          title="Revoke"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Force password change confirm */}
+      <Dialog
+        open={confirmForceChange}
+        onOpenChange={setConfirmForceChange}
+        title="Force password change"
+        description="User will be forced to set a new password on their next login."
+      >
+        {forceChange.isError && (
+          <p className="text-sm text-red-600 mb-3">
+            {(forceChange.error as Error)?.message ?? 'Action failed'}
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={() => setConfirmForceChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            loading={forceChange.isPending}
+            onClick={() => forceChange.mutate()}
+          >
+            Force change
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* Sign out everywhere confirm */}
+      <Dialog
+        open={confirmSignOut}
+        onOpenChange={setConfirmSignOut}
+        title="Sign out everywhere"
+        description="Revoke all active sessions for this user. They will need to log in again on every device."
+      >
+        {signOutAll.isError && (
+          <p className="text-sm text-red-600 mb-3">
+            {(signOutAll.error as Error)?.message ?? 'Action failed'}
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={() => setConfirmSignOut(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            loading={signOutAll.isPending}
+            onClick={() => signOutAll.mutate()}
+          >
+            Sign out everywhere
+          </Button>
+        </div>
+      </Dialog>
+
+      {showCreateKey && (
+        <CreateApiKeyDialog
+          userId={userId}
+          onClose={() => setShowCreateKey(false)}
+          onCreated={invalidateKeys}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateApiKeyDialog({
+  userId,
+  onClose,
+  onCreated,
+}: {
+  userId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [scope, setScope] = useState<ApiKeyScope>('read');
+  const [expiresDays, setExpiresDays] = useState<number | ''>('');
+  const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const create = useMutation({
+    mutationFn: () =>
+      peopleApi.createApiKey(userId, {
+        name,
+        scope,
+        project_ids: [],
+        expires_days: expiresDays === '' ? undefined : Number(expiresDays),
+      }),
+    onSuccess: (res) => {
+      setToken(res.data.token);
+      onCreated();
+    },
+  });
+
+  const close = () => {
+    setName('');
+    setScope('read');
+    setExpiresDays('');
+    setToken(null);
+    setCopied(false);
+    create.reset();
+    onClose();
+  };
+
+  return (
+    <Dialog
+      open={true}
+      onOpenChange={(o) => {
+        if (!o) close();
+      }}
+      title={token ? 'API key created' : 'Create API key'}
+      description={
+        token
+          ? 'Copy this token now. It will not be shown again.'
+          : 'Create a new API key for this user.'
+      }
+    >
+      {!token ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim().length === 0) return;
+            create.mutate();
+          }}
+          className="space-y-4"
+        >
+          <Input
+            id="api-key-name"
+            label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. CI deploy bot"
+            required
+            autoFocus
+          />
+
+          <div>
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2">Scope</div>
+            <div className="space-y-1.5">
+              {API_KEY_SCOPE_OPTIONS.map((opt) => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={scope === opt.value}
+                    onChange={() => setScope(opt.value)}
+                  />
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="api-key-expires"
+              className="block text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-1"
+            >
+              Expires in (days)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="api-key-expires"
+                type="number"
+                min={1}
+                value={expiresDays}
+                onChange={(e) => setExpiresDays(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="Never"
+                className="w-32 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100"
+              />
+              {[30, 90, 365].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setExpiresDays(d)}
+                  className="rounded-md border border-zinc-200 dark:border-zinc-700 px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-zinc-500 mt-1">
+              Leave blank for a key that never expires. Project restriction can be added later.
+            </p>
+          </div>
+
+          {create.isError && (
+            <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300">
+              {(create.error as Error)?.message ?? 'Create failed'}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={close}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={create.isPending} disabled={name.trim().length === 0}>
+              Create key
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <div className="space-y-4">
+          <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-200">
+            Shown only once. Copy it now.
+          </div>
+          <div className="flex items-stretch gap-2">
+            <code className="flex-1 rounded-md bg-zinc-100 dark:bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-900 dark:text-zinc-100 break-all">
+              {token}
+            </code>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(token);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="shrink-0 rounded-md border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <div className="flex items-center justify-end">
+            <Button onClick={close}>Done</Button>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+// --- Activity tab ---
+
+function formatActionLabel(action: string): string {
+  const spaced = action.replace(/\./g, ' ').replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+const INLINE_DETAIL_KEYS = ['from', 'to', 'status', 'phase', 'title', 'name'];
+
+function ActivityTab({ userId }: { userId: string }) {
+  const [entries, setEntries] = useState<ActivityEntry[]>([]);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['people', 'member', userId, 'activity', cursor ?? 'first'],
+    queryFn: () => peopleApi.getActivity(userId, { limit: 50, cursor }),
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    if (cursor === undefined) {
+      setEntries(data.data);
+    } else {
+      setEntries((prev) => {
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...data.data.filter((e) => !seen.has(e.id))];
+      });
+    }
+    setNextCursor(data.next_cursor);
+  }, [data, cursor]);
+
+  if (isLoading && entries.length === 0) {
+    return (
+      <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 px-6 py-10 text-center text-sm text-zinc-400">
+        Loading activity...
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 px-6 py-10 text-center text-sm text-zinc-400">
+        No activity recorded for this user in this org.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6">
+      <ol className="relative border-l border-zinc-200 dark:border-zinc-800 ml-2">
+        {entries.map((entry) => {
+          const details = entry.details ?? {};
+          const inlineKeys = Object.keys(details).filter((k) => INLINE_DETAIL_KEYS.includes(k));
+          const hasExtra = Object.keys(details).some((k) => !INLINE_DETAIL_KEYS.includes(k));
+          const isExpanded = expanded[entry.id];
+
+          return (
+            <li key={entry.id} className="mb-5 ml-5 last:mb-0">
+              <span className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full bg-primary-500 ring-2 ring-white dark:ring-zinc-900" />
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  {formatActionLabel(entry.action)}
+                  {entry.project_name && (
+                    <span className="text-zinc-500 font-normal">
+                      {' in '}
+                      <span className="text-zinc-700 dark:text-zinc-300">{entry.project_name}</span>
+                    </span>
+                  )}
+                </div>
+                <time
+                  className="text-xs text-zinc-500 shrink-0"
+                  title={formatDate(entry.created_at)}
+                >
+                  {formatRelativeTime(entry.created_at)}
+                </time>
+              </div>
+
+              {inlineKeys.length > 0 && (
+                <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                  {inlineKeys.map((k) => (
+                    <span key={k}>
+                      <span className="text-zinc-500">{k}:</span>{' '}
+                      <span className="font-mono">{String(details[k])}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {entry.impersonator_id && (
+                <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                  via impersonation by {entry.impersonator_id}
+                </div>
+              )}
+
+              {hasExtra && (
+                <div className="mt-1.5">
+                  <button
+                    onClick={() =>
+                      setExpanded((prev) => ({ ...prev, [entry.id]: !prev[entry.id] }))
+                    }
+                    className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                  >
+                    {isExpanded ? 'Hide details' : 'Show details'}
+                  </button>
+                  {isExpanded && (
+                    <pre className="mt-1.5 rounded-md bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 overflow-x-auto">
+                      {JSON.stringify(details, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+
+      {nextCursor && (
+        <div className="flex items-center justify-center pt-4 mt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={isFetching && cursor !== undefined}
+            onClick={() => setCursor(nextCursor)}
+          >
+            Load more
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

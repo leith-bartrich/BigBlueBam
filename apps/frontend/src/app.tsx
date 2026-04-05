@@ -15,11 +15,13 @@ import { SuperuserPeopleDetailPage } from '@/pages/superuser/people-detail';
 import { PeoplePage } from '@/pages/people';
 import { PersonDetailPage } from '@/pages/people/detail';
 import { GuestAcceptPage } from '@/pages/guest-accept';
+import { PasswordChangePage } from '@/pages/password-change';
 import { Loader2 } from 'lucide-react';
 
 type Route =
   | { page: 'login' }
   | { page: 'register' }
+  | { page: 'password-change' }
   | { page: 'dashboard' }
   | { page: 'board'; projectId: string }
   | { page: 'project-dashboard'; projectId: string }
@@ -79,6 +81,7 @@ function parseRoute(path: string): Route {
   if (p === '/people' || p === '/people/') return { page: 'people' };
   if (p === '/register') return { page: 'register' };
   if (p === '/login') return { page: 'login' };
+  if (p === '/password-change') return { page: 'password-change' };
   if (p === '/settings') return { page: 'settings' };
   if (p === '/my-work') return { page: 'my-work' };
   if (p === '/superuser') return { page: 'superuser' };
@@ -86,7 +89,7 @@ function parseRoute(path: string): Route {
 }
 
 export function App() {
-  const { isAuthenticated, isLoading, fetchMe } = useAuthStore();
+  const { isAuthenticated, isLoading, fetchMe, user } = useAuthStore();
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
 
   useEffect(() => {
@@ -120,6 +123,22 @@ export function App() {
     setRoute(parseRoute(fullPath));
   }, []);
 
+  // Force-password-change gate: if the server has flagged this user, block
+  // every page except the password-change form (and the public auth pages).
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isAuthenticated || !user) return;
+    if (user.force_password_change !== true) return;
+    if (
+      route.page === 'password-change' ||
+      route.page === 'login' ||
+      route.page === 'register'
+    ) {
+      return;
+    }
+    navigate('/password-change');
+  }, [isLoading, isAuthenticated, user, route.page, navigate]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -144,6 +163,16 @@ export function App() {
       return <RegisterPage onNavigate={navigate} />;
     }
     return <LoginPage onNavigate={navigate} />;
+  }
+
+  // Authenticated but must change password first — render only the
+  // password-change form, no layout, no other pages reachable.
+  if (user?.force_password_change === true && route.page !== 'password-change') {
+    return <PasswordChangePage onNavigate={navigate} />;
+  }
+
+  if (route.page === 'password-change') {
+    return <PasswordChangePage onNavigate={navigate} />;
   }
 
   switch (route.page) {

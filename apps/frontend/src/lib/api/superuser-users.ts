@@ -212,6 +212,31 @@ export const superuserUsersApi = {
     });
   },
 
+  /**
+   * Cross-org active toggle (SuperUser only). Enables or disables a user
+   * server-wide — does NOT touch org memberships.
+   */
+  setActive(
+    userId: string,
+    isActive: boolean,
+  ): Promise<{
+    data: {
+      id: string;
+      is_active: boolean;
+      disabled_at: string | null;
+      disabled_by: string | null;
+    };
+  }> {
+    return api.patch<{
+      data: {
+        id: string;
+        is_active: boolean;
+        disabled_at: string | null;
+        disabled_by: string | null;
+      };
+    }>(`/superuser/users/${userId}/active`, { is_active: isActive });
+  },
+
   // Status toggle — reuses the org-scoped set-active via /platform which we don't have;
   // SuperUsers disable users directly via set-default/memberships mutations plus
   // org-scoped disable. For the cross-org disable, we call platform/users toggle.

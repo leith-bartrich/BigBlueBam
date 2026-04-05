@@ -161,7 +161,100 @@ export const peopleApi = {
       password ? { password } : {},
     );
   },
+
+  forcePasswordChange(
+    userId: string,
+  ): Promise<{ data: { user_id: string; force_password_change: true } }> {
+    return api.post<{ data: { user_id: string; force_password_change: true } }>(
+      `/org/members/${userId}/force-password-change`,
+    );
+  },
+
+  signOutEverywhere(userId: string): Promise<{ data: { revoked: number } }> {
+    return api.post<{ data: { revoked: number } }>(
+      `/org/members/${userId}/sign-out-everywhere`,
+    );
+  },
+
+  listApiKeys(userId: string): Promise<{ data: ApiKeyRecord[] }> {
+    return api.get<{ data: ApiKeyRecord[] }>(`/org/members/${userId}/api-keys`);
+  },
+
+  createApiKey(
+    userId: string,
+    body: CreateApiKeyBody,
+  ): Promise<{ data: ApiKeyRecord & { token: string } }> {
+    return api.post<{ data: ApiKeyRecord & { token: string } }>(
+      `/org/members/${userId}/api-keys`,
+      body,
+    );
+  },
+
+  revokeApiKey(userId: string, keyId: string): Promise<void> {
+    return api.delete<void>(`/org/members/${userId}/api-keys/${keyId}`);
+  },
+
+  getActivity(
+    userId: string,
+    opts?: { limit?: number; cursor?: string },
+  ): Promise<{ data: ActivityEntry[]; next_cursor: string | null }> {
+    const params: Record<string, string | number> = {};
+    if (opts?.limit != null) params.limit = opts.limit;
+    if (opts?.cursor) params.cursor = opts.cursor;
+    return api.get<{ data: ActivityEntry[]; next_cursor: string | null }>(
+      `/org/members/${userId}/activity`,
+      params,
+    );
+  },
 };
+
+// --- API keys ---
+
+export type ApiKeyScope = 'read' | 'read_write' | 'admin';
+
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scope: ApiKeyScope | string;
+  project_ids: string[];
+  expires_at: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface CreateApiKeyBody {
+  name: string;
+  scope: ApiKeyScope;
+  project_ids?: string[];
+  expires_days?: number;
+}
+
+// --- Activity ---
+
+export interface ActivityEntry {
+  id: string;
+  project_id: string | null;
+  project_name: string | null;
+  task_id: string | null;
+  action: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
+  impersonator_id: string | null;
+}
+
+// --- Auth (self) ---
+
+export interface ChangePasswordBody {
+  current_password: string;
+  new_password: string;
+}
+
+export function changePassword(
+  body: ChangePasswordBody,
+): Promise<{ data: { success: true } }> {
+  return api.post<{ data: { success: true } }>('/auth/change-password', body);
+}
 
 // --- Rank helpers (mirrors backend) ---
 

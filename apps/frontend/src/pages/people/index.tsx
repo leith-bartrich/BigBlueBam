@@ -1,6 +1,19 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, MoreHorizontal, Search, KeyRound, UserX, UserCheck, Trash2, Eye } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  UserPlus,
+  MoreHorizontal,
+  Search,
+  KeyRound,
+  UserX,
+  UserCheck,
+  Trash2,
+  Eye,
+  Download,
+  ChevronDown,
+  X,
+} from 'lucide-react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
@@ -8,10 +21,21 @@ import { Select } from '@/components/common/select';
 import { Dialog } from '@/components/common/dialog';
 import { Avatar } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
-import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/common/dropdown-menu';
 import { useAuthStore } from '@/stores/auth.store';
-import { peopleApi, canActOn, type PersonListItem, type MemberRole } from '@/lib/api/people';
+import {
+  peopleApi,
+  canActOn,
+  type PersonListItem,
+  type MemberRole,
+} from '@/lib/api/people';
 import { formatRelativeTime } from '@/lib/utils';
+import { useOrgSummary } from '@/hooks/use-org-summary';
+import { exportCsv, todayStamp, type CsvColumn } from '@/lib/csv';
 
 interface PeoplePageProps {
   onNavigate: (path: string) => void;
@@ -39,6 +63,24 @@ const EDITABLE_ROLE_OPTIONS = [
   { value: 'guest', label: 'Guest' },
 ];
 
+const BULK_ROLE_OPTIONS: { value: MemberRole; label: string }[] = [
+  { value: 'owner', label: 'Owner' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'member', label: 'Member' },
+  { value: 'viewer', label: 'Viewer' },
+  { value: 'guest', label: 'Guest' },
+];
+
+interface BulkProgress {
+  label: string;
+  done: number;
+  total: number;
+  succeeded: number;
+  failed: { id: string; name: string; reason: string }[];
+  skipped: { id: string; name: string; reason: string }[];
+  finished: boolean;
+}
+
 export function PeoplePage({ onNavigate }: PeoplePageProps) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -48,8 +90,12 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Bulk-select stub
+  // Bulk-select
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
+  const [confirmBulkRemove, setConfirmBulkRemove] = useState(false);
+
+  const { data: orgSummary } = useOrgSummary();
 
   // Invite modal state
   const [showInvite, setShowInvite] = useState(false);
@@ -169,6 +215,144 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
   const allChecked =
     filteredMembers.length > 0 &&
     filteredMembers.every((m) => selectedIds.has(m.id));
+
+  // Selected rows resolved against the currently-loaded member list.
+  const selectedMembers = useMemo(
+    () => members.filter((m) => selectedIds.has(m.id)),
+    [members, selectedIds],
+  );
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  /**
+   * Run `action` against every selected member in parallel, showing a live
+   * progress state. Targets the caller cannot act on are skipped with
+   * reason "rank". Any thrown error is captured as a per-target failure.
+   */
+  async function runBulk(
+    label: string,
+    targets: PersonListItem[],
+    action: (m: PersonListItem) => Promise<unknown>,
+    opts: { skipSelf?: boolean; requireRank?: boolean } = {
+      skipSelf: true,
+      requireRank: true,
+    },
+  ) {
+    const skipped: BulkProgress['skipped'] = [];
+    const runnable: PersonListItem[] = [];
+    for (const m of targets) {
+      const name = m.display_name || m.email;
+      if (opts.skipSelf && m.id === user?.id) {
+        skipped.push({ id: m.id, name, reason: 'self' });
+        continue;
+      }
+      if (opts.requireRank && !canActOn(user, m)) {
+        skipped.push({ id: m.id, name, reason: 'rank' });
+        continue;
+      }
+      runnable.push(m);
+    }
+
+    const total = runnable.length;
+    const failed: BulkProgress['failed'] = [];
+    let done = 0;
+    let succeeded = 0;
+
+    setBulkProgress({
+      label,
+      done: 0,
+      total,
+      succeeded: 0,
+      failed: [],
+      skipped,
+      finished: total === 0,
+    });
+
+    if (total === 0) {
+      // Nothing to do — still invalidate in case caller expects a refresh.
+      invalidate();
+      return;
+    }
+
+    await Promise.all(
+      runnable.map(async (m) => {
+        try {
+          await action(m);
+          succeeded += 1;
+        } catch (err) {
+          const name = m.display_name || m.email;
+          const reason = (err as Error)?.message ?? 'failed';
+          failed.push({ id: m.id, name, reason });
+        } finally {
+          done += 1;
+          setBulkProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  done,
+                  succeeded,
+                  failed: [...failed],
+                  finished: done === total,
+                }
+              : prev,
+          );
+        }
+      }),
+    );
+
+    invalidate();
+  }
+
+  const bulkSetActive = (isActive: boolean) =>
+    runBulk(
+      isActive ? 'Enabling' : 'Disabling',
+      selectedMembers.filter((m) => m.is_active !== isActive),
+      (m) => peopleApi.setActive(m.id, isActive),
+    );
+
+  const bulkUpdateRole = (role: string) =>
+    runBulk(
+      `Changing role to ${role}`,
+      selectedMembers.filter((m) => m.role !== role),
+      (m) => peopleApi.updateRole(m.id, role),
+    );
+
+  const bulkRemove = () =>
+    runBulk(
+      'Removing',
+      selectedMembers,
+      (m) => peopleApi.removeMember(m.id),
+    ).then(() => {
+      // Drop removed ids from the selection set once the mutations settle.
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const m of selectedMembers) next.delete(m.id);
+        return next;
+      });
+      setConfirmBulkRemove(false);
+    });
+
+  const handleExportCsv = () => {
+    const rows = selectedMembers.length > 0 ? selectedMembers : filteredMembers;
+    const columns: CsvColumn<PersonListItem>[] = [
+      { header: 'id', value: (r) => r.id },
+      { header: 'email', value: (r) => r.email },
+      { header: 'display_name', value: (r) => r.display_name },
+      { header: 'role', value: (r) => r.role },
+      { header: 'is_active', value: (r) => r.is_active },
+      { header: 'last_seen_at', value: (r) => r.last_seen_at ?? '' },
+      { header: 'org_name', value: () => orgSummary?.name ?? '' },
+      { header: 'org_slug', value: () => orgSummary?.slug ?? '' },
+      {
+        header: 'projects_count',
+        // Not returned by /org/members today — left blank. When the endpoint
+        // grows a memberships array, derive with `r.memberships?.length ?? ''`.
+        value: () => '',
+      },
+    ];
+    const slug = orgSummary?.slug ?? 'org';
+    exportCsv(`people-${slug}-${todayStamp()}.csv`, rows, columns);
+  };
 
   return (
     <AppLayout
@@ -384,12 +568,187 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
           )}
         </div>
 
-        {selectedIds.size > 0 && (
-          <div className="text-xs text-zinc-500">
-            {selectedIds.size} selected (bulk actions coming soon)
-          </div>
-        )}
       </div>
+
+      {/* Floating bulk-action toolbar */}
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            key="bulk-toolbar"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[min(calc(100vw-2rem),56rem)] max-w-4xl"
+          >
+            <div className="flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 shadow-lg shadow-zinc-900/10 dark:shadow-black/40">
+              <span className="inline-flex items-center rounded-full bg-primary-100 dark:bg-primary-900/40 px-2.5 py-0.5 text-xs font-medium text-primary-700 dark:text-primary-300 tabular-nums">
+                {selectedIds.size} selected
+              </span>
+
+              <DropdownMenu
+                trigger={
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    Change role
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                }
+              >
+                {BULK_ROLE_OPTIONS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    onSelect={() => bulkUpdateRole(opt.value)}
+                  >
+                    {opt.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenu>
+
+              <button
+                type="button"
+                onClick={() => bulkSetActive(false)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <UserX className="h-3.5 w-3.5" />
+                Disable
+              </button>
+              <button
+                type="button"
+                onClick={() => bulkSetActive(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                Enable
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConfirmBulkRemove(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-red-200 dark:border-red-900 px-2.5 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove from org
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </button>
+
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear selection
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk-action progress toast */}
+      <AnimatePresence>
+        {bulkProgress && (
+          <motion.div
+            key="bulk-progress"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="fixed bottom-24 right-6 z-50 w-80 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl"
+          >
+            <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                {bulkProgress.finished
+                  ? 'Done'
+                  : `${bulkProgress.label} ${bulkProgress.done} of ${bulkProgress.total}…`}
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkProgress(null)}
+                className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-4 py-3 space-y-2 text-xs text-zinc-600 dark:text-zinc-300">
+              {!bulkProgress.finished && bulkProgress.total > 0 && (
+                <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                  <div
+                    className="h-full bg-primary-500 transition-all"
+                    style={{
+                      width: `${Math.round(
+                        (bulkProgress.done / bulkProgress.total) * 100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              )}
+              {bulkProgress.finished && (
+                <>
+                  <div>
+                    {bulkProgress.succeeded} succeeded
+                    {bulkProgress.failed.length > 0 &&
+                      `, ${bulkProgress.failed.length} failed`}
+                    {bulkProgress.skipped.length > 0 &&
+                      `, ${bulkProgress.skipped.length} skipped`}
+                  </div>
+                  {bulkProgress.failed.length > 0 && (
+                    <ul className="space-y-0.5 text-red-600 dark:text-red-400 max-h-24 overflow-auto">
+                      {bulkProgress.failed.map((f) => (
+                        <li key={`f-${f.id}`}>
+                          {f.name}: {f.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {bulkProgress.skipped.length > 0 && (
+                    <ul className="space-y-0.5 text-zinc-500 max-h-24 overflow-auto">
+                      {bulkProgress.skipped.map((s) => (
+                        <li key={`s-${s.id}`}>
+                          {s.name}: skipped ({s.reason})
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk-remove confirmation */}
+      <Dialog
+        open={confirmBulkRemove}
+        onOpenChange={(open) => {
+          if (!open) setConfirmBulkRemove(false);
+        }}
+        title="Remove members"
+        description={`Remove ${selectedMembers.length} member${
+          selectedMembers.length === 1 ? '' : 's'
+        } from this organization? Targets you do not outrank will be skipped.`}
+      >
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={() => setConfirmBulkRemove(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={bulkRemove}>
+            Remove {selectedMembers.length}
+          </Button>
+        </div>
+      </Dialog>
 
       {/* Invite modal */}
       <Dialog
