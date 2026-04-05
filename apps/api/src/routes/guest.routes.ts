@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, and, isNull, gt, inArray, sql } from 'drizzle-orm';
+import { eq, and, isNull, gt } from 'drizzle-orm';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { db } from '../db/index.js';
@@ -203,6 +203,118 @@ export default async function guestRoutes(fastify: FastifyInstance) {
       }
 
       return reply.send({ data: { success: true } });
+    },
+  );
+
+  // ── POST /v1/guests/invitations/:id/resend ────────────────────────
+  // Re-send the invitation email for an existing, still-valid invitation.
+  // (P1-30 follow-up) Since the raw token is no longer returned in invite
+  // responses, admins need a way to re-deliver the email without revoking +
+  // recreating the invitation (which would rotate the token and invalidate
+  // any link already delivered). This endpoint re-enqueues the email with
+  // the SAME stored token — it never regenerates or exposes it.
+  //
+  // Rate-limited to 5/min per user: legitimate admin use is a handful of
+  // resends per session, so a tight cap blunts abuse without hampering ops.
+  fastify.post<{ Params: { id: string } }>(
+    '/v1/guests/invitations/:id/resend',
+    {
+      preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')],
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
+      const [invitation] = await db
+        .select()
+        .from(guestInvitations)
+        .where(eq(guestInvitations.id, request.params.id))
+        .limit(1);
+
+      if (!invitation) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Invitation not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Org-scoping: non-superusers can only resend invitations from their
+      // own active org. SuperUsers may resend across orgs.
+      if (!request.user!.is_superuser && invitation.org_id !== request.user!.org_id) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Invitation not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // 410 GONE if the invitation is no longer actionable: accepted,
+      // revoked, or expired. The invite-create path expires stale rows
+      // in-place by setting expires_at=now(), so the expires_at check
+      // covers the legacy "revoked" case as well.
+      const now = new Date();
+      if (
+        invitation.accepted_at !== null ||
+        invitation.revoked_at !== null ||
+        invitation.expires_at <= now
+      ) {
+        return reply.status(410).send({
+          error: {
+            code: 'GONE',
+            message: 'Invitation invalid, expired, revoked, or already accepted',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Resolve inviter display name + org name for the email body. We use
+      // the invitation's org_id (not the requester's) so SuperUsers resending
+      // cross-org get the correct org name in the email.
+      const [inviter] = await db
+        .select({ display_name: users.display_name })
+        .from(users)
+        .where(eq(users.id, invitation.invited_by))
+        .limit(1);
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, invitation.org_id))
+        .limit(1);
+
+      const smtpConfigured = isSmtpConfigured();
+      let emailSent = false;
+      if (smtpConfigured) {
+        emailSent = await sendGuestInvitationEmail({
+          to: invitation.email,
+          token: invitation.token,
+          orgName: org?.name ?? 'BigBlueBam',
+          inviterName: inviter?.display_name ?? 'A teammate',
+        });
+      } else {
+        request.log.warn(
+          { invitation_id: invitation.id, email: invitation.email },
+          'SMTP is not configured — guest invitation email was NOT resent. Set SMTP_HOST to enable delivery.',
+        );
+      }
+
+      return reply.send({
+        data: {
+          id: invitation.id,
+          email: invitation.email,
+          email_sent: emailSent,
+        },
+      });
     },
   );
 
