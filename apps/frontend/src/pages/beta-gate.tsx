@@ -70,20 +70,20 @@ export function BetaGatePage({ onNavigate }: BetaGatePageProps) {
 
           <button
             onClick={() => onNavigate('/notify')}
-            className="w-full flex items-center justify-between gap-3 rounded-lg border border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 p-4 hover:border-primary-500 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors group"
+            className="w-full flex items-center justify-between gap-3 rounded-lg bg-primary-600 hover:bg-primary-700 p-4 shadow-sm transition-colors group"
           >
             <div className="flex items-center gap-3">
-              <Mail className="h-5 w-5 text-primary-600 dark:text-primary-400" />
+              <Mail className="h-5 w-5 text-white" />
               <div className="text-left">
-                <div className="font-medium text-primary-900 dark:text-primary-100">
+                <div className="font-medium text-white">
                   Get notified when signups open
                 </div>
-                <div className="text-sm text-primary-700 dark:text-primary-300">
+                <div className="text-sm text-primary-100">
                   Leave your name and email — we'll reach out.
                 </div>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 text-primary-500 group-hover:text-primary-700 transition-colors" />
+            <ArrowRight className="h-4 w-4 text-white" />
           </button>
         </div>
 
