@@ -2,6 +2,8 @@
 
 This document defines the BigBlueBam permission model — the hierarchy of roles, what each role can do, and how permissions are enforced across the B3 project management app, Banter team messaging, and the Helpdesk portal.
 
+> Request/response shapes for every enforcement surface described here live in the [API Reference](./api-reference.md) — in particular the **Auth**, **Org Member Management**, and **SuperUser User Management** sections.
+
 ---
 
 ## Role Hierarchy
@@ -143,7 +145,29 @@ The active-org context for a request is resolved by `resolveOrgContext()` in `ap
 
 Malformed `X-Org-Id` headers are silently ignored; mismatched but well-formed ones fail closed with 403. Non-SuperUsers who somehow have `sessions.active_org_id` set that does not match a membership are also fail-closed — only SuperUsers can cross membership boundaries.
 
-Org switching at runtime is done via `GET /auth/orgs` (list available orgs) and `POST /auth/switch-org` (change `sessions.active_org_id`). Session IDs are rotated on org switch to reduce blast radius of a stolen cookie across contexts.
+Org switching at runtime is done via `GET /auth/orgs` (list available orgs) and `POST /auth/switch-org` (change `sessions.active_org_id`). Session IDs are rotated on org switch to reduce blast radius of a stolen cookie across contexts. `sessions.active_org_id` is honoured for **all** users (not only SuperUsers); for non-SuperUsers the auth plugin validates membership in the target org on every request and fails closed with 403 otherwise. SuperUsers bypass the membership check and may view any org.
+
+### Rank rule for admin actions on members
+
+Every administrative action on another member (invite, remove, role change, reset password, force password change, sign-out-everywhere, profile edit, disable/enable, API key create/revoke, add/remove from project) enforces **strictly below** — `target_rank < caller_rank`, **not** `≤`. A peer admin cannot act on another admin; only an owner or SuperUser can. Same at the owner tier: one owner cannot modify another owner; that requires SuperUser. The motivation is containment — a single compromised admin credential cannot be used to lock every other admin out of the org. The rule is implemented in `apps/api/src/services/org.service.ts` and raises `InsufficientRankError` → HTTP 403. SuperUsers bypass the check entirely.
+
+### Self-service and forced password change
+
+`POST /auth/change-password` lets a logged-in user rotate their own password after presenting the current one. On success, all **other** sessions for that user are destroyed; the caller's current session is kept. Admins and SuperUsers can call `POST /org/members/:userId/force-password-change` (or equivalent SU action) to set `users.force_password_change = true`. On the user's next authenticated request, the auth plugin redirects them to `/b3/password-change` and refuses to serve other routes until the flag clears. The flag clears automatically after a successful `POST /auth/change-password`.
+
+### Email change with re-verification
+
+Admins cannot edit another user's email; SuperUsers can via `PATCH /superuser/users/:id/email`. Calling this endpoint stages the new address in `users.pending_email`, generates a `email_verification_token`, stamps `email_verification_sent_at`, and sends a verification link to the **new** address. The old address receives a notice email so a compromised SuperUser cannot silently steal an account. The change is finalised only when the user redeems the token via `POST /auth/verify-email/:token` (public, unauthenticated). Redemption promotes `pending_email → email`, sets `email_verified = true`, clears the token, and **revokes every session for that user**, forcing login with the new address. Tokens expire after 7 days; redeeming after expiry returns `410 TOKEN_EXPIRED`. This scaffold mirrors the original `helpdesk_users` verification flow, now extended to `users` (migration `0012_user_email_verification.sql`).
+
+### Session metadata and login history
+
+`sessions` rows now carry `created_at`, `last_used_at`, `ip_address`, and `user_agent` (migration `0013_access_activity_session_meta.sql`). The auth plugin populates these on session creation and updates `last_used_at` on subsequent requests, throttled to at most once per 60 seconds per session. These feed the Sessions tab on the SuperUser user detail page.
+
+`login_history` records every `POST /auth/login` attempt (success or failure). Rows capture `user_id` (nullable — failed logins against non-existent emails still write a row with `user_id = NULL`), `email` (denormalized, so audit survives user deletion), `ip_address`, `user_agent`, `success`, and `failure_reason`. Exposed at `GET /superuser/users/:id/login-history` (SuperUser-only). The table has no TTL yet — a future trimmer job will prune old rows.
+
+### Cross-org active toggle
+
+`PATCH /superuser/users/:id/active` lets a SuperUser disable or re-enable any user globally. Disabling sets `users.is_active = false`, stamps `disabled_at = now()` and `disabled_by = <superuser_id>`, and deletes every session for the target. Re-enabling clears all three columns. The per-org equivalent is `PATCH /org/members/:userId/active`, also audit-stamped on the user row. Soft-disable is allowed even if the target is the last active owner of an org — the org surfaces a persistent no-active-owner banner instead of blocking the action.
 
 ### Role: Owner
 
@@ -382,6 +406,13 @@ Every API request follows this evaluation sequence:
 | **Org permissions** | Org-settings permission toggles + cache | `apps/api/src/services/org-permissions.ts` | Implemented |
 | **Banter ↔ B3 bridge** | Maps `banter_settings` flat columns onto `organizations.settings.permissions` with cache | `apps/banter-api/src/services/org-permissions-bridge.ts`, `apps/banter-api/src/services/settings-cache.ts` | Implemented |
 | **Session invalidation on org delete** | Cascade delete of all sessions for users in deleted org | `apps/api/src/routes/platform.routes.ts` | Implemented |
+| **Org member admin** | `/org/members/:userId/*` — detail, profile, active toggle, transfer ownership, reset/force password, sign-out-everywhere, API keys, activity, project assignments. All guarded by `requireOrgRole('admin','owner') + requireScope('admin')` and the `target < caller` rank rule. | `apps/api/src/routes/org.routes.ts`, `apps/api/src/services/org.service.ts` | Implemented |
+| **SuperUser user admin** | `/superuser/users/*` — list, detail, memberships CRUD, set-default-org, sessions list/revoke/revoke-all, email change (w/ verification), projects, active toggle, login-history. | `apps/api/src/routes/superuser.routes.ts`, `apps/api/src/services/superuser-users.service.ts` | Implemented |
+| **Forced password change** | `users.force_password_change` flag checked in auth plugin; blocks all routes except `/auth/change-password` and `/auth/me` until cleared. | `apps/api/src/plugins/auth.ts`, `apps/api/src/routes/auth.routes.ts` | Implemented |
+| **Self password change** | `POST /auth/change-password` — re-verifies current password, rotates, revokes all other sessions. | `apps/api/src/routes/auth.routes.ts`, `apps/api/src/services/org.service.ts` (`changeOwnPassword`) | Implemented |
+| **Email re-verification** | `PATCH /superuser/users/:id/email` → token → `POST /auth/verify-email/:token` (public). TTL 7 days; all sessions revoked on redeem. | `apps/api/src/routes/superuser.routes.ts`, `apps/api/src/routes/email-verify.routes.ts` | Implemented |
+| **Login history** | Every `/auth/login` writes to `login_history`. Read via `GET /superuser/users/:id/login-history`. | `apps/api/src/routes/auth.routes.ts`, `apps/api/src/db/schema/login-history.ts` | Implemented |
+| **Session metadata tracking** | `sessions.created_at / last_used_at / ip_address / user_agent` populated by auth plugin; `last_used_at` throttled to 60s. | `apps/api/src/plugins/auth.ts` | Implemented |
 
 ---
 

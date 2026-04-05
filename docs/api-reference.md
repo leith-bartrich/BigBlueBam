@@ -2,6 +2,8 @@
 
 Complete reference for the BigBlueBam REST API.
 
+> For who is allowed to call each endpoint (roles, rank rules, cross-org rules), see [`permissions.md`](./permissions.md).
+
 ---
 
 ## Base URL
@@ -290,14 +292,19 @@ Return the currently authenticated user with organization context.
     "org_id": "uuid",
     "active_org_id": "uuid",
     "is_superuser": false,
+    "is_superuser_viewing": false,
     "timezone": "America/Los_Angeles",
     "notification_prefs": { },
+    "force_password_change": false,
     "created_at": "2026-01-01T00:00:00Z"
   }
 }
 ```
 
-`active_org_id` reflects the org context resolved from the `X-Org-Id` header, session override (SuperUser only), or the user's default membership. `is_superuser` indicates platform-level privilege.
+- `role` is the **resolved per-request role for the user's current active org** — not the legacy `users.role` home-org value. For multi-org users it is the membership role in whichever org the session has switched into.
+- `active_org_id` reflects the org context resolved from `sessions.active_org_id` (persisted across requests), the `X-Org-Id` header, or the user's default membership.
+- `is_superuser_viewing` is `true` when the caller is a SuperUser viewing an org they are **not** a native member of. The SPA uses it to render the cross-org banner and to label confirmation dialogs ("you will not be demoted").
+- `force_password_change` signals that an admin or SuperUser has required a password rotation on next login. The SPA redirects into `/b3/password-change` and refuses to render other routes until the flag clears.
 
 #### `GET /auth/orgs`
 
@@ -327,7 +334,7 @@ List the authenticated user's organization memberships. Used by the org-switcher
 
 #### `POST /auth/switch-org`
 
-Switch the current session's active org context. The session cookie is **rotated** — the old session is destroyed and a new `session=` cookie is issued. The caller must already be a member of the target org, otherwise `403 FORBIDDEN` is returned.
+Switch the current session's active org context. The session cookie is **rotated** — the old session is destroyed and a new `session=` cookie is issued, and the new session's `active_org_id` is set to the chosen org so every subsequent request (including WebSocket events) runs in that org until the next switch. This endpoint now persists `active_org_id` for **all** users, not only SuperUsers — previously the switch was ephemeral for regular multi-org members. The caller must already be a member of the target org, otherwise `403 FORBIDDEN` is returned.
 
 **Request:**
 ```json
@@ -354,6 +361,43 @@ Switch the current session's active org context. The session cookie is **rotated
 #### `PATCH /auth/me`
 
 Update profile fields: `display_name`, `avatar_url`, `timezone`, `notification_prefs`.
+
+#### `POST /auth/change-password`
+
+Rotate the authenticated user's own password. Requires the current password as proof-of-possession. On success, every **other** session for the user is destroyed — the caller's current session is preserved. Clears `users.force_password_change` if set.
+
+**Auth:** Session cookie (self-service).
+
+**Rate limit:** 5 requests per minute per user.
+
+**Request:**
+```json
+{
+  "current_password": "existing",
+  "new_password": "at-least-12-chars"
+}
+```
+
+**Response (200):** `{ "data": { "success": true } }`
+
+**Errors:**
+- `400 VALIDATION_ERROR` — new password is < 12 chars or missing fields.
+- `401 INVALID_CREDENTIALS` — `current_password` did not match.
+
+#### `POST /auth/verify-email/:token`
+
+Public endpoint (no auth). Redeems a verification token issued by an admin-initiated email change (`PATCH /superuser/users/:id/email`). Promotes `pending_email → email`, sets `email_verified = true`, clears the token, and **revokes every session for the affected user** so the next login must use the new address.
+
+**Request:** no body.
+
+**Response (200):**
+```json
+{ "data": { "email": "new@example.com", "verified": true } }
+```
+
+**Errors:**
+- `404 NOT_FOUND` — token doesn't exist or has already been consumed.
+- `410 TOKEN_EXPIRED` — token is valid but past its 7-day TTL.
 
 ---
 
@@ -389,7 +433,7 @@ Revoke an API key immediately.
 
 #### `GET /org`
 
-Return the current user's organization.
+Return the current user's organization. Response includes `active_owner_count` and `member_count` so the SPA can render the no-active-owner banner and member badge without a second round-trip.
 
 #### `PATCH /org`
 
@@ -421,6 +465,279 @@ Update member's organization-level role.
 #### `DELETE /org/members/:user_id`
 
 Remove member from organization. Cascades: removes from all projects, reassigns owned tasks to reporter.
+
+---
+
+### Org Member Management
+
+Endpoints that power the **`/b3/people`** admin UI. All routes are mounted at `/org/members/:userId/*` and require a session cookie + `requireOrgRole('admin','owner') + requireScope('admin')`. Every mutation also enforces the **strictly-below rank rule** — `target_rank < caller_rank` — so a peer admin cannot act on another admin. SuperUsers bypass the rank check. Rank-rule violations return `403 FORBIDDEN`; attempts to assign a project from another org return `400 BAD_REQUEST`.
+
+#### `GET /org/members/:userId`
+
+Return the full member detail for a user in the caller's current org, including profile, org role, `is_active`, `disabled_at`/`disabled_by`, `force_password_change`, active session count, and project count.
+
+**Response (200):** `{ "data": { ...member } }`. **Errors:** `404 NOT_FOUND`.
+
+#### `PATCH /org/members/:userId/profile`
+
+Edit a member's `display_name` and/or `timezone`.
+
+**Request:** `{ "display_name"?: string, "timezone"?: string }`
+
+**Response (200):** `{ "data": { ...member } }`. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `PATCH /org/members/:userId/active`
+
+Soft-disable or re-enable a member. Disable stamps `disabled_at = now()` and `disabled_by = <caller_id>` and deletes all their sessions. Enable clears both columns.
+
+**Request:** `{ "is_active": boolean }`
+
+**Response (200):** `{ "data": { ...member } }`. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `PATCH /org/members/:userId`
+
+Update a member's **org-level** role. Body: `{ "role": "member" | "admin" | "viewer" }`. Owner promotion is not allowed here — use `transfer-ownership`.
+
+**Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `POST /org/members/:userId/transfer-ownership`
+
+Atomic single-step ownership transfer: promotes the target to `owner` and demotes the calling owner to `admin` in one transaction. Caller must currently be `owner` (or SuperUser).
+
+**Response (200):** `{ "data": { "org_id", "previous_owner_id", "new_owner_id" } }`.
+
+**Errors:**
+- `400 BAD_REQUEST` — target is the caller.
+- `403 FORBIDDEN` — caller is not the owner.
+- `404 NOT_FOUND` — target is not a member of the org.
+
+#### `POST /org/members/:userId/reset-password`
+
+Admin-initiated password reset. If `password` is omitted the server generates a cryptographically random one and returns it in the response (shown once). All sessions for the target are revoked.
+
+**Request:** `{ "password"?: string (12–200 chars) }`
+
+**Response (200):** `{ "data": { "user_id", "email", "password", "generated": bool } }`.
+
+**Rate limit:** 10 requests per minute per caller. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `POST /org/members/:userId/force-password-change`
+
+Flip `users.force_password_change = true`. The target is redirected to `/b3/password-change` on their next request and cannot use any other route until they rotate their password.
+
+**Response (200):** `{ "data": { ...member } }`. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `POST /org/members/:userId/sign-out-everywhere`
+
+Delete all sessions for the target. Returns `{ "data": { "revoked": <count> } }`. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `GET /org/members/:userId/api-keys`
+
+List the target's API keys (metadata only — key values are never returned). Fields: `id`, `name`, `key_prefix`, `scope`, `project_ids`, `last_used_at`, `expires_at`, `created_at`.
+
+#### `POST /org/members/:userId/api-keys`
+
+Mint an API key on behalf of a member. The raw token is returned **once**.
+
+**Request:**
+```json
+{
+  "name": "grafana",
+  "scope": "read" | "read_write" | "admin",
+  "project_ids"?: ["uuid"],
+  "expires_days"?: 1-3650
+}
+```
+
+**Response (201):** `{ "data": { id, name, scope, project_ids, key, expires_at, ... } }`.
+
+**Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `DELETE /org/members/:userId/api-keys/:keyId`
+
+Revoke (hard-delete) one of the target's keys. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+
+#### `GET /org/members/:userId/activity`
+
+Paginated `activity_log` entries where `actor_id = :userId` in the caller's org.
+
+**Query params:** `limit` (1–200, default 50), `cursor`.
+
+**Response (200):** `{ "data": [...], "next_cursor": "..." | null }`.
+
+#### `GET /org/members/:userId/projects`
+
+List the target's project memberships **within the caller's current org**. Each row: `{ project_id, project_name, role, joined_at }`.
+
+#### `POST /org/members/:userId/projects`
+
+Bulk-add the target to one or more projects.
+
+**Request:**
+```json
+{
+  "assignments": [
+    { "project_id": "uuid", "role": "admin" | "member" | "viewer" }
+  ]
+}
+```
+
+**Response (200):** `{ "data": [ ...created memberships ] }`.
+
+**Errors:**
+- `400 BAD_REQUEST` — any `project_id` belongs to a different org (`CrossOrgProjectError`).
+- `403 FORBIDDEN` — rank violation.
+- `404 NOT_FOUND` — target is not a member of the org.
+
+#### `PATCH /org/members/:userId/projects/:projectId`
+
+Change the target's role on one project. Body: `{ "role": "admin" | "member" | "viewer" }`.
+
+#### `DELETE /org/members/:userId/projects/:projectId`
+
+Remove the target from one project. **Response (200):** `{ "data": { "success": true } }`.
+
+---
+
+### SuperUser User Management
+
+Cross-org user admin for SuperUsers, powering **`/b3/superuser/people`**. Mounted under `/superuser/users/*` (no `/v1` prefix). All endpoints require `requireAuth + requireSuperuser` and are audit-logged to `superuser_audit_log`.
+
+#### `GET /superuser/users`
+
+Cross-org user list with search + filters.
+
+**Query params:**
+- `search` — substring match on email or display_name (case-insensitive).
+- `is_active=true|false`
+- `is_superuser=true|false`
+- `limit` — 1–100, default 50.
+- `cursor` — opaque base64url.
+
+**Response (200):** `{ "data": [...], "next_cursor": "..." | null }`. Each row includes `id`, `email`, `display_name`, `is_active`, `is_superuser`, `last_seen_at`, `created_at`, and `membership_count`.
+
+#### `GET /superuser/users/:id`
+
+Full user detail including all org memberships (role + is_default per org), API key count, active session count, `force_password_change`, `email_verified`, `pending_email`, `disabled_at`, `disabled_by`.
+
+**Response (200):** `{ "data": { ...user } }`. **Errors:** `404 NOT_FOUND`.
+
+#### `POST /superuser/users/:id/memberships`
+
+Add the user to an arbitrary org.
+
+**Request:** `{ "org_id": "uuid", "role": "owner|admin|member|viewer|guest" }`
+
+**Response (201):** `{ "data": { user_id, org_id, role, is_default: false } }`.
+
+**Errors:** `404 NOT_FOUND` (user or org), `409 CONFLICT` (already a member).
+
+#### `PATCH /superuser/users/:id/memberships/:orgId`
+
+Change the user's role within a specific org. Body: `{ "role": ... }`.
+
+**Response (200):** `{ "data": { user_id, org_id, role, is_default } }`. **Errors:** `404 NOT_FOUND`.
+
+#### `DELETE /superuser/users/:id/memberships/:orgId`
+
+Remove a membership. Refuses to delete the user's **last** membership (which would orphan the account).
+
+**Response (204):** empty body.
+
+**Errors:** `400 LAST_MEMBERSHIP`, `404 NOT_FOUND`.
+
+#### `POST /superuser/users/:id/set-default-org`
+
+Flip `is_default = true` on the `(user, org)` membership row, clearing it on every other membership for the same user.
+
+**Request:** `{ "org_id": "uuid" }`
+
+**Response (200):** `{ "data": { user_id, default_org_id } }`.
+
+**Errors:** `400 NOT_A_MEMBER`.
+
+#### `PATCH /superuser/users/:id/active`
+
+Globally disable or enable a user. Disabling stamps `disabled_at`, `disabled_by = <superuser_id>`, and deletes every session. Enabling clears all three.
+
+**Request:** `{ "is_active": boolean }`
+
+**Response (200):** `{ "data": { user_id, is_active, disabled_at, disabled_by } }`.
+
+**Errors:** `404 NOT_FOUND`.
+
+#### `GET /superuser/users/:id/sessions`
+
+List all active sessions for the user. Each row: `{ id, active_org_id, created_at, last_used_at, ip_address, user_agent, expires_at }`.
+
+#### `DELETE /superuser/users/:id/sessions/:sessionId`
+
+Revoke a single session. **Response (204):** empty body. **Errors:** `404 NOT_FOUND`.
+
+#### `POST /superuser/users/:id/sessions/revoke-all`
+
+Delete every session for the user. **Response (200):** `{ "data": { "revoked": <count> } }`.
+
+#### `PATCH /superuser/users/:id/email`
+
+Initiate an admin-driven email change. Stages the new address in `users.pending_email`, generates an `email_verification_token`, stamps `email_verification_sent_at`, and sends a verification link to the **new** address (old address receives a notice). The change is **not** applied until the user redeems the token via `POST /auth/verify-email/:token`.
+
+**Request:** `{ "new_email": "user@example.com" }`
+
+**Response (200):** `{ "data": { user_id, pending_email, email_sent: boolean } }`.
+
+**Errors:**
+- `400 EMAIL_TAKEN` — another user already owns that address.
+- `404 NOT_FOUND`.
+
+#### `GET /superuser/users/:id/projects`
+
+List the user's project memberships. Defaults to the SuperUser's currently-viewing org; pass `?scope=all` for every project membership across every org.
+
+**Query params:** `scope=active|all` (default `active`).
+
+**Response (200):** `{ "data": [ { project_id, project_name, org_id, org_name, role, joined_at } ] }`.
+
+#### `GET /superuser/users/:id/login-history`
+
+Paginated login attempts for the user. Feeds the Activity tab's login-history panel.
+
+**Query params:**
+- `limit` — 1–200, default 50.
+- `cursor` — opaque base64url (sorted by `created_at DESC, id DESC`).
+- `success=true|false` — filter by outcome.
+
+**Response (200):**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "email": "user@example.com",
+      "ip_address": "...",
+      "user_agent": "...",
+      "success": true,
+      "failure_reason": null,
+      "created_at": "2026-04-04T10:00:00Z"
+    }
+  ],
+  "next_cursor": "..."
+}
+```
+
+#### `GET /superuser/audit-log`
+
+Filtered SuperUser audit trail. Every row in `superuser_audit_log`, newest first.
+
+**Query params:**
+- `target_user_id` — UUID, filter by target.
+- `superuser_id` — UUID, filter by actor.
+- `action` — exact action string (e.g. `users.sessions.revoke_all`).
+- `limit` — 1–200, default 50.
+- `cursor`.
+
+**Response (200):** `{ "data": [...], "next_cursor": "..." | null }`.
 
 ---
 

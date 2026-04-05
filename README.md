@@ -172,18 +172,129 @@ Press **Ctrl+K** to open the command palette. Search tasks, switch projects, nav
 
 ### Organization Management
 
-Invite team members, assign roles, manage permissions. Configure integrations with calendar feeds, API keys, and webhooks.
+BigBlueBam ships a dedicated **People** surface (not buried under Settings) that covers the full identity lifecycle — invite, edit, assign, disable — with strict role-based gating.
+
+<p align="center">
+  <img src="images/people-list.png" alt="People list — searchable, filterable, bulk-selectable" width="100%" />
+</p>
+
+Filter by role or status, search by name or email, and act on individual members or in bulk.
+
+#### Per-user detail, four tabs
 
 <table>
   <tr>
-    <td width="50%"><img src="images/11-members.png" alt="Members Management" width="100%" /></td>
-    <td width="50%"><img src="images/12-integrations.png" alt="Integrations Settings" width="100%" /></td>
+    <td width="50%"><img src="images/people-detail-overview.png" alt="Overview tab" width="100%" /></td>
+    <td width="50%"><img src="images/people-detail-projects.png" alt="Projects tab" width="100%" /></td>
   </tr>
   <tr>
-    <td align="center"><em>Organization members</em></td>
-    <td align="center"><em>Integrations — calendar feeds, API keys, webhooks</em></td>
+    <td align="center"><em>Overview — identity, membership, disable toggle</em></td>
+    <td align="center"><em>Projects — per-project roles, bulk assign</em></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="images/people-detail-access.png" alt="Access tab" width="100%" /></td>
+    <td width="50%"><img src="images/people-detail-activity.png" alt="Activity tab" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Access — API keys, password reset, force change</em></td>
+    <td align="center"><em>Activity — per-user audit trail</em></td>
   </tr>
 </table>
+
+Admins can reset passwords (manual or auto-generated), mint API keys on behalf of users with scoped permissions, force a password change on next login, or sign the user out of every device.
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/people-reset-password-dialog.png" alt="Reset password dialog" width="100%" /></td>
+    <td width="50%"><img src="images/people-create-api-key-dialog.png" alt="Create API key dialog" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Reset password — auto-generate or set manually</em></td>
+    <td align="center"><em>Create API key on behalf of a user (one-time token reveal)</em></td>
+  </tr>
+</table>
+
+#### Bulk operations
+
+Select multiple members to disable, enable, change role, remove from org, or export as CSV — all with rank-gating that mirrors the server:
+
+<p align="center">
+  <img src="images/people-bulk-toolbar.png" alt="Bulk actions toolbar" width="100%" />
+</p>
+
+#### Multi-org membership
+
+Users can belong to multiple organizations. The header shows the current org + role, and the org switcher lets multi-org users hop between them in one click — the session rotates and every query is invalidated, so the rest of the app instantly reflects the new org's data.
+
+<p align="center">
+  <img src="images/org-switcher.png" alt="Org switcher dropdown" width="75%" />
+</p>
+
+A persistent banner warns when an org has no active owner, so operators can promote a replacement before the situation becomes invisible:
+
+<p align="center">
+  <img src="images/no-owner-banner.png" alt="No active owner banner" width="100%" />
+</p>
+
+#### SuperUser console
+
+A separate SuperUser namespace at `/b3/superuser` gives platform operators cross-org visibility without impersonation. See every org on the server, context-switch into any of them, and manage users globally.
+
+<p align="center">
+  <img src="images/superuser-overview.png" alt="SuperUser console overview" width="100%" />
+</p>
+
+**Cross-org user management** — one view of every user regardless of org:
+
+<p align="center">
+  <img src="images/superuser-people-list.png" alt="SuperUser cross-org people list" width="100%" />
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/superuser-people-memberships.png" alt="All memberships" width="100%" /></td>
+    <td width="50%"><img src="images/superuser-people-sessions.png" alt="Active sessions" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Every org the user belongs to — add, remove, change role, set default</em></td>
+    <td align="center"><em>Every active session with IP, device, and revoke controls</em></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="images/superuser-people-activity.png" alt="SuperUser audit log for a user" width="100%" />
+</p>
+<p align="center"><em>Audit log — every SuperUser action against this user with expandable details</em></p>
+
+When a SuperUser is context-switched into a non-native org, a red banner and chip in the header make the privileged state impossible to miss:
+
+<p align="center">
+  <img src="images/superuser-context-banner.png" alt="SuperUser context banner" width="100%" />
+</p>
+
+#### Forced password change
+
+Admins can flag a user to require a password change on their next login. On sign-in, the user is bounced to a dedicated form that blocks every other page until a new password is set:
+
+<p align="center">
+  <img src="images/password-change.png" alt="Forced password change page" width="100%" />
+</p>
+
+#### Theme-aware UI
+
+Every screen adapts to light and dark mode. Most of the shots in this README are dark; here's the same People list in light mode:
+
+<p align="center">
+  <img src="images/people-list-light.png" alt="People list — light mode" width="100%" />
+</p>
+
+#### Integrations
+
+Configure calendar feeds, API keys, and webhooks under Settings:
+
+<p align="center">
+  <img src="images/12-integrations.png" alt="Integrations Settings" width="100%" />
+</p>
 
 ---
 

@@ -167,6 +167,7 @@ pnpm --filter @bigbluebam/banter test        # Banter frontend component tests (
 - **Import system** supports CSV, Trello, Jira, and GitHub Issues, with automatic phase/label creation for unmatched values.
 - **WebSocket realtime** uses Redis PubSub for cross-instance broadcasting; rooms are scoped to org, project, and user levels.
 - **Keyboard shortcuts** and a **command palette** (Cmd+K) are built into the frontend for power-user navigation.
+- **User and member management** is consolidated at `/b3/people` (org admins/owners) and `/b3/superuser/people` (platform SuperUsers) — not under Settings — with tabbed user-detail pages covering profile, projects, access (API keys/sessions/passwords), and activity.
 
 ## Error Response Envelope
 

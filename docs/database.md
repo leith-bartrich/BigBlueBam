@@ -13,6 +13,7 @@ erDiagram
     organizations ||--o{ guest_invitations : "has many"
     organizations ||--o{ banter_audit_log : "has many"
 
+    users ||--o{ login_history : "has many"
     users ||--o{ organization_memberships : "has many"
     organization_memberships }o--|| organizations : "belongs to"
     organization_memberships }o--|| users : "belongs to"
@@ -106,9 +107,27 @@ erDiagram
         jsonb notification_prefs
         boolean is_active
         boolean is_superuser
+        boolean force_password_change
+        boolean email_verified
+        varchar pending_email
+        text email_verification_token
+        timestamptz email_verification_sent_at
+        timestamptz disabled_at
+        uuid disabled_by FK
         timestamptz last_seen_at
         timestamptz created_at
         timestamptz updated_at
+    }
+
+    login_history {
+        uuid id PK
+        uuid user_id FK "nullable — failed logins against unknown emails still record"
+        text email "denormalized"
+        inet ip_address
+        text user_agent
+        boolean success
+        text failure_reason
+        timestamptz created_at
     }
 
     organization_memberships {
@@ -308,6 +327,10 @@ erDiagram
         uuid user_id FK
         uuid active_org_id FK
         jsonb data
+        timestamptz created_at
+        timestamptz last_used_at
+        inet ip_address
+        text user_agent
         timestamptz expires_at
     }
 
@@ -444,7 +467,7 @@ erDiagram
 | Table | Purpose | Key Columns |
 |---|---|---|
 | `organizations` | Top-level tenant. All data is scoped to an org. | `slug` (unique), `settings` (JSONB for org-wide defaults) |
-| `users` | User accounts. | `email` (unique, varchar(320)), `role` (owner/admin/member), `is_superuser`, `notification_prefs` (JSONB, NOT NULL). The legacy `org_id` column is retained for backward compatibility but membership is authoritative in `organization_memberships`. |
+| `users` | User accounts. | `email` (unique, varchar(320)), `role` (owner/admin/member), `is_superuser`, `notification_prefs` (JSONB, NOT NULL), `force_password_change` (redirects to password-change form on next login), `email_verified` + `pending_email` + `email_verification_token` + `email_verification_sent_at` (admin-initiated email-change flow), `disabled_at` + `disabled_by` (audit trail for soft-disable). The legacy `org_id` column is retained for backward compatibility but membership is authoritative in `organization_memberships`. |
 | `organization_memberships` | Many-to-many join between `users` and `organizations`. Replaces the single-org model of `users.org_id`. | `role` (owner/admin/member/viewer/guest), `is_default` (exactly one default per user, enforced by partial unique index), `invited_by`, unique on `(user_id, org_id)` |
 | `projects` | Discrete bodies of work with their own boards. | `task_id_prefix` (e.g., "BBB"), `task_id_sequence` (auto-increment), `settings` (JSONB, NOT NULL), `created_by` |
 | `project_memberships` | Join table linking users to projects with roles. | `role` (admin/member/viewer), unique on `(project_id, user_id)` |
@@ -505,7 +528,8 @@ erDiagram
 
 | Table | Purpose | Key Columns |
 |---|---|---|
-| `sessions` | Server-side session rows (id is a text token). | `user_id`, `active_org_id` (persists the user's selected org across requests/WebSockets/jobs, replacing the `X-Org-Id` header echo), `data` (JSONB, NOT NULL), `expires_at` (30-day sliding) |
+| `sessions` | Server-side session rows (id is a text token). | `user_id`, `active_org_id` (persists the user's selected org across requests/WebSockets/jobs for **all** users — replaces the `X-Org-Id` header echo and the SU-only ephemeral switch), `data` (JSONB, NOT NULL), `created_at`, `last_used_at` (throttled to 60s updates), `ip_address` (inet), `user_agent`, `expires_at` (30-day sliding) |
+| `login_history` | Append-only record of every `POST /auth/login` attempt (success or failure). | `user_id` (nullable — failed attempts against non-existent emails still insert a row), `email` (denormalized so audit survives user deletion), `ip_address` (inet), `user_agent`, `success`, `failure_reason`, `created_at`. Indexed on `(user_id, created_at DESC)` and `(email, created_at DESC)`. No TTL yet — a future trimmer will prune. |
 | `api_keys` | API keys for automation and MCP. | `key_hash` (Argon2id), `scope` (read/read_write/admin), `expires_at` |
 | `superuser_audit_log` | Append-only record of every `/superuser/*` API call. | `superuser_id`, `action`, `target_org_id`/`target_user_id`, `details` (JSONB), `ip_address`, `user_agent` |
 | `impersonation_sessions` | Time-bounded "act as user" grants issued by a superuser. | `superuser_id`, `target_user_id`, `started_at`, `expires_at` (NOT NULL), `ended_at`, `reason`. Writes made while impersonating are stamped on `activity_log.impersonator_id`. |
@@ -684,8 +708,28 @@ infra/postgres/migrations/
   0004_activity_log_impersonator.sql
   0005_projects_created_by.sql
   0006_drizzle_drift_sweep.sql
+  0007_api_keys_org_scope.sql
+  0008_helpdesk_agent_api_keys.sql
+  0010_ticket_activity_log.sql
+  0011_user_disable_tracking.sql
+  0012_user_email_verification.sql
+  0013_access_activity_session_meta.sql
   README.md
 ```
+
+### User management wave (0011–0013)
+
+The `granular-permissions` branch landed three additive migrations that
+back the `/b3/people` and `/b3/superuser/people` surfaces:
+
+| Migration | What it adds |
+|---|---|
+| `0011_user_disable_tracking.sql` | `users.disabled_at timestamptz` + `users.disabled_by uuid REFERENCES users(id) ON DELETE SET NULL` + partial index on `disabled_by`. Records who disabled an account and when — independent of `activity_log`, which may be rotated or partitioned away. |
+| `0012_user_email_verification.sql` | `users.email_verified boolean NOT NULL DEFAULT true` + `users.pending_email varchar(320)` + `users.email_verification_token text` + `users.email_verification_sent_at timestamptz`. Admin-initiated email changes stage in `pending_email`; the swap is committed only after the user redeems the token sent to the new address. Existing users are retroactively `email_verified = true`. |
+| `0013_access_activity_session_meta.sql` | `users.force_password_change boolean NOT NULL DEFAULT false`; `sessions.created_at / last_used_at / ip_address / user_agent`; and the new `login_history` table. Enables the force-rotate flow, the Sessions tab's device/IP panel, and the login-history audit surface. |
+
+All three are purely additive — defaults are set so legacy code paths
+continue to function until the new surfaces start writing to them.
 
 ### How migrations are applied
 

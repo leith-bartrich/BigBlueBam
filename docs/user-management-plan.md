@@ -1,7 +1,15 @@
 # User Management UI — Design Proposal
 
-Status: APPROVED (decisions locked in §11)
+Status: COMPLETE (Phases 1–5 shipped 2026-04-05)
 Date: 2026-04-05
+
+> **Implementation status:** all five phases in §9 have landed on `main` via
+> the `granular-permissions` branch. The People UI (`/b3/people`,
+> `/b3/superuser/people`), the org-scoped member admin endpoints, the
+> SuperUser user-management endpoints, the `force_password_change` gate, the
+> email-change re-verification flow, and `login_history` are all in
+> production. The plan below is preserved as a design record — read §9 for
+> per-phase completion notes.
 
 ## 1. Why we need this
 
@@ -292,7 +300,7 @@ Minimal schema changes required for this plan:
 
 ## 9. MVP phasing
 
-### Phase 1 — Replace current Settings Members tab (≈1 week)
+### Phase 1 — Replace current Settings Members tab (≈1 week) — SHIPPED 2026-04-05
 - `/b3/people` list with search + role/status filters
 - User detail page: Overview tab only
 - Edit display_name + timezone
@@ -303,20 +311,47 @@ Minimal schema changes required for this plan:
 - Sidebar nav entry
 - Hide Members tab in Settings (redirect link → /b3/people)
 
-### Phase 2 — Project assignments (≈3 days)
+> **Completed 2026-04-05.** `GET /org/members/:userId`,
+> `PATCH /org/members/:userId/profile`, `PATCH /org/members/:userId/active`,
+> `POST /org/members/:userId/transfer-ownership`, and the `disabled_at` /
+> `disabled_by` columns (migration `0011_user_disable_tracking.sql`) all
+> landed. The rank rule was tightened from `≤` to `<` across every admin
+> action in `apps/api/src/services/org.service.ts`. `GET /org` now returns
+> `active_owner_count` so the SPA can render the no-active-owner banner.
+
+### Phase 2 — Project assignments (≈3 days) — SHIPPED 2026-04-05
 - Projects tab on user detail
 - Add to project, change project role, remove from project
 - Bulk-assign modal (multi-select projects)
 - `GET /org/members/:userId/projects` endpoint
 
-### Phase 3 — Access & sessions (≈4 days)
+> **Completed 2026-04-05.** `GET /org/members/:userId/projects`,
+> `POST /org/members/:userId/projects` (bulk add),
+> `PATCH /org/members/:userId/projects/:projectId`, and
+> `DELETE /org/members/:userId/projects/:projectId` shipped with the
+> `target < caller` rank check and a cross-org project-id guard
+> (`CrossOrgProjectError`) that fails a bulk assignment if any project_id
+> doesn't belong to the caller's current org.
+
+### Phase 3 — Access & sessions (≈4 days) — SHIPPED 2026-04-05
 - Access tab: API keys list (read-only metadata, revoke)
 - Create-key-on-behalf-of
 - Force-password-change flag + login-side enforcement
 - Sign-out-everywhere action
 - Sessions panel (SU only for now)
 
-### Phase 4 — SuperUser global view (≈1 week)
+> **Completed 2026-04-05.** API-key surface (`GET`/`POST`/`DELETE
+> /org/members/:userId/api-keys[/:keyId]`),
+> `POST /org/members/:userId/sign-out-everywhere`,
+> `POST /org/members/:userId/force-password-change`, and
+> `POST /auth/change-password` (self-service) landed alongside migration
+> `0013_access_activity_session_meta.sql`, which added
+> `users.force_password_change` plus `sessions.created_at /
+> last_used_at / ip_address / user_agent`. The auth plugin now throttles
+> `last_used_at` writes to once per 60s and redirects any user with
+> `force_password_change=true` into `/b3/password-change`.
+
+### Phase 4 — SuperUser global view (≈1 week) — SHIPPED 2026-04-05
 - `/b3/superuser/people` cross-org list
 - User detail in SU mode (all orgs, sessions, audit)
 - Add/remove from orgs, change default org
@@ -324,11 +359,31 @@ Minimal schema changes required for this plan:
 - Impersonation controls inline
 - SU audit log filtered to target
 
-### Phase 5 — Activity, bulk ops, export (≈1 week)
+> **Completed 2026-04-05.** All SuperUser user-management endpoints
+> shipped under `/superuser/users/*` (list, detail, memberships add/
+> patch/delete, set-default-org, sessions list/revoke/revoke-all, email
+> change with re-verification, projects, active toggle, login-history)
+> plus `GET /superuser/audit-log` and `POST /auth/verify-email/:token`
+> (public token redemption). Migration
+> `0012_user_email_verification.sql` added `users.email_verified`,
+> `pending_email`, `email_verification_token`, and
+> `email_verification_sent_at`. `POST /auth/switch-org` now persists
+> `sessions.active_org_id` for every user (not just SU) and the auth
+> plugin honours it gated on membership.
+
+### Phase 5 — Activity, bulk ops, export (≈1 week) — SHIPPED 2026-04-05
 - Activity tab with activity_log + superuser_audit_log
 - Bulk select + bulk actions on list view
 - CSV export
 - `login_history` table + UI surface
+
+> **Completed 2026-04-05.** Bulk select and CSV export live on
+> `/b3/people`. `GET /org/members/:userId/activity` surfaces filtered
+> `activity_log` rows per member. The `login_history` table (migration
+> `0013_access_activity_session_meta.sql`) records every
+> `POST /auth/login` attempt (success or failure, email denormalized)
+> and is exposed at `GET /superuser/users/:id/login-history` for the
+> SU Activity tab.
 
 ## 10. Non-goals (this iteration)
 

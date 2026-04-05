@@ -137,6 +137,13 @@ organization. After that you can add users of any role into the same org,
 promote SuperUsers, and mint API keys for agentic clients, all from the
 same CLI.
 
+> After the first admin exists you can add the rest of your team from the
+> **People** UI at [`/b3/people`](http://localhost/b3/people) (invite,
+> role changes, project assignments, password resets, API-key mint/
+> revoke). SuperUsers get a cross-org view at
+> [`/b3/superuser/people`](http://localhost/b3/superuser/people). The CLI
+> paths below remain the scripted / headless way in.
+
 ```bash
 docker compose exec api node dist/cli.js create-admin \
   --email admin@example.com \

@@ -481,6 +481,8 @@ docker compose run --rm migrate
 
 ## Local Admin, SuperUser, and Impersonation
 
+> **People UI:** day-to-day user admin now lives at [`/b3/people`](http://localhost/b3/people) (org admins/owners) and [`/b3/superuser/people`](http://localhost/b3/superuser/people) (SuperUsers). The CLI below is the bootstrap path — after the first admin exists, you usually add users, reset passwords, toggle is_active, assign projects, and manage API keys through the People screens. See [`user-management-plan.md`](./user-management-plan.md) for the full feature matrix and [`api-reference.md`](./api-reference.md) → *Org Member Management* / *SuperUser User Management* for the HTTP surface.
+
 ### Create an admin (and optionally a SuperUser) via CLI
 
 ```bash
@@ -496,12 +498,17 @@ Passwords must be ≥12 characters. Omit `--superuser` for a normal org owner.
 
 ### Promote an existing user to SuperUser
 
-There is no CLI flag for this on an existing user; run SQL directly:
+Either use the dedicated CLI commands:
 
 ```bash
-docker compose exec postgres psql -U "$POSTGRES_USER" -d bigbluebam \
-  -c "UPDATE users SET is_superuser = true WHERE email = 'you@example.com';"
+docker compose exec api node dist/cli.js grant-superuser --email you@example.com
+docker compose exec api node dist/cli.js revoke-superuser --email you@example.com
 ```
+
+…or, for an already-logged-in SuperUser, toggle the flag from the SU UI
+(`/b3/superuser/people/:userId` → Admin tab), which calls
+`PATCH /v1/platform/users/:id/superuser` and writes a row to
+`superuser_audit_log`.
 
 ### The SuperUser console
 
