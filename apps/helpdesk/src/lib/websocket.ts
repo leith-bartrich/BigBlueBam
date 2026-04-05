@@ -26,6 +26,38 @@ const MIN_RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 const RECONNECT_MULTIPLIER = 2;
 
+// HB-47: key under which the highest seen event id is persisted. Survives
+// page reloads and browser restarts so a customer returning after a long
+// gap still gets a clean replay rather than a blind refetch.
+const LAST_SEEN_EVENT_ID_KEY = 'helpdesk.lastSeenEventId';
+
+function readLastSeenEventId(): number {
+  try {
+    const raw = window.localStorage.getItem(LAST_SEEN_EVENT_ID_KEY);
+    if (!raw) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeLastSeenEventId(id: number): void {
+  try {
+    window.localStorage.setItem(LAST_SEEN_EVENT_ID_KEY, String(id));
+  } catch {
+    // Ignore quota / privacy-mode errors — we just lose replay precision.
+  }
+}
+
+interface ReplayedEvent {
+  id: number;
+  ticket_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
 export class WebSocketManager {
   private ws: WebSocket | null = null;
   private handlers = new Map<string, Set<EventHandler>>();
@@ -37,6 +69,11 @@ export class WebSocketManager {
   private intentionalClose = false;
   private connected = false;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
+  // HB-47: high-water mark of the durable event log we have already
+  // processed. Persisted to localStorage; updated as live events and
+  // replayed events arrive. Compared to the server's welcome.latest_id
+  // to decide whether to issue a resume request.
+  private lastSeenEventId = readLastSeenEventId();
 
   get isConnected(): boolean {
     return this.connected;
@@ -80,11 +117,60 @@ export class WebSocketManager {
 
     this.ws.onmessage = (event: MessageEvent) => {
       try {
-        const data = JSON.parse(event.data as string) as RealtimeEvent & { type: string };
+        const data = JSON.parse(event.data as string) as RealtimeEvent & {
+          type: string;
+          data?: Record<string, unknown>;
+        };
 
         // Internal protocol messages
         if (data.type === 'connected' || data.type === 'subscribed' || data.type === 'unsubscribed' || data.type === 'pong') {
           return;
+        }
+
+        // HB-47: the server sends `welcome` immediately after auth with
+        // the current high-water mark of the durable event log. If we're
+        // behind, send a `resume` to replay what we missed.
+        if (data.type === 'welcome') {
+          const latestId = Number((data.data as { latest_id?: number } | undefined)?.latest_id ?? 0);
+          if (Number.isFinite(latestId) && latestId > this.lastSeenEventId) {
+            this.send({ type: 'resume', last_seen_id: this.lastSeenEventId });
+          }
+          return;
+        }
+
+        // HB-47: server's reply to `resume`. Replay each event through
+        // the same dispatch path as live events so handlers (query cache
+        // invalidation, message append) only need one code path.
+        if (data.type === 'resume_complete' || data.type === 'resume_error') {
+          if (data.type === 'resume_complete') {
+            const payload = data.data as
+              | { events?: ReplayedEvent[]; has_more?: boolean; latest_id?: number }
+              | undefined;
+            const events = payload?.events ?? [];
+            for (const ev of events) {
+              this.dispatchReplayedEvent(ev);
+            }
+            const newLatest = Number(payload?.latest_id ?? this.lastSeenEventId);
+            if (Number.isFinite(newLatest) && newLatest > this.lastSeenEventId) {
+              this.lastSeenEventId = newLatest;
+              writeLastSeenEventId(newLatest);
+            }
+            // If there's more backlog, ask for the next batch immediately.
+            if (payload?.has_more) {
+              this.send({ type: 'resume', last_seen_id: this.lastSeenEventId });
+            }
+          }
+          return;
+        }
+
+        // HB-47: track the event id on every live event we dispatch so
+        // a later disconnect has an accurate high-water mark.
+        const eventId = Number(
+          (data.data as { event_id?: number } | undefined)?.event_id ?? 0,
+        );
+        if (Number.isFinite(eventId) && eventId > this.lastSeenEventId) {
+          this.lastSeenEventId = eventId;
+          writeLastSeenEventId(eventId);
         }
 
         // Dispatch to type-specific handlers
@@ -213,6 +299,40 @@ export class WebSocketManager {
   }
 
   // -- Internal --------------------------------------------
+
+  /**
+   * HB-47: translate a persisted event row into the same shape as a live
+   * WebSocket event and dispatch it through the same handler chain. The
+   * payload sent over the wire already carries `event_id`, so replayed
+   * events are indistinguishable from live ones at the handler layer.
+   */
+  private dispatchReplayedEvent(ev: ReplayedEvent): void {
+    const synthetic: RealtimeEvent & { type: string; data: Record<string, unknown> } = {
+      type: ev.event_type,
+      payload: ev.payload,
+      data: { ...ev.payload, event_id: ev.id },
+      room: `ticket:${ev.ticket_id}`,
+      timestamp: ev.created_at,
+    };
+
+    const typeHandlers = this.handlers.get(ev.event_type);
+    if (typeHandlers) {
+      for (const handler of typeHandlers) {
+        try {
+          handler(synthetic);
+        } catch (err) {
+          console.error('[helpdesk-ws] Replay handler error:', err);
+        }
+      }
+    }
+    for (const handler of this.globalHandlers) {
+      try {
+        handler(synthetic);
+      } catch (err) {
+        console.error('[helpdesk-ws] Replay global handler error:', err);
+      }
+    }
+  }
 
   private send(msg: object): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {

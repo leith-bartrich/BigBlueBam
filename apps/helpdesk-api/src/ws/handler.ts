@@ -1,12 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import Redis from 'ioredis';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { helpdeskSessions } from '../db/schema/helpdesk-sessions.js';
 import { helpdeskUsers } from '../db/schema/helpdesk-users.js';
 import { tickets } from '../db/schema/tickets.js';
+import { helpdeskTicketEvents } from '../db/schema/ticket-events.js';
 import { env } from '../env.js';
+
+// HB-47: cap the number of events sent in a single resume batch so one
+// long-disconnected client can't block the server on a giant query. If
+// there's more, the client can call `resume` again with the updated
+// last_seen_id (or hit GET /helpdesk/events for pagination).
+const RESUME_BATCH_LIMIT = 200;
 
 interface ConnectedClient {
   ws: WebSocket;
@@ -122,6 +129,33 @@ export default async function websocketHandler(fastify: FastifyInstance) {
       }),
     );
 
+    // HB-47: tell the client the current high-water mark of the event log
+    // immediately after auth. The client compares this to its locally
+    // persisted `lastSeenEventId` and, if it's behind, sends a `resume`
+    // message to replay anything it missed while disconnected.
+    try {
+      const [latest] = await db
+        .select({ max: sql<string | null>`MAX(${helpdeskTicketEvents.id})` })
+        .from(helpdeskTicketEvents);
+      const latestId = latest?.max != null ? Number(latest.max) : 0;
+      socket.send(
+        JSON.stringify({
+          type: 'welcome',
+          data: { latest_id: latestId },
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    } catch (err) {
+      fastify.log.warn({ err }, 'Failed to compute welcome latest_id');
+      socket.send(
+        JSON.stringify({
+          type: 'welcome',
+          data: { latest_id: 0 },
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    }
+
     // Heartbeat ping every 30s
     client.pingInterval = setInterval(() => {
       if (socket.readyState === 1) {
@@ -228,6 +262,74 @@ export default async function websocketHandler(fastify: FastifyInstance) {
               timestamp: new Date().toISOString(),
             });
             broadcastToRoom(room, payload, socket);
+            break;
+          }
+          case 'resume': {
+            // HB-47: client caught up to `last_seen_id` — replay any events
+            // with id > last_seen_id for tickets the caller owns. Capped at
+            // RESUME_BATCH_LIMIT; if has_more is true the client should
+            // call resume again with the new last_seen_id.
+            const lastSeen = Number(msg.last_seen_id);
+            if (!Number.isFinite(lastSeen) || lastSeen < 0) {
+              socket.send(
+                JSON.stringify({
+                  type: 'resume_error',
+                  data: { reason: 'invalid_last_seen_id' },
+                  timestamp: new Date().toISOString(),
+                }),
+              );
+              break;
+            }
+
+            // Scope to tickets owned by the connected customer. This is
+            // the same ownership check used by GET /helpdesk/events — a
+            // customer can only ever replay events for their own tickets.
+            const ownedTickets = await db
+              .select({ id: tickets.id })
+              .from(tickets)
+              .where(eq(tickets.helpdesk_user_id, userId));
+
+            if (ownedTickets.length === 0) {
+              socket.send(
+                JSON.stringify({
+                  type: 'resume_complete',
+                  data: { events: [], has_more: false, latest_id: lastSeen },
+                  timestamp: new Date().toISOString(),
+                }),
+              );
+              break;
+            }
+
+            const ownedIds = ownedTickets.map((t) => t.id);
+            const rows = await db
+              .select({
+                id: helpdeskTicketEvents.id,
+                ticket_id: helpdeskTicketEvents.ticket_id,
+                event_type: helpdeskTicketEvents.event_type,
+                payload: helpdeskTicketEvents.payload,
+                created_at: helpdeskTicketEvents.created_at,
+              })
+              .from(helpdeskTicketEvents)
+              .where(
+                and(
+                  inArray(helpdeskTicketEvents.ticket_id, ownedIds),
+                  gt(helpdeskTicketEvents.id, lastSeen),
+                ),
+              )
+              .orderBy(asc(helpdeskTicketEvents.id))
+              .limit(RESUME_BATCH_LIMIT + 1);
+
+            const hasMore = rows.length > RESUME_BATCH_LIMIT;
+            const batch = hasMore ? rows.slice(0, RESUME_BATCH_LIMIT) : rows;
+            const latestId = batch.length > 0 ? batch[batch.length - 1]!.id : lastSeen;
+
+            socket.send(
+              JSON.stringify({
+                type: 'resume_complete',
+                data: { events: batch, has_more: hasMore, latest_id: latestId },
+                timestamp: new Date().toISOString(),
+              }),
+            );
             break;
           }
           case 'unsubscribe': {
