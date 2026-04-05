@@ -1,6 +1,11 @@
 -- ─────────────────────────────────────────────────────────────────────────
 -- 0008_helpdesk_agent_api_keys.sql
 -- ─────────────────────────────────────────────────────────────────────────
+-- Client impact: additive only (new table, no changes to existing
+--      tables). Operators must mint at least one agent key via the CLI
+--      before the next helpdesk-api deploy, or agent endpoints will
+--      return 401. The settings.routes.ts admin auth still honors the
+--      legacy shared key until its own follow-up migration.
 -- Why: HB-28 + HB-49 — the helpdesk "agent" API (BBB employees acting on
 --      customer tickets at /helpdesk/api/agents/*) authenticated callers
 --      with a SHARED secret (env.AGENT_API_KEY): not hashed at rest, not
@@ -20,12 +25,6 @@
 --      env.AGENT_API_KEY remains declared but deprecated; it will be
 --      removed once all operators have rotated to per-agent keys and
 --      the helpdesk settings route has migrated off it.
---
--- Client impact: additive only (new table, no changes to existing
---      tables). Operators must mint at least one agent key via the CLI
---      before the next helpdesk-api deploy, or agent endpoints will
---      return 401. The settings.routes.ts admin auth still honors the
---      legacy shared key until its own follow-up migration.
 -- ─────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS helpdesk_agent_api_keys (

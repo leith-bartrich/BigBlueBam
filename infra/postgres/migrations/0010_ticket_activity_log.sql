@@ -1,6 +1,10 @@
 -- ─────────────────────────────────────────────────────────────────────────
 -- 0010_ticket_activity_log.sql
 -- ─────────────────────────────────────────────────────────────────────────
+-- Client impact: additive only (new table, no changes to existing
+--      tables). The helpdesk-api begins writing to this table on the
+--      next deploy; existing tickets will have no historical backfill
+--      (audit starts at deploy time).
 -- Why: HB-45 — helpdesk ticket events (status changes, reassignments,
 --      customer/agent replies, reopens, closures) were not independently
 --      audited on the helpdesk side. The BBB side has `activity_log`, but
@@ -22,11 +26,6 @@
 --      The (ticket_id, created_at DESC) index makes the expected timeline
 --      read pattern — "fetch the last N events for ticket X in order" —
 --      cheap without a separate sort.
---
--- Client impact: additive only (new table, no changes to existing
---      tables). The helpdesk-api begins writing to this table on the
---      next deploy; existing tickets will have no historical backfill
---      (audit starts at deploy time).
 -- ─────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS ticket_activity_log (
