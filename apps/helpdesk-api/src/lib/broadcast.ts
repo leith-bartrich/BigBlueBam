@@ -1,3 +1,9 @@
+// NOTE (HB-47): Redis pub/sub is NOT durable. Messages published here are
+// delivered only to subscribers currently connected at publish time.
+// Offline subscribers WILL miss events — there is no replay buffer or
+// guaranteed delivery. Clients MUST refetch authoritative state after
+// reconnecting (e.g. refetch ticket/task lists on WebSocket reconnect)
+// to avoid stale UI caused by events missed during disconnection.
 import Redis from 'ioredis';
 import { env } from '../env.js';
 
@@ -13,35 +19,58 @@ function getPublisher(): Redis {
 }
 
 export async function broadcastTaskCreated(projectId: string, task: Record<string, unknown>) {
+  const channel = REDIS_CHANNEL;
+  const room = `project:${projectId}`;
   try {
     const redis = getPublisher();
     await redis.publish(
-      REDIS_CHANNEL,
+      channel,
       JSON.stringify({
-        room: `project:${projectId}`,
+        room,
         type: 'task.created',
         payload: task,
         triggeredBy: null,
       }),
     );
-  } catch {
-    // Don't fail ticket creation if broadcast fails
+  } catch (err) {
+    console.warn('[broadcast] Failed to publish:', { channel, room, error: err });
   }
 }
 
 export async function broadcastTicketStatusChanged(projectId: string, taskId: string, newStatus: string) {
+  const channel = REDIS_CHANNEL;
+  const room = `project:${projectId}`;
   try {
     const redis = getPublisher();
     await redis.publish(
-      REDIS_CHANNEL,
+      channel,
       JSON.stringify({
-        room: `project:${projectId}`,
+        room,
         type: 'task.updated',
         payload: { id: taskId, status: newStatus },
         triggeredBy: null,
       }),
     );
-  } catch {
-    // Don't fail if broadcast fails
+  } catch (err) {
+    console.warn('[broadcast] Failed to publish:', { channel, room, error: err });
+  }
+}
+
+export async function broadcastTicketMessage(ticketId: string, message: Record<string, unknown>) {
+  const channel = REDIS_CHANNEL;
+  const room = `ticket:${ticketId}`;
+  try {
+    const redis = getPublisher();
+    await redis.publish(
+      channel,
+      JSON.stringify({
+        room,
+        type: 'ticket.message.created',
+        payload: message,
+        triggeredBy: null,
+      }),
+    );
+  } catch (err) {
+    console.warn('[broadcast] Failed to publish:', { channel, room, error: err });
   }
 }

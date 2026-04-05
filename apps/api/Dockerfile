@@ -54,6 +54,8 @@ RUN addgroup -g 1001 -S bbam \
 COPY --from=build /app/deployed/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/deployed/package.json ./
+# Bundle SQL migrations so the `migrate` container (reuses this image) has them
+COPY infra/postgres/migrations ./migrations
 
 RUN chown -R bbam:bbam /app
 

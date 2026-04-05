@@ -2,14 +2,36 @@ import { pgTable, uuid, varchar, text, serial, timestamp, index } from 'drizzle-
 import { helpdeskUsers } from './helpdesk-users.js';
 import { tasks, projects } from './bbb-refs.js';
 
+// ============================================================================
+// HB-21: DUAL SCHEMA — KEEP IN SYNC
+// ----------------------------------------------------------------------------
+// This is the helpdesk-api's FULLER view of the `tickets` postgres table
+// (all columns the helpdesk service reads/writes). A minimal view lives in:
+//
+//   apps/api/src/db/schema/tickets.ts
+//
+// Both Drizzle schemas describe the SAME underlying postgres table. Until
+// both services share a common schema package, any column addition/removal
+// or type change on the physical table MUST be reflected in both files to
+// avoid runtime drift (missing columns on select, write errors, etc.).
+//
+// Columns referenced here:
+//   tickets: id, ticket_number, helpdesk_user_id, task_id, project_id,
+//            subject, description, status, priority, category, created_at,
+//            updated_at, resolved_at, closed_at
+// ============================================================================
+
 export const tickets = pgTable(
   'tickets',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     ticket_number: serial('ticket_number').unique(),
+    // HB-11: CASCADE on helpdesk_user_id — deleting a customer removes their tickets
+    // to preserve referential integrity (vs. orphaning them with RESTRICT/SET NULL).
     helpdesk_user_id: uuid('helpdesk_user_id')
       .notNull()
-      .references(() => helpdeskUsers.id),
+      .references(() => helpdeskUsers.id, { onDelete: 'cascade' }),
+    // HB-56: SET NULL on task_id — Tickets preserve history even after their task is deleted.
     task_id: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
     project_id: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
     subject: varchar('subject', { length: 500 }).notNull(),

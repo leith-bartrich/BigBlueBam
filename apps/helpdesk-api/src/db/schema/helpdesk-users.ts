@@ -8,6 +8,8 @@ export const helpdeskUsers = pgTable(
     display_name: varchar('display_name', { length: 100 }).notNull(),
     password_hash: text('password_hash').notNull(),
     email_verified: boolean('email_verified').default(false).notNull(),
+    // TODO: hash with sha256 before storage; see HB-44 in audit.
+    // Column will be renamed to email_verification_token_hash in a follow-up migration.
     email_verification_token: text('email_verification_token'),
     email_verification_sent_at: timestamp('email_verification_sent_at', { withTimezone: true }),
     is_active: boolean('is_active').default(true).notNull(),

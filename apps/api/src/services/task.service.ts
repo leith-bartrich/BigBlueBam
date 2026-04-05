@@ -1,4 +1,5 @@
-import { eq, and, sql, ilike, asc, gt } from 'drizzle-orm';
+import { eq, and, sql, ilike, asc, gt, desc } from 'drizzle-orm';
+import Redis from 'ioredis';
 import { db } from '../db/index.js';
 import { tasks } from '../db/schema/tasks.js';
 import { projects } from '../db/schema/projects.js';
@@ -7,11 +8,25 @@ import { tickets, ticketMessages } from '../db/schema/tickets.js';
 import type { CreateTaskInput, UpdateTaskInput, MoveTaskInput, BulkUpdateInput } from '@bigbluebam/shared';
 import { broadcastToProject } from './realtime.service.js';
 import { logActivity } from './activity.service.js';
+import { env } from '../env.js';
+
+// Lazy-initialized Redis publisher for cross-service events (e.g. ticket sync
+// broadcasts to the helpdesk frontend). We keep a single connection per process
+// and reconnect lazily so tests that don't touch this path incur no Redis cost.
+let ticketEventPublisher: Redis | null = null;
+function getTicketEventPublisher(): Redis {
+  if (!ticketEventPublisher) {
+    ticketEventPublisher = new Redis(env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 3 });
+  }
+  return ticketEventPublisher;
+}
 
 export async function createTask(
   projectId: string,
   data: CreateTaskInput,
   reporterId: string,
+  impersonatorId?: string | null,
+  viaSuperuserContext?: boolean,
 ) {
   // Atomically increment task_id_sequence and get new value
   const [updated] = await db
@@ -85,7 +100,7 @@ export async function createTask(
   broadcastToProject(projectId, 'task.created', task, reporterId);
 
   // Log activity
-  logActivity(projectId, reporterId, 'task.created', task!.id, { title: task!.title }).catch(() => {});
+  logActivity(projectId, reporterId, 'task.created', task!.id, { title: task!.title }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
 
   return task!;
 }
@@ -109,7 +124,7 @@ export async function getTask(taskId: string) {
   return task ?? null;
 }
 
-export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?: string) {
+export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?: string, impersonatorId?: string | null, viaSuperuserContext?: boolean) {
   const updateValues: Record<string, unknown> = {
     updated_at: new Date(),
   };
@@ -147,14 +162,14 @@ export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?
 
     // Log activity
     if (actorId) {
-      logActivity(task.project_id, actorId, 'task.updated', taskId, { changed_fields: changedFields }).catch(() => {});
+      logActivity(task.project_id, actorId, 'task.updated', taskId, { changed_fields: changedFields }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
     }
   }
 
   return task ?? null;
 }
 
-export async function deleteTask(taskId: string, actorId?: string) {
+export async function deleteTask(taskId: string, actorId?: string, impersonatorId?: string | null, viaSuperuserContext?: boolean) {
   // Soft delete by moving to a terminal state - or we do actual delete
   // For now, actually delete but handle subtask counts
   const task = await getTask(taskId);
@@ -184,14 +199,14 @@ export async function deleteTask(taskId: string, actorId?: string) {
 
     // Log activity
     if (actorId) {
-      logActivity(deleted.project_id, actorId, 'task.deleted', null, { task_id: taskId, title: deleted.title }).catch(() => {});
+      logActivity(deleted.project_id, actorId, 'task.deleted', null, { task_id: taskId, title: deleted.title }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
     }
   }
 
   return deleted ?? null;
 }
 
-export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: string) {
+export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: string, impersonatorId?: string | null, viaSuperuserContext?: boolean) {
   // Get the task before move to know from_phase
   const existingTask = await getTask(taskId);
 
@@ -230,7 +245,20 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
     .where(eq(tasks.id, taskId))
     .returning();
 
-  // Sync ticket status if this task is linked to a helpdesk ticket
+  // Sync ticket status if this task is linked to a helpdesk ticket.
+  //
+  // HB-34 — Lossy phase→status mapping:
+  // Helpdesk tickets have 5 statuses (open, in_progress, waiting_on_customer,
+  // resolved, closed) but BBB phases only expose 3 categorical flags
+  // (is_start, is_terminal, or neither). This path therefore collapses the
+  // mapping to: is_terminal → resolved, is_start → open, else → in_progress.
+  //
+  // This means `waiting_on_customer` and `closed` CANNOT be set via BBB task
+  // moves — they are reachable only through helpdesk-api directly. If an
+  // agent sets a ticket to `waiting_on_customer` in the helpdesk UI and the
+  // BBB task is then moved, this sync will overwrite it back to one of the
+  // three mapped values. A richer mapping would require schema changes
+  // (e.g. a phase→status lookup table) and is out of scope here.
   try {
     const ticketSync = await db
       .select()
@@ -240,7 +268,7 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
 
     if (ticketSync.length > 0) {
       const ticket = ticketSync[0]!;
-      // Map phase to ticket status
+      // Map phase to ticket status (lossy — see HB-34 note above)
       let newStatus = ticket.status;
       if (phase?.is_terminal) {
         newStatus = 'resolved';
@@ -256,19 +284,62 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
 
         await db.update(tickets).set(updates).where(eq(tickets.id, ticket.id));
 
-        // Create a status change message
-        await db.insert(ticketMessages).values({
-          ticket_id: ticket.id,
-          author_type: 'system',
-          author_id: actorId ?? '00000000-0000-0000-0000-000000000000',
-          author_name: 'System',
-          body: `Status changed to ${newStatus.replace('_', ' ')}`,
-          is_internal: false,
-        });
+        // HB-35 — Idempotent system messages:
+        // Before inserting the status-change system message, check if an
+        // identical one was already written for this ticket within the last
+        // 60 seconds. This guards against duplicate messages caused by
+        // retries, webhook replays, or rapid double-fires of the sync path.
+        const messageBody = `Status changed to ${newStatus.replace('_', ' ')}`;
+        const sixtySecondsAgo = new Date(Date.now() - 60_000);
+        const [recentDuplicate] = await db
+          .select({ id: ticketMessages.id })
+          .from(ticketMessages)
+          .where(
+            and(
+              eq(ticketMessages.ticket_id, ticket.id),
+              eq(ticketMessages.author_type, 'system'),
+              eq(ticketMessages.body, messageBody),
+              gt(ticketMessages.created_at, sixtySecondsAgo),
+            ),
+          )
+          .orderBy(desc(ticketMessages.created_at))
+          .limit(1);
+
+        if (!recentDuplicate) {
+          await db.insert(ticketMessages).values({
+            ticket_id: ticket.id,
+            author_type: 'system',
+            author_id: actorId ?? '00000000-0000-0000-0000-000000000000',
+            author_name: 'System',
+            body: messageBody,
+            is_internal: false,
+          });
+        }
+
+        // Broadcast the ticket status change so the helpdesk frontend
+        // (subscribed to `ticket:{id}`) picks it up live.
+        try {
+          const publisher = getTicketEventPublisher();
+          await publisher.publish(
+            'bigbluebam:events',
+            JSON.stringify({
+              room: `ticket:${ticket.id}`,
+              type: 'ticket.status.changed',
+              payload: {
+                ticket_id: ticket.id,
+                status: newStatus,
+                updated_at: new Date(),
+              },
+              triggeredBy: actorId,
+            }),
+          );
+        } catch (err) {
+          console.error('[task.service] Ticket event broadcast failed:', { taskId, ticketId: ticket.id, err });
+        }
       }
     }
-  } catch {
-    // Don't fail the task move if ticket sync fails
+  } catch (err) {
+    console.error('[task.service] Ticket sync failed:', { taskId, err });
   }
 
   // Broadcast realtime event
@@ -285,7 +356,7 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
       logActivity(task.project_id, actorId, 'task.moved', taskId, {
         from_phase: existingTask?.phase_id,
         to_phase: data.phase_id,
-      }).catch(() => {});
+      }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
     }
   }
 

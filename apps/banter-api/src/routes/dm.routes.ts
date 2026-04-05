@@ -7,7 +7,8 @@ import {
   banterChannelMemberships,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
 
 const createDmSchema = z.object({
   user_id: z.string().uuid(),
@@ -21,7 +22,7 @@ export default async function dmRoutes(fastify: FastifyInstance) {
   // POST /v1/dm — create or retrieve DM
   fastify.post(
     '/v1/dm',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const user = request.user!;
       const body = createDmSchema.parse(request.body);
@@ -31,6 +32,24 @@ export default async function dmRoutes(fastify: FastifyInstance) {
           error: {
             code: 'BAD_REQUEST',
             message: 'Cannot create DM with yourself',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // P2-9: Validate target exists, is active, and belongs to the same org.
+      const [targetUser] = await db
+        .select({ id: users.id, is_active: users.is_active, org_id: users.org_id })
+        .from(users)
+        .where(eq(users.id, body.user_id))
+        .limit(1);
+
+      if (!targetUser || !targetUser.is_active || targetUser.org_id !== user.org_id) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'Invalid DM target',
             details: [],
             request_id: request.id,
           },
@@ -119,10 +138,29 @@ export default async function dmRoutes(fastify: FastifyInstance) {
   // POST /v1/group-dm — create group DM
   fastify.post(
     '/v1/group-dm',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const user = request.user!;
       const body = createGroupDmSchema.parse(request.body);
+
+      // Enforce org-level permission: members_can_create_group_dms.
+      // Admins/owners/superusers always allowed.
+      const isPrivileged = user.role === 'admin' || user.role === 'owner' || user.is_superuser;
+      if (!isPrivileged) {
+        // Cached + normalized via the bridge. See
+        // services/org-permissions-bridge.ts for the full mapping.
+        const perms = await getEffectiveBanterPermissions(user.org_id);
+        if (!perms.members_can_create_group_dms) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to create group DMs',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       const allUserIds = [...new Set([user.id, ...body.user_ids])];
 
@@ -135,6 +173,26 @@ export default async function dmRoutes(fastify: FastifyInstance) {
             request_id: request.id,
           },
         });
+      }
+
+      // P2-9: Validate all targets exist, are active, and belong to the same org.
+      const targets = await db
+        .select({ id: users.id, is_active: users.is_active, org_id: users.org_id })
+        .from(users)
+        .where(inArray(users.id, body.user_ids));
+
+      for (const userId of body.user_ids) {
+        const target = targets.find((t) => t.id === userId);
+        if (!target || !target.is_active || target.org_id !== user.org_id) {
+          return reply.status(400).send({
+            error: {
+              code: 'BAD_REQUEST',
+              message: 'Invalid DM target',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       // Get display names for channel name

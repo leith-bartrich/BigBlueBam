@@ -5,9 +5,11 @@ import { db } from '../db/index.js';
 import {
   banterBookmarks,
   banterMessages,
+  banterChannels,
+  banterChannelMemberships,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireScope } from '../plugins/auth.js';
 
 const createBookmarkSchema = z.object({
   message_id: z.string().uuid(),
@@ -53,7 +55,7 @@ export default async function bookmarkRoutes(fastify: FastifyInstance) {
   // POST /v1/bookmarks — create bookmark
   fastify.post(
     '/v1/bookmarks',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const user = request.user!;
       const body = createBookmarkSchema.parse(request.body);
@@ -76,6 +78,44 @@ export default async function bookmarkRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Verify user is a member of the message's channel
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(eq(banterChannels.id, message.channel_id))
+        .limit(1);
+
+      const [channelMembership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, message.channel_id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!channelMembership) {
+        const isDm = channel && (channel.type === 'dm' || channel.type === 'group_dm');
+        const hasOrgOverride =
+          !isDm &&
+          channel &&
+          channel.org_id === user.org_id &&
+          (user.is_superuser || ['owner', 'admin'].includes(user.role));
+
+        if (!hasOrgOverride) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Message not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       const [bookmark] = await db
         .insert(banterBookmarks)
         .values({
@@ -93,7 +133,7 @@ export default async function bookmarkRoutes(fastify: FastifyInstance) {
   // DELETE /v1/bookmarks/:id — remove bookmark
   fastify.delete(
     '/v1/bookmarks/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;

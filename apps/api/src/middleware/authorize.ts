@@ -16,6 +16,8 @@ export function requireProjectRole(...roles: string[]) {
       });
     }
 
+    if (request.user.is_superuser) return; // SuperUsers bypass project role checks
+
     // Extract project ID from route params or request body
     const params = request.params as Record<string, string>;
     const body = request.body as Record<string, unknown> | undefined;
@@ -31,6 +33,11 @@ export function requireProjectRole(...roles: string[]) {
         },
       });
     }
+
+    // Guest users are scoped to specific projects. When a guest accepts an
+    // invitation, they are added to project_memberships for their allowed
+    // projects. The membership check below therefore naturally enforces
+    // guest project access — no special-case logic is needed here.
 
     const [membership] = await db
       .select()
@@ -68,6 +75,8 @@ export function requireOrgRole(...roles: string[]) {
         },
       });
     }
+
+    if (request.user.is_superuser) return; // SuperUsers bypass org role checks
 
     if (!roles.includes(request.user.role)) {
       return reply.status(403).send({

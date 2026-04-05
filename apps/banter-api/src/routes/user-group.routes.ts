@@ -7,7 +7,7 @@ import {
   banterUserGroupMemberships,
   users,
 } from '../db/schema/index.js';
-import { requireAuth, requireRole } from '../plugins/auth.js';
+import { requireAuth, requireRole, requireScope } from '../plugins/auth.js';
 import { broadcastToOrg } from '../services/realtime.js';
 
 const createUserGroupSchema = z.object({
@@ -36,7 +36,7 @@ const addMembersSchema = z.object({
 });
 
 export default async function userGroupRoutes(fastify: FastifyInstance) {
-  const adminPreHandler = [requireAuth, requireRole(['owner', 'admin'])];
+  const adminPreHandler = [requireAuth, requireRole(['owner', 'admin']), requireScope('admin')];
 
   // GET /v1/user-groups
   fastify.get(

@@ -1,0 +1,91 @@
+name: DB Drift Guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  db-drift:
+    name: Drizzle ↔ SQL migration drift check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: bigbluebam
+          POSTGRES_USER: bigbluebam
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bigbluebam -d bigbluebam"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://bigbluebam:postgres@localhost:5432/bigbluebam
+      PGPASSWORD: postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U bigbluebam -d bigbluebam; then exit 0; fi
+            sleep 1
+          done
+          echo "postgres never became ready" >&2
+          exit 1
+
+      - name: Apply init.sql (if present)
+        run: |
+          if [ -f infra/postgres/init.sql ]; then
+            psql -h localhost -U bigbluebam -d bigbluebam -v ON_ERROR_STOP=1 -f infra/postgres/init.sql
+          else
+            echo "init.sql not present — skipping"
+          fi
+
+      - name: Apply migrations
+        run: |
+          shopt -s nullglob
+          for f in infra/postgres/migrations/*.sql; do
+            echo "Applying $f"
+            psql -h localhost -U bigbluebam -d bigbluebam -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Run drift guard
+        run: pnpm db:check
+
+  migration-lint:
+    name: Migration file lint (header + idempotency)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Lint migrations
+        run: node scripts/lint-migrations.mjs

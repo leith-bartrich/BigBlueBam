@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { epics } from '../db/schema/epics.js';
 import { tasks } from '../db/schema/tasks.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireProjectRole } from '../middleware/authorize.js';
 
 export default async function epicRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
@@ -37,7 +38,7 @@ export default async function epicRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/epics',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectRole('admin', 'member'), requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().max(255),
@@ -68,7 +69,7 @@ export default async function epicRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/epics/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().max(255).optional(),
@@ -111,7 +112,7 @@ export default async function epicRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/epics/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const [deleted] = await db
         .delete(epics)

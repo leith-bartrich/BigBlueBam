@@ -1,4 +1,4 @@
-export { organizations, users, sessions, apiKeys } from './bbb-refs.js';
+export { organizations, users, sessions, apiKeys, organizationMemberships } from './bbb-refs.js';
 export { banterChannelGroups } from './channel-groups.js';
 export { banterChannels } from './channels.js';
 export { banterMessages } from './messages.js';

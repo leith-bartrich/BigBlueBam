@@ -1,6 +1,7 @@
-import { LayoutDashboard, Settings, User, FolderKanban, Plus } from 'lucide-react';
+import { LayoutDashboard, Settings, User, Plus, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/hooks/use-projects';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface SidebarProps {
   currentProjectId?: string;
@@ -11,6 +12,7 @@ interface SidebarProps {
 export function Sidebar({ currentProjectId, onNavigate, onCreateProject }: SidebarProps) {
   const { data: projectsResponse } = useProjects();
   const projects = projectsResponse?.data ?? [];
+  const user = useAuthStore((s) => s.user);
 
   return (
     <aside className="flex flex-col h-full w-60 bg-sidebar text-zinc-300 border-r border-zinc-800">
@@ -73,6 +75,15 @@ export function Sidebar({ currentProjectId, onNavigate, onCreateProject }: Sideb
       </nav>
 
       <div className="border-t border-zinc-800 px-3 py-2">
+        {user?.is_superuser === true && (
+          <button
+            onClick={() => onNavigate('/superuser')}
+            className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-red-300 hover:bg-sidebar-hover transition-colors"
+          >
+            <Shield className="h-4 w-4" />
+            SuperUser
+          </button>
+        )}
         <button
           onClick={() => onNavigate('/settings')}
           className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm hover:bg-sidebar-hover transition-colors"

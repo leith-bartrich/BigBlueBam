@@ -10,6 +10,7 @@ import { env } from './env.js';
 import { db, connection } from './db/index.js';
 import { errorHandler } from './middleware/error-handler.js';
 import redisPlugin from './plugins/redis.js';
+import csrfPlugin from './plugins/csrf.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.routes.js';
 import projectRoutes from './routes/project.routes.js';
@@ -35,6 +36,9 @@ import reactionRoutes from './routes/reaction.routes.js';
 import icalRoutes from './routes/ical.routes.js';
 import viewRoutes from './routes/view.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
+import platformRoutes from './routes/platform.routes.js';
+import guestRoutes from './routes/guest.routes.js';
+import superuserRoutes from './routes/superuser.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -86,6 +90,10 @@ await fastify.register(swaggerUi, {
 
 // Redis plugin
 await fastify.register(redisPlugin);
+
+// HB-52: CSRF protection — must run BEFORE routes so state-changing
+// endpoints reject sessions-without-token before any handler runs.
+await fastify.register(csrfPlugin);
 
 // Auth plugin
 await fastify.register(authPlugin);
@@ -152,6 +160,9 @@ await fastify.register(reactionRoutes);
 await fastify.register(icalRoutes);
 await fastify.register(viewRoutes);
 await fastify.register(uploadRoutes);
+await fastify.register(platformRoutes);
+await fastify.register(guestRoutes);
+await fastify.register(superuserRoutes, { prefix: '/superuser' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

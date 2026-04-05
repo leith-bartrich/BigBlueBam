@@ -22,3 +22,7 @@ export { taskTemplates } from './task-templates.js';
 export { commentReactions } from './comment-reactions.js';
 export { savedViews } from './saved-views.js';
 export { tickets, ticketMessages } from './tickets.js';
+export { superuserAuditLog } from './superuser-audit-log.js';
+export { impersonationSessions } from './impersonation-sessions.js';
+export { guestInvitations } from './guest-invitations.js';
+export { organizationMemberships } from './organization-memberships.js';

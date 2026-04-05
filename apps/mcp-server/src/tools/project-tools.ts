@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { handleScopeError } from '../middleware/scope-check.js';
 
 export function registerProjectTools(server: McpServer, api: ApiClient): void {
   server.tool(
@@ -69,6 +70,8 @@ export function registerProjectTools(server: McpServer, api: ApiClient): void {
       const result = await api.post('/projects', params);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('create_project', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error creating project: ${JSON.stringify(result.data)}` }],
           isError: true,

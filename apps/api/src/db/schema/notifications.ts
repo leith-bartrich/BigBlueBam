@@ -11,7 +11,6 @@ export const notifications = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     project_id: uuid('project_id')
-      .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     task_id: uuid('task_id')
       .references(() => tasks.id, { onDelete: 'set null' }),

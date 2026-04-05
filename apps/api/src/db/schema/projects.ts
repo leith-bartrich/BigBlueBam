@@ -18,6 +18,7 @@ export const projects = pgTable(
     default_sprint_duration_days: integer('default_sprint_duration_days').default(14).notNull(),
     settings: jsonb('settings').default({}).notNull(),
     is_archived: boolean('is_archived').default(false).notNull(),
+    created_by: uuid('created_by'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

@@ -15,6 +15,8 @@ export const activityLog = pgTable(
     actor_id: uuid('actor_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    impersonator_id: uuid('impersonator_id')
+      .references(() => users.id, { onDelete: 'set null' }),
     action: varchar('action', { length: 100 }).notNull(),
     details: jsonb('details'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

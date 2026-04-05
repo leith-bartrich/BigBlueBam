@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { createProjectSchema, updateProjectSchema, addProjectMemberSchema } from '@bigbluebam/shared';
 import * as projectService from '../services/project.service.js';
-import { requireAuth } from '../plugins/auth.js';
+import * as orgService from '../services/org.service.js';
+import { checkOrgPermission, isOrgPrivileged } from '../services/org-permissions.js';
+import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
 
 export default async function projectRoutes(fastify: FastifyInstance) {
@@ -9,12 +11,28 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     const projects = await projectService.listProjects(
       request.user!.org_id,
       request.user!.id,
+      request.user!.is_superuser,
     );
 
     return reply.send({ data: projects });
   });
 
-  fastify.post('/projects', { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post('/projects', { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] }, async (request, reply) => {
+    // Enforce org-level permission: members_can_create_projects
+    if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
+      const org = await orgService.getOrganizationCached(request.user!.org_id);
+      if (!checkOrgPermission(org?.settings as Record<string, unknown> | null, 'members_can_create_projects')) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Your organization does not allow members to create projects',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    }
+
     const data = createProjectSchema.parse(request.body);
     const project = await projectService.createProject(
       request.user!.org_id,
@@ -41,28 +59,47 @@ export default async function projectRoutes(fastify: FastifyInstance) {
         });
       }
 
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Project not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       return reply.send({ data: project });
     },
   );
 
   fastify.patch<{ Params: { id: string } }>(
     '/projects/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       // Check admin role
-      const membership = await projectService.getProjectMembership(
-        request.params.id,
-        request.user!.id,
-      );
-      if (!membership || membership.role !== 'admin') {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Project admin role required',
-            details: [],
-            request_id: request.id,
-          },
-        });
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership || membership.role !== 'admin') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Project admin role required',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const data = updateProjectSchema.parse(request.body);
@@ -85,21 +122,48 @@ export default async function projectRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/projects/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
-      const membership = await projectService.getProjectMembership(
-        request.params.id,
-        request.user!.id,
-      );
-      if (!membership || membership.role !== 'admin') {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Project admin role required',
-            details: [],
-            request_id: request.id,
-          },
-        });
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership || membership.role !== 'admin') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Project admin role required',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        // Enforce org-level permission: members_can_delete_own_projects.
+        // If the user is not an org admin/owner, they may only delete projects
+        // they created, and only if the org permission allows it.
+        if (!isOrgPrivileged(request.user!.role)) {
+          const existingProject = await projectService.getProject(request.params.id);
+          const org = await orgService.getOrganizationCached(request.user!.org_id);
+          const permitted = checkOrgPermission(
+            org?.settings as Record<string, unknown> | null,
+            'members_can_delete_own_projects',
+          );
+          const isCreator =
+            existingProject !== null &&
+            (existingProject as { created_by?: string | null }).created_by === request.user!.id;
+          if (!permitted || !isCreator) {
+            return reply.status(403).send({
+              error: {
+                code: 'FORBIDDEN',
+                message: 'Your organization does not allow members to delete this project',
+                details: [],
+                request_id: request.id,
+              },
+            });
+          }
+        }
       }
 
       const project = await projectService.archiveProject(request.params.id);
@@ -122,6 +186,23 @@ export default async function projectRoutes(fastify: FastifyInstance) {
     '/projects/:id/members',
     { preHandler: [requireAuth] },
     async (request, reply) => {
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Project not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       const members = await projectService.getProjectMembers(request.params.id);
       return reply.send({ data: members });
     },
@@ -129,21 +210,23 @@ export default async function projectRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/members',
-    { preHandler: [requireAuth, requireProjectRole('admin')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectRole('admin')] },
     async (request, reply) => {
-      const membership = await projectService.getProjectMembership(
-        request.params.id,
-        request.user!.id,
-      );
-      if (!membership || membership.role !== 'admin') {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Project admin role required',
-            details: [],
-            request_id: request.id,
-          },
-        });
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          request.params.id,
+          request.user!.id,
+        );
+        if (!membership || membership.role !== 'admin') {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Project admin role required',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const data = addProjectMemberSchema.parse(request.body);

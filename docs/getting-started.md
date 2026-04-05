@@ -41,12 +41,11 @@ sequenceDiagram
     Dev->>Shell: Copy .env.example to .env
     Dev->>Shell: Edit secrets in .env
     Shell->>Docker: docker compose up -d
-    Docker->>DB: Start PostgreSQL
+    Docker->>DB: Start PostgreSQL (empty)
     Docker->>Docker: Start Redis, MinIO
-    Docker-->>App: Start API (waits for DB healthy)
+    Docker->>DB: migrate service applies SQL migrations
+    Docker-->>App: Start API (waits on migrate completed)
     Docker-->>Docker: Start frontend, MCP, worker
-    Dev->>Shell: docker compose run --rm migrate
-    Shell->>DB: Apply database migrations
     Dev->>Shell: docker compose exec api node dist/cli.js create-admin
     Shell->>App: Create admin user
     Dev->>Shell: Open http://localhost
@@ -112,24 +111,31 @@ Wait for all services to become healthy:
 docker compose ps
 ```
 
-All services should show `healthy` or `running` status.
+All services should show `healthy` or `running` status. The `migrate`
+container runs once, applies every file in `infra/postgres/migrations/` in
+order, then exits 0 — app services depend on it via
+`service_completed_successfully` and won't start until it finishes.
 
-### Step 4: Run Database Migrations
+> There is no `init.sql` bootstrap. PostgreSQL starts empty and the
+> `migrate` service creates the entire schema from the numbered migration
+> files. Re-running `docker compose up -d` is always safe: the migrate
+> service is a no-op when the DB is current.
+
+### Step 4: (Optional) Re-run migrations manually
+
+You only need this when you've added a new migration file to your working
+tree and want to apply it without recreating the stack:
 
 ```bash
-docker compose run --rm migrate
+docker compose build migrate && docker compose run --rm migrate
 ```
 
-Expected output:
+### Step 5: Create the First User + Organization
 
-```
-Running migrations...
-Migration 0001_initial_schema applied successfully.
-Migration 0002_activity_log_partitions applied successfully.
-All migrations complete.
-```
-
-### Step 5: Create the Admin User
+Every BigBlueBam deployment needs a bootstrap owner — the first user + their
+organization. After that you can add users of any role into the same org,
+promote SuperUsers, and mint API keys for agentic clients, all from the
+same CLI.
 
 ```bash
 docker compose exec api node dist/cli.js create-admin \
@@ -143,11 +149,175 @@ Expected output:
 
 ```
 Admin user created successfully:
-  User ID: <uuid>
-  Email: admin@example.com
-  Org ID: <uuid>
-  Org Slug: my-organization
+  User ID:   <uuid>
+  Email:     admin@example.com
+  Org ID:    <uuid>
+  Org Slug:  my-organization
 ```
+
+> Passwords must be at least 12 characters. The CLI hashes with Argon2id.
+
+### Step 5a: Other account types (optional, but usually needed)
+
+The CLI supports all role + scope combinations. Full usage: `docker compose
+exec api node dist/cli.js --help`.
+
+**Platform SuperUser** (you, running the server — grants cross-org visibility
+and the `/b3/superuser` console). Either add `--superuser` when creating the
+first admin, or promote an existing user later:
+
+```bash
+# During bootstrap
+docker compose exec api node dist/cli.js create-admin \
+  --email you@co.com --password <pw> --name "You" --org "Acme" --superuser
+
+# Promote an existing user (no new org created)
+docker compose exec api node dist/cli.js grant-superuser --email you@co.com
+# And to revoke:
+docker compose exec api node dist/cli.js revoke-superuser --email you@co.com
+```
+
+**Additional humans inside an existing org.** Find the org slug with
+`list-orgs`, then create users with any of `owner / admin / member / viewer /
+guest`:
+
+```bash
+# See what orgs exist
+docker compose exec api node dist/cli.js list-orgs
+
+# Add an admin (can manage org, cannot delete it or demote the owner)
+docker compose exec api node dist/cli.js create-user \
+  --email alice@co.com --password <pw> --name "Alice" \
+  --org-slug my-organization --role admin
+
+# Add a regular member (the default — can create/edit tasks in projects they join)
+docker compose exec api node dist/cli.js create-user \
+  --email bob@co.com --password <pw> --name "Bob" \
+  --org-slug my-organization --role member
+
+# Add a watch-only viewer (read-only across their org's projects)
+docker compose exec api node dist/cli.js create-user \
+  --email watcher@co.com --password <pw> --name "Watcher" \
+  --org-slug my-organization --role viewer
+```
+
+**Agentic (watch-only) user** — a bot that only needs to observe, never
+write. Create a viewer-role user, then mint a `read` API key for it:
+
+```bash
+# 1. Create the bot's user record with viewer role
+docker compose exec api node dist/cli.js create-user \
+  --email dashboard-bot@co.com --password <rotate-me-pw> --name "Dashboard Bot" \
+  --org-slug my-organization --role viewer
+
+# 2. Issue a read-only API key (printed ONCE — copy and store immediately)
+# --org-slug pins the key to exactly one org. Even if the user later joins
+# other orgs via organization_memberships, this key will never grant access
+# beyond my-organization.
+docker compose exec api node dist/cli.js create-api-key \
+  --email dashboard-bot@co.com --name "grafana-dashboard" --scope read \
+  --org-slug my-organization
+```
+
+The CLI prints the raw token once — after that only its Argon2id hash is
+stored. The bot uses it as:
+
+```
+Authorization: Bearer bbam_<rest-of-token>
+```
+
+**Agentic (read-write) user** — a CI bot or automation that creates/updates
+tasks. Create a member-role user and a `read_write` key, optionally scoped
+to a single project and with an expiry:
+
+```bash
+docker compose exec api node dist/cli.js create-user \
+  --email ci-bot@co.com --password <rotate-me-pw> --name "CI Bot" \
+  --org-slug my-organization --role member
+
+docker compose exec api node dist/cli.js create-api-key \
+  --email ci-bot@co.com --name "github-actions" --scope read_write \
+  --org-slug my-organization --project-id <project-uuid> --expires-days 90
+```
+
+**Admin API key** (for server-to-server integrations that manage org-level
+resources). Use with caution — `admin` scope bypasses read/write restrictions:
+
+```bash
+docker compose exec api node dist/cli.js create-api-key \
+  --email admin@example.com --name "backfill-tool" --scope admin \
+  --org-slug my-organization --expires-days 7
+```
+
+#### Helpdesk agent API keys
+
+The `/helpdesk/api/agents/*` routes (BBB employees working customer
+tickets) use a separate, per-agent key family prefixed `hdag_`. Each key
+is tied to one BBB user, Argon2id-hashed at rest, and individually
+rotatable / revocable — replacing the legacy shared `AGENT_API_KEY` env
+var (HB-28 + HB-49).
+
+```bash
+# The BBB user must already exist (create-admin or create-user).
+docker compose exec api node dist/cli.js create-helpdesk-agent-key \
+  --email agent@example.com --name "agent-laptop" --expires-days 365
+```
+
+The token is printed ONCE. Agents present it on every request as:
+
+```
+X-Agent-Key: hdag_<rest-of-token>
+```
+
+#### Revoking keys
+
+Both key families can be revoked by their 8-character `key_prefix` (the
+first 8 characters of the token that was printed at creation time — e.g.
+`bbam_abc` or `hdag_xyz`). BBB API keys are hard-deleted; helpdesk agent
+keys are soft-revoked by default (the row is kept with `revoked_at` set)
+so the audit trail stays intact, with `--hard` available for emergencies.
+
+```bash
+# Revoke a BBB API key (hard delete — the token is destroyed immediately)
+docker compose exec api node dist/cli.js revoke-api-key --prefix bbam_abc
+
+# Soft-revoke a helpdesk agent key (row kept, revoked_at stamped)
+docker compose exec api node dist/cli.js revoke-helpdesk-agent-key --prefix hdag_xyz
+
+# Hard-delete a helpdesk agent key (ops emergency only — breaks audit trail)
+docker compose exec api node dist/cli.js revoke-helpdesk-agent-key --prefix hdag_xyz --hard
+```
+
+If two keys happen to share the same 8-char prefix (rare but possible),
+the CLI lists the candidates and asks you to disambiguate with
+`--id <uuid>`.
+
+### Role & scope reference
+
+| **User role** | **What it can do** |
+|---|---|
+| `owner` | Full org control. Cannot be demoted by other roles. |
+| `admin` | Manage org members, settings, projects. Cannot delete org. |
+| `member` | Create/edit tasks in projects they join. Default for new humans. |
+| `viewer` | Read-only across the org. Good for watch-only agents, stakeholders. |
+| `guest` | Invitation-only, scoped to specific projects/channels. |
+
+| **API key scope** | **What it can do** |
+|---|---|
+| `read` | GET endpoints only. Safe for dashboards, observers, metric exporters. |
+| `read_write` | CRUD on tasks, comments, etc. Cannot change org settings. |
+| `admin` | Full org-level operations. Treat like a root credential. |
+
+Every API key is bound to exactly one org via `--org-slug` (or `--org-id`)
+at creation time and the auth layer enforces that scope on every request,
+regardless of which other orgs the owning user joins later (P2-8).
+`read_write` and `admin` keys can additionally be project-scoped with
+`--project-id <uuid>` to limit their blast radius to a single project
+inside that org. All keys can carry an `--expires-days N` TTL.
+
+See the [Permissions Guide](permissions.md) for the complete authorization
+model, and the [Development Guide](development.md#local-admin-superuser-and-impersonation)
+for how to use the `/b3/superuser` console and test impersonation locally.
 
 ### Step 6: Access the Application
 
@@ -243,11 +413,17 @@ docker compose logs -f api mcp-server worker
 # Rebuild after code changes
 docker compose build
 
-# Run database migrations
+# Re-apply SQL migrations (normally automatic on `docker compose up`)
 docker compose run --rm migrate
 
-# Generate new migration from schema changes
-pnpm db:generate
+# Rebuild migrate image after adding a new migration file, then apply
+docker compose build migrate && docker compose run --rm migrate
+
+# Lint migration files (header, filename, idempotency)
+pnpm lint:migrations
+
+# Drift guard: Drizzle schemas vs live DB
+pnpm db:check
 
 # Run all tests
 pnpm test

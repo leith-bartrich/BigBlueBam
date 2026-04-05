@@ -109,6 +109,7 @@ export async function createProject(orgId: string, data: CreateProjectInput, cre
         color: data.color ?? null,
         task_id_prefix: data.task_id_prefix,
         default_sprint_duration_days: data.default_sprint_duration_days ?? 14,
+        created_by: creatorUserId,
       })
       .returning();
 
@@ -177,7 +178,44 @@ export async function createProject(orgId: string, data: CreateProjectInput, cre
   return result;
 }
 
-export async function listProjects(orgId: string, userId: string) {
+export async function listProjects(
+  orgId: string,
+  userId: string,
+  bypassMembership = false,
+) {
+  // SuperUsers (bypassMembership=true) see every non-archived project in the
+  // org regardless of project_memberships — they are not auto-enrolled as
+  // members when context-switching into another org, so a membership join
+  // would exclude them. Their `membership_role` is surfaced as 'owner'
+  // to match the SuperUser-privilege model used elsewhere in the UI.
+  if (bypassMembership) {
+    const result = await db
+      .select({
+        project: projects,
+        membership: projectMemberships,
+      })
+      .from(projects)
+      .leftJoin(
+        projectMemberships,
+        and(
+          eq(projects.id, projectMemberships.project_id),
+          eq(projectMemberships.user_id, userId),
+        ),
+      )
+      .where(
+        and(
+          eq(projects.org_id, orgId),
+          eq(projects.is_archived, false),
+        ),
+      )
+      .orderBy(projects.name);
+
+    return result.map((r) => ({
+      ...r.project,
+      membership_role: r.membership?.role ?? 'owner',
+    }));
+  }
+
   const result = await db
     .select({
       project: projects,
@@ -247,13 +285,17 @@ export async function getProjectMembers(projectId: string) {
       avatar_url: usersTable.avatar_url,
       role: projectMemberships.role,
       joined_at: projectMemberships.joined_at,
+      user_role: usersTable.role,
     })
     .from(projectMemberships)
     .innerJoin(usersTable, eq(projectMemberships.user_id, usersTable.id))
     .where(eq(projectMemberships.project_id, projectId))
     .orderBy(usersTable.display_name);
 
-  return result;
+  return result.map(({ user_role, ...rest }) => ({
+    ...rest,
+    is_guest: user_role === 'guest',
+  }));
 }
 
 export async function addProjectMember(projectId: string, userId: string, role: string) {

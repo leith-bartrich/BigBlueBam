@@ -6,7 +6,8 @@ import { taskTemplates } from '../db/schema/task-templates.js';
 import { tasks } from '../db/schema/tasks.js';
 import { phases } from '../db/schema/phases.js';
 import { projects } from '../db/schema/projects.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireProjectRole } from '../middleware/authorize.js';
 
 async function generateHumanId(projectId: string): Promise<string> {
   const [updated] = await db
@@ -52,7 +53,7 @@ export default async function templateRoutes(fastify: FastifyInstance) {
   // ── POST /projects/:id/task-templates ─────────────────────────────────
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/task-templates',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectRole('admin', 'member'), requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const bodySchema = z.object({
         name: z.string().min(1).max(255),
@@ -90,7 +91,7 @@ export default async function templateRoutes(fastify: FastifyInstance) {
   // ── POST /projects/:id/task-templates/:templateId/apply ───────────────
   fastify.post<{ Params: { id: string; templateId: string } }>(
     '/projects/:id/task-templates/:templateId/apply',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectRole('admin', 'member'), requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const overrideSchema = z.object({
         title: z.string().optional(),
@@ -223,7 +224,7 @@ export default async function templateRoutes(fastify: FastifyInstance) {
   // ── DELETE /task-templates/:id ────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>(
     '/task-templates/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const [deleted] = await db
         .delete(taskTemplates)

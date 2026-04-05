@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil, Lock, KeyRound } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { Select } from '@/components/common/select';
+import { Dialog } from '@/components/common/dialog';
 import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
@@ -58,7 +59,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk' | 'permissions'>('profile');
   const [displayName, setDisplayName] = useState(user?.display_name ?? '');
   const [timezone, setTimezone] = useState(user?.timezone ?? 'UTC');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
@@ -110,14 +111,58 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const orgMembers = membersRes?.data ?? [];
 
   // Invite member mutation
+  // Reset-password dialog state
+  const [resetPwTarget, setResetPwTarget] = useState<OrgMember | null>(null);
+  const [resetPwMode, setResetPwMode] = useState<'generate' | 'manual'>('generate');
+  const [resetPwManual, setResetPwManual] = useState('');
+  const [resetPwResult, setResetPwResult] = useState<string | null>(null);
+  const [resetPwCopied, setResetPwCopied] = useState(false);
+
+  const resetMemberPassword = useMutation({
+    mutationFn: ({ userId, password }: { userId: string; password?: string }) =>
+      api.post<ApiResponse<{ user_id: string; email: string; password: string; generated: boolean }>>(
+        `/org/members/${userId}/reset-password`,
+        password ? { password } : {},
+      ),
+    onSuccess: (response) => {
+      setResetPwResult(response.data.password);
+      setResetPwCopied(false);
+    },
+  });
+
+  const closeResetPwDialog = () => {
+    setResetPwTarget(null);
+    setResetPwMode('generate');
+    setResetPwManual('');
+    setResetPwResult(null);
+    setResetPwCopied(false);
+    resetMemberPassword.reset();
+  };
+
+  const canResetMember = (member: OrgMember): boolean => {
+    if (member.id === user?.id) return false; // not your own
+    if (user?.is_superuser) return true;
+    const hierarchy = ['guest', 'viewer', 'member', 'admin', 'owner'];
+    const callerLevel = hierarchy.indexOf(user?.role ?? '');
+    const targetLevel = hierarchy.indexOf(member.role);
+    const adminLevel = hierarchy.indexOf('admin');
+    return callerLevel >= adminLevel && callerLevel >= targetLevel;
+  };
+
   const inviteMember = useMutation({
     mutationFn: (data: { email: string; display_name?: string; role: string }) =>
-      api.post<ApiResponse<OrgMember>>('/org/members/invite', data),
-    onSuccess: (_data, variables) => {
+      api.post<ApiResponse<OrgMember & { was_existing: boolean }>>('/org/members/invite', data),
+    onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: ['org-members'] });
-      setInviteSuccessMessage(
-        `User created. Share these credentials with them:\n- Email: ${variables.email}\n- They will need to set up a password via the admin.`
-      );
+      if (response.data.was_existing) {
+        setInviteSuccessMessage(
+          `Added ${variables.email} to this organization. They can sign in with their existing password.`,
+        );
+      } else {
+        setInviteSuccessMessage(
+          `User created. Share these credentials with them:\n- Email: ${variables.email}\n- They will need to set up a password via the admin.`,
+        );
+      }
       setInviteEmail('');
       setInviteDisplayName('');
       setInviteRole('member');
@@ -251,10 +296,15 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const handleSaveHelpdeskSettings = async () => {
     setHelpdeskSaving(true);
     try {
+      const csrfMatch = typeof document !== 'undefined'
+        ? document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
+        : null;
+      const csrfHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfMatch) csrfHeaders['X-CSRF-Token'] = decodeURIComponent(csrfMatch[1]!);
       await fetch('/helpdesk-api/helpdesk/settings', {
         method: 'PATCH',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: csrfHeaders,
         body: JSON.stringify({
           require_email_verification: helpdeskRequireVerification,
           allowed_email_domains: helpdeskAllowedDomains.split(',').map((d) => d.trim()).filter(Boolean),
@@ -299,6 +349,84 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
       setCopiedUrl(url);
       setTimeout(() => setCopiedUrl(null), 2000);
     });
+  };
+
+  // Permissions tab state
+  interface OrgPermissions {
+    members_can_create_projects: boolean;
+    members_can_delete_own_projects: boolean;
+    members_can_create_channels: boolean;
+    members_can_create_private_channels: boolean;
+    members_can_create_group_dms: boolean;
+    max_file_upload_mb: number;
+    members_can_invite_members: boolean;
+    members_can_create_api_keys: boolean;
+    allowed_api_key_scopes: string[];
+  }
+  const DEFAULT_PERMS: OrgPermissions = {
+    members_can_create_projects: true,
+    members_can_delete_own_projects: false,
+    members_can_create_channels: true,
+    members_can_create_private_channels: true,
+    members_can_create_group_dms: true,
+    max_file_upload_mb: 25,
+    members_can_invite_members: false,
+    members_can_create_api_keys: true,
+    allowed_api_key_scopes: ['read', 'read_write'],
+  };
+  const [permissions, setPermissions] = useState<OrgPermissions>(DEFAULT_PERMS);
+  const [permissionsSaving, setPermissionsSaving] = useState(false);
+  const [permissionsSaved, setPermissionsSaved] = useState(false);
+
+  interface OrgData {
+    id: string;
+    name: string;
+    slug: string;
+    settings: { permissions?: Partial<OrgPermissions>; [key: string]: unknown } | null;
+  }
+  const { data: orgRes } = useQuery({
+    queryKey: ['org'],
+    queryFn: () => api.get<ApiResponse<OrgData>>('/org'),
+    enabled: activeTab === 'permissions',
+  });
+
+  useEffect(() => {
+    if (orgRes?.data) {
+      const existing = orgRes.data.settings?.permissions ?? {};
+      setPermissions({ ...DEFAULT_PERMS, ...existing });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgRes]);
+
+  const canEditPermissions = user?.role === 'admin' || user?.role === 'owner';
+
+  const updatePermissions = useMutation({
+    mutationFn: (perms: OrgPermissions) => {
+      const existingSettings = (orgRes?.data?.settings ?? {}) as Record<string, unknown>;
+      return api.patch<ApiResponse<OrgData>>('/org', {
+        settings: { ...existingSettings, permissions: perms },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] });
+      setPermissionsSaved(true);
+      setTimeout(() => setPermissionsSaved(false), 2000);
+    },
+    onSettled: () => setPermissionsSaving(false),
+  });
+
+  const handleSavePermissions = () => {
+    setPermissionsSaving(true);
+    updatePermissions.mutate(permissions);
+  };
+
+  const toggleApiKeyScope = (scope: string) => {
+    setPermissions((p) => ({
+      ...p,
+      allowed_api_key_scopes: p.allowed_api_key_scopes.includes(scope)
+        ? p.allowed_api_key_scopes.filter((s) => s !== scope)
+        : [...p.allowed_api_key_scopes, scope],
+    }));
   };
 
   const applyTheme = (newTheme: 'system' | 'light' | 'dark') => {
@@ -348,6 +476,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     { id: 'appearance' as const, label: 'Appearance', icon: Sun },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'members' as const, label: 'Members', icon: Users },
+    { id: 'permissions' as const, label: 'Permissions', icon: Lock },
     { id: 'integrations' as const, label: 'Integrations', icon: Plug },
     { id: 'helpdesk' as const, label: 'Helpdesk', icon: Headset },
   ];
@@ -611,13 +740,24 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                                         </Button>
                                       </div>
                                     ) : (
-                                      <button
-                                        onClick={() => setConfirmRemoveId(member.id)}
-                                        className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-                                        title="Remove member"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
+                                      <div className="flex items-center justify-end gap-1">
+                                        {canResetMember(member) && (
+                                          <button
+                                            onClick={() => setResetPwTarget(member)}
+                                            className="p-1.5 rounded-md text-zinc-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                                            title="Reset password"
+                                          >
+                                            <KeyRound className="h-4 w-4" />
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => setConfirmRemoveId(member.id)}
+                                          className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                                          title="Remove member"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
                                     )}
                                   </>
                                 )}
@@ -632,6 +772,114 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     )}
                   </div>
                 )}
+
+                {/* Reset password dialog */}
+                <Dialog
+                  open={!!resetPwTarget}
+                  onOpenChange={(open) => { if (!open) closeResetPwDialog(); }}
+                  title={resetPwResult ? 'Password reset complete' : 'Reset password'}
+                  description={
+                    resetPwResult
+                      ? `Share this password with ${resetPwTarget?.email}. It will not be shown again. Their active sessions have been signed out.`
+                      : `Reset the password for ${resetPwTarget?.display_name || resetPwTarget?.email}.`
+                  }
+                >
+                  {!resetPwResult ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!resetPwTarget) return;
+                        resetMemberPassword.mutate({
+                          userId: resetPwTarget.id,
+                          password: resetPwMode === 'manual' ? resetPwManual : undefined,
+                        });
+                      }}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-2">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={resetPwMode === 'generate'}
+                            onChange={() => setResetPwMode('generate')}
+                            className="mt-1"
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Auto-generate a strong password</div>
+                            <div className="text-xs text-zinc-500">16 chars, alphanumeric, no confusable glyphs</div>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={resetPwMode === 'manual'}
+                            onChange={() => setResetPwMode('manual')}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Enter a password manually</div>
+                            <div className="text-xs text-zinc-500 mb-2">Minimum 12 characters</div>
+                            {resetPwMode === 'manual' && (
+                              <Input
+                                type="text"
+                                value={resetPwManual}
+                                onChange={(e) => setResetPwManual(e.target.value)}
+                                placeholder="new password"
+                                minLength={12}
+                                autoFocus
+                              />
+                            )}
+                          </div>
+                        </label>
+                      </div>
+
+                      {resetMemberPassword.isError && (
+                        <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300">
+                          {(resetMemberPassword.error as Error)?.message || 'Reset failed'}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <Button type="button" variant="ghost" onClick={closeResetPwDialog}>
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          loading={resetMemberPassword.isPending}
+                          disabled={resetPwMode === 'manual' && resetPwManual.length < 12}
+                        >
+                          Reset password
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-200">
+                        This password is shown <strong>only once</strong>. Copy it now.
+                      </div>
+                      <div className="flex items-stretch gap-2">
+                        <code className="flex-1 rounded-md bg-zinc-100 dark:bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-900 dark:text-zinc-100 break-all">
+                          {resetPwResult}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(resetPwResult);
+                            setResetPwCopied(true);
+                            setTimeout(() => setResetPwCopied(false), 2000);
+                          }}
+                          className="shrink-0 rounded-md border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                          title="Copy to clipboard"
+                        >
+                          {resetPwCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <Button onClick={closeResetPwDialog}>Done</Button>
+                      </div>
+                    </div>
+                  )}
+                </Dialog>
               </div>
             )}
 
@@ -1010,6 +1258,147 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     Contact your server administrator to configure email delivery.
                   </p>
                 </div>
+              </div>
+            )}
+            {activeTab === 'permissions' && (
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Organization Permissions</h2>
+                  <p className="text-sm text-zinc-500">
+                    Control what regular members can do within your organization. Admins and owners are not affected by these settings.
+                  </p>
+                  {!canEditPermissions && (
+                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      You need the admin or owner role to modify these settings.
+                    </p>
+                  )}
+                </div>
+
+                <fieldset disabled={!canEditPermissions} className="space-y-6 disabled:opacity-60">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Projects</h3>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create projects</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_projects}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_projects: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can delete projects they own</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_delete_own_projects}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_delete_own_projects: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Banter</h3>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create channels</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_channels}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_channels: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create private channels</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_private_channels}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_private_channels: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create group DMs</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_group_dms}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_group_dms: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Files</h3>
+                    <label className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">Max file upload size (MB)</span>
+                      <Input
+                        id="max-file-upload-mb"
+                        type="number"
+                        min={1}
+                        max={1024}
+                        value={permissions.max_file_upload_mb}
+                        onChange={(e) => setPermissions((p) => ({ ...p, max_file_upload_mb: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
+                        className="w-24"
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Invitations</h3>
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can invite new members</span>
+                      <input
+                        type="checkbox"
+                        checked={permissions.members_can_invite_members}
+                        onChange={(e) => setPermissions((p) => ({ ...p, members_can_invite_members: e.target.checked }))}
+                        className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">API Keys</h3>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">Members can create API keys</span>
+                        <input
+                          type="checkbox"
+                          checked={permissions.members_can_create_api_keys}
+                          onChange={(e) => setPermissions((p) => ({ ...p, members_can_create_api_keys: e.target.checked }))}
+                          className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <div>
+                        <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-2">Allowed API key scopes for members</p>
+                        <div className="flex flex-wrap gap-3">
+                          {['read', 'read_write', 'admin'].map((scope) => (
+                            <label key={scope} className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                              <input
+                                type="checkbox"
+                                checked={permissions.allowed_api_key_scopes.includes(scope)}
+                                onChange={() => toggleApiKeyScope(scope)}
+                                className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+                              />
+                              <span>{scope}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
+
+                {canEditPermissions && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                    <Button onClick={handleSavePermissions} loading={permissionsSaving}>Save Permissions</Button>
+                    {permissionsSaved && <span className="text-sm text-green-600">Saved!</span>}
+                  </div>
+                )}
               </div>
             )}
             {activeTab === 'helpdesk' && (

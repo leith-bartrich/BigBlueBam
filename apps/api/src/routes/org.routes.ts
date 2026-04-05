@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { eq, and, inArray, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { projectMemberships } from '../db/schema/project-memberships.js';
+import { users } from '../db/schema/users.js';
 import * as orgService from '../services/org.service.js';
-import { requireAuth } from '../plugins/auth.js';
+import { checkOrgPermission, isOrgPrivileged } from '../services/org-permissions.js';
+import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireOrgRole } from '../middleware/authorize.js';
 
 export default async function orgRoutes(fastify: FastifyInstance) {
@@ -23,7 +28,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.patch(
     '/org',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().max(255).optional(),
@@ -52,6 +57,67 @@ export default async function orgRoutes(fastify: FastifyInstance) {
     '/org/members',
     { preHandler: [requireAuth] },
     async (request, reply) => {
+      // Guest users should only see members who share at least one project
+      if (request.user!.role === 'guest') {
+        // Find project IDs the guest belongs to
+        const guestProjects = await db
+          .select({ project_id: projectMemberships.project_id })
+          .from(projectMemberships)
+          .where(eq(projectMemberships.user_id, request.user!.id));
+
+        if (guestProjects.length === 0) {
+          // Guest has no project access — return only themselves
+          const [self] = await db
+            .select({
+              id: users.id,
+              email: users.email,
+              display_name: users.display_name,
+              avatar_url: users.avatar_url,
+              role: users.role,
+              is_active: users.is_active,
+              created_at: users.created_at,
+              last_seen_at: users.last_seen_at,
+            })
+            .from(users)
+            .where(eq(users.id, request.user!.id))
+            .limit(1);
+
+          return reply.send({ data: self ? [self] : [] });
+        }
+
+        const projectIds = guestProjects.map((p) => p.project_id);
+
+        // Find all user IDs who share at least one project with the guest
+        const sharedMembers = await db
+          .selectDistinct({ user_id: projectMemberships.user_id })
+          .from(projectMemberships)
+          .where(inArray(projectMemberships.project_id, projectIds));
+
+        const sharedUserIds = sharedMembers.map((m) => m.user_id);
+
+        const members = await db
+          .select({
+            id: users.id,
+            email: users.email,
+            display_name: users.display_name,
+            avatar_url: users.avatar_url,
+            role: users.role,
+            is_active: users.is_active,
+            created_at: users.created_at,
+            last_seen_at: users.last_seen_at,
+          })
+          .from(users)
+          .where(
+            and(
+              eq(users.org_id, request.user!.org_id),
+              inArray(users.id, sharedUserIds),
+            ),
+          )
+          .orderBy(users.display_name);
+
+        return reply.send({ data: members });
+      }
+
       const members = await orgService.listOrgMembers(request.user!.org_id);
       return reply.send({ data: members });
     },
@@ -59,8 +125,28 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.post(
     '/org/members/invite',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireScope('admin')] },
     async (request, reply) => {
+      // Allow org admins/owners/superusers, OR members if the org permission
+      // `members_can_invite_members` is enabled.
+      if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
+        const org = await orgService.getOrganizationCached(request.user!.org_id);
+        const allowed = checkOrgPermission(
+          org?.settings as Record<string, unknown> | null,
+          'members_can_invite_members',
+        );
+        if (!allowed) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to invite other members',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       const schema = z.object({
         email: z.string().email().max(320),
         role: z.enum(['member', 'admin']).default('member'),
@@ -70,19 +156,97 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       const data = schema.parse(request.body);
 
       try {
-        const user = await orgService.inviteMember(
+        const { user, was_existing } = await orgService.inviteMember(
           request.user!.org_id,
           data.email,
           data.role,
           data.display_name,
         );
-        return reply.status(201).send({ data: user });
+        // 201 CREATED for a brand-new user, 200 OK when we added an
+        // existing user to this org as an additional membership.
+        return reply.status(was_existing ? 200 : 201).send({
+          data: { ...user, was_existing },
+        });
       } catch (err: any) {
+        if (err instanceof orgService.AlreadyMemberError) {
+          return reply.status(409).send({
+            error: {
+              code: 'ALREADY_MEMBER',
+              message: err.message,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
         if (err?.code === '23505') {
+          // Residual unique-constraint race (two concurrent invites for the
+          // same email). The second caller should retry and pick up the
+          // just-created user via inviteMember's lookup path.
           return reply.status(409).send({
             error: {
               code: 'CONFLICT',
-              message: 'A user with this email already exists',
+              message: 'A user with this email was just created by a concurrent request — please retry',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.post<{ Params: { userId: string } }>(
+    '/org/members/:userId/reset-password',
+    {
+      preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')],
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const schema = z.object({
+        password: z.string().min(12).max(200).optional(),
+      });
+      const data = schema.parse(request.body ?? {});
+
+      try {
+        const { user, password } = await orgService.resetMemberPassword({
+          orgId: request.user!.org_id,
+          targetUserId: request.params.userId,
+          callerUserId: request.user!.id,
+          callerIsSuperuser: request.user!.is_superuser,
+          callerRole: request.user!.role,
+          newPassword: data.password ?? null,
+        });
+
+        request.log.info(
+          {
+            event: 'admin.password_reset',
+            caller_id: request.user!.id,
+            caller_email: request.user!.email,
+            caller_is_superuser: request.user!.is_superuser,
+            target_id: user.id,
+            target_email: user.email,
+            org_id: request.user!.org_id,
+            generated: data.password === undefined,
+          },
+          'Admin reset another user password',
+        );
+
+        return reply.send({
+          data: {
+            user_id: user.id,
+            email: user.email,
+            password,
+            generated: data.password === undefined,
+          },
+        });
+      } catch (err) {
+        if (err instanceof orgService.PasswordResetForbiddenError) {
+          const status = err.code === 'TARGET_NOT_FOUND' ? 404 : 403;
+          return reply.status(status).send({
+            error: {
+              code: err.code === 'TARGET_NOT_FOUND' ? 'NOT_FOUND' : 'FORBIDDEN',
+              message: err.message,
               details: [],
               request_id: request.id,
             },
@@ -95,7 +259,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { userId: string } }>(
     '/org/members/:userId',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
       const schema = z.object({
         role: z.enum(['member', 'admin', 'viewer']),
@@ -125,7 +289,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { userId: string } }>(
     '/org/members/:userId',
-    { preHandler: [requireAuth, requireOrgRole('admin', 'owner')] },
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
       if (request.params.userId === request.user!.id) {
         return reply.status(400).send({

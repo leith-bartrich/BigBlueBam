@@ -5,13 +5,13 @@ import { db } from '../db/index.js';
 import { commentReactions } from '../db/schema/comment-reactions.js';
 import { comments } from '../db/schema/comments.js';
 import { users } from '../db/schema/users.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 
 export default async function reactionRoutes(fastify: FastifyInstance) {
   // ── POST /comments/:id/reactions ──────────────────────────────────────
   fastify.post<{ Params: { id: string } }>(
     '/comments/:id/reactions',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const bodySchema = z.object({
         emoji: z.string().min(1).max(50),

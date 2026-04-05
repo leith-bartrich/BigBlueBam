@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTicket, usePostMessage, useReopenTicket } from '@/hooks/use-tickets';
+import { useRealtimeTicket } from '@/hooks/use-realtime-ticket';
+import { useTicketMessages } from '@/hooks/use-ticket-messages';
+import { useSendTyping } from '@/hooks/use-typing';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/common/button';
 import { StatusBadge, PriorityBadge } from '@/components/common/badge';
 import { RichTextEditor } from '@/components/common/rich-text-editor';
+import { LoadOlderMessages } from '@/components/load-older-messages';
+import { TypingIndicator } from '@/components/typing-indicator';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { api } from '@/lib/api';
-import { ArrowLeft, Loader2, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare } from 'lucide-react';
+import { ArrowLeft, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface TicketDetailPageProps {
@@ -16,10 +21,13 @@ interface TicketDetailPageProps {
 }
 
 export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps) {
+  useRealtimeTicket(ticketId);
   const { data: ticket, isLoading, error } = useTicket(ticketId);
   const postMessage = usePostMessage(ticketId);
   const reopenTicket = useReopenTicket(ticketId);
   const { user } = useAuthStore();
+  const { visibleMessages, hasMore, loadMore, totalMessages } = useTicketMessages(ticketId);
+  const { sendTyping } = useSendTyping(ticketId);
 
   const [replyText, setReplyText] = useState('');
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
@@ -83,7 +91,7 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ticket?.messages]);
+  }, [visibleMessages]);
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,8 +115,60 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+      <div className="animate-pulse">
+        {/* Back link placeholder */}
+        <div className="h-4 w-28 bg-zinc-200 dark:bg-zinc-800 rounded mb-6" />
+
+        {/* Header placeholder */}
+        <div className="mb-6">
+          <div className="h-6 w-2/3 bg-zinc-200 dark:bg-zinc-800 rounded mb-3" />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="h-5 w-16 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+            <div className="h-5 w-20 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+            <div className="h-5 w-24 bg-zinc-200 dark:bg-zinc-800 rounded-full" />
+            <div className="h-4 w-32 bg-zinc-200 dark:bg-zinc-800 rounded ml-2" />
+          </div>
+        </div>
+
+        {/* Description placeholder */}
+        <div className="mb-6 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
+          <div className="h-3 w-20 bg-zinc-200 dark:bg-zinc-800 rounded mb-3" />
+          <div className="space-y-2">
+            <div className="h-3 w-full bg-zinc-100 dark:bg-zinc-800 rounded" />
+            <div className="h-3 w-5/6 bg-zinc-100 dark:bg-zinc-800 rounded" />
+            <div className="h-3 w-4/6 bg-zinc-100 dark:bg-zinc-800 rounded" />
+          </div>
+        </div>
+
+        {/* Message timeline placeholder */}
+        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+          <div className="p-4 space-y-4 min-h-[200px]">
+            <div className="flex justify-start">
+              <div className="max-w-[75%] w-64 rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5 rounded-bl-sm">
+                <div className="h-3 w-24 bg-zinc-200 dark:bg-zinc-700 rounded mb-2" />
+                <div className="h-3 w-48 bg-zinc-200 dark:bg-zinc-700 rounded mb-1" />
+                <div className="h-3 w-40 bg-zinc-200 dark:bg-zinc-700 rounded" />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <div className="max-w-[75%] w-56 rounded-xl bg-zinc-200 dark:bg-zinc-800 px-4 py-2.5 rounded-br-sm">
+                <div className="h-3 w-20 bg-zinc-300 dark:bg-zinc-700 rounded mb-2" />
+                <div className="h-3 w-40 bg-zinc-300 dark:bg-zinc-700 rounded mb-1" />
+                <div className="h-3 w-32 bg-zinc-300 dark:bg-zinc-700 rounded" />
+              </div>
+            </div>
+            <div className="flex justify-start">
+              <div className="max-w-[75%] w-72 rounded-xl bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5 rounded-bl-sm">
+                <div className="h-3 w-28 bg-zinc-200 dark:bg-zinc-700 rounded mb-2" />
+                <div className="h-3 w-56 bg-zinc-200 dark:bg-zinc-700 rounded mb-1" />
+                <div className="h-3 w-44 bg-zinc-200 dark:bg-zinc-700 rounded" />
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
+            <div className="h-20 w-full bg-zinc-100 dark:bg-zinc-800 rounded-lg" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -137,7 +197,7 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
 
   const timeline: TimelineItem[] = [];
 
-  for (const msg of ticket.messages) {
+  for (const msg of visibleMessages) {
     timeline.push({ kind: 'message', data: msg });
   }
 
@@ -302,6 +362,13 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
       {/* Message timeline */}
       <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
         <div className="p-4 space-y-4 min-h-[200px] max-h-[600px] overflow-y-auto">
+          {hasMore && (
+            <LoadOlderMessages
+              hasMore={hasMore}
+              remaining={totalMessages - visibleMessages.length}
+              onClick={loadMore}
+            />
+          )}
           {timeline.length === 0 && (
             <p className="text-center text-sm text-zinc-400 py-8">No messages yet.</p>
           )}
@@ -367,10 +434,14 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
         {/* Reply box */}
         {!isClosedOrResolved && (
           <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
+            <TypingIndicator ticketId={ticketId} />
             <form onSubmit={handleSendReply} className="space-y-3">
               <RichTextEditor
                 value={replyText}
-                onChange={setReplyText}
+                onChange={(v) => {
+                  setReplyText(v);
+                  sendTyping();
+                }}
                 placeholder="Type your reply..."
                 minRows={2}
                 onImageUpload={async (file) => {

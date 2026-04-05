@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 
 export const users = pgTable(
@@ -16,6 +17,7 @@ export const users = pgTable(
     timezone: varchar('timezone', { length: 50 }).default('UTC').notNull(),
     notification_prefs: jsonb('notification_prefs').default({}).notNull(),
     is_active: boolean('is_active').default(true).notNull(),
+    is_superuser: boolean('is_superuser').default(false).notNull(),
     last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -23,5 +25,6 @@ export const users = pgTable(
   (table) => [
     index('users_org_id_idx').on(table.org_id),
     index('users_email_idx').on(table.email),
+    check('users_role_check', sql`role IN ('owner', 'admin', 'member', 'viewer', 'guest')`),
   ],
 );

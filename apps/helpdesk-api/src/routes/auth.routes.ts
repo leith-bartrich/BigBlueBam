@@ -9,6 +9,13 @@ import { helpdeskSessions } from '../db/schema/helpdesk-sessions.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
 import { env } from '../env.js';
+import {
+  checkLockout,
+  recordFailure,
+  clearLockout,
+  LOCKOUT_MESSAGE,
+} from '../lib/login-lockout.js';
+import { issueCsrfToken } from '../plugins/csrf.js';
 
 const registerSchema = z.object({
   email: z.string().email().max(320),
@@ -24,6 +31,24 @@ const loginSchema = z.object({
 const verifyEmailSchema = z.object({
   token: z.string().min(1),
 });
+
+// HB-17: Toggle to enforce email verification at login.
+// Default false for dev; production deployments should set
+// REQUIRE_EMAIL_VERIFICATION=true so unverified helpdesk users cannot log in
+// (only takes effect when helpdesk_settings.require_email_verification is also true).
+const REQUIRE_EMAIL_VERIFICATION =
+  (process.env.REQUIRE_EMAIL_VERIFICATION ?? 'false').toLowerCase() === 'true';
+
+// Precomputed dummy Argon2id hash used to equalize wall-clock time on login
+// when the email does not correspond to a real helpdesk user. Prevents
+// timing-based email enumeration. Lazily initialized once per process.
+let dummyHashPromise: Promise<string> | null = null;
+function getDummyPasswordHash(): Promise<string> {
+  if (!dummyHashPromise) {
+    dummyHashPromise = argon2.hash(nanoid(32));
+  }
+  return dummyHashPromise;
+}
 
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
@@ -49,7 +74,15 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }
 
   // POST /helpdesk/auth/register
-  fastify.post('/helpdesk/auth/register', async (request, reply) => {
+  // HB-33: 3 attempts per 15 minutes per IP to throttle abuse.
+  fastify.post('/helpdesk/auth/register', {
+    config: {
+      rateLimit: {
+        max: 3,
+        timeWindow: 15 * 60 * 1000,
+      },
+    },
+  }, async (request, reply) => {
     const data = registerSchema.parse(request.body);
 
     // Check if email already taken
@@ -128,6 +161,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const sessionId = await createSession(user.id);
     reply.setCookie('helpdesk_session', sessionId, cookieOptions);
+    issueCsrfToken(reply);
 
     return reply.status(201).send({
       data: {
@@ -142,8 +176,28 @@ export default async function authRoutes(fastify: FastifyInstance) {
   });
 
   // POST /helpdesk/auth/login
-  fastify.post('/helpdesk/auth/login', async (request, reply) => {
+  // HB-33: 5 attempts per 15 minutes per IP to slow brute-force guessing.
+  fastify.post('/helpdesk/auth/login', {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: 15 * 60 * 1000,
+      },
+    },
+  }, async (request, reply) => {
     const data = loginSchema.parse(request.body);
+
+    // HB-57: short-circuit on lockout BEFORE any DB lookup or argon2.verify.
+    if (await checkLockout(fastify.redis, data.email)) {
+      return reply.status(429).send({
+        error: {
+          code: 'ACCOUNT_LOCKED',
+          message: LOCKOUT_MESSAGE,
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
 
     const [user] = await db
       .select()
@@ -152,6 +206,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
       .limit(1);
 
     if (!user) {
+      // Burn the same amount of CPU as a real argon2.verify() would, so that
+      // response time cannot be used to distinguish "user does not exist" from
+      // "user exists but password is wrong" (email enumeration defense).
+      const dummyHash = await getDummyPasswordHash();
+      await argon2.verify(dummyHash, data.password);
+      await recordFailure(fastify.redis, data.email);
       return reply.status(401).send({
         error: {
           code: 'INVALID_CREDENTIALS',
@@ -175,6 +235,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const valid = await argon2.verify(user.password_hash, data.password);
     if (!valid) {
+      await recordFailure(fastify.redis, data.email);
       return reply.status(401).send({
         error: {
           code: 'INVALID_CREDENTIALS',
@@ -185,8 +246,33 @@ export default async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // Successful credential verification — clear the failure counter.
+    await clearLockout(fastify.redis, data.email);
+
+    // HB-17: Enforce email verification at login when both the env-level switch
+    // and the org-level setting are enabled. We leave signup/verify-email flows
+    // alone; email sending remains a TODO tracked with the notification queue.
+    if (REQUIRE_EMAIL_VERIFICATION && !user.email_verified) {
+      const [loginSettings] = await db
+        .select({ require_email_verification: helpdeskSettings.require_email_verification })
+        .from(helpdeskSettings)
+        .limit(1);
+
+      if (loginSettings?.require_email_verification) {
+        return reply.status(403).send({
+          error: {
+            code: 'EMAIL_NOT_VERIFIED',
+            message: 'Please verify your email before logging in.',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+    }
+
     const sessionId = await createSession(user.id);
     reply.setCookie('helpdesk_session', sessionId, cookieOptions);
+    issueCsrfToken(reply);
 
     return reply.send({
       data: {
@@ -209,6 +295,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     reply.clearCookie('helpdesk_session', { path: '/' });
+    reply.clearCookie('csrf_token', { path: '/' });
 
     return reply.send({ data: { success: true } });
   });

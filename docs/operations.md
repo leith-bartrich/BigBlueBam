@@ -93,28 +93,36 @@ docker compose up -d --force-recreate --no-deps frontend
 docker compose ps
 ```
 
-### If Database Schema Changed
+### Database Schema Migrations
 
-When an update includes new tables or columns (check the release notes or `infra/postgres/init.sql` diff), you need to apply migrations. Since BigBlueBam uses `init.sql` for schema (applied on first database creation), schema updates for existing deployments need to be applied manually:
+BigBlueBam uses a versioned, forward-only migration system. All schema lives in numbered SQL files at `infra/postgres/migrations/NNNN_*.sql`. The legacy `infra/postgres/init.sql` has been **removed** — both fresh databases and existing ones converge on the same migration list.
+
+**You do not need to run migrations manually during an update.** The `migrate` docker-compose service is declared as a `service_completed_successfully` dependency of `api`, `helpdesk-api`, `banter-api`, and `worker`, so migrations ALWAYS run before any app code that assumes the current schema. On every `docker compose up`, pending migrations are auto-applied. Idempotent re-runs against an up-to-date DB are safe no-ops.
 
 ```bash
-# Check what changed in the schema
-git diff HEAD~1 infra/postgres/init.sql
-
-# Apply new tables/columns via psql
-# Example: if a new table was added
-docker compose exec postgres psql -U bigbluebam -c "
-  CREATE TABLE IF NOT EXISTS new_table (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    ...
-  );
-"
-
-# Or run a migration SQL file if provided
-docker compose exec -T postgres psql -U bigbluebam < migrations/001-add-new-table.sql
+# Standard upgrade — migrations auto-run on startup
+git pull origin main
+docker compose build
+docker compose up -d --force-recreate
 ```
 
-### Quick Update (When You Know Nothing Changed in the Schema)
+To run migrations manually (e.g., before starting app services, or against a detached DB):
+
+```bash
+docker compose run --rm migrate
+```
+
+Expected output:
+```
+[migrate] migrations dir: /app/migrations
+[migrate] found 7 migration file(s)
+[migrate] applying 0005_projects_created_by.sql
+[migrate] done — 1 applied, 6 already up-to-date
+```
+
+**Checksum enforcement.** Applied migrations are fingerprinted (SHA-256 over the SQL body). If a previously-applied migration file is edited, the runner aborts with `CHECKSUM MISMATCH` and refuses to proceed. **Never edit an applied migration** — create a new migration file instead. Header comments (`-- Why:` / `-- Client impact:` lines) are not hashed and may be amended freely.
+
+### Quick Update (no schema changes)
 
 ```bash
 git pull origin main
@@ -217,6 +225,53 @@ crontab -e
 
 ---
 
+## Common Tasks
+
+### Apply Pending Migrations
+
+Migrations run automatically on `docker compose up`, but you can invoke the runner directly:
+
+```bash
+docker compose run --rm migrate
+```
+
+### Inspect Migration State
+
+The `schema_migrations` table records every applied migration with its checksum and timestamp:
+
+```bash
+docker compose exec postgres psql -U bigbluebam -c "
+  SELECT id, applied_at FROM schema_migrations ORDER BY id;
+"
+```
+
+### Audit SuperUser Activity
+
+Every call to a `/superuser/*` endpoint is recorded in `superuser_audit_log`. Review recent actions:
+
+```bash
+docker compose exec postgres psql -U bigbluebam -c "
+  SELECT action, created_at, superuser_id, target_id
+  FROM superuser_audit_log
+  ORDER BY created_at DESC
+  LIMIT 100;
+"
+```
+
+Filter by actor or action type for investigations:
+
+```bash
+docker compose exec postgres psql -U bigbluebam -c "
+  SELECT action, target_id, created_at
+  FROM superuser_audit_log
+  WHERE superuser_id = '<uuid>'
+    AND created_at > now() - interval '7 days'
+  ORDER BY created_at DESC;
+"
+```
+
+---
+
 ## Common Operations
 
 ### View Logs
@@ -257,9 +312,12 @@ curl http://localhost/b3/api/health/ready
 # MCP server health (via nginx)
 curl http://localhost/mcp/health
 
-# Helpdesk API (via nginx)
+# Helpdesk API (via nginx) — checks DB + Redis connectivity
 curl http://localhost/helpdesk/api/health
+curl http://localhost/helpdesk/api/health/ready
 ```
+
+The helpdesk-api readiness probe (HB-24) now checks both PostgreSQL and Redis and returns 503 if either is unreachable. The API also enforces a 30-second request timeout (HB-22) so hung DB queries cannot pin connections indefinitely.
 
 ### Access the Database Directly
 
@@ -304,6 +362,36 @@ docker compose exec api node -e "
   })();
 "
 ```
+
+---
+
+## Realtime (Helpdesk WebSocket)
+
+The helpdesk portal now includes a live WebSocket channel for ticket updates, typing indicators, and agent presence. nginx routes `/helpdesk/ws` to `helpdesk-api:4001/helpdesk/ws` with Upgrade/Connection headers preserved.
+
+If you run any proxy layer in front of nginx (CDN, cloud load balancer, reverse proxy), that layer must:
+
+- Forward the `Upgrade` and `Connection` headers
+- Allow long-lived connections (disable idle timeouts shorter than ~60s, or configure ping/pong)
+- Not buffer the WebSocket body
+
+If you scale `helpdesk-api` horizontally, broadcasts cross instances via Redis PubSub — no sticky sessions required, but Redis must be reachable from every instance.
+
+---
+
+## Session & Rate-Limit Policy
+
+Recent hardening tightened helpdesk-api defaults:
+
+| Setting | Value | Commit | Rationale |
+|---|---|---|---|
+| `SESSION_TTL_SECONDS` (helpdesk) | 86400 (1 day) | HB-32 | Helpdesk customers are higher risk: unverified email, global pool |
+| Rate limit key | authenticated user id, IP fallback | HB-25 | Prevents IP-hopping to bypass per-user limits |
+| Login/register rate limit | tightened | HB-33 | Brute-force mitigation |
+| Agent API endpoints | per-endpoint rate limits | HB-54 | Protects agent-only routes from abuse |
+| Request timeout (helpdesk-api) | 30s | HB-22 | Drops hung requests |
+
+Override session TTL via the `SESSION_TTL_SECONDS` env var on the helpdesk-api service if your deployment has different risk tradeoffs.
 
 ---
 

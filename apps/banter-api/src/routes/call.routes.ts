@@ -10,7 +10,8 @@ import {
   banterChannelMemberships,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireChannelMember } from '../middleware/channel-auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 import { generateLiveKitToken, buildRoomName } from '../services/livekit-token.js';
 import * as voiceAgent from '../services/voice-agent-client.js';
@@ -31,7 +32,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/calls — start a call/huddle
   fastify.post(
     '/v1/channels/:id/calls',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const { id: channelId } = request.params as { id: string };
       const user = request.user!;
@@ -209,29 +210,10 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // GET /v1/channels/:id/calls — call history
   fastify.get(
     '/v1/channels/:id/calls',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireChannelMember] },
     async (request, reply) => {
       const { id: channelId } = request.params as { id: string };
-      const user = request.user!;
       const params = callHistorySchema.parse(request.query);
-
-      // Verify channel belongs to org
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, channelId), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       const calls = await db
         .select()
@@ -288,6 +270,31 @@ export default async function callRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Verify user is a channel member (unless superuser or org owner/admin)
+      if (!user.is_superuser && !['owner', 'admin'].includes(user.role)) {
+        const [membership] = await db
+          .select()
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, call.channel_id),
+              eq(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Call not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       const participants = await db
         .select({
           id: banterCallParticipants.id,
@@ -321,7 +328,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/join — join an active call
   fastify.post(
     '/v1/calls/:id/join',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -417,7 +424,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/leave — leave a call
   fastify.post(
     '/v1/calls/:id/leave',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -495,7 +502,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/end — end call for all
   fastify.post(
     '/v1/calls/:id/end',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -555,6 +562,67 @@ export default async function callRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
+      const user = request.user!;
+
+      const [call] = await db
+        .select()
+        .from(banterCalls)
+        .where(eq(banterCalls.id, id))
+        .limit(1);
+
+      if (!call) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Call not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Verify user has access (channel belongs to their org)
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(and(eq(banterChannels.id, call.channel_id), eq(banterChannels.org_id, user.org_id)))
+        .limit(1);
+
+      if (!channel) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Call not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Verify user is a channel member (unless superuser or org owner/admin)
+      if (!user.is_superuser && !['owner', 'admin'].includes(user.role)) {
+        const [membership] = await db
+          .select()
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, call.channel_id),
+              eq(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Call not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       const participants = await db
         .select({
@@ -583,7 +651,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // PATCH /v1/calls/:id — update call settings mid-call
   fastify.patch(
     '/v1/calls/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -679,7 +747,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/invite-agent — invite AI agent to a call
   fastify.post(
     '/v1/calls/:id/invite-agent',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -754,7 +822,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // POST /v1/calls/:id/remove-agent — remove AI agent from a call
   fastify.post(
     '/v1/calls/:id/remove-agent',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -868,6 +936,31 @@ export default async function callRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Verify user is a channel member (unless superuser or org owner/admin)
+      if (!user.is_superuser && !['owner', 'admin'].includes(user.role)) {
+        const [membership] = await db
+          .select()
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, call.channel_id),
+              eq(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Call not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       const segments = await db
         .select({
           id: banterCallTranscripts.id,
@@ -893,7 +986,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
   // PATCH /v1/calls/:id/media-state — update participant's media state (mute, camera, screenshare)
   fastify.patch(
     '/v1/calls/:id/media-state',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
