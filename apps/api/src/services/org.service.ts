@@ -57,22 +57,36 @@ export async function updateOrganization(
 }
 
 export async function listOrgMembers(orgId: string) {
+  // Source of truth is organization_memberships — a user may be in many
+  // orgs via membership rows even if users.org_id still points somewhere
+  // else (legacy). Each member's role is the MEMBERSHIP role for this org,
+  // not users.role (which is the legacy home-org role).
   const result = await db
     .select({
       id: users.id,
       email: users.email,
       display_name: users.display_name,
       avatar_url: users.avatar_url,
-      role: users.role,
+      role: organizationMemberships.role,
       is_active: users.is_active,
       created_at: users.created_at,
       last_seen_at: users.last_seen_at,
     })
-    .from(users)
-    .where(eq(users.org_id, orgId))
+    .from(organizationMemberships)
+    .innerJoin(users, eq(organizationMemberships.user_id, users.id))
+    .where(eq(organizationMemberships.org_id, orgId))
     .orderBy(users.display_name);
 
   return result;
+}
+
+/** Custom error raised when inviteMember detects the invitee is already a
+ *  member of the target org. The route handler translates this to 409. */
+export class AlreadyMemberError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AlreadyMemberError';
+  }
 }
 
 export async function inviteMember(
@@ -81,40 +95,82 @@ export async function inviteMember(
   role: string,
   displayName?: string,
 ) {
-  const [user] = await db
-    .insert(users)
-    .values({
-      org_id: orgId,
-      email,
-      display_name: displayName ?? email.split('@')[0]!,
-      role,
-    })
-    .returning();
+  // Look up an existing user by email first — they may already exist from
+  // a different org's invite. The users.email UNIQUE constraint makes email
+  // the global identity; multi-org belonging is expressed via
+  // organization_memberships rows.
+  const normalizedEmail = email.toLowerCase().trim();
+  const [existingUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, normalizedEmail))
+    .limit(1);
 
-  return user!;
+  if (existingUser) {
+    // Already a member of THIS org? Reject — nothing to do.
+    const [existingMembership] = await db
+      .select({ id: organizationMemberships.id })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.user_id, existingUser.id),
+          eq(organizationMemberships.org_id, orgId),
+        ),
+      )
+      .limit(1);
+    if (existingMembership) {
+      throw new AlreadyMemberError('User is already a member of this organization');
+    }
+    // Add them as a member of this org. is_default stays false — their
+    // existing default org is preserved so their next login lands where
+    // they expect.
+    await db.insert(organizationMemberships).values({
+      user_id: existingUser.id,
+      org_id: orgId,
+      role,
+      is_default: false,
+    });
+    return existingUser;
+  }
+
+  // Brand-new user — create the user row + their first membership. This
+  // org becomes their default. users.org_id + users.role are filled in as
+  // the legacy single-org fallback until they're retired in a later
+  // migration; organization_memberships is the authoritative source.
+  return await db.transaction(async (tx) => {
+    const [user] = await tx
+      .insert(users)
+      .values({
+        org_id: orgId,
+        email: normalizedEmail,
+        display_name: displayName ?? normalizedEmail.split('@')[0]!,
+        role,
+      })
+      .returning();
+
+    await tx.insert(organizationMemberships).values({
+      user_id: user!.id,
+      org_id: orgId,
+      role,
+      is_default: true,
+    });
+
+    return user!;
+  });
 }
 
 export async function updateMemberRole(orgId: string, userId: string, role: string) {
-  // Wrap in a transaction and lock the user row FOR UPDATE to prevent
-  // concurrent role changes from racing (e.g. org owner being demoted
-  // mid-request while another request reads a stale role). This also keeps
-  // the legacy users.role column in sync with organization_memberships.role
-  // until the multi-org migration is complete.
+  // Update the organization_memberships row — that's the per-org role.
+  // Locking via SELECT FOR UPDATE serializes concurrent role changes.
+  // users.role is a legacy single-org column; keep it synced ONLY when
+  // the target user's home org matches the org we're editing, otherwise
+  // we'd clobber their role in a different org.
   return await db.transaction(async (tx) => {
-    // Lock the row to serialize concurrent role updates for this user.
-    await tx.execute(sql`SELECT 1 FROM users WHERE id = ${userId} FOR UPDATE`);
+    await tx.execute(
+      sql`SELECT 1 FROM organization_memberships WHERE user_id = ${userId} AND org_id = ${orgId} FOR UPDATE`,
+    );
 
-    const [user] = await tx
-      .update(users)
-      .set({ role, updated_at: new Date() })
-      .where(and(eq(users.id, userId), eq(users.org_id, orgId)))
-      .returning();
-
-    if (!user) return null;
-
-    // Keep the organization_memberships row in sync with users.role until
-    // the migration away from users.org_id/role is complete.
-    await tx
+    const [membership] = await tx
       .update(organizationMemberships)
       .set({ role })
       .where(
@@ -122,16 +178,41 @@ export async function updateMemberRole(orgId: string, userId: string, role: stri
           eq(organizationMemberships.user_id, userId),
           eq(organizationMemberships.org_id, orgId),
         ),
-      );
+      )
+      .returning();
 
-    return user;
+    if (!membership) return null;
+
+    const [user] = await tx
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (user && user.org_id === orgId) {
+      await tx
+        .update(users)
+        .set({ role, updated_at: new Date() })
+        .where(eq(users.id, userId));
+    }
+
+    return user ?? null;
   });
 }
 
 export async function removeMember(orgId: string, userId: string) {
+  // Only remove the MEMBERSHIP row — the user identity lives globally and
+  // may still be a member of other orgs. Deleting the user row outright
+  // would have cascade-deleted their sessions, API keys, and every other
+  // org's membership of the same user.
   const [deleted] = await db
-    .delete(users)
-    .where(and(eq(users.id, userId), eq(users.org_id, orgId)))
+    .delete(organizationMemberships)
+    .where(
+      and(
+        eq(organizationMemberships.user_id, userId),
+        eq(organizationMemberships.org_id, orgId),
+      ),
+    )
     .returning();
 
   return deleted ?? null;

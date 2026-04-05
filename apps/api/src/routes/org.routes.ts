@@ -164,11 +164,24 @@ export default async function orgRoutes(fastify: FastifyInstance) {
         );
         return reply.status(201).send({ data: user });
       } catch (err: any) {
+        if (err instanceof orgService.AlreadyMemberError) {
+          return reply.status(409).send({
+            error: {
+              code: 'ALREADY_MEMBER',
+              message: err.message,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
         if (err?.code === '23505') {
+          // Residual unique-constraint race (two concurrent invites for the
+          // same email). The second caller should retry and pick up the
+          // just-created user via inviteMember's lookup path.
           return reply.status(409).send({
             error: {
               code: 'CONFLICT',
-              message: 'A user with this email already exists',
+              message: 'A user with this email was just created by a concurrent request — please retry',
               details: [],
               request_id: request.id,
             },
