@@ -196,6 +196,67 @@ export default async function orgRoutes(fastify: FastifyInstance) {
     },
   );
 
+  fastify.post<{ Params: { userId: string } }>(
+    '/org/members/:userId/reset-password',
+    {
+      preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')],
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const schema = z.object({
+        password: z.string().min(12).max(200).optional(),
+      });
+      const data = schema.parse(request.body ?? {});
+
+      try {
+        const { user, password } = await orgService.resetMemberPassword({
+          orgId: request.user!.org_id,
+          targetUserId: request.params.userId,
+          callerUserId: request.user!.id,
+          callerIsSuperuser: request.user!.is_superuser,
+          callerRole: request.user!.role,
+          newPassword: data.password ?? null,
+        });
+
+        request.log.info(
+          {
+            event: 'admin.password_reset',
+            caller_id: request.user!.id,
+            caller_email: request.user!.email,
+            caller_is_superuser: request.user!.is_superuser,
+            target_id: user.id,
+            target_email: user.email,
+            org_id: request.user!.org_id,
+            generated: data.password === undefined,
+          },
+          'Admin reset another user password',
+        );
+
+        return reply.send({
+          data: {
+            user_id: user.id,
+            email: user.email,
+            password,
+            generated: data.password === undefined,
+          },
+        });
+      } catch (err) {
+        if (err instanceof orgService.PasswordResetForbiddenError) {
+          const status = err.code === 'TARGET_NOT_FOUND' ? 404 : 403;
+          return reply.status(status).send({
+            error: {
+              code: err.code === 'TARGET_NOT_FOUND' ? 'NOT_FOUND' : 'FORBIDDEN',
+              message: err.message,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
   fastify.patch<{ Params: { userId: string } }>(
     '/org/members/:userId',
     { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },

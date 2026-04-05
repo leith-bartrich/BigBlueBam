@@ -1,8 +1,11 @@
 import { eq, and, sql } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
+import argon2 from 'argon2';
 import { db } from '../db/index.js';
 import { organizations } from '../db/schema/organizations.js';
 import { users } from '../db/schema/users.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
+import { sessions } from '../db/schema/sessions.js';
 
 export async function getOrganization(orgId: string) {
   const [org] = await db
@@ -198,6 +201,131 @@ export async function updateMemberRole(orgId: string, userId: string, role: stri
 
     return user ?? null;
   });
+}
+
+/** Raised when the caller tries to reset a password for a user whose role
+ *  is above their own, or when they try to reset their own password through
+ *  this admin endpoint. */
+export class PasswordResetForbiddenError extends Error {
+  constructor(
+    message: string,
+    public readonly code: 'CANNOT_RESET_SELF' | 'INSUFFICIENT_PERMISSIONS' | 'TARGET_NOT_FOUND',
+  ) {
+    super(message);
+    this.name = 'PasswordResetForbiddenError';
+  }
+}
+
+const ROLE_HIERARCHY = ['guest', 'viewer', 'member', 'admin', 'owner'] as const;
+
+// 16 chars from an alphabet that excludes easily-confused glyphs (0/O, 1/l/I,
+// etc.). ~95 bits of entropy — more than enough for a freshly-minted admin
+// reset that the user is expected to change on next login.
+const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+
+function generateStrongPassword(length = 16): string {
+  const bytes = randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += PASSWORD_ALPHABET[bytes[i]! % PASSWORD_ALPHABET.length];
+  }
+  return out;
+}
+
+/**
+ * Resets the password of another user. The caller must be either:
+ *  - A SuperUser (may reset anyone, anywhere), or
+ *  - An owner/admin of `orgId` whose role rank >= the target's membership
+ *    role in that org (peer-or-below).
+ *
+ * Caller may not reset their own password here — they should go through
+ * the profile/settings flow instead.
+ *
+ * On success, returns the target user + the raw password (visible exactly
+ * once to the admin for sharing). All of the target's active sessions are
+ * invalidated so any stolen cookie becomes unusable after the reset.
+ */
+export async function resetMemberPassword(opts: {
+  orgId: string;
+  targetUserId: string;
+  callerUserId: string;
+  callerIsSuperuser: boolean;
+  callerRole: string;
+  newPassword: string | null;
+}): Promise<{ user: typeof users.$inferSelect; password: string }> {
+  const { orgId, targetUserId, callerUserId, callerIsSuperuser, callerRole, newPassword } = opts;
+
+  if (targetUserId === callerUserId) {
+    throw new PasswordResetForbiddenError(
+      'Use profile settings to change your own password',
+      'CANNOT_RESET_SELF',
+    );
+  }
+
+  // Fetch target user. SuperUsers may reset anyone (regardless of membership
+  // in the current org); everyone else must target a member of the caller's
+  // active org, and we read that membership's role for the rank comparison.
+  const [targetUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
+  if (!targetUser) {
+    throw new PasswordResetForbiddenError('Target user not found', 'TARGET_NOT_FOUND');
+  }
+
+  if (!callerIsSuperuser) {
+    const [targetMembership] = await db
+      .select({ role: organizationMemberships.role })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.user_id, targetUserId),
+          eq(organizationMemberships.org_id, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!targetMembership) {
+      // Don't leak existence — target is not a member of YOUR org.
+      throw new PasswordResetForbiddenError('Target user not found', 'TARGET_NOT_FOUND');
+    }
+
+    const callerLevel = ROLE_HIERARCHY.indexOf(callerRole as (typeof ROLE_HIERARCHY)[number]);
+    const targetLevel = ROLE_HIERARCHY.indexOf(
+      targetMembership.role as (typeof ROLE_HIERARCHY)[number],
+    );
+    // Caller must be at or above the target's rank to reset their password.
+    if (callerLevel < 0 || targetLevel < 0 || callerLevel < targetLevel) {
+      throw new PasswordResetForbiddenError(
+        'You cannot reset the password of a user at a higher role than yourself',
+        'INSUFFICIENT_PERMISSIONS',
+      );
+    }
+    // Also require caller to be at least admin — members/viewers can't reset
+    // anyone's password even their peers.
+    if (callerLevel < ROLE_HIERARCHY.indexOf('admin')) {
+      throw new PasswordResetForbiddenError(
+        'You cannot reset the password of a user at a higher role than yourself',
+        'INSUFFICIENT_PERMISSIONS',
+      );
+    }
+  }
+
+  const rawPassword = newPassword ?? generateStrongPassword();
+  const passwordHash = await argon2.hash(rawPassword);
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ password_hash: passwordHash, updated_at: new Date() })
+      .where(eq(users.id, targetUserId));
+    // Invalidate every active session for the target so a leaked cookie
+    // can't outlive the reset.
+    await tx.delete(sessions).where(eq(sessions.user_id, targetUserId));
+  });
+
+  return { user: targetUser, password: rawPassword };
 }
 
 export async function removeMember(orgId: string, userId: string) {

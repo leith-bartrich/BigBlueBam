@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil, Lock } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Shield, Users, Trash2, UserPlus, Plug, Copy, Check, Plus, X, Headset, Pencil, Lock, KeyRound } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { Select } from '@/components/common/select';
+import { Dialog } from '@/components/common/dialog';
 import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
@@ -110,6 +111,44 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const orgMembers = membersRes?.data ?? [];
 
   // Invite member mutation
+  // Reset-password dialog state
+  const [resetPwTarget, setResetPwTarget] = useState<OrgMember | null>(null);
+  const [resetPwMode, setResetPwMode] = useState<'generate' | 'manual'>('generate');
+  const [resetPwManual, setResetPwManual] = useState('');
+  const [resetPwResult, setResetPwResult] = useState<string | null>(null);
+  const [resetPwCopied, setResetPwCopied] = useState(false);
+
+  const resetMemberPassword = useMutation({
+    mutationFn: ({ userId, password }: { userId: string; password?: string }) =>
+      api.post<ApiResponse<{ user_id: string; email: string; password: string; generated: boolean }>>(
+        `/org/members/${userId}/reset-password`,
+        password ? { password } : {},
+      ),
+    onSuccess: (response) => {
+      setResetPwResult(response.data.password);
+      setResetPwCopied(false);
+    },
+  });
+
+  const closeResetPwDialog = () => {
+    setResetPwTarget(null);
+    setResetPwMode('generate');
+    setResetPwManual('');
+    setResetPwResult(null);
+    setResetPwCopied(false);
+    resetMemberPassword.reset();
+  };
+
+  const canResetMember = (member: OrgMember): boolean => {
+    if (member.id === user?.id) return false; // not your own
+    if (user?.is_superuser) return true;
+    const hierarchy = ['guest', 'viewer', 'member', 'admin', 'owner'];
+    const callerLevel = hierarchy.indexOf(user?.role ?? '');
+    const targetLevel = hierarchy.indexOf(member.role);
+    const adminLevel = hierarchy.indexOf('admin');
+    return callerLevel >= adminLevel && callerLevel >= targetLevel;
+  };
+
   const inviteMember = useMutation({
     mutationFn: (data: { email: string; display_name?: string; role: string }) =>
       api.post<ApiResponse<OrgMember & { was_existing: boolean }>>('/org/members/invite', data),
@@ -701,13 +740,24 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                                         </Button>
                                       </div>
                                     ) : (
-                                      <button
-                                        onClick={() => setConfirmRemoveId(member.id)}
-                                        className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-                                        title="Remove member"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
+                                      <div className="flex items-center justify-end gap-1">
+                                        {canResetMember(member) && (
+                                          <button
+                                            onClick={() => setResetPwTarget(member)}
+                                            className="p-1.5 rounded-md text-zinc-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                                            title="Reset password"
+                                          >
+                                            <KeyRound className="h-4 w-4" />
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => setConfirmRemoveId(member.id)}
+                                          className="p-1.5 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                                          title="Remove member"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
                                     )}
                                   </>
                                 )}
@@ -722,6 +772,114 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     )}
                   </div>
                 )}
+
+                {/* Reset password dialog */}
+                <Dialog
+                  open={!!resetPwTarget}
+                  onOpenChange={(open) => { if (!open) closeResetPwDialog(); }}
+                  title={resetPwResult ? 'Password reset complete' : 'Reset password'}
+                  description={
+                    resetPwResult
+                      ? `Share this password with ${resetPwTarget?.email}. It will not be shown again. Their active sessions have been signed out.`
+                      : `Reset the password for ${resetPwTarget?.display_name || resetPwTarget?.email}.`
+                  }
+                >
+                  {!resetPwResult ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!resetPwTarget) return;
+                        resetMemberPassword.mutate({
+                          userId: resetPwTarget.id,
+                          password: resetPwMode === 'manual' ? resetPwManual : undefined,
+                        });
+                      }}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-2">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={resetPwMode === 'generate'}
+                            onChange={() => setResetPwMode('generate')}
+                            className="mt-1"
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Auto-generate a strong password</div>
+                            <div className="text-xs text-zinc-500">16 chars, alphanumeric, no confusable glyphs</div>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={resetPwMode === 'manual'}
+                            onChange={() => setResetPwMode('manual')}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Enter a password manually</div>
+                            <div className="text-xs text-zinc-500 mb-2">Minimum 12 characters</div>
+                            {resetPwMode === 'manual' && (
+                              <Input
+                                type="text"
+                                value={resetPwManual}
+                                onChange={(e) => setResetPwManual(e.target.value)}
+                                placeholder="new password"
+                                minLength={12}
+                                autoFocus
+                              />
+                            )}
+                          </div>
+                        </label>
+                      </div>
+
+                      {resetMemberPassword.isError && (
+                        <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300">
+                          {(resetMemberPassword.error as Error)?.message || 'Reset failed'}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <Button type="button" variant="ghost" onClick={closeResetPwDialog}>
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          loading={resetMemberPassword.isPending}
+                          disabled={resetPwMode === 'manual' && resetPwManual.length < 12}
+                        >
+                          Reset password
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-200">
+                        This password is shown <strong>only once</strong>. Copy it now.
+                      </div>
+                      <div className="flex items-stretch gap-2">
+                        <code className="flex-1 rounded-md bg-zinc-100 dark:bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-900 dark:text-zinc-100 break-all">
+                          {resetPwResult}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(resetPwResult);
+                            setResetPwCopied(true);
+                            setTimeout(() => setResetPwCopied(false), 2000);
+                          }}
+                          className="shrink-0 rounded-md border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                          title="Copy to clipboard"
+                        >
+                          {resetPwCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <Button onClick={closeResetPwDialog}>Done</Button>
+                      </div>
+                    </div>
+                  )}
+                </Dialog>
               </div>
             )}
 
