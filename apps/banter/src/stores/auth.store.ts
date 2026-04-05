@@ -9,6 +9,7 @@ export interface BanterUser {
   org_id: string;
   presence: 'online' | 'idle' | 'dnd' | 'offline';
   role: string;
+  is_superuser?: boolean;
 }
 
 interface AuthState {
@@ -41,6 +42,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           org_id: user.org_id,
           presence: 'online',
           role: user.role,
+          is_superuser: user.is_superuser === true,
         },
         isAuthenticated: true,
         isLoading: false,

@@ -4,16 +4,18 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
-  Search,
   Bookmark,
   Settings,
   Compass,
-  MessageSquarePlus,
+  MessageCircle,
   X,
   MoreHorizontal,
   Pencil,
   LogOut,
   Trash2,
+  Shield,
+  Users,
+  UsersRound,
 } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useChannels, useCreateChannel, channelDisplayName, type Channel } from '@/hooks/use-channels';
@@ -77,28 +79,26 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
     return activeRoute.page === 'dm' && activeRoute.id === slug;
   };
 
+  const canManagePeople = user?.role === 'owner' || user?.role === 'admin' || user?.is_superuser === true;
+
   return (
     <div className="flex flex-col h-full text-zinc-300">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-14 border-b border-zinc-800 flex-shrink-0">
-        <h1 className="text-lg font-bold text-white tracking-tight">Banter</h1>
-        <button
-          onClick={() => onNavigate('/dm/new')}
-          className="p-1.5 rounded-md hover:bg-sidebar-hover text-zinc-400 hover:text-zinc-200 transition-colors"
-          title="New direct message"
-        >
-          <MessageSquarePlus className="h-4 w-4" />
-        </button>
-      </div>
+      {/* Header: logo + wordmark + alpha pill */}
+      <button
+        onClick={() => onNavigate('/')}
+        className="flex items-center gap-2 px-4 py-4 border-b border-zinc-800 flex-shrink-0 hover:bg-sidebar-hover/40 transition-colors text-left"
+      >
+        <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary-600 text-white flex-shrink-0">
+          <MessageCircle className="h-4 w-4" />
+        </div>
+        <span className="font-semibold text-white text-lg">Banter</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded px-1.5 py-0.5">
+          alpha
+        </span>
+      </button>
 
       {/* Quick actions */}
-      <div className="px-2 py-2 space-y-0.5">
-        <SidebarButton
-          icon={<Search className="h-4 w-4" />}
-          label="Search"
-          active={activeRoute.page === 'search'}
-          onClick={() => onNavigate('/search')}
-        />
+      <div className="px-3 pt-2 pb-1 space-y-0.5">
         <SidebarButton
           icon={<Bookmark className="h-4 w-4" />}
           label="Bookmarks"
@@ -114,9 +114,9 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
       </div>
 
       {/* Scrollable channel/DM list */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-2">
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-3">
         {/* Channels section */}
-        <div className="mt-2">
+        <div className="mt-3">
           <button
             onClick={() => setChannelsOpen(!channelsOpen)}
             className="flex items-center gap-1 px-2 py-1 w-full text-xs font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -186,7 +186,7 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
         </div>
 
         {/* Direct Messages section */}
-        <div className="mt-4">
+        <div className="mt-4 mb-2">
           <button
             onClick={() => setDmsOpen(!dmsOpen)}
             className="flex items-center gap-1 px-2 py-1 w-full text-xs font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -237,30 +237,46 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
         </div>
       </div>
 
-      {/* Bottom: user info + settings */}
-      <div className="flex items-center gap-2 px-3 py-3 border-t border-zinc-800 flex-shrink-0">
-        <div className="relative">
-          <div className="h-8 w-8 rounded-md bg-primary-600 flex items-center justify-center text-white text-xs font-semibold">
-            {generateAvatarInitials(user?.display_name)}
-          </div>
-          <span
-            className={cn(
-              'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar',
-              presenceColor(user?.presence ?? 'offline'),
-            )}
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-zinc-200 truncate">
-            {user?.display_name}
-          </p>
-        </div>
+      {/* Bottom: admin/settings links (BBB-style) */}
+      <div className="border-t border-zinc-800 px-3 py-2 flex-shrink-0">
+        {user?.is_superuser === true && (
+          <button
+            onClick={() => { window.location.href = '/b3/superuser'; }}
+            className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-red-300 hover:bg-sidebar-hover transition-colors"
+          >
+            <Shield className="h-4 w-4" />
+            SuperUser
+          </button>
+        )}
+        {user?.is_superuser === true && (
+          <button
+            onClick={() => { window.location.href = '/b3/superuser/people'; }}
+            className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-red-300 hover:bg-sidebar-hover transition-colors"
+          >
+            <UsersRound className="h-4 w-4" />
+            All users
+          </button>
+        )}
+        {canManagePeople && (
+          <button
+            onClick={() => { window.location.href = '/b3/people'; }}
+            className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm hover:bg-sidebar-hover transition-colors"
+          >
+            <Users className="h-4 w-4" />
+            People
+          </button>
+        )}
         <button
           onClick={() => onNavigate('/settings')}
-          className="p-1.5 rounded-md hover:bg-sidebar-hover text-zinc-400 hover:text-zinc-200 transition-colors"
-          title="Preferences"
+          className={cn(
+            'flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm transition-colors',
+            activeRoute.page === 'settings'
+              ? 'bg-sidebar-active text-white'
+              : 'hover:bg-sidebar-hover',
+          )}
         >
           <Settings className="h-4 w-4" />
+          Settings
         </button>
       </div>
     </div>
@@ -284,7 +300,7 @@ function SidebarButton({
     <button
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2.5 w-full px-2 py-1.5 rounded-md text-sm transition-colors',
+        'flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm transition-colors',
         active
           ? 'bg-sidebar-active text-white'
           : 'text-zinc-400 hover:bg-sidebar-hover hover:text-zinc-200',
