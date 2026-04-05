@@ -53,11 +53,8 @@ Mage test data has ~200 tasks and board render is fine. Larger projects (500-200
 
 ## Recently flagged cosmetic items
 
-### site/ is gitignored
-The marketing site source (including the `UserManagement` section) lives under `site/` which is in `.gitignore`. Decide whether to track it in git. Currently building + deploying is manual via `site/upload.bat`.
-
-### Test account credentials in CLAUDE.md drift from DB state
-CLAUDE.md still has some references that don't match the live DB. Move to a non-committed `.env.test` or private notes doc.
+### site/ lives in its own private git repo
+The marketing site source lives under `site/` (gitignored here — it has its own private repo because the public repo's audience doesn't need the website sources). Auto-detected by `scripts/deploy.sh` / `scripts/deploy.ps1`: when the directory is present, the overlay serves it at the root domain.
 
 ### MCP tools path verification
 The `agent.routes.ts` helpdesk paths moved behind `/helpdesk/agents` during HB-7 work. Verify no MCP tool or integration doc hardcoded the old path. ~15 min grep + fix.
