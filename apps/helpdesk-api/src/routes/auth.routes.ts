@@ -9,6 +9,13 @@ import { helpdeskSessions } from '../db/schema/helpdesk-sessions.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
 import { env } from '../env.js';
+import {
+  checkLockout,
+  recordFailure,
+  clearLockout,
+  LOCKOUT_MESSAGE,
+} from '../lib/login-lockout.js';
+import { issueCsrfToken } from '../plugins/csrf.js';
 
 const registerSchema = z.object({
   email: z.string().email().max(320),
@@ -143,6 +150,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const sessionId = await createSession(user.id);
     reply.setCookie('helpdesk_session', sessionId, cookieOptions);
+    issueCsrfToken(reply);
 
     return reply.status(201).send({
       data: {
@@ -168,6 +176,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const data = loginSchema.parse(request.body);
 
+    // HB-57: short-circuit on lockout BEFORE any DB lookup or argon2.verify.
+    if (await checkLockout(fastify.redis, data.email)) {
+      return reply.status(429).send({
+        error: {
+          code: 'ACCOUNT_LOCKED',
+          message: LOCKOUT_MESSAGE,
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
     const [user] = await db
       .select()
       .from(helpdeskUsers)
@@ -175,6 +195,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       .limit(1);
 
     if (!user) {
+      await recordFailure(fastify.redis, data.email);
       return reply.status(401).send({
         error: {
           code: 'INVALID_CREDENTIALS',
@@ -198,6 +219,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const valid = await argon2.verify(user.password_hash, data.password);
     if (!valid) {
+      await recordFailure(fastify.redis, data.email);
       return reply.status(401).send({
         error: {
           code: 'INVALID_CREDENTIALS',
@@ -207,6 +229,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
         },
       });
     }
+
+    // Successful credential verification — clear the failure counter.
+    await clearLockout(fastify.redis, data.email);
 
     // HB-17: Enforce email verification at login when both the env-level switch
     // and the org-level setting are enabled. We leave signup/verify-email flows
@@ -231,6 +256,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const sessionId = await createSession(user.id);
     reply.setCookie('helpdesk_session', sessionId, cookieOptions);
+    issueCsrfToken(reply);
 
     return reply.send({
       data: {
@@ -253,6 +279,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     reply.clearCookie('helpdesk_session', { path: '/' });
+    reply.clearCookie('csrf_token', { path: '/' });
 
     return reply.send({ data: { success: true } });
   });

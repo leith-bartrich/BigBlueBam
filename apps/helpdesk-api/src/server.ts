@@ -4,10 +4,11 @@ import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
-import Redis from 'ioredis';
 import { env } from './env.js';
 import { db, connection } from './db/index.js';
 import helpdeskAuthPlugin from './plugins/auth.js';
+import redisPlugin from './plugins/redis.js';
+import csrfPlugin from './plugins/csrf.js';
 import authRoutes from './routes/auth.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
 import agentRoutes from './routes/agent.routes.js';
@@ -32,14 +33,6 @@ const fastify = Fastify({
   // HB-22: prevent hung connections when DB queries stall
   requestTimeout: 30000,
 });
-
-// Redis client for health checks
-const healthRedis = new Redis(env.REDIS_URL, {
-  maxRetriesPerRequest: 1,
-  lazyConnect: true,
-  enableOfflineQueue: false,
-});
-healthRedis.connect().catch(() => {});
 
 // Error handler
 fastify.setErrorHandler(async (error, request, reply) => {
@@ -87,6 +80,12 @@ await fastify.register(rateLimit, {
 
 await fastify.register(websocket);
 
+// Redis plugin — used by HB-57 lockout and health checks.
+await fastify.register(redisPlugin);
+
+// HB-52: CSRF protection — must run BEFORE routes.
+await fastify.register(csrfPlugin);
+
 // Auth plugin
 await fastify.register(helpdeskAuthPlugin);
 
@@ -105,7 +104,7 @@ fastify.get('/health/ready', async (_request, reply) => {
   }
 
   try {
-    await healthRedis.ping();
+    await fastify.redis.ping();
   } catch {
     checks.redis = 'fail';
   }
@@ -135,7 +134,6 @@ for (const signal of signals) {
     fastify.log.info(`Received ${signal}, shutting down gracefully...`);
     await fastify.close();
     await connection.end();
-    healthRedis.disconnect();
     process.exit(0);
   });
 }

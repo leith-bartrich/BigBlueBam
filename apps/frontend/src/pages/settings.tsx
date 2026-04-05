@@ -251,10 +251,15 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const handleSaveHelpdeskSettings = async () => {
     setHelpdeskSaving(true);
     try {
+      const csrfMatch = typeof document !== 'undefined'
+        ? document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
+        : null;
+      const csrfHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfMatch) csrfHeaders['X-CSRF-Token'] = decodeURIComponent(csrfMatch[1]!);
       await fetch('/helpdesk-api/helpdesk/settings', {
         method: 'PATCH',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: csrfHeaders,
         body: JSON.stringify({
           require_email_verification: helpdeskRequireVerification,
           allowed_email_domains: helpdeskAllowedDomains.split(',').map((d) => d.trim()).filter(Boolean),

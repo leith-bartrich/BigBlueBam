@@ -1,3 +1,14 @@
+// HB-52: Read the csrf_token cookie set by the API on login/register and
+// echo it back in the X-CSRF-Token header on state-changing requests.
+// The cookie is httpOnly=false precisely so this function can read it.
+function readCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -38,6 +49,11 @@ class ApiClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+
+    if (MUTATING_METHODS.has(method)) {
+      const csrfToken = readCsrfToken();
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    }
 
     const response = await fetch(url.toString(), {
       method,
@@ -95,8 +111,13 @@ class ApiClient {
   async upload<T>(path: string, formData: FormData): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`, window.location.origin);
 
+    const uploadHeaders: Record<string, string> = {};
+    const csrfToken = readCsrfToken();
+    if (csrfToken) uploadHeaders['X-CSRF-Token'] = csrfToken;
+
     const response = await fetch(url.toString(), {
       method: 'POST',
+      headers: uploadHeaders,
       credentials: 'include',
       body: formData,
       // No Content-Type header — browser sets it with boundary for multipart

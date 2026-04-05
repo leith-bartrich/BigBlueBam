@@ -8,6 +8,13 @@ import { env } from '../env.js';
 import { db } from '../db/index.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
 import { organizations } from '../db/schema/organizations.js';
+import {
+  checkLockout,
+  recordFailure,
+  clearLockout,
+  LOCKOUT_MESSAGE,
+} from '../lib/login-lockout.js';
+import { issueCsrfToken } from '../plugins/csrf.js';
 
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
@@ -24,6 +31,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     const result = await authService.register(data);
 
     reply.setCookie('session', result.session.id, cookieOptions);
+    issueCsrfToken(reply);
 
     return reply.status(201).send({
       data: {
@@ -48,10 +56,27 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/auth/login', async (request, reply) => {
     const data = loginSchema.parse(request.body);
 
+    // HB-57: short-circuit on lockout BEFORE any DB lookup or argon2.verify
+    // so brute-force attackers can't burn CPU.
+    if (await checkLockout(fastify.redis, data.email)) {
+      return reply.status(429).send({
+        error: {
+          code: 'ACCOUNT_LOCKED',
+          message: LOCKOUT_MESSAGE,
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
     try {
       const result = await authService.login(data.email, data.password, data.totp_code);
 
+      // Successful login — clear any accumulated failure counter.
+      await clearLockout(fastify.redis, data.email);
+
       reply.setCookie('session', result.session.id, cookieOptions);
+      issueCsrfToken(reply);
 
       return reply.send({
         data: {
@@ -68,6 +93,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
       });
     } catch (err) {
       if (err instanceof authService.AuthError) {
+        // HB-57: Count any auth failure (bad password, unknown user, disabled
+        // account) against the lockout counter. The service's existing
+        // timing-safe handling of unknown users stays intact because we
+        // already called into it above.
+        if (err.code === 'INVALID_CREDENTIALS') {
+          await recordFailure(fastify.redis, data.email);
+        }
         return reply.status(err.statusCode).send({
           error: {
             code: err.code,
@@ -87,6 +119,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     reply.clearCookie('session', { path: '/' });
+    reply.clearCookie('csrf_token', { path: '/' });
 
     return reply.send({ data: { success: true } });
   });
@@ -220,6 +253,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
     const newSession = await authService.createSession(userId);
     reply.setCookie('session', newSession.id, cookieOptions);
+    issueCsrfToken(reply);
 
     return reply.send({
       data: {

@@ -18,6 +18,10 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
 
+  // HB-57: per-email account lockout after repeated failed logins.
+  LOGIN_LOCKOUT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  LOGIN_LOCKOUT_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
+
   UPLOAD_MAX_FILE_SIZE: z.coerce.number().int().positive().default(26214400), // 25MB
   UPLOAD_ALLOWED_TYPES: z.string().default('image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt'),
 
