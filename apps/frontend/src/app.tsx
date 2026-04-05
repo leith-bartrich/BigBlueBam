@@ -10,6 +10,7 @@ import { ProjectDashboardPage } from '@/pages/project-dashboard';
 import { AuditLogPage } from '@/pages/audit-log';
 import { SprintReportPage } from '@/pages/sprint-report';
 import { SuperuserPage } from '@/pages/superuser';
+import { GuestAcceptPage } from '@/pages/guest-accept';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -22,7 +23,8 @@ type Route =
   | { page: 'sprint-report'; projectId: string; sprintId: string }
   | { page: 'settings' }
   | { page: 'my-work' }
-  | { page: 'superuser' };
+  | { page: 'superuser' }
+  | { page: 'guest-accept'; token: string };
 
 const BASE_PATH = '/b3';
 
@@ -35,6 +37,10 @@ function stripBase(path: string): string {
 
 function parseRoute(path: string): Route {
   const p = stripBase(path);
+  const guestAcceptMatch = p.match(/^\/guests\/accept\/(.+)$/);
+  if (guestAcceptMatch) {
+    return { page: 'guest-accept', token: guestAcceptMatch[1]! };
+  }
   const boardMatch = p.match(/^\/projects\/([^/]+)\/board$/);
   if (boardMatch) {
     return { page: 'board', projectId: boardMatch[1]! };
@@ -105,6 +111,12 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  // Guest-accept is public — it works whether or not the user is logged in.
+  // (The page itself will warn an already-signed-in user.)
+  if (route.page === 'guest-accept') {
+    return <GuestAcceptPage token={route.token} onNavigate={navigate} />;
   }
 
   if (!isAuthenticated) {
