@@ -43,6 +43,23 @@ const TOOL_NAMES = [
   'suggest_branch_name',
   'get_server_info',
   'confirm_action',
+  'get_me',
+  'update_me',
+  'list_my_orgs',
+  'switch_active_org',
+  'change_my_password',
+  'logout',
+  'list_my_notifications',
+  'mark_notification_read',
+  'mark_notifications_read',
+  'mark_all_notifications_read',
+  'get_platform_settings',
+  'set_public_signup_disabled',
+  'list_beta_signups',
+  'get_public_config',
+  'submit_beta_signup',
+  'get_cycle_time_report',
+  'get_time_tracking_report',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }

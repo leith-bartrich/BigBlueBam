@@ -66,6 +66,8 @@ import { registerMemberTools } from '../src/tools/member-tools.js';
 import { registerReportTools } from '../src/tools/report-tools.js';
 import { registerTemplateTools } from '../src/tools/template-tools.js';
 import { registerImportTools } from '../src/tools/import-tools.js';
+import { registerMeTools } from '../src/tools/me-tools.js';
+import { registerPlatformTools } from '../src/tools/platform-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -86,6 +88,8 @@ describe('MCP Integration Tests', () => {
     registerReportTools(mock.server, api);
     registerTemplateTools(mock.server, api);
     registerImportTools(mock.server, api);
+    registerMeTools(mock.server, api);
+    registerPlatformTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -780,6 +784,118 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== ME TOOLS =====
+
+  describe('me tools', () => {
+    it('get_me hits /auth/me', async () => {
+      mockApiOk({ data: { id: UUID, email: 'x@y.com', is_superuser: false } });
+      const result = await getTool('get_me').handler({});
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/auth/me');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('update_me PATCHes /auth/me with body', async () => {
+      mockApiOk({ data: { id: UUID, display_name: 'Ada' } });
+      const result = await getTool('update_me').handler({ display_name: 'Ada' });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/auth/me');
+      expect(call[1].method).toBe('PATCH');
+      expect(JSON.parse(call[1].body as string)).toEqual({ display_name: 'Ada' });
+    });
+
+    it('list_my_notifications forwards query params', async () => {
+      mockApiOk({ data: [] });
+      await getTool('list_my_notifications').handler({ unread_only: true, limit: 20 });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/me/notifications');
+      expect(call[0]).toContain('unread_only=true');
+      expect(call[0]).toContain('limit=20');
+    });
+
+    it('mark_notification_read POSTs to per-id endpoint', async () => {
+      mockApiOk({ data: { ok: true } });
+      await getTool('mark_notification_read').handler({ notification_id: UUID });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/me/notifications/${UUID}/read`);
+      expect(call[1].method).toBe('POST');
+    });
+
+    it('switch_active_org posts to /auth/switch-org', async () => {
+      mockApiOk({ data: { org_id: UUID } });
+      await getTool('switch_active_org').handler({ org_id: UUID });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/auth/switch-org');
+      expect(JSON.parse(call[1].body as string)).toEqual({ org_id: UUID });
+    });
+  });
+
+  // ===== PLATFORM TOOLS =====
+
+  describe('platform tools', () => {
+    it('get_platform_settings hits /superuser/platform-settings', async () => {
+      mockApiOk({ data: { public_signup_disabled: false } });
+      await getTool('get_platform_settings').handler({});
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/superuser/platform-settings');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('set_public_signup_disabled PATCHes with payload', async () => {
+      mockApiOk({ data: { public_signup_disabled: true } });
+      await getTool('set_public_signup_disabled').handler({ public_signup_disabled: true });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/superuser/platform-settings');
+      expect(call[1].method).toBe('PATCH');
+      expect(JSON.parse(call[1].body as string)).toEqual({ public_signup_disabled: true });
+    });
+
+    it('get_public_config gates to SuperUser via /auth/me check', async () => {
+      // First call: /auth/me returns non-SuperUser
+      mockApiOk({ data: { id: UUID, is_superuser: false } });
+      const result = await getTool('get_public_config').handler({});
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('SuperUser');
+      // Only /auth/me should have been called (not /public/config)
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0]![0]).toContain('/auth/me');
+    });
+
+    it('get_public_config proxies when caller is SuperUser', async () => {
+      mockApiOk({ data: { id: UUID, is_superuser: true } });
+      mockApiOk({ data: { public_signup_disabled: false } });
+      const result = await getTool('get_public_config').handler({});
+      expectSuccessFormat(result);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1]![0]).toContain('/public/config');
+    });
+
+    it('submit_beta_signup rejects non-SuperUsers', async () => {
+      mockApiOk({ data: { id: UUID, is_superuser: false } });
+      const result = await getTool('submit_beta_signup').handler({
+        name: 'Ada', email: 'a@b.com',
+      });
+      expectErrorFormat(result);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('submit_beta_signup forwards body when SuperUser', async () => {
+      mockApiOk({ data: { id: UUID, is_superuser: true } });
+      mockApiOk({ data: { ok: true } });
+      await getTool('submit_beta_signup').handler({
+        name: 'Ada', email: 'a@b.com', phone: '555',
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const call = mockFetch.mock.calls[1]!;
+      expect(call[0]).toContain('/public/beta-signup');
+      expect(JSON.parse(call[1].body as string)).toMatchObject({
+        name: 'Ada', email: 'a@b.com', phone: '555',
+      });
+    });
+  });
+
   // ===== TOOL REGISTRATION COMPLETENESS =====
 
   describe('tool registration', () => {
@@ -802,10 +918,19 @@ describe('MCP Integration Tests', () => {
         // report
         'get_velocity_report', 'get_burndown', 'get_cumulative_flow',
         'get_overdue_tasks', 'get_workload', 'get_status_distribution',
+        'get_cycle_time_report', 'get_time_tracking_report',
         // template
         'list_templates', 'create_from_template',
         // import
         'import_github_issues', 'suggest_branch_name',
+        // me
+        'get_me', 'update_me', 'list_my_orgs', 'switch_active_org',
+        'change_my_password', 'logout',
+        'list_my_notifications', 'mark_notification_read',
+        'mark_notifications_read', 'mark_all_notifications_read',
+        // platform (superuser)
+        'get_platform_settings', 'set_public_signup_disabled',
+        'list_beta_signups', 'get_public_config', 'submit_beta_signup',
       ];
 
       for (const name of expectedTools) {

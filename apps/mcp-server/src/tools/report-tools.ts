@@ -145,4 +145,46 @@ export function registerReportTools(server: McpServer, api: ApiClient): void {
       };
     },
   );
+
+  server.tool(
+    'get_cycle_time_report',
+    'Get cycle time metrics (created_at → completed_at) for completed tasks in a project.',
+    {
+      project_id: z.string().uuid().describe('The project ID'),
+    },
+    async ({ project_id }) => {
+      const result = await api.get(`/projects/${project_id}/reports/cycle-time`);
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error getting cycle time: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'get_time_tracking_report',
+    'Get aggregated time entries per user for a project, optionally bounded by a date range.',
+    {
+      project_id: z.string().uuid().describe('The project ID'),
+      from: z.string().optional().describe('Start date (ISO 8601).'),
+      to: z.string().optional().describe('End date (ISO 8601).'),
+    },
+    async ({ project_id, from, to }) => {
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const qs = params.toString();
+      const result = await api.get(`/projects/${project_id}/reports/time-tracking${qs ? `?${qs}` : ''}`);
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error getting time tracking: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }] };
+    },
+  );
 }
