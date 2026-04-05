@@ -11,6 +11,7 @@ import {
   broadcastTicketMessage,
   broadcastTicketStatusChanged,
 } from '../services/realtime.js';
+import { mirrorTicketMessageToTask, mirrorTicketClosedToTask } from '../lib/task-sync.js';
 
 const updateTicketSchema = z.object({
   status: z.enum(['open', 'in_progress', 'waiting_on_customer', 'resolved', 'closed']).optional(),
@@ -152,7 +153,16 @@ async function requireAgentAuth(request: FastifyRequest, reply: FastifyReply) {
     // expired-but-valid-hash and invalid-hash keys take the same wall
     // time — otherwise short-circuiting would leak (via timing) whether
     // a given prefix corresponds to a real key.
-    const valid = await argon2.verify(candidate.key_hash, token);
+    // A malformed stored hash (e.g. truncated column, bad migration)
+    // causes argon2.verify to throw; treat that as a verification
+    // failure so one corrupt row doesn't 500 every request sharing
+    // its prefix.
+    let valid = false;
+    try {
+      valid = await argon2.verify(candidate.key_hash, token);
+    } catch (err) {
+      request.log.warn({ err, candidate_id: candidate.id }, 'argon2.verify threw on agent key candidate; treating as invalid');
+    }
     if (!valid) continue;
     if (candidate.revoked_at && new Date(candidate.revoked_at) <= now) continue;
     if (candidate.expires_at && new Date(candidate.expires_at) <= now) continue;
@@ -179,6 +189,26 @@ async function requireAgentAuth(request: FastifyRequest, reply: FastifyReply) {
       request_id: request.id,
     },
   });
+}
+
+/**
+ * Resolve a display name for the agent who authenticated this request,
+ * for attribution in mirrored BBB task comments (HB-50). Prefers the BBB
+ * user's display_name, falling back to email, then a static label.
+ * Best-effort — never throws.
+ */
+async function resolveAgentDisplayName(agentUserId: string | null): Promise<string> {
+  if (!agentUserId) return 'Support Agent';
+  try {
+    const [row] = await db
+      .select({ display_name: users.display_name, email: users.email })
+      .from(users)
+      .where(eq(users.id, agentUserId))
+      .limit(1);
+    return row?.display_name ?? row?.email ?? 'Support Agent';
+  } catch {
+    return 'Support Agent';
+  }
 }
 
 export default async function agentRoutes(fastify: FastifyInstance) {
@@ -294,7 +324,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     // Verify ticket exists
     const [ticket] = await db
-      .select({ id: tickets.id })
+      .select({ id: tickets.id, task_id: tickets.task_id })
       .from(tickets)
       .where(eq(tickets.id, id))
       .limit(1);
@@ -429,6 +459,12 @@ export default async function agentRoutes(fastify: FastifyInstance) {
         is_internal: message.is_internal,
         created_at: message.created_at,
       });
+
+      // HB-50: Mirror the agent message onto the linked BBB task so the
+      // customer-facing audit trail survives if the ticket is later deleted.
+      // Internal notes are intentionally NOT mirrored — they must not leak
+      // into the customer-visible BBB task comment thread.
+      await mirrorTicketMessageToTask(ticket.task_id, authorName, message.body, request.log);
     }
 
     // TODO: If not internal and notify_on_agent_reply is enabled, queue email to client
@@ -445,7 +481,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const data = updateTicketSchema.parse(request.body);
 
     const [existing] = await db
-      .select({ id: tickets.id })
+      .select({ id: tickets.id, task_id: tickets.task_id })
       .from(tickets)
       .where(eq(tickets.id, id))
       .limit(1);
@@ -492,6 +528,12 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     if (updated && data.status !== undefined) {
       await broadcastTicketStatusChanged(id, data.status);
+      // HB-50: Mirror ticket closure onto the linked BBB task so the audit
+      // trail survives if the ticket is later deleted.
+      if (data.status === 'closed') {
+        const agentName = await resolveAgentDisplayName(request.agentUserId);
+        await mirrorTicketClosedToTask(existing.task_id, agentName, request.log);
+      }
     }
 
     return reply.send({ data: updated });
@@ -505,7 +547,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     const [ticket] = await db
-      .select({ id: tickets.id, status: tickets.status })
+      .select({ id: tickets.id, status: tickets.status, task_id: tickets.task_id })
       .from(tickets)
       .where(eq(tickets.id, id))
       .limit(1);
@@ -532,6 +574,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     if (updated) {
       await broadcastTicketStatusChanged(id, 'closed');
+      // HB-50: Mirror ticket closure onto the linked BBB task so the audit
+      // trail survives if the ticket is later deleted.
+      const agentName = await resolveAgentDisplayName(request.agentUserId);
+      await mirrorTicketClosedToTask(ticket.task_id, agentName, request.log);
     }
 
     return reply.send({ data: updated });

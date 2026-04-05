@@ -122,7 +122,12 @@ fastify.get('/health/ready', async (_request, reply) => {
 // Routes
 await fastify.register(authRoutes);
 await fastify.register(ticketRoutes);
-await fastify.register(agentRoutes);
+// HB-50 follow-up: mount agent routes under /helpdesk/agents so that after
+// nginx's `/helpdesk/api/` → `/helpdesk/` rewrite they surface at
+// `/helpdesk/api/agents/...` externally. Without this prefix, paths like
+// `/tickets` collide with ticket.routes.ts's customer-facing `/helpdesk/tickets`
+// under the same nginx rewrite and the agent routes are unreachable.
+await fastify.register(agentRoutes, { prefix: '/helpdesk/agents' });
 await fastify.register(settingsRoutes);
 await fastify.register(helpdeskUploadRoutes);
 await fastify.register(websocketHandler);
