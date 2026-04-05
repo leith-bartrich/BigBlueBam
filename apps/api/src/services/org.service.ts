@@ -1,4 +1,4 @@
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, sql, inArray, desc, lt, or } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import { db } from '../db/index.js';
@@ -8,6 +8,8 @@ import { organizationMemberships } from '../db/schema/organization-memberships.j
 import { sessions } from '../db/schema/sessions.js';
 import { projects } from '../db/schema/projects.js';
 import { projectMemberships } from '../db/schema/project-memberships.js';
+import { apiKeys } from '../db/schema/api-keys.js';
+import { activityLog } from '../db/schema/activity-log.js';
 
 export async function getOrganization(orgId: string) {
   const [org] = await db
@@ -880,6 +882,336 @@ export async function updateMemberProjectRole(
     });
 
   return updated ?? null;
+}
+
+/** Assert the caller's rank is strictly above the target's membership role
+ *  in the given org. Throws InsufficientRankError / returns false-sentinel
+ *  if the target isn't a member of the org. */
+async function assertRankOverMember(
+  orgId: string,
+  targetUserId: string,
+  opts: { callerRole: string; callerIsSuperuser: boolean },
+): Promise<{ ok: true; targetRole: string } | { ok: false }> {
+  const targetRole = await getMembershipRole(orgId, targetUserId);
+  if (targetRole === null) return { ok: false };
+  const rank = checkRankAbove(opts.callerRole, targetRole, opts.callerIsSuperuser);
+  if (!rank.allowed) {
+    throw new InsufficientRankError(rank.reason);
+  }
+  return { ok: true, targetRole };
+}
+
+/** Flip users.force_password_change = true for the target. */
+export async function forcePasswordChange(
+  orgId: string,
+  targetUserId: string,
+  opts: { callerRole: string; callerIsSuperuser: boolean },
+): Promise<{ user_id: string; force_password_change: true } | null> {
+  const check = await assertRankOverMember(orgId, targetUserId, opts);
+  if (!check.ok) return null;
+
+  const [updated] = await db
+    .update(users)
+    .set({ force_password_change: true, updated_at: new Date() })
+    .where(eq(users.id, targetUserId))
+    .returning({ id: users.id });
+
+  if (!updated) return null;
+  return { user_id: updated.id, force_password_change: true };
+}
+
+/** Delete every session owned by the target user. */
+export async function signOutMemberEverywhere(
+  orgId: string,
+  targetUserId: string,
+  opts: { callerRole: string; callerIsSuperuser: boolean },
+): Promise<{ revoked: number } | null> {
+  const check = await assertRankOverMember(orgId, targetUserId, opts);
+  if (!check.ok) return null;
+
+  const deleted = await db
+    .delete(sessions)
+    .where(eq(sessions.user_id, targetUserId))
+    .returning({ id: sessions.id });
+
+  return { revoked: deleted.length };
+}
+
+/** List api_keys metadata for the target user, scoped to the current org. */
+export async function listMemberApiKeys(
+  orgId: string,
+  targetUserId: string,
+  opts: { callerRole: string; callerIsSuperuser: boolean },
+): Promise<
+  | {
+      id: string;
+      name: string;
+      key_prefix: string;
+      scope: string;
+      project_ids: string[] | null;
+      expires_at: Date | null;
+      created_at: Date;
+      last_used_at: Date | null;
+    }[]
+  | null
+> {
+  const check = await assertRankOverMember(orgId, targetUserId, opts);
+  if (!check.ok) return null;
+
+  const rows = await db
+    .select({
+      id: apiKeys.id,
+      name: apiKeys.name,
+      key_prefix: apiKeys.key_prefix,
+      scope: apiKeys.scope,
+      project_ids: apiKeys.project_ids,
+      expires_at: apiKeys.expires_at,
+      created_at: apiKeys.created_at,
+      last_used_at: apiKeys.last_used_at,
+    })
+    .from(apiKeys)
+    .where(and(eq(apiKeys.user_id, targetUserId), eq(apiKeys.org_id, orgId)))
+    .orderBy(apiKeys.created_at);
+
+  return rows;
+}
+
+/** Create an API key on behalf of the target user, scoped to the current org. */
+export async function createMemberApiKey(
+  orgId: string,
+  targetUserId: string,
+  data: {
+    name: string;
+    scope: 'read' | 'read_write' | 'admin';
+    project_ids?: string[];
+    expires_days?: number;
+  },
+  opts: { callerRole: string; callerIsSuperuser: boolean },
+): Promise<{
+  id: string;
+  name: string;
+  scope: string;
+  key_prefix: string;
+  project_ids: string[] | null;
+  expires_at: Date | null;
+  created_at: Date;
+  token: string;
+} | null> {
+  const check = await assertRankOverMember(orgId, targetUserId, opts);
+  if (!check.ok) return null;
+
+  if (data.project_ids && data.project_ids.length > 0) {
+    const bad = await findCrossOrgProjects(orgId, data.project_ids);
+    if (bad.length > 0) throw new CrossOrgProjectError(bad);
+  }
+
+  const rawToken = `bbam_${randomBytes(32).toString('base64url')}`;
+  const keyPrefix = rawToken.slice(0, 8);
+  const keyHash = await argon2.hash(rawToken);
+
+  const expiresAt =
+    data.expires_days && data.expires_days > 0
+      ? new Date(Date.now() + data.expires_days * 86_400_000)
+      : null;
+
+  const [row] = await db
+    .insert(apiKeys)
+    .values({
+      user_id: targetUserId,
+      org_id: orgId,
+      name: data.name,
+      key_hash: keyHash,
+      key_prefix: keyPrefix,
+      scope: data.scope,
+      project_ids: data.project_ids ?? null,
+      expires_at: expiresAt,
+    })
+    .returning();
+
+  return {
+    id: row!.id,
+    name: row!.name,
+    scope: row!.scope,
+    key_prefix: row!.key_prefix,
+    project_ids: row!.project_ids,
+    expires_at: row!.expires_at,
+    created_at: row!.created_at,
+    token: rawToken,
+  };
+}
+
+/** Hard-delete an api_keys row. Returns false if not found / doesn't belong
+ *  to the target user + current org (anti-enumeration). */
+export async function deleteMemberApiKey(
+  orgId: string,
+  targetUserId: string,
+  keyId: string,
+  opts: { callerRole: string; callerIsSuperuser: boolean },
+): Promise<boolean | null> {
+  const check = await assertRankOverMember(orgId, targetUserId, opts);
+  if (!check.ok) return null;
+
+  const [deleted] = await db
+    .delete(apiKeys)
+    .where(
+      and(
+        eq(apiKeys.id, keyId),
+        eq(apiKeys.user_id, targetUserId),
+        eq(apiKeys.org_id, orgId),
+      ),
+    )
+    .returning({ id: apiKeys.id });
+
+  return deleted ? true : false;
+}
+
+/** Returns activity_log rows where actor_id = targetUserId, scoped to
+ *  projects within the current org. Cursor is base64url of
+ *  `${created_at_iso}|${id}` (DESC). */
+export async function listMemberActivity(
+  orgId: string,
+  targetUserId: string,
+  q: { limit: number; cursor: string | null },
+  opts: { callerRole: string; callerIsSuperuser: boolean },
+): Promise<{
+  data: {
+    id: string;
+    project_id: string;
+    project_name: string;
+    task_id: string | null;
+    action: string;
+    details: unknown;
+    created_at: Date;
+    impersonator_id: string | null;
+  }[];
+  next_cursor: string | null;
+} | null> {
+  const check = await assertRankOverMember(orgId, targetUserId, opts);
+  if (!check.ok) return null;
+
+  const limit = Math.min(Math.max(q.limit, 1), 200);
+
+  // Decode cursor.
+  let cursorCreatedAt: Date | null = null;
+  let cursorId: string | null = null;
+  if (q.cursor) {
+    try {
+      const decoded = Buffer.from(q.cursor, 'base64url').toString('utf8');
+      const [ts, id] = decoded.split('|');
+      if (ts && id) {
+        const d = new Date(ts);
+        if (!Number.isNaN(d.getTime())) {
+          cursorCreatedAt = d;
+          cursorId = id;
+        }
+      }
+    } catch {
+      // ignore malformed cursor and start from the beginning
+    }
+  }
+
+  const conditions = [
+    eq(activityLog.actor_id, targetUserId),
+    eq(projects.org_id, orgId),
+  ];
+  if (cursorCreatedAt && cursorId) {
+    // Strict DESC compound: (created_at, id) < (cursor_created_at, cursor_id)
+    conditions.push(
+      or(
+        lt(activityLog.created_at, cursorCreatedAt),
+        and(
+          eq(activityLog.created_at, cursorCreatedAt),
+          lt(activityLog.id, cursorId),
+        ),
+      )!,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: activityLog.id,
+      project_id: activityLog.project_id,
+      project_name: projects.name,
+      task_id: activityLog.task_id,
+      action: activityLog.action,
+      details: activityLog.details,
+      created_at: activityLog.created_at,
+      impersonator_id: activityLog.impersonator_id,
+    })
+    .from(activityLog)
+    .innerJoin(projects, eq(activityLog.project_id, projects.id))
+    .where(and(...conditions))
+    .orderBy(desc(activityLog.created_at), desc(activityLog.id))
+    .limit(limit + 1);
+
+  let nextCursor: string | null = null;
+  const data = rows.slice(0, limit);
+  if (rows.length > limit) {
+    const last = data[data.length - 1]!;
+    nextCursor = Buffer.from(
+      `${last.created_at.toISOString()}|${last.id}`,
+      'utf8',
+    ).toString('base64url');
+  }
+
+  return { data, next_cursor: nextCursor };
+}
+
+/** Raised when the caller's current_password doesn't verify. */
+export class InvalidCurrentPasswordError extends Error {
+  constructor() {
+    super('Current password is incorrect');
+    this.name = 'InvalidCurrentPasswordError';
+  }
+}
+
+/** User changes their own password. Verifies current_password, hashes the
+ *  new one, clears force_password_change, and invalidates all OTHER
+ *  sessions for the user (keeping `currentSessionId` alive). */
+export async function changeOwnPassword(opts: {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+  currentSessionId: string | null;
+}): Promise<void> {
+  const { userId, currentPassword, newPassword, currentSessionId } = opts;
+
+  const [user] = await db
+    .select({ id: users.id, password_hash: users.password_hash })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user || !user.password_hash) {
+    throw new InvalidCurrentPasswordError();
+  }
+
+  const valid = await argon2.verify(user.password_hash, currentPassword);
+  if (!valid) {
+    throw new InvalidCurrentPasswordError();
+  }
+
+  const newHash = await argon2.hash(newPassword);
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({
+        password_hash: newHash,
+        force_password_change: false,
+        updated_at: new Date(),
+      })
+      .where(eq(users.id, userId));
+
+    // Invalidate all OTHER sessions for this user.
+    if (currentSessionId) {
+      await tx.execute(
+        sql`DELETE FROM sessions WHERE user_id = ${userId} AND id <> ${currentSessionId}`,
+      );
+    } else {
+      await tx.delete(sessions).where(eq(sessions.user_id, userId));
+    }
+  });
 }
 
 /** Remove a user from a single project in the caller's current org. */

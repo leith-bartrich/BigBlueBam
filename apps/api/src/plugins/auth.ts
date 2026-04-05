@@ -321,6 +321,21 @@ async function authPlugin(fastify: FastifyInstance) {
           activeOrgId: sessionActiveOrgId,
         };
         request.viaSuperuserContext = request.user.is_superuser_viewing;
+
+        // Fire-and-forget update of sessions.last_used_at, throttled to at
+        // most one write per 60 seconds per session. We check the value we
+        // already SELECTed above rather than re-reading.
+        const lastUsed = row.session.last_used_at
+          ? new Date(row.session.last_used_at).getTime()
+          : 0;
+        if (Date.now() - lastUsed > 60_000) {
+          db.update(sessions)
+            .set({ last_used_at: new Date() })
+            .where(eq(sessions.id, sessionId))
+            .catch((err) => {
+              request.log.warn({ err }, 'Failed to update sessions.last_used_at');
+            });
+        }
         return;
       }
     }

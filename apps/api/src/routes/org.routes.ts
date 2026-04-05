@@ -460,6 +460,251 @@ export default async function orgRoutes(fastify: FastifyInstance) {
     },
   );
 
+  fastify.post<{ Params: { userId: string } }>(
+    '/org/members/:userId/force-password-change',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      try {
+        const result = await orgService.forcePasswordChange(
+          request.user!.org_id,
+          request.params.userId,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (!result) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        request.log.info(
+          {
+            event: 'admin.force_password_change',
+            caller_id: request.user!.id,
+            target_id: request.params.userId,
+            org_id: request.user!.org_id,
+          },
+          'Admin forced password change on next login',
+        );
+        return reply.send({ data: result });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.post<{ Params: { userId: string } }>(
+    '/org/members/:userId/sign-out-everywhere',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      try {
+        const result = await orgService.signOutMemberEverywhere(
+          request.user!.org_id,
+          request.params.userId,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (!result) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        request.log.info(
+          {
+            event: 'admin.sign_out_everywhere',
+            caller_id: request.user!.id,
+            target_id: request.params.userId,
+            org_id: request.user!.org_id,
+            revoked: result.revoked,
+          },
+          'Admin revoked all sessions for target user',
+        );
+        return reply.send({ data: result });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.get<{ Params: { userId: string } }>(
+    '/org/members/:userId/api-keys',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      try {
+        const rows = await orgService.listMemberApiKeys(
+          request.user!.org_id,
+          request.params.userId,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (rows === null) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        return reply.send({ data: rows });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.post<{ Params: { userId: string } }>(
+    '/org/members/:userId/api-keys',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const schema = z.object({
+        name: z.string().min(1).max(255),
+        scope: z.enum(['read', 'read_write', 'admin']),
+        project_ids: z.array(z.string().uuid()).optional(),
+        expires_days: z.number().int().positive().max(3650).optional(),
+      });
+      const data = schema.parse(request.body);
+      try {
+        const result = await orgService.createMemberApiKey(
+          request.user!.org_id,
+          request.params.userId,
+          data,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (!result) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        request.log.info(
+          {
+            event: 'admin.api_key_created',
+            caller_id: request.user!.id,
+            target_id: request.params.userId,
+            org_id: request.user!.org_id,
+            api_key_id: result.id,
+            scope: result.scope,
+          },
+          'Admin created API key on behalf of member',
+        );
+        return reply.status(201).send({ data: result });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { userId: string; keyId: string } }>(
+    '/org/members/:userId/api-keys/:keyId',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      try {
+        const removed = await orgService.deleteMemberApiKey(
+          request.user!.org_id,
+          request.params.userId,
+          request.params.keyId,
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (removed === null || removed === false) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'API key not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        request.log.info(
+          {
+            event: 'admin.api_key_revoked',
+            caller_id: request.user!.id,
+            target_id: request.params.userId,
+            org_id: request.user!.org_id,
+            api_key_id: request.params.keyId,
+          },
+          'Admin revoked API key on behalf of member',
+        );
+        return reply.send({ data: { success: true } });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
+  fastify.get<{
+    Params: { userId: string };
+    Querystring: { limit?: string; cursor?: string };
+  }>(
+    '/org/members/:userId/activity',
+    { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
+    async (request, reply) => {
+      const limit = Math.min(
+        Math.max(parseInt(request.query.limit ?? '50', 10) || 50, 1),
+        200,
+      );
+      const cursor = request.query.cursor ?? null;
+
+      try {
+        const result = await orgService.listMemberActivity(
+          request.user!.org_id,
+          request.params.userId,
+          { limit, cursor },
+          {
+            callerRole: request.user!.role,
+            callerIsSuperuser: request.user!.is_superuser,
+          },
+        );
+        if (result === null) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Member not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        return reply.send({ data: result.data, next_cursor: result.next_cursor });
+      } catch (err) {
+        if (handleRankError(request, reply, err)) return;
+        throw err;
+      }
+    },
+  );
+
   fastify.post(
     '/org/members/invite',
     { preHandler: [requireAuth, requireScope('admin')] },

@@ -25,6 +25,7 @@ export const users = pgTable(
     pending_email: varchar('pending_email', { length: 320 }),
     email_verification_token: text('email_verification_token'),
     email_verification_sent_at: timestamp('email_verification_sent_at', { withTimezone: true }),
+    force_password_change: boolean('force_password_change').default(false).notNull(),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

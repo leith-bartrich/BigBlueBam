@@ -3,11 +3,15 @@ import { registerSchema, loginSchema, updateProfileSchema } from '@bigbluebam/sh
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import * as authService from '../services/auth.service.js';
+import * as orgService from '../services/org.service.js';
 import { requireAuth } from '../plugins/auth.js';
 import { env } from '../env.js';
 import { db } from '../db/index.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
 import { organizations } from '../db/schema/organizations.js';
+import { users } from '../db/schema/users.js';
+import { loginHistory } from '../db/schema/login-history.js';
+import type { LoginFailureReason } from '../services/auth.service.js';
 import {
   checkLockout,
   recordFailure,
@@ -26,12 +30,50 @@ export default async function authRoutes(fastify: FastifyInstance) {
     maxAge: env.SESSION_TTL_SECONDS,
   };
 
+  function truncateUA(ua: unknown): string | null {
+    if (typeof ua !== 'string' || ua.length === 0) return null;
+    return ua.length > 512 ? ua.slice(0, 512) : ua;
+  }
+
+  async function recordLoginAttempt(args: {
+    userId: string | null;
+    email: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+    success: boolean;
+    failureReason: LoginFailureReason | null;
+  }) {
+    try {
+      await db.insert(loginHistory).values({
+        user_id: args.userId,
+        email: args.email,
+        ip_address: args.ipAddress,
+        user_agent: args.userAgent,
+        success: args.success,
+        failure_reason: args.failureReason,
+      });
+    } catch (err) {
+      fastify.log.warn({ err }, 'Failed to record login_history entry');
+    }
+  }
+
   fastify.post('/auth/register', async (request, reply) => {
     const data = registerSchema.parse(request.body);
-    const result = await authService.register(data);
+    const ipAddress = request.ip;
+    const userAgent = truncateUA(request.headers['user-agent']);
+    const result = await authService.register(data, { ipAddress, userAgent });
 
     reply.setCookie('session', result.session.id, cookieOptions);
     issueCsrfToken(reply);
+
+    await recordLoginAttempt({
+      userId: result.user.id,
+      email: data.email.toLowerCase(),
+      ipAddress,
+      userAgent,
+      success: true,
+      failureReason: null,
+    });
 
     return reply.status(201).send({
       data: {
@@ -55,10 +97,21 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   fastify.post('/auth/login', async (request, reply) => {
     const data = loginSchema.parse(request.body);
+    const ipAddress = request.ip;
+    const userAgent = truncateUA(request.headers['user-agent']);
+    const emailLower = data.email.toLowerCase();
 
     // HB-57: short-circuit on lockout BEFORE any DB lookup or argon2.verify
     // so brute-force attackers can't burn CPU.
     if (await checkLockout(fastify.redis, data.email)) {
+      await recordLoginAttempt({
+        userId: null,
+        email: emailLower,
+        ipAddress,
+        userAgent,
+        success: false,
+        failureReason: 'account_locked',
+      });
       return reply.status(429).send({
         error: {
           code: 'ACCOUNT_LOCKED',
@@ -70,13 +123,27 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const result = await authService.login(data.email, data.password, data.totp_code);
+      const result = await authService.login(
+        data.email,
+        data.password,
+        data.totp_code,
+        { ipAddress, userAgent },
+      );
 
       // Successful login — clear any accumulated failure counter.
       await clearLockout(fastify.redis, data.email);
 
       reply.setCookie('session', result.session.id, cookieOptions);
       issueCsrfToken(reply);
+
+      await recordLoginAttempt({
+        userId: result.user.id,
+        email: emailLower,
+        ipAddress,
+        userAgent,
+        success: true,
+        failureReason: null,
+      });
 
       return reply.send({
         data: {
@@ -100,6 +167,30 @@ export default async function authRoutes(fastify: FastifyInstance) {
         if (err.code === 'INVALID_CREDENTIALS') {
           await recordFailure(fastify.redis, data.email);
         }
+        // Look up the user_id when we have a known user (invalid password /
+        // disabled / unverified) so the history row is attributable. For
+        // user_not_found we leave user_id null.
+        let loggedUserId: string | null = null;
+        if (err.failureReason && err.failureReason !== 'user_not_found') {
+          try {
+            const [u] = await db
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.email, data.email))
+              .limit(1);
+            loggedUserId = u?.id ?? null;
+          } catch {
+            // non-fatal
+          }
+        }
+        await recordLoginAttempt({
+          userId: loggedUserId,
+          email: emailLower,
+          ipAddress,
+          userAgent,
+          success: false,
+          failureReason: err.failureReason ?? 'invalid_password',
+        });
         return reply.status(err.statusCode).send({
           error: {
             code: err.code,
@@ -158,6 +249,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         is_superuser_viewing: request.user!.is_superuser_viewing,
         timezone: user.timezone,
         notification_prefs: user.notification_prefs,
+        force_password_change: user.force_password_change,
         created_at: user.created_at.toISOString(),
       },
     });
@@ -260,7 +352,10 @@ export default async function authRoutes(fastify: FastifyInstance) {
     if (request.sessionId) {
       await authService.logout(request.sessionId);
     }
-    const newSession = await authService.createSession(userId);
+    const newSession = await authService.createSession(userId, {
+      ipAddress: request.ip,
+      userAgent: truncateUA(request.headers['user-agent']),
+    });
     // Persist the chosen org on the new session so the auth plugin uses it
     // on subsequent requests. Without this the new session's active_org_id
     // is NULL and every request falls back to the user's default membership,
@@ -282,6 +377,65 @@ export default async function authRoutes(fastify: FastifyInstance) {
         cache_bust: Date.now().toString(),
       },
     });
+  });
+
+  fastify.post('/auth/change-password', {
+    preHandler: [requireAuth],
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: '1 minute',
+        keyGenerator: (req) => req.user?.id ?? req.ip,
+      },
+    },
+  }, async (request, reply) => {
+    const schema = z.object({
+      current_password: z.string().min(1).max(200),
+      new_password: z.string().min(12).max(200),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: parsed.error.issues.map((i) => ({
+            field: i.path.join('.'),
+            issue: i.message,
+          })),
+          request_id: request.id,
+        },
+      });
+    }
+
+    try {
+      await orgService.changeOwnPassword({
+        userId: request.user!.id,
+        currentPassword: parsed.data.current_password,
+        newPassword: parsed.data.new_password,
+        currentSessionId: request.sessionId ?? null,
+      });
+      request.log.info(
+        {
+          event: 'auth.password_changed',
+          user_id: request.user!.id,
+        },
+        'User changed own password',
+      );
+      return reply.send({ data: { success: true } });
+    } catch (err) {
+      if (err instanceof orgService.InvalidCurrentPasswordError) {
+        return reply.status(401).send({
+          error: {
+            code: 'INVALID_CREDENTIALS',
+            message: err.message,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      throw err;
+    }
   });
 
   fastify.patch('/auth/me', { preHandler: [requireAuth] }, async (request, reply) => {

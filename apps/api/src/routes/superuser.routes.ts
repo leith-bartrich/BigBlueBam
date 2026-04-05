@@ -13,6 +13,7 @@ import { projects } from '../db/schema/projects.js';
 import { tasks } from '../db/schema/tasks.js';
 import { tickets } from '../db/schema/tickets.js';
 import { sessions } from '../db/schema/sessions.js';
+import { loginHistory } from '../db/schema/login-history.js';
 import { activityLog } from '../db/schema/activity-log.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
 import { requireAuth } from '../plugins/auth.js';
@@ -898,6 +899,116 @@ export default async function superuserRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // ─── PATCH /superuser/users/:id/active ───────────────────────────────────
+  fastify.patch<{
+    Params: { id: string };
+    Body: { is_active: boolean };
+  }>(
+    '/users/:id/active',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const bodySchema = z.object({ is_active: z.boolean() });
+      const parsed = bodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid body',
+            details: parsed.error.errors.map((e) => ({
+              path: e.path.join('.'),
+              message: e.message,
+            })),
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (!(await userExists(id))) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const callerId = request.user!.id;
+      const isActive = parsed.data.is_active;
+
+      const result = await db.transaction(async (tx) => {
+        if (isActive) {
+          const [u] = await tx
+            .update(users)
+            .set({
+              is_active: true,
+              disabled_at: null,
+              disabled_by: null,
+              updated_at: new Date(),
+            })
+            .where(eq(users.id, id))
+            .returning({
+              id: users.id,
+              is_active: users.is_active,
+              disabled_at: users.disabled_at,
+              disabled_by: users.disabled_by,
+            });
+          return u ?? null;
+        }
+
+        const [u] = await tx
+          .update(users)
+          .set({
+            is_active: false,
+            disabled_at: new Date(),
+            disabled_by: callerId,
+            updated_at: new Date(),
+          })
+          .where(eq(users.id, id))
+          .returning({
+            id: users.id,
+            is_active: users.is_active,
+            disabled_at: users.disabled_at,
+            disabled_by: users.disabled_by,
+          });
+        await tx.delete(sessions).where(eq(sessions.user_id, id));
+        return u ?? null;
+      });
+
+      if (!result) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      await logSuperuserAction({
+        superuserId: callerId,
+        action: 'users.active.toggle',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: { is_active: isActive },
+      });
+
+      return reply.send({
+        data: {
+          user_id: result.id,
+          is_active: result.is_active,
+          disabled_at: result.disabled_at,
+          disabled_by: result.disabled_by,
+        },
+      });
+    },
+  );
+
   // ─── POST /superuser/users/:id/sessions/revoke-all ───────────────────────
   fastify.post<{ Params: { id: string } }>(
     '/users/:id/sessions/revoke-all',
@@ -1111,6 +1222,99 @@ export default async function superuserRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send(result);
+    },
+  );
+
+  // ─── GET /superuser/users/:id/login-history ──────────────────────────────
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { limit?: string; cursor?: string; success?: string };
+  }>(
+    '/users/:id/login-history',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (!(await userExists(id))) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const q = request.query;
+      const limit = Math.min(
+        Math.max(parseInt(q.limit ?? '50', 10) || 50, 1),
+        200,
+      );
+
+      const conditions: ReturnType<typeof eq>[] = [
+        eq(loginHistory.user_id, id),
+      ];
+
+      if (q.success === 'true' || q.success === 'false') {
+        conditions.push(eq(loginHistory.success, q.success === 'true'));
+      }
+
+      if (q.cursor) {
+        const c = decodeCursor(q.cursor);
+        if (c) {
+          conditions.push(
+            (sql`("login_history"."created_at", "login_history"."id") < (${c.created_at}::timestamptz, ${c.id}::uuid)` as unknown) as ReturnType<typeof eq>,
+          );
+        }
+      }
+
+      const rows = await db
+        .select({
+          id: loginHistory.id,
+          user_id: loginHistory.user_id,
+          email: loginHistory.email,
+          ip_address: loginHistory.ip_address,
+          user_agent: loginHistory.user_agent,
+          success: loginHistory.success,
+          failure_reason: loginHistory.failure_reason,
+          created_at: loginHistory.created_at,
+        })
+        .from(loginHistory)
+        .where(and(...conditions))
+        .orderBy(desc(loginHistory.created_at), desc(loginHistory.id))
+        .limit(limit + 1);
+
+      const hasMore = rows.length > limit;
+      const data = hasMore ? rows.slice(0, limit) : rows;
+      const nextCursor =
+        hasMore && data.length > 0
+          ? encodeCursor({
+              created_at: data[data.length - 1]!.created_at.toISOString(),
+              id: data[data.length - 1]!.id,
+            })
+          : null;
+
+      await logSuperuserAction({
+        superuserId: request.user!.id,
+        action: 'users.login_history.view',
+        targetType: 'user',
+        targetId: id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] as string | undefined,
+        details: {
+          limit,
+          success_filter: q.success ?? null,
+          returned: data.length,
+        },
+      });
+
+      return reply.send({
+        data: data.map((r) => ({
+          ...r,
+          created_at: r.created_at.toISOString(),
+        })),
+        next_cursor: nextCursor,
+      });
     },
   );
 }

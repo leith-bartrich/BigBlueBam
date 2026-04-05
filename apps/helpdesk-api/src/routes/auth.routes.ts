@@ -177,6 +177,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   // POST /helpdesk/auth/login
   // HB-33: 5 attempts per 15 minutes per IP to slow brute-force guessing.
+  // TODO: record helpdesk login attempts to a `helpdesk_login_history` table
+  // once that schema exists. The BBB `login_history` table cannot be used
+  // here because its user_id FK points at `users`, not `helpdesk_users`.
   fastify.post('/helpdesk/auth/login', {
     config: {
       rateLimit: {

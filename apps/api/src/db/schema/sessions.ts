@@ -14,6 +14,10 @@ export const sessions = pgTable(
     active_org_id: uuid('active_org_id').references(() => organizations.id, {
       onDelete: 'set null',
     }),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    last_used_at: timestamp('last_used_at', { withTimezone: true }),
+    ip_address: text('ip_address'),
+    user_agent: text('user_agent'),
   },
   (table) => [
     index('sessions_user_id_idx').on(table.user_id),

@@ -8,6 +8,23 @@ import { sessions } from '../db/schema/sessions.js';
 import { env } from '../env.js';
 import type { RegisterInput, LoginInput, UpdateProfileInput } from '@bigbluebam/shared';
 
+export type LoginFailureReason =
+  | 'user_not_found'
+  | 'invalid_password'
+  | 'account_disabled'
+  | 'account_locked'
+  | 'unverified_email';
+
+export interface SessionMetadata {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+function truncateUserAgent(ua: string | null | undefined): string | null {
+  if (!ua) return null;
+  return ua.length > 512 ? ua.slice(0, 512) : ua;
+}
+
 // Precomputed dummy Argon2id hash used to equalize wall-clock time in login()
 // when the supplied email does not correspond to a real user, preventing
 // timing-based email enumeration. Lazily initialized once per process.
@@ -27,7 +44,7 @@ function slugify(text: string): string {
     .slice(0, 100);
 }
 
-export async function register(data: RegisterInput) {
+export async function register(data: RegisterInput, meta?: SessionMetadata) {
   const passwordHash = await argon2.hash(data.password);
   const orgSlug = slugify(data.org_name);
 
@@ -51,7 +68,7 @@ export async function register(data: RegisterInput) {
       })
       .returning();
 
-    const session = await createSessionInTx(tx, user!.id);
+    const session = await createSessionInTx(tx, user!.id, meta);
 
     return { org: org!, user: user!, session };
   });
@@ -59,7 +76,12 @@ export async function register(data: RegisterInput) {
   return result;
 }
 
-export async function login(email: string, password: string, _totpCode?: string) {
+export async function login(
+  email: string,
+  password: string,
+  _totpCode?: string,
+  meta?: SessionMetadata,
+) {
   const [user] = await db
     .select()
     .from(users)
@@ -72,19 +94,19 @@ export async function login(email: string, password: string, _totpCode?: string)
     // "user exists but password is wrong" (email enumeration defense).
     const dummyHash = await getDummyPasswordHash();
     await argon2.verify(dummyHash, password);
-    throw new AuthError('INVALID_CREDENTIALS', 'Invalid email or password');
+    throw new AuthError('INVALID_CREDENTIALS', 'Invalid email or password', 401, 'user_not_found');
   }
 
   if (!user.is_active) {
-    throw new AuthError('ACCOUNT_DISABLED', 'Account is disabled');
+    throw new AuthError('ACCOUNT_DISABLED', 'Account is disabled', 401, 'account_disabled');
   }
 
   const valid = await argon2.verify(user.password_hash, password);
   if (!valid) {
-    throw new AuthError('INVALID_CREDENTIALS', 'Invalid email or password');
+    throw new AuthError('INVALID_CREDENTIALS', 'Invalid email or password', 401, 'invalid_password');
   }
 
-  const session = await createSession(user.id);
+  const session = await createSession(user.id, meta);
 
   // Update last_seen_at
   await db
@@ -114,7 +136,7 @@ export async function setSessionActiveOrgId(sessionId: string, orgId: string | n
     .where(eq(sessions.id, sessionId));
 }
 
-export async function createSession(userId: string) {
+export async function createSession(userId: string, meta?: SessionMetadata) {
   const sessionId = nanoid(48);
   const expiresAt = new Date(Date.now() + env.SESSION_TTL_SECONDS * 1000);
 
@@ -125,13 +147,19 @@ export async function createSession(userId: string) {
       user_id: userId,
       expires_at: expiresAt,
       data: {},
+      ip_address: meta?.ipAddress ?? null,
+      user_agent: truncateUserAgent(meta?.userAgent ?? null),
     })
     .returning();
 
   return session!;
 }
 
-async function createSessionInTx(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], userId: string) {
+async function createSessionInTx(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  userId: string,
+  meta?: SessionMetadata,
+) {
   const sessionId = nanoid(48);
   const expiresAt = new Date(Date.now() + env.SESSION_TTL_SECONDS * 1000);
 
@@ -142,6 +170,8 @@ async function createSessionInTx(tx: Parameters<Parameters<typeof db.transaction
       user_id: userId,
       expires_at: expiresAt,
       data: {},
+      ip_address: meta?.ipAddress ?? null,
+      user_agent: truncateUserAgent(meta?.userAgent ?? null),
     })
     .returning();
 
@@ -174,11 +204,18 @@ export async function updateProfile(userId: string, data: UpdateProfileInput) {
 export class AuthError extends Error {
   code: string;
   statusCode: number;
+  failureReason: LoginFailureReason | null;
 
-  constructor(code: string, message: string, statusCode = 401) {
+  constructor(
+    code: string,
+    message: string,
+    statusCode = 401,
+    failureReason: LoginFailureReason | null = null,
+  ) {
     super(message);
     this.name = 'AuthError';
     this.code = code;
     this.statusCode = statusCode;
+    this.failureReason = failureReason;
   }
 }

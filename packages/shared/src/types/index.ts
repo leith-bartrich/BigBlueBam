@@ -103,6 +103,7 @@ export interface User {
   is_superuser?: boolean;
   is_superuser_viewing?: boolean;
   role?: string;
+  force_password_change?: boolean;
 }
 
 export interface Project {

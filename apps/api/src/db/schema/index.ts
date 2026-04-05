@@ -26,3 +26,4 @@ export { superuserAuditLog } from './superuser-audit-log.js';
 export { impersonationSessions } from './impersonation-sessions.js';
 export { guestInvitations } from './guest-invitations.js';
 export { organizationMemberships } from './organization-memberships.js';
+export { loginHistory } from './login-history.js';
