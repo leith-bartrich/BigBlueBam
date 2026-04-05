@@ -162,6 +162,14 @@ export function ProjectDashboardPage({ projectId, onNavigate }: ProjectDashboard
                 {project?.name} Dashboard
               </h1>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate(`/projects/${projectId}/reports`)}
+            >
+              <BarChart3 className="h-4 w-4" />
+              Reports
+            </Button>
           </div>
 
           {/* Top row: Sprint Progress + Priority Breakdown + Overdue */}

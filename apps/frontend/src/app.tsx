@@ -9,6 +9,7 @@ import { MyWorkPage } from '@/pages/my-work';
 import { ProjectDashboardPage } from '@/pages/project-dashboard';
 import { AuditLogPage } from '@/pages/audit-log';
 import { SprintReportPage } from '@/pages/sprint-report';
+import { ProjectReportsPage } from '@/pages/project-reports';
 import { SuperuserPage } from '@/pages/superuser';
 import { SuperuserPeopleListPage } from '@/pages/superuser/people-list';
 import { SuperuserPeopleDetailPage } from '@/pages/superuser/people-detail';
@@ -28,6 +29,7 @@ type Route =
   | { page: 'project-dashboard'; projectId: string }
   | { page: 'audit-log'; projectId: string }
   | { page: 'sprint-report'; projectId: string; sprintId: string }
+  | { page: 'project-reports'; projectId: string }
   | { page: 'settings' }
   | { page: 'my-work' }
   | { page: 'superuser' }
@@ -68,6 +70,10 @@ function parseRoute(path: string): Route {
   const auditMatch = p.match(/^\/projects\/([^/]+)\/audit-log$/);
   if (auditMatch) {
     return { page: 'audit-log', projectId: auditMatch[1]! };
+  }
+  const projectReportsMatch = p.match(/^\/projects\/([^/]+)\/reports$/);
+  if (projectReportsMatch) {
+    return { page: 'project-reports', projectId: projectReportsMatch[1]! };
   }
   const sprintReportMatch = p.match(/^\/projects\/([^/]+)\/sprints\/([^/]+)\/report$/);
   if (sprintReportMatch) {
@@ -195,6 +201,8 @@ export function App() {
       return <AuditLogPage projectId={route.projectId} onNavigate={navigate} />;
     case 'sprint-report':
       return <SprintReportPage projectId={route.projectId} sprintId={route.sprintId} onNavigate={navigate} />;
+    case 'project-reports':
+      return <ProjectReportsPage projectId={route.projectId} onNavigate={navigate} />;
     case 'settings':
       return <SettingsPage onNavigate={navigate} />;
     case 'my-work':

@@ -7,85 +7,69 @@ import { phases } from '../db/schema/phases.js';
 import { users } from '../db/schema/users.js';
 import { timeEntries } from '../db/schema/time-entries.js';
 import { requireAuth } from '../plugins/auth.js';
+import {
+  buildBurndown,
+  buildVelocity,
+  buildCfd,
+} from '../services/report.service.js';
 
 export default async function reportRoutes(fastify: FastifyInstance) {
-  // Velocity report: last N sprints with velocity
+  // Velocity report: last N completed sprints with committed vs completed points
   fastify.get<{
     Params: { id: string };
-    Querystring: { count?: string };
+    Querystring: { limit?: string; count?: string };
   }>(
     '/projects/:id/reports/velocity',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const count = request.query.count ? parseInt(request.query.count, 10) : 10;
-
-      const result = await db
-        .select({
-          id: sprints.id,
-          name: sprints.name,
-          velocity: sprints.velocity,
-          start_date: sprints.start_date,
-          end_date: sprints.end_date,
-          closed_at: sprints.closed_at,
-        })
-        .from(sprints)
-        .where(
-          and(
-            eq(sprints.project_id, request.params.id),
-            eq(sprints.status, 'completed'),
-          ),
-        )
-        .orderBy(desc(sprints.closed_at))
-        .limit(count);
-
-      // Reverse so oldest is first (for charting)
-      result.reverse();
-
-      const avgVelocity =
-        result.length > 0
-          ? Math.round(
-              result.reduce((sum, s) => sum + (s.velocity ?? 0), 0) / result.length,
-            )
-          : 0;
-
-      return reply.send({
-        data: {
-          sprints: result,
-          average_velocity: avgVelocity,
-        },
-      });
+      const raw = request.query.limit ?? request.query.count;
+      const limit = raw ? Math.max(1, Math.min(50, parseInt(raw, 10) || 10)) : 10;
+      const data = await buildVelocity(request.params.id, limit);
+      return reply.send({ data });
     },
   );
 
-  // Burndown report
+  // Sprint burndown report
   fastify.get<{
     Params: { id: string };
-    Querystring: { sprint_id: string };
+    Querystring: { sprint_id?: string };
   }>(
     '/projects/:id/reports/burndown',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.query.sprint_id) {
+      let sprintId = request.query.sprint_id;
+      if (!sprintId) {
         return reply.status(400).send({
           error: {
             code: 'BAD_REQUEST',
             message: 'sprint_id query parameter is required',
-            details: [],
+            details: [{ field: 'sprint_id', issue: 'required' }],
             request_id: request.id,
           },
         });
       }
 
-      const sprintId = request.query.sprint_id;
+      // Support the 'ACTIVE' sentinel used by the project dashboard.
+      if (sprintId === 'ACTIVE') {
+        const [active] = await db
+          .select({ id: sprints.id })
+          .from(sprints)
+          .where(
+            and(
+              eq(sprints.project_id, request.params.id),
+              eq(sprints.status, 'active'),
+            ),
+          )
+          .orderBy(desc(sprints.start_date))
+          .limit(1);
+        if (!active) {
+          return reply.send({ data: null });
+        }
+        sprintId = active.id;
+      }
 
-      // Get the sprint
-      const [sprint] = await db
-        .select()
-        .from(sprints)
-        .where(eq(sprints.id, sprintId))
-        .limit(1);
-
-      if (!sprint) {
+      const data = await buildBurndown(sprintId);
+      if (!data) {
         return reply.status(404).send({
           error: {
             code: 'NOT_FOUND',
@@ -95,128 +79,37 @@ export default async function reportRoutes(fastify: FastifyInstance) {
           },
         });
       }
-
-      // Get all tasks in the sprint
-      const sprintTasks = await db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.sprint_id, sprintId));
-
-      const totalPoints = sprintTasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
-
-      // Build daily burndown from completed_at dates
-      const startDate = sprint.start_date
-        ? new Date(sprint.start_date)
-        : sprint.created_at;
-      const endDate = sprint.end_date
-        ? new Date(sprint.end_date)
-        : new Date();
-      const now = new Date();
-      const effectiveEnd = endDate < now ? endDate : now;
-
-      const days: Array<{ date: string; remaining_points: number; completed_points: number }> = [];
-
-      for (
-        let d = new Date(startDate);
-        d <= effectiveEnd;
-        d.setDate(d.getDate() + 1)
-      ) {
-        const dateStr = d.toISOString().split('T')[0]!;
-        const dayEnd = new Date(dateStr + 'T23:59:59.999Z');
-
-        const completedByDay = sprintTasks.filter(
-          (t) => t.completed_at && t.completed_at <= dayEnd,
-        );
-        const completedPoints = completedByDay.reduce(
-          (sum, t) => sum + (t.story_points ?? 0),
-          0,
-        );
-
-        days.push({
-          date: dateStr,
-          remaining_points: totalPoints - completedPoints,
-          completed_points: completedPoints,
-        });
-      }
-
-      return reply.send({
-        data: {
-          sprint_id: sprintId,
-          total_points: totalPoints,
-          days,
-        },
-      });
+      return reply.send({ data });
     },
   );
 
   // Cumulative flow diagram
   fastify.get<{
     Params: { id: string };
-    Querystring: { days?: string };
+    Querystring: { sprint_id?: string; days?: string };
   }>(
     '/projects/:id/reports/cfd',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const numDays = request.query.days ? parseInt(request.query.days, 10) : 30;
-
-      // Get project phases
-      const projectPhases = await db
-        .select()
-        .from(phases)
-        .where(eq(phases.project_id, request.params.id))
-        .orderBy(asc(phases.position));
-
-      // Get activity log for task.moved and task.created actions
-      // Simplified approach: count current tasks per phase
-      // For a proper CFD, we'd need historical snapshots.
-      // Here we compute the current state and approximate using activity_log.
-      const projectTasks = await db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.project_id, request.params.id));
-
-      // Current snapshot
-      const phaseMap = new Map<string, string>();
-      for (const p of projectPhases) {
-        phaseMap.set(p.id, p.name);
+      const days = request.query.days
+        ? Math.max(1, Math.min(180, parseInt(request.query.days, 10) || 30))
+        : 30;
+      const data = await buildCfd(
+        request.params.id,
+        request.query.sprint_id ?? null,
+        days,
+      );
+      if (!data) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
       }
-
-      const currentCounts: Record<string, number> = {};
-      for (const p of projectPhases) {
-        currentCounts[p.name] = 0;
-      }
-      for (const t of projectTasks) {
-        if (t.phase_id && phaseMap.has(t.phase_id)) {
-          currentCounts[phaseMap.get(t.phase_id)!] =
-            (currentCounts[phaseMap.get(t.phase_id)!] ?? 0) + 1;
-        }
-      }
-
-      // Build daily data for the last N days as current snapshot
-      // (a more sophisticated implementation would query historical data)
-      const today = new Date();
-      const days: Array<{ date: string; counts: Record<string, number> }> = [];
-
-      for (let i = numDays - 1; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0]!;
-
-        // For simplicity, use current counts for today, and approximate for past days
-        if (i === 0) {
-          days.push({ date: dateStr, counts: { ...currentCounts } });
-        } else {
-          // Approximate: use current counts (proper implementation would store snapshots)
-          days.push({ date: dateStr, counts: { ...currentCounts } });
-        }
-      }
-
-      return reply.send({
-        data: {
-          phases: projectPhases.map((p) => p.name),
-          days,
-        },
-      });
+      return reply.send({ data });
     },
   );
 
