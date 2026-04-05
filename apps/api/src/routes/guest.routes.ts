@@ -10,6 +10,8 @@ import { notifications } from '../db/schema/notifications.js';
 import { organizations } from '../db/schema/organizations.js';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireOrgRole } from '../middleware/authorize.js';
+import { sendGuestInvitationEmail, isSmtpConfigured } from '../lib/email-queue.js';
+import { env } from '../env.js';
 
 export default async function guestRoutes(fastify: FastifyInstance) {
   // ── POST /v1/guests/invite ─────────────────────────────────────────
@@ -91,20 +93,57 @@ export default async function guestRoutes(fastify: FastifyInstance) {
         })
         .returning();
 
-      // ⚠️ SECURITY WARNING (P1-30): This response currently returns the raw
-      // invitation token (both in `token` and embedded in `invite_url`) to the
-      // admin who created the invitation. In production, invitation tokens
-      // MUST be delivered to the invitee via email only — exposing them in
-      // the admin API response is a leakage risk (browser history, logs,
-      // screenshots, XSS exfiltration). Once SMTP is wired up, this handler
-      // must stop returning the token and instead trigger an email dispatch.
-      // Until then, this is knowingly insecure and gated behind admin scope.
-      return reply.status(201).send({
-        data: {
-          ...invitation,
-          invite_url: `/v1/guests/accept/${token}`,
-        },
-      });
+      // (P1-30) Invitation tokens MUST be delivered to the invitee via email
+      // only. We do not return the raw token in the admin API response —
+      // exposing it would leak credentials into browser history, server
+      // access logs, screenshots, or any downstream observability tooling.
+      // The inviter sees only non-sensitive metadata + an `email_sent` flag.
+      //
+      // Resolve the inviter's display name + org name for the email body.
+      const [inviter] = await db
+        .select({ display_name: users.display_name })
+        .from(users)
+        .where(eq(users.id, request.user!.id))
+        .limit(1);
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, request.user!.org_id))
+        .limit(1);
+
+      const smtpConfigured = isSmtpConfigured();
+      let emailSent = false;
+      if (smtpConfigured) {
+        emailSent = await sendGuestInvitationEmail({
+          to: data.email,
+          token,
+          orgName: org?.name ?? 'BigBlueBam',
+          inviterName: inviter?.display_name ?? 'A teammate',
+        });
+      } else {
+        request.log.warn(
+          { invitation_id: invitation!.id, email: data.email },
+          'SMTP is not configured — guest invitation email was NOT sent. Set SMTP_HOST to enable delivery. (P1-30)',
+        );
+      }
+
+      const responseData: Record<string, unknown> = {
+        id: invitation!.id,
+        email: invitation!.email,
+        role: invitation!.role,
+        expires_at: invitation!.expires_at,
+        invited_at: invitation!.created_at,
+        email_sent: emailSent,
+      };
+
+      // Dev-only: echo the token back for local testing convenience. Gated
+      // on NODE_ENV !== 'production' so production responses never leak it.
+      if (env.NODE_ENV !== 'production') {
+        responseData.token = token;
+        responseData.invite_url = `/guests/accept/${token}`;
+      }
+
+      return reply.status(201).send({ data: responseData });
     },
   );
 
@@ -114,6 +153,9 @@ export default async function guestRoutes(fastify: FastifyInstance) {
     '/v1/guests/invitations',
     { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
+      // (P1-30) Never return the raw invitation token in list responses —
+      // tokens are bearer credentials and must only be delivered to the
+      // invitee via the invitation email.
       const invitations = await db
         .select({
           id: guestInvitations.id,
@@ -121,7 +163,6 @@ export default async function guestRoutes(fastify: FastifyInstance) {
           project_ids: guestInvitations.project_ids,
           channel_ids: guestInvitations.channel_ids,
           invited_by: guestInvitations.invited_by,
-          token: guestInvitations.token,
           accepted_at: guestInvitations.accepted_at,
           expires_at: guestInvitations.expires_at,
           created_at: guestInvitations.created_at,

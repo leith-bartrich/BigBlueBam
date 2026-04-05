@@ -34,6 +34,18 @@ const envSchema = z.object({
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
+
+  // SMTP / email (P1-30). Optional — if SMTP_HOST is unset, outbound emails
+  // are logged by the worker instead of delivered. The API enqueues jobs to
+  // the shared `email` BullMQ queue; the worker owns actual delivery.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('noreply@bigbluebam.com'),
+
+  // Public URL used to build invitation acceptance links in emails.
+  FRONTEND_URL: z.string().default('http://localhost/b3'),
 });
 
 export type Env = z.infer<typeof envSchema>;
