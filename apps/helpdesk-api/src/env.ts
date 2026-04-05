@@ -20,6 +20,10 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
 
+  // HB-57: per-email account lockout after repeated failed logins.
+  LOGIN_LOCKOUT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  LOGIN_LOCKOUT_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
+
   // SMTP (optional — emails disabled when not set)
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
@@ -34,7 +38,14 @@ const envSchema = z.object({
   S3_BUCKET: z.string().default('bigbluebam-uploads'),
   S3_REGION: z.string().default('us-east-1'),
 
-  // API key for agent routes (BBB engineers)
+  // DEPRECATED (HB-28 + HB-49): shared secret previously used for
+  // /helpdesk/api/agents/* authentication. The agent routes now use
+  // per-agent, Argon2id-hashed, rotatable keys stored in
+  // helpdesk_agent_api_keys (migration 0008, minted via
+  // `cli.js create-helpdesk-agent-key`). This env var is still read by
+  // settings.routes.ts's requireAdminAuth during a transition window
+  // and will be removed once that route migrates off it. Do NOT add
+  // new call sites.
   AGENT_API_KEY: z.string().optional(),
 
   COOKIE_DOMAIN: z.string().optional(),

@@ -17,6 +17,13 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: varchar('email', { length: 320 }).notNull(),
+  display_name: varchar('display_name', { length: 100 }).notNull(),
+  is_active: boolean('is_active').default(true).notNull(),
+});
+
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 255 }).notNull(),

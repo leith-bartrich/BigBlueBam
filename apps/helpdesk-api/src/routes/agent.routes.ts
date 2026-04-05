@@ -1,12 +1,12 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { eq, desc, and, sql } from 'drizzle-orm';
-import crypto from 'node:crypto';
+import argon2 from 'argon2';
 import { db } from '../db/index.js';
 import { tickets } from '../db/schema/tickets.js';
 import { ticketMessages } from '../db/schema/ticket-messages.js';
-import { projects } from '../db/schema/bbb-refs.js';
-import { env } from '../env.js';
+import { projects, users } from '../db/schema/bbb-refs.js';
+import { helpdeskAgentApiKeys } from '../db/schema/helpdesk-agent-api-keys.js';
 import {
   broadcastTicketMessage,
   broadcastTicketStatusChanged,
@@ -38,19 +38,17 @@ interface AgentIdentity {
   orgId: string | null;
 }
 
-/**
- * Timing-safe comparison of two strings to prevent timing attacks on the
- * shared agent API key. Returns false if lengths differ (timingSafeEqual
- * throws on length mismatch). (HB-27)
- */
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  try {
-    return crypto.timingSafeEqual(bufA, bufB);
-  } catch {
-    return false;
+declare module 'fastify' {
+  interface FastifyRequest {
+    /**
+     * BBB user id of the agent whose X-Agent-Key authenticated this
+     * request. Populated by requireAgentAuth once the key is verified.
+     * Distinct from the session-cookie-derived identity used for
+     * org-scoping / message authorship: the key is the authoritative
+     * authentication factor (HB-28 + HB-49), while the session cookie
+     * is purely informational.
+     */
+    agentUserId: string | null;
   }
 }
 
@@ -83,49 +81,110 @@ async function resolveSessionIdentity(sessionCookie: string | undefined): Promis
 }
 
 /**
- * Verify the request has a valid agent API key.
+ * Verify the request has a valid per-agent API key (HB-28 + HB-49).
  *
- * SECURITY (HB-12): Agents MUST authenticate via the X-Agent-Key header or
- * `Authorization: Bearer <key>`. A BBB session cookie alone is NOT sufficient
- * — previously this function accepted any valid BBB session as agent auth,
- * which meant any logged-in end-user could call helpdesk agent endpoints.
- * The session cookie is still read downstream (in route handlers) for
- * identity/scoping purposes, but it does not grant access on its own.
+ * Agents MUST present a token via the X-Agent-Key header (Bearer form is
+ * NOT supported on this route, since Bearer collides with end-customer
+ * JWTs on other helpdesk routes). The token is of the form
+ * `hdag_<base64url>`; its first 8 chars are the key_prefix we index on,
+ * and the full token is Argon2id-verified against the stored hash in
+ * helpdesk_agent_api_keys.
+ *
+ * This used to accept a raw shared secret from env.AGENT_API_KEY with a
+ * timing-safe string compare, and would also fall back to a BBB session
+ * cookie alone (HB-49) — both removed here:
+ *   - The shared secret had no audit trail, couldn't be rotated per-
+ *     agent, and wasn't hashed at rest.
+ *   - Session-cookie fallback meant any logged-in BBB end-user could
+ *     call helpdesk agent endpoints with no role check against
+ *     organization_memberships — a fragile cross-app auth surface.
+ *
+ * Per-agent rows give us a real audit trail (bbb_user_id on the key),
+ * per-key rotation via revoked_at / expires_at, and Argon2id hashing at
+ * rest matching the bbam_ API key model.
  */
 async function requireAgentAuth(request: FastifyRequest, reply: FastifyReply) {
-  const agentKey = env.AGENT_API_KEY;
+  const token = request.headers['x-agent-key'] as string | undefined;
 
-  if (!agentKey) {
-    return reply.status(503).send({
-      error: {
-        code: 'AGENT_AUTH_DISABLED',
-        message: 'Agent authentication is not configured',
-        details: [],
-        request_id: request.id,
-      },
-    });
-  }
-
-  const provided =
-    (request.headers['x-agent-key'] as string | undefined) ??
-    request.headers.authorization?.replace('Bearer ', '');
-
-  if (!provided || !timingSafeStringEqual(provided, agentKey)) {
+  if (!token || token.length < 9) {
     return reply.status(401).send({
       error: {
         code: 'UNAUTHORIZED',
-        message: 'Invalid agent API key',
+        message: 'Missing or malformed X-Agent-Key header',
         details: [],
         request_id: request.id,
       },
     });
   }
 
-  // Auth OK. Proceed — per-route handlers may additionally consult the
-  // session cookie for caller identity / org-scoping.
+  const prefix = token.slice(0, 8);
+
+  const candidates = await db
+    .select({
+      id: helpdeskAgentApiKeys.id,
+      bbb_user_id: helpdeskAgentApiKeys.bbb_user_id,
+      key_hash: helpdeskAgentApiKeys.key_hash,
+      expires_at: helpdeskAgentApiKeys.expires_at,
+      revoked_at: helpdeskAgentApiKeys.revoked_at,
+      user_is_active: users.is_active,
+    })
+    .from(helpdeskAgentApiKeys)
+    .innerJoin(users, eq(users.id, helpdeskAgentApiKeys.bbb_user_id))
+    .where(eq(helpdeskAgentApiKeys.key_prefix, prefix))
+    .limit(10);
+
+  // DoS mitigation (same as apps/api/src/plugins/auth.ts): an 8-char
+  // random prefix has ~2.8e14 combinations so natural collisions are
+  // vanishingly rare. Seeing >3 candidates suggests an attacker is
+  // trying to force multiple Argon2 verifications per request, so we
+  // cap verification to the first candidate and log a warning.
+  const verifyCandidates = candidates.length > 3 ? candidates.slice(0, 1) : candidates;
+  if (candidates.length > 3) {
+    request.log.warn(
+      { prefix, candidate_count: candidates.length },
+      'Suspicious number of helpdesk agent key candidates for prefix; limiting to first candidate',
+    );
+  }
+
+  const now = new Date();
+  for (const candidate of verifyCandidates) {
+    // Always run argon2.verify BEFORE checking expiry/revoked so that
+    // expired-but-valid-hash and invalid-hash keys take the same wall
+    // time — otherwise short-circuiting would leak (via timing) whether
+    // a given prefix corresponds to a real key.
+    const valid = await argon2.verify(candidate.key_hash, token);
+    if (!valid) continue;
+    if (candidate.revoked_at && new Date(candidate.revoked_at) <= now) continue;
+    if (candidate.expires_at && new Date(candidate.expires_at) <= now) continue;
+    if (!candidate.user_is_active) continue;
+
+    request.agentUserId = candidate.bbb_user_id;
+
+    // Fire-and-forget last_used_at update — don't block the response on it.
+    db.update(helpdeskAgentApiKeys)
+      .set({ last_used_at: now })
+      .where(eq(helpdeskAgentApiKeys.id, candidate.id))
+      .catch((err) => {
+        request.log.warn({ err }, 'Failed to update helpdesk_agent_api_keys.last_used_at');
+      });
+
+    return;
+  }
+
+  return reply.status(401).send({
+    error: {
+      code: 'UNAUTHORIZED',
+      message: 'Invalid agent API key',
+      details: [],
+      request_id: request.id,
+    },
+  });
 }
 
 export default async function agentRoutes(fastify: FastifyInstance) {
+  fastify.decorateRequest('agentUserId', null);
+
+
   // GET /tickets — list tickets visible to the caller (HB-6: org-scoped).
   //
   // Scoping model:
