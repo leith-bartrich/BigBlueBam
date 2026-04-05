@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useTicket, usePostMessage, useReopenTicket } from '@/hooks/use-tickets';
+import { useTicket, usePostMessage, useReopenTicket, useMarkDuplicate, useUnmarkDuplicate } from '@/hooks/use-tickets';
 import { useRealtimeTicket } from '@/hooks/use-realtime-ticket';
 import { useTicketMessages } from '@/hooks/use-ticket-messages';
 import { useSendTyping } from '@/hooks/use-typing';
@@ -12,7 +12,7 @@ import { TypingIndicator } from '@/components/typing-indicator';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { api } from '@/lib/api';
-import { ArrowLeft, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare } from 'lucide-react';
+import { ArrowLeft, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare, Copy, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface TicketDetailPageProps {
@@ -25,12 +25,17 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
   const { data: ticket, isLoading, error } = useTicket(ticketId);
   const postMessage = usePostMessage(ticketId);
   const reopenTicket = useReopenTicket(ticketId);
+  const markDuplicate = useMarkDuplicate(ticketId);
+  const unmarkDuplicate = useUnmarkDuplicate(ticketId);
   const { user } = useAuthStore();
   const { visibleMessages, hasMore, loadMore, totalMessages } = useTicketMessages(ticketId);
   const { sendTyping } = useSendTyping(ticketId);
 
   const [replyText, setReplyText] = useState('');
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [duplicateInput, setDuplicateInput] = useState('');
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [showShareBanter, setShowShareBanter] = useState(false);
   const [banterChannelId, setBanterChannelId] = useState('');
   const [banterMessage, setBanterMessage] = useState('');
@@ -108,6 +113,46 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
   const handleReopen = async () => {
     try {
       await reopenTicket.mutateAsync();
+    } catch {
+      // error handled by mutation
+    }
+  };
+
+  // HB-55: submit the mark-as-duplicate dialog. Surfaces the server's
+  // error code verbatim into a user-facing sentence so customers can
+  // understand why their submission was rejected (e.g. primary is
+  // closed, primary is itself a duplicate, primary not owned by them).
+  const handleSubmitDuplicate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDuplicateError(null);
+    const trimmed = duplicateInput.trim().replace(/^#/, '');
+    if (!trimmed) {
+      setDuplicateError('Please enter a ticket number.');
+      return;
+    }
+    try {
+      await markDuplicate.mutateAsync(trimmed);
+      setShowDuplicateDialog(false);
+      setDuplicateInput('');
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      if (e?.code === 'PRIMARY_IS_DUPLICATE') {
+        setDuplicateError('That ticket is itself a duplicate. Point at its primary instead.');
+      } else if (e?.code === 'PRIMARY_CLOSED') {
+        setDuplicateError('That ticket is closed and cannot accept duplicates.');
+      } else if (e?.code === 'NOT_FOUND') {
+        setDuplicateError('No matching ticket found.');
+      } else if (e?.code === 'VALIDATION_ERROR') {
+        setDuplicateError(e.message ?? 'Invalid ticket number.');
+      } else {
+        setDuplicateError(e?.message ?? 'Failed to mark as duplicate.');
+      }
+    }
+  };
+
+  const handleUnmarkDuplicate = async () => {
+    try {
+      await unmarkDuplicate.mutateAsync();
     } catch {
       // error handled by mutation
     }
@@ -322,6 +367,17 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
               </div>
             )}
           </div>
+          {/* HB-55: Mark as duplicate (hidden once merged by an agent) */}
+          {!isClosedOrResolved && !ticket.duplicate_of && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => { setDuplicateError(null); setShowDuplicateDialog(true); }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Mark as duplicate
+            </Button>
+          )}
           {/* Close button */}
           {!isClosedOrResolved && (
             <Button
@@ -336,6 +392,90 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
           )}
         </div>
       </div>
+
+      {/* HB-55: duplicate-of banner (visible when this ticket points at a primary) */}
+      {ticket.duplicate_of && (
+        <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-3 mb-6">
+          <span className="text-sm text-blue-800 dark:text-blue-300">
+            This ticket was marked as a duplicate of{' '}
+            <button
+              onClick={() => onNavigate(`/tickets/${ticket.duplicate_of!.id}`)}
+              className="font-semibold underline hover:text-blue-900 dark:hover:text-blue-200"
+            >
+              #{ticket.duplicate_of.ticket_number}
+            </button>
+            {'. '}
+            Updates will be posted on that ticket.
+          </span>
+          {!ticket.merged_at && (
+            <Button size="sm" variant="secondary" onClick={handleUnmarkDuplicate} loading={unmarkDuplicate.isPending}>
+              <X className="h-3.5 w-3.5" />
+              Unmark
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* HB-55: "duplicates merged in" callout on the primary ticket */}
+      {ticket.duplicates && ticket.duplicates.length > 0 && (
+        <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg px-4 py-3 mb-6">
+          <div className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-2 uppercase tracking-wide">
+            Duplicates of this ticket
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {ticket.duplicates.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => onNavigate(`/tickets/${d.id}`)}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
+                title={d.subject}
+              >
+                <span className="font-mono text-zinc-400">#{d.ticket_number}</span>
+                <span className="truncate max-w-[160px]">{d.subject}</span>
+                {d.merged_at && <span className="text-[10px] text-zinc-400">(merged)</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* HB-55: Mark-as-duplicate dialog */}
+      {showDuplicateDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowDuplicateDialog(false)}>
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-2">Mark as duplicate</h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+              Enter the ticket number of your primary ticket. Your current ticket will point at it and updates should be posted there.
+            </p>
+            <form onSubmit={handleSubmitDuplicate} className="space-y-3">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={duplicateInput}
+                onChange={(e) => setDuplicateInput(e.target.value)}
+                placeholder="e.g. #123"
+                autoFocus
+                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              {duplicateError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{duplicateError}</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDuplicateDialog(false)}
+                  className="px-3 py-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <Button type="submit" loading={markDuplicate.isPending} disabled={!duplicateInput.trim()}>
+                  Confirm
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Description */}
       <div className="mb-6 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">

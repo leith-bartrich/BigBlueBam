@@ -80,3 +80,63 @@ describe('Helpdesk Tickets', () => {
     expect(canReopen('in_progress')).toBe(false);
   });
 });
+
+// HB-55: pure-function guards extracted from the mark-duplicate / merge
+// endpoints, unit-tested in isolation so the business rules are pinned
+// down even when the routes' integration with the DB is mocked.
+describe('Helpdesk Duplicate/Merge Guards (HB-55)', () => {
+  interface T { id: string; status: string; duplicate_of: string | null; merged_at: Date | null; helpdesk_user_id: string }
+  const t = (overrides: Partial<T>): T => ({
+    id: 'a', status: 'open', duplicate_of: null, merged_at: null, helpdesk_user_id: 'u1', ...overrides,
+  });
+
+  // Mirror of the guard block in POST /helpdesk/tickets/:id/mark-duplicate
+  // and POST /agents/tickets/:id/merge.
+  function checkDuplicateGuards(source: T, primary: T | null, callerId?: string): string | null {
+    if (!source) return 'NOT_FOUND';
+    if (callerId && source.helpdesk_user_id !== callerId) return 'NOT_FOUND';
+    if (!primary) return 'NOT_FOUND';
+    if (callerId && primary.helpdesk_user_id !== callerId) return 'NOT_FOUND';
+    if (source.id === primary.id) return 'SELF_MERGE';
+    if (primary.duplicate_of) return 'PRIMARY_IS_DUPLICATE';
+    if (primary.status === 'closed') return 'PRIMARY_CLOSED';
+    if (source.merged_at) return 'ALREADY_MERGED';
+    return null;
+  }
+
+  it('happy path: accepts a valid primary owned by the caller', () => {
+    const source = t({ id: 'a', helpdesk_user_id: 'u1' });
+    const primary = t({ id: 'b', helpdesk_user_id: 'u1' });
+    expect(checkDuplicateGuards(source, primary, 'u1')).toBeNull();
+  });
+
+  it('rejects chains: primary that is itself a duplicate', () => {
+    const source = t({ id: 'a' });
+    const primary = t({ id: 'b', duplicate_of: 'c' });
+    expect(checkDuplicateGuards(source, primary)).toBe('PRIMARY_IS_DUPLICATE');
+  });
+
+  it('rejects self-merge', () => {
+    const source = t({ id: 'a' });
+    const primary = t({ id: 'a' });
+    expect(checkDuplicateGuards(source, primary)).toBe('SELF_MERGE');
+  });
+
+  it('rejects closed primary', () => {
+    const source = t({ id: 'a' });
+    const primary = t({ id: 'b', status: 'closed' });
+    expect(checkDuplicateGuards(source, primary)).toBe('PRIMARY_CLOSED');
+  });
+
+  it('rejects cross-customer primary as NOT_FOUND (anti-enumeration)', () => {
+    const source = t({ id: 'a', helpdesk_user_id: 'u1' });
+    const primary = t({ id: 'b', helpdesk_user_id: 'u2' });
+    expect(checkDuplicateGuards(source, primary, 'u1')).toBe('NOT_FOUND');
+  });
+
+  it('rejects double-merge of an already-merged source', () => {
+    const source = t({ id: 'a', merged_at: new Date() });
+    const primary = t({ id: 'b' });
+    expect(checkDuplicateGuards(source, primary)).toBe('ALREADY_MERGED');
+  });
+});

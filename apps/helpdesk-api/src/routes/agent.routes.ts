@@ -10,6 +10,7 @@ import { helpdeskAgentApiKeys } from '../db/schema/helpdesk-agent-api-keys.js';
 import {
   broadcastTicketMessage,
   broadcastTicketStatusChanged,
+  broadcastTicketUpdated,
 } from '../services/realtime.js';
 import { mirrorTicketMessageToTask, mirrorTicketClosedToTask } from '../lib/task-sync.js';
 import { logTicketActivity } from '../lib/ticket-activity.js';
@@ -682,5 +683,203 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     }
 
     return reply.send({ data: updated });
+  });
+
+  // HB-55: POST /tickets/:id/merge — agent-side TRUE merge. Moves all
+  // messages from the source ticket onto the primary, sets
+  // `source.duplicate_of = primary.id`, stamps `merged_at` / `merged_by`
+  // on the source, and closes the source. Also drops a system note on the
+  // primary so its timeline records the inbound merge. Unlike the
+  // customer-side mark-duplicate, this is a real data move and should be
+  // treated as destructive (no customer unmark path — see DELETE
+  // /helpdesk/tickets/:id/mark-duplicate).
+  //
+  // Guards:
+  //   - source != primary (400)
+  //   - primary exists (404)
+  //   - primary is not itself a duplicate — no chains (400 PRIMARY_IS_DUPLICATE)
+  //   - primary is not closed (400 PRIMARY_CLOSED)
+  //   - source is not already merged (409 ALREADY_MERGED) — avoids double-move
+  //
+  // Note: cross-org enforcement is out of scope for this endpoint. The
+  // existing agent auth model (HB-14 / HB-28) is key-level; there is no
+  // per-ticket org gate on agent routes today. If the caller has the key,
+  // they can merge. This matches the behavior of /tickets/:id/close.
+  fastify.post('/tickets/:id/merge', {
+    preHandler: [requireAgentAuth],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = z.object({ primary_ticket_id: z.string().uuid() }).parse(request.body ?? {});
+
+    if (body.primary_ticket_id === id) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A ticket cannot be merged into itself',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    const [source] = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.id, id))
+      .limit(1);
+
+    if (!source) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Source ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    if (source.merged_at) {
+      return reply.status(409).send({
+        error: {
+          code: 'ALREADY_MERGED',
+          message: 'Source ticket has already been merged',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    const [primary] = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.id, body.primary_ticket_id))
+      .limit(1);
+
+    if (!primary) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: 'Primary ticket not found', details: [], request_id: request.id },
+      });
+    }
+
+    if (primary.duplicate_of) {
+      return reply.status(400).send({
+        error: {
+          code: 'PRIMARY_IS_DUPLICATE',
+          message: 'The specified primary ticket is itself a duplicate. Merge into its primary instead.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    if (primary.status === 'closed') {
+      return reply.status(400).send({
+        error: {
+          code: 'PRIMARY_CLOSED',
+          message: 'The specified primary ticket is closed and cannot accept merges.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    const agentName = await resolveAgentDisplayName(request.agentUserId);
+    const mergedAt = new Date();
+
+    // Transaction: move messages → flip source → add system note on primary.
+    // We do NOT move the source's `description` or any activity log rows —
+    // those stay on the source so the audit trail of the source ticket is
+    // preserved verbatim.
+    const result = await db.transaction(async (tx) => {
+      const moved = await tx
+        .update(ticketMessages)
+        .set({ ticket_id: primary.id })
+        .where(eq(ticketMessages.ticket_id, source.id))
+        .returning({ id: ticketMessages.id });
+
+      await tx
+        .update(tickets)
+        .set({
+          duplicate_of: primary.id,
+          merged_at: mergedAt,
+          merged_by: request.agentUserId,
+          status: 'closed',
+          closed_at: mergedAt,
+          updated_at: mergedAt,
+        })
+        .where(eq(tickets.id, source.id));
+
+      // System note on PRIMARY announcing the inbound merge.
+      await tx.insert(ticketMessages).values({
+        ticket_id: primary.id,
+        author_type: 'system',
+        author_id: '00000000-0000-0000-0000-000000000000',
+        author_name: 'System',
+        body: `Merged from ticket #${source.ticket_number} by ${agentName}`,
+        is_internal: false,
+      });
+
+      return { messages_moved: moved.length };
+    });
+
+    // Broadcasts: source gets a "merged" event + status change to closed;
+    // primary gets a generic updated event so connected subscribers
+    // refetch (the newly moved messages will arrive with it).
+    await broadcastTicketUpdated(source.id, {
+      event: 'ticket.merged',
+      merged_into: primary.id,
+      merged_into_number: primary.ticket_number,
+    });
+    await broadcastTicketStatusChanged(source.id, 'closed');
+    await broadcastTicketUpdated(primary.id, {
+      event: 'ticket.merge_received',
+      from_ticket_id: source.id,
+      from_ticket_number: source.ticket_number,
+      messages_moved: result.messages_moved,
+    });
+
+    // Audit on both tickets.
+    await logTicketActivity({
+      ticketId: source.id,
+      actorType: 'agent',
+      actorId: request.agentUserId,
+      action: 'ticket.merged',
+      details: {
+        primary_id: primary.id,
+        primary_number: primary.ticket_number,
+        messages_moved: result.messages_moved,
+      },
+      logger: request.log,
+    });
+    await logTicketActivity({
+      ticketId: source.id,
+      actorType: 'agent',
+      actorId: request.agentUserId,
+      action: 'ticket.status_changed',
+      details: { from: source.status, to: 'closed', reason: 'merged' },
+      logger: request.log,
+    });
+    await logTicketActivity({
+      ticketId: primary.id,
+      actorType: 'agent',
+      actorId: request.agentUserId,
+      action: 'ticket.merge_received',
+      details: {
+        source_id: source.id,
+        source_number: source.ticket_number,
+        messages_moved: result.messages_moved,
+      },
+      logger: request.log,
+    });
+
+    // TODO(HB-7): once the bbb-client task-sync helper exposes a merge
+    // hook, update both linked tasks' activity logs (source: "ticket
+    // merged into #<primary>"; primary: "ticket merged from #<source>").
+    // For now this is recorded only in the helpdesk ticket_activity_log.
+
+    return reply.send({
+      data: {
+        source_id: source.id,
+        primary_id: primary.id,
+        messages_moved: result.messages_moved,
+      },
+    });
   });
 }

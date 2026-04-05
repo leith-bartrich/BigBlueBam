@@ -15,6 +15,9 @@ export interface Ticket {
   updated_at: string;
   resolved_at: string | null;
   closed_at: string | null;
+  // HB-55
+  merged_at?: string | null;
+  merged_by?: string | null;
 }
 
 export interface TicketMessage {
@@ -34,9 +37,25 @@ export interface TicketStatusChange {
   changed_at: string;
 }
 
+export interface TicketDuplicateOf {
+  id: string;
+  ticket_number: number;
+  subject: string;
+}
+
+export interface TicketDuplicate {
+  id: string;
+  ticket_number: number;
+  subject: string;
+  merged_at: string | null;
+}
+
 export interface TicketDetail extends Ticket {
   messages: TicketMessage[];
   status_changes?: TicketStatusChange[];
+  // HB-55: duplicate/merge relationships expanded by the server.
+  duplicate_of?: TicketDuplicateOf | null;
+  duplicates?: TicketDuplicate[];
 }
 
 export interface HelpdeskSettings {
@@ -151,6 +170,37 @@ export function useRealtimeTicketsList() {
       unsub2();
     };
   }, [queryClient]);
+}
+
+// HB-55: mark the current ticket as a duplicate of another ticket owned by
+// the same customer, identified by ticket_number (human-readable).
+export function useMarkDuplicate(ticketId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (primary_ticket_number: string | number) =>
+      api.post<{ data: { id: string; duplicate_of: string; primary_number: number } }>(
+        `/tickets/${ticketId}/mark-duplicate`,
+        { primary_ticket_number },
+      ).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['helpdesk', 'tickets', ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['helpdesk', 'tickets'] });
+    },
+  });
+}
+
+export function useUnmarkDuplicate(ticketId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.delete<{ data: { id: string; duplicate_of: null } }>(
+        `/tickets/${ticketId}/mark-duplicate`,
+      ).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['helpdesk', 'tickets', ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['helpdesk', 'tickets'] });
+    },
+  });
 }
 
 export function useReopenTicket(ticketId: string) {

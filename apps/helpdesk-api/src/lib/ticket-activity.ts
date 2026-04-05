@@ -30,6 +30,11 @@ export type TicketActivityAction =
   | 'ticket.assigned'
   | 'ticket.closed'
   | 'ticket.reopened'
+  // HB-55: duplicate / merge lifecycle
+  | 'ticket.marked_duplicate'
+  | 'ticket.duplicate_cleared'
+  | 'ticket.merged'
+  | 'ticket.merge_received'
   | 'message.posted';
 
 export interface LogTicketActivityOptions {

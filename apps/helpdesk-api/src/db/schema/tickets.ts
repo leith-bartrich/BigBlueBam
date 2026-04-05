@@ -1,6 +1,6 @@
-import { pgTable, uuid, varchar, text, serial, timestamp, index } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, pgTable, uuid, varchar, text, serial, timestamp, index } from 'drizzle-orm/pg-core';
 import { helpdeskUsers } from './helpdesk-users.js';
-import { tasks, projects } from './bbb-refs.js';
+import { tasks, projects, users } from './bbb-refs.js';
 
 // ============================================================================
 // HB-21: DUAL SCHEMA — KEEP IN SYNC
@@ -18,7 +18,8 @@ import { tasks, projects } from './bbb-refs.js';
 // Columns referenced here:
 //   tickets: id, ticket_number, helpdesk_user_id, task_id, project_id,
 //            subject, description, status, priority, category, created_at,
-//            updated_at, resolved_at, closed_at
+//            updated_at, resolved_at, closed_at,
+//            duplicate_of, merged_at, merged_by (HB-55)
 // ============================================================================
 
 export const tickets = pgTable(
@@ -43,10 +44,18 @@ export const tickets = pgTable(
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     resolved_at: timestamp('resolved_at', { withTimezone: true }),
     closed_at: timestamp('closed_at', { withTimezone: true }),
+    // HB-55: duplicate/merge support. duplicate_of is a self-FK; the typed
+    // back-reference requires the AnyPgColumn cast for Drizzle's type
+    // checker. See migration 0016_ticket_duplicates.sql for the index and
+    // FK semantics (ON DELETE SET NULL on both FKs).
+    duplicate_of: uuid('duplicate_of').references((): AnyPgColumn => tickets.id, { onDelete: 'set null' }),
+    merged_at: timestamp('merged_at', { withTimezone: true }),
+    merged_by: uuid('merged_by').references(() => users.id, { onDelete: 'set null' }),
   },
   (table) => [
     index('tickets_helpdesk_user_id_idx').on(table.helpdesk_user_id),
     index('tickets_task_id_idx').on(table.task_id),
     index('tickets_status_idx').on(table.status),
+    index('idx_tickets_duplicate_of').on(table.duplicate_of),
   ],
 );

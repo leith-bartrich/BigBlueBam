@@ -1887,6 +1887,8 @@ The Helpdesk API is a separate service mounted under `/helpdesk/api/` with its o
 | `POST` | `/helpdesk/tickets/:id/reopen` | Reopen a `resolved` or `closed` ticket. |
 | `POST` | `/helpdesk/tickets/:id/update-priority` | Change priority (`low` / `medium` / `high`). |
 | `POST` | `/helpdesk/tickets/:id/close` | Customer-side close. Moves the linked BBB task (if any) to its project's terminal phase. |
+| `POST` | `/helpdesk/tickets/:id/mark-duplicate` | HB-55. Body: `{ primary_ticket_number: string\|number }`. Marks the current ticket as a duplicate of another ticket **owned by the same customer**, identified by its human-readable `ticket_number` (leading `#` stripped). Sets `duplicate_of`; leaves `merged_at` / `merged_by` NULL (annotation only, no data move). Rejects `PRIMARY_IS_DUPLICATE` (no chains), `PRIMARY_CLOSED`, `VALIDATION_ERROR` (self-merge or malformed number). Returns `404` if the primary is missing or owned by a different customer (anti-enumeration). Emits a `System` ticket message and a `ticket.marked_duplicate` broadcast. |
+| `DELETE` | `/helpdesk/tickets/:id/mark-duplicate` | HB-55. Clears `duplicate_of`. Idempotent: succeeds with `duplicate_of: null` even if the ticket was not flagged. Returns `409 CONFLICT` if the ticket has been **agent-merged** (`merged_at IS NOT NULL`) — a real data-move cannot be undone by the customer. |
 
 **Auth rate limits (login/register):** 5 attempts / 15 min per IP.
 
@@ -1901,6 +1903,7 @@ Agents authenticate via the `X-Agent-Key` header (timing-safe compared, HB-27). 
 | `POST` | `/tickets/:id/messages` | 30/min | Agent reply. Author identity comes from the BBB session; otherwise `author_id` must be supplied and must belong to the same org as the ticket's project (HB-14). |
 | `PATCH` | `/tickets/:id` | 60/min | Update `status`, `priority`, `category`. |
 | `POST` | `/tickets/:id/close` | 20/min | Agent close. |
+| `POST` | `/tickets/:id/merge` | 10/min | HB-55. Body: `{ primary_ticket_id: uuid }`. True merge: moves **all** `ticket_messages` from the source to the primary, sets `source.duplicate_of = primary.id` with `merged_at = now()` / `merged_by = <agent bbb user id>`, closes the source, and drops a `System` note on the primary: `"Merged from ticket #<source_num> by <agent>"`. Response: `{ data: { source_id, primary_id, messages_moved } }`. Rejects `VALIDATION_ERROR` (self-merge), `NOT_FOUND` (missing ticket), `PRIMARY_IS_DUPLICATE` (no chains), `PRIMARY_CLOSED`, `ALREADY_MERGED` (409). Broadcasts `ticket.merged` on the source room and `ticket.merge_received` on the primary room. |
 
 Agent-specific error codes: `AGENT_AUTH_DISABLED` (no key configured), `AUTHOR_REQUIRED`, `AUTHOR_NOT_FOUND`, `AUTHOR_ORG_MISMATCH`, `TICKET_NOT_SCOPED`, `NO_CHANGES`, `INVALID_STATE`.
 
