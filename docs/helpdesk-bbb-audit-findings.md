@@ -4,10 +4,10 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 
 ## Status Summary (as of granular-permissions branch, 2026-04-05)
 
-- **Resolved:** 50 of 57
+- **Resolved:** 53 of 57
 - **Partial:** 3 of 57
 - **Deferred:** 1 of 57
-- **Open:** 3 of 57
+- **Open:** 0 of 57
 
 ## Headline Findings
 
@@ -33,7 +33,7 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 | HB-4 | RESOLVED | **Authorization bypass: ticket reopen** — UPDATE missing `helpdesk_user_id` check; customer A can reopen customer B's tickets by UUID | apps/helpdesk-api/src/routes/ticket.routes.ts:317 |
 | HB-5 | DEFERRED | **No org_id on `helpdesk_users` table** — all customers in a single global pool, no multi-tenant partition | apps/helpdesk-api/src/db/schema/helpdesk-users.ts |
 | HB-6 | RESOLVED | **Agent `/tickets` endpoint returns ALL orgs' tickets** — no org filtering with only a shared API key | apps/helpdesk-api/src/routes/agent.routes.ts:77 |
-| HB-7 | OPEN | **Helpdesk bypasses BBB API — writes directly to tasks table** — no service auth, no audit, no identifiable actor | apps/helpdesk-api/src/routes/ticket.routes.ts:104 |
+| HB-7 | RESOLVED | **Helpdesk bypasses BBB API — writes directly to tasks table** — no service auth, no audit, no identifiable actor | apps/helpdesk-api/src/routes/ticket.routes.ts:104 |
 | HB-8 | RESOLVED | **No idempotency on ticket creation** — client retry creates duplicate tickets silently | apps/helpdesk-api/src/routes/ticket.routes.ts:47 |
 | HB-9 | RESOLVED | **No distributed transaction** — ticket+task creation not wrapped; orphaned state if one fails | apps/helpdesk-api/src/routes/ticket.routes.ts:104-178 |
 | HB-10 | RESOLVED | **Silent ticket status sync failures** — `catch {}` swallows errors, task moves to "resolved" while ticket stays "open" | apps/api/src/services/task.service.ts:234-273 |
@@ -83,7 +83,7 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 | HB-44 | RESOLVED | Email verification token stored in plaintext | apps/helpdesk-api/src/db/schema/helpdesk-users.ts:11 |
 | HB-45 | RESOLVED | No ticket_activity_log equivalent — ticket status changes not audited on helpdesk side | apps/helpdesk-api/src/db/schema/ |
 | HB-46 | PARTIAL | No metrics/observability on task creation latency, failure rate, broadcast success | — |
-| HB-47 | OPEN | Pub/sub not durable — offline subscribers miss events permanently | apps/helpdesk-api/src/lib/broadcast.ts |
+| HB-47 | RESOLVED | Pub/sub not durable — offline subscribers miss events permanently | apps/helpdesk-api/src/lib/broadcast.ts |
 | HB-48 | RESOLVED | Request ID not propagated to dependent services — no cross-service trace | apps/helpdesk-api/src/server.ts:24 |
 | HB-49 | RESOLVED | Agent authentication via shared session cookie fragile (no role check against org_memberships) | apps/helpdesk-api/src/routes/agent.routes.ts:28-72 |
 | HB-50 | PARTIAL | Ticket messages cascade delete, but task comments are orphaned (separate tables, no sync) | — |
@@ -96,7 +96,7 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 |---|--------|-------|------|
 | HB-53 | PARTIAL | No skeleton loaders — blank pages while loading | apps/helpdesk/src/pages/ |
 | HB-54 | RESOLVED | No per-endpoint rate limits on agent API | apps/helpdesk-api/src/routes/agent.routes.ts |
-| HB-55 | OPEN | No duplicate/merge ticket support | apps/helpdesk-api/src/db/schema/tickets.ts |
+| HB-55 | RESOLVED | No duplicate/merge ticket support | apps/helpdesk-api/src/db/schema/tickets.ts |
 | HB-56 | RESOLVED | task_id FK uses SET NULL on task deletion — orphaned tickets | infra/postgres/init.sql:415 |
 | HB-57 | RESOLVED | Account lockout after repeated failed logins not implemented | apps/helpdesk-api/src/routes/auth.routes.ts |
 
