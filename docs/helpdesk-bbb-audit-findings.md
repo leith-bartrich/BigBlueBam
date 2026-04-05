@@ -4,10 +4,10 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 
 ## Status Summary (as of granular-permissions branch, 2026-04-05)
 
-- **Resolved:** 49 of 57
+- **Resolved:** 50 of 57
 - **Partial:** 3 of 57
 - **Deferred:** 1 of 57
-- **Open:** 4 of 57
+- **Open:** 3 of 57
 
 ## Headline Findings
 
@@ -81,7 +81,7 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 | HB-42 | RESOLVED | No offline detection or auto-reconnect (helpdesk frontend uses `retry: 1`, no backoff) | apps/helpdesk/src/main.tsx:11 |
 | HB-43 | RESOLVED | `description_plain` stored identical to `description` (doesn't strip HTML) | apps/helpdesk-api/src/routes/ticket.routes.ts:111 |
 | HB-44 | RESOLVED | Email verification token stored in plaintext | apps/helpdesk-api/src/db/schema/helpdesk-users.ts:11 |
-| HB-45 | OPEN | No ticket_activity_log equivalent — ticket status changes not audited on helpdesk side | apps/helpdesk-api/src/db/schema/ |
+| HB-45 | RESOLVED | No ticket_activity_log equivalent — ticket status changes not audited on helpdesk side | apps/helpdesk-api/src/db/schema/ |
 | HB-46 | PARTIAL | No metrics/observability on task creation latency, failure rate, broadcast success | — |
 | HB-47 | OPEN | Pub/sub not durable — offline subscribers miss events permanently | apps/helpdesk-api/src/lib/broadcast.ts |
 | HB-48 | RESOLVED | Request ID not propagated to dependent services — no cross-service trace | apps/helpdesk-api/src/server.ts:24 |
