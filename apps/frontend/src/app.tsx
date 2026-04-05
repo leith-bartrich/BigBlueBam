@@ -126,7 +126,12 @@ export function App() {
   const navigate = useCallback((path: string) => {
     const fullPath = `${BASE_PATH}${path}`;
     window.history.pushState(null, '', fullPath);
-    setRoute(parseRoute(fullPath));
+    // Strip the query string (and any hash) before parsing — the route
+    // matchers below use `$`-anchored regexes that don't expect a
+    // trailing `?task=<id>` etc. The query string stays in the URL for
+    // the destination page to read via window.location.search.
+    const pathnameOnly = fullPath.split('?')[0]!.split('#')[0]!;
+    setRoute(parseRoute(pathnameOnly));
   }, []);
 
   // Force-password-change gate: if the server has flagged this user, block
