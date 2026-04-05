@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { organizations } from '../db/schema/bbb-refs.js';
-import { env } from '../env.js';
+import { verifyAgentApiKey } from '../lib/agent-auth.js';
 
 const updateSettingsSchema = z.object({
   require_email_verification: z.boolean().optional(),
@@ -22,7 +22,11 @@ const updateSettingsSchema = z.object({
 import { sql } from 'drizzle-orm';
 
 /**
- * Require admin auth — accepts BBB session cookie or agent API key.
+ * Require admin auth — accepts a BBB session cookie OR a per-agent
+ * helpdesk API key (HB-28 + HB-49). The legacy shared `AGENT_API_KEY`
+ * env var was removed here; agent-side callers must now present an
+ * `hdag_*` token via X-Agent-Key, verified against
+ * helpdesk_agent_api_keys (Argon2id-hashed, rotatable, per-agent).
  */
 async function requireAdminAuth(request: FastifyRequest, reply: FastifyReply) {
   // Check BBB session cookie
@@ -40,15 +44,10 @@ async function requireAdminAuth(request: FastifyRequest, reply: FastifyReply) {
     }
   }
 
-  // Check agent API key
-  const agentKey = env.AGENT_API_KEY;
-  const provided =
-    (request.headers['x-agent-key'] as string) ??
-    request.headers.authorization?.replace('Bearer ', '');
-
-  if (agentKey && provided && provided === agentKey) {
-    return;
-  }
+  // Fall back to per-agent X-Agent-Key
+  const token = request.headers['x-agent-key'] as string | undefined;
+  const agentUserId = await verifyAgentApiKey(request, token);
+  if (agentUserId) return;
 
   return reply.status(401).send({
     error: {

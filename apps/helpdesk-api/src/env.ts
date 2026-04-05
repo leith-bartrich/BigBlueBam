@@ -38,16 +38,6 @@ const envSchema = z.object({
   S3_BUCKET: z.string().default('bigbluebam-uploads'),
   S3_REGION: z.string().default('us-east-1'),
 
-  // DEPRECATED (HB-28 + HB-49): shared secret previously used for
-  // /helpdesk/api/agents/* authentication. The agent routes now use
-  // per-agent, Argon2id-hashed, rotatable keys stored in
-  // helpdesk_agent_api_keys (migration 0008, minted via
-  // `cli.js create-helpdesk-agent-key`). This env var is still read by
-  // settings.routes.ts's requireAdminAuth during a transition window
-  // and will be removed once that route migrates off it. Do NOT add
-  // new call sites.
-  AGENT_API_KEY: z.string().optional(),
-
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
 });
