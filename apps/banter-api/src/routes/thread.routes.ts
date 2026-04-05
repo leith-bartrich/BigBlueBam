@@ -10,6 +10,8 @@ import {
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
+import { extractMentions } from '../services/notification-queue.js';
+import { emitNotification, threadDeepLink } from '../lib/notify.js';
 
 const createReplySchema = z.object({
   content: z.string().min(1).max(40000),
@@ -247,6 +249,93 @@ export default async function threadRoutes(fastify: FastifyInstance) {
         },
         timestamp: new Date().toISOString(),
       });
+
+      // ── Dispatch notifications (async, non-blocking) ─────────────
+      (async () => {
+        try {
+          if (!message) return;
+          const [ch] = await db
+            .select({
+              name: banterChannels.name,
+              slug: banterChannels.slug,
+              org_id: banterChannels.org_id,
+            })
+            .from(banterChannels)
+            .where(eq(banterChannels.id, parent.channel_id))
+            .limit(1);
+          if (!ch) return;
+
+          const notified = new Set<string>([user.id]);
+
+          // @mentions first
+          const mentionedNames = extractMentions(body.content);
+          if (mentionedNames.length > 0) {
+            const mentionedUsers = await db
+              .select({ id: users.id })
+              .from(users)
+              .where(
+                and(
+                  eq(users.org_id, ch.org_id),
+                  sql`lower(${users.display_name}) = ANY(${mentionedNames.map((n) => n.toLowerCase())})`,
+                ),
+              );
+            for (const mu of mentionedUsers) {
+              if (notified.has(mu.id)) continue;
+              notified.add(mu.id);
+              await emitNotification({
+                user_id: mu.id,
+                org_id: ch.org_id,
+                title: `${user.display_name} mentioned you in #${ch.name}`,
+                body: contentPlain,
+                category: 'mention',
+                deep_link: threadDeepLink(ch.slug, id, message.id),
+                metadata: {
+                  channel_id: parent.channel_id,
+                  channel_name: ch.name,
+                  channel_slug: ch.slug,
+                  message_id: message.id,
+                  thread_parent_id: id,
+                },
+              });
+            }
+          }
+
+          // Thread reply fanout: parent author + all prior repliers.
+          const priorPosters = await db
+            .select({ author_id: banterMessages.author_id })
+            .from(banterMessages)
+            .where(
+              and(
+                eq(banterMessages.thread_parent_id, id),
+                eq(banterMessages.is_deleted, false),
+              ),
+            );
+          const recipients = new Set<string>([parent.author_id]);
+          for (const p of priorPosters) recipients.add(p.author_id);
+
+          for (const rid of recipients) {
+            if (notified.has(rid)) continue;
+            notified.add(rid);
+            await emitNotification({
+              user_id: rid,
+              org_id: ch.org_id,
+              title: `${user.display_name} replied to a thread in #${ch.name}`,
+              body: contentPlain,
+              category: 'thread_reply',
+              deep_link: threadDeepLink(ch.slug, id, message.id),
+              metadata: {
+                channel_id: parent.channel_id,
+                channel_name: ch.name,
+                channel_slug: ch.slug,
+                message_id: message.id,
+                thread_parent_id: id,
+              },
+            });
+          }
+        } catch {
+          // Non-critical
+        }
+      })();
 
       return reply.status(201).send({ data: message });
     },

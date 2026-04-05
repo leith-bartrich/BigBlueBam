@@ -11,7 +11,13 @@ import {
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireChannelMember } from '../middleware/channel-auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
-import { enqueueNotification, extractMentions } from '../services/notification-queue.js';
+import { extractMentions } from '../services/notification-queue.js';
+import {
+  emitNotification,
+  channelDeepLink,
+  dmDeepLink,
+  threadDeepLink,
+} from '../lib/notify.js';
 
 const createMessageSchema = z.object({
   content: z.string().min(1).max(40000),
@@ -212,36 +218,25 @@ export default async function messageRoutes(fastify: FastifyInstance) {
       // ── Dispatch notifications (async, non-blocking) ─────────────
       (async () => {
         try {
+          if (!message) return;
           // Get channel info for notification context
           const [ch] = await db
-            .select({ name: banterChannels.name, type: banterChannels.type, org_id: banterChannels.org_id })
+            .select({
+              name: banterChannels.name,
+              slug: banterChannels.slug,
+              type: banterChannels.type,
+              org_id: banterChannels.org_id,
+            })
             .from(banterChannels)
             .where(eq(banterChannels.id, id))
             .limit(1);
           if (!ch) return;
 
-          // DM notifications
-          if (ch.type === 'dm' || ch.type === 'group_dm') {
-            const members = await db
-              .select({ user_id: banterChannelMemberships.user_id })
-              .from(banterChannelMemberships)
-              .where(eq(banterChannelMemberships.channel_id, id));
-            for (const m of members) {
-              if (m.user_id !== user.id) {
-                await enqueueNotification({
-                  type: 'banter-dm',
-                  recipient_user_id: m.user_id,
-                  channel_id: id,
-                  message_id: message.id,
-                  author_display_name: user.display_name,
-                  content_preview: contentPlain,
-                  org_id: ch.org_id,
-                });
-              }
-            }
-          }
+          // Track everyone we notified so thread-reply doesn't double-fire
+          // on top of an @mention.
+          const notified = new Set<string>([user.id]);
 
-          // @mention notifications
+          // ── @mention notifications (highest priority) ──
           const mentionedNames = extractMentions(body.content);
           if (mentionedNames.length > 0) {
             const mentionedUsers = await db
@@ -250,43 +245,102 @@ export default async function messageRoutes(fastify: FastifyInstance) {
               .where(
                 and(
                   eq(users.org_id, ch.org_id),
-                  sql`lower(${users.display_name}) = ANY(${mentionedNames.map(n => n.toLowerCase())})`,
+                  sql`lower(${users.display_name}) = ANY(${mentionedNames.map((n) => n.toLowerCase())})`,
                 ),
               );
             for (const mu of mentionedUsers) {
-              if (mu.id !== user.id) {
-                await enqueueNotification({
-                  type: 'banter-mention',
-                  mentioned_user_id: mu.id,
+              if (notified.has(mu.id)) continue;
+              notified.add(mu.id);
+              const deep_link = body.thread_parent_id
+                ? threadDeepLink(ch.slug, body.thread_parent_id, message.id)
+                : ch.type === 'dm' || ch.type === 'group_dm'
+                  ? dmDeepLink(id, message.id)
+                  : channelDeepLink(ch.slug, message.id);
+              await emitNotification({
+                user_id: mu.id,
+                org_id: ch.org_id,
+                title: `${user.display_name} mentioned you in #${ch.name}`,
+                body: contentPlain,
+                category: 'mention',
+                deep_link,
+                metadata: {
                   channel_id: id,
                   channel_name: ch.name,
+                  channel_slug: ch.slug,
                   message_id: message.id,
-                  author_display_name: user.display_name,
-                  content_preview: contentPlain,
-                  org_id: ch.org_id,
-                });
-              }
+                  thread_parent_id: body.thread_parent_id ?? null,
+                },
+              });
             }
           }
 
-          // Thread reply notifications
+          // ── DM notifications ──
+          if (ch.type === 'dm' || ch.type === 'group_dm') {
+            const members = await db
+              .select({ user_id: banterChannelMemberships.user_id })
+              .from(banterChannelMemberships)
+              .where(eq(banterChannelMemberships.channel_id, id));
+            for (const m of members) {
+              if (notified.has(m.user_id)) continue;
+              notified.add(m.user_id);
+              await emitNotification({
+                user_id: m.user_id,
+                org_id: ch.org_id,
+                title: `New message from ${user.display_name}`,
+                body: contentPlain,
+                category: 'dm',
+                deep_link: dmDeepLink(id, message.id),
+                metadata: {
+                  channel_id: id,
+                  message_id: message.id,
+                },
+              });
+            }
+          }
+
+          // ── Thread reply notifications ──
+          // Notify the thread STARTER plus everyone who has already
+          // posted in the thread (minus the current author and anyone
+          // already notified via @mention above).
           if (body.thread_parent_id) {
             const [parentMsg] = await db
               .select({ author_id: banterMessages.author_id })
               .from(banterMessages)
               .where(eq(banterMessages.id, body.thread_parent_id))
               .limit(1);
-            if (parentMsg && parentMsg.author_id !== user.id) {
-              await enqueueNotification({
-                type: 'banter-thread-reply',
-                thread_author_id: parentMsg.author_id,
-                channel_id: id,
-                channel_name: ch.name,
-                message_id: message.id,
-                thread_parent_id: body.thread_parent_id,
-                author_display_name: user.display_name,
-                content_preview: contentPlain,
+            if (!parentMsg) return;
+
+            // Prior posters in the thread (distinct authors).
+            const priorPosters = await db
+              .select({ author_id: banterMessages.author_id })
+              .from(banterMessages)
+              .where(
+                and(
+                  eq(banterMessages.thread_parent_id, body.thread_parent_id),
+                  eq(banterMessages.is_deleted, false),
+                ),
+              );
+
+            const recipients = new Set<string>([parentMsg.author_id]);
+            for (const p of priorPosters) recipients.add(p.author_id);
+
+            for (const rid of recipients) {
+              if (notified.has(rid)) continue;
+              notified.add(rid);
+              await emitNotification({
+                user_id: rid,
                 org_id: ch.org_id,
+                title: `${user.display_name} replied to a thread in #${ch.name}`,
+                body: contentPlain,
+                category: 'thread_reply',
+                deep_link: threadDeepLink(ch.slug, body.thread_parent_id, message.id),
+                metadata: {
+                  channel_id: id,
+                  channel_name: ch.name,
+                  channel_slug: ch.slug,
+                  message_id: message.id,
+                  thread_parent_id: body.thread_parent_id,
+                },
               });
             }
           }
