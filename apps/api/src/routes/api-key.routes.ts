@@ -51,6 +51,25 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
       });
       const body = schema.parse(request.body);
 
+      // Admin-scope keys may only be created by org owners or SuperUsers.
+      // Org admins, members, and all other roles are blocked — this is stricter
+      // than the org-level `allowed_api_key_scopes` setting which only applies
+      // to members (not admins). Applies to session *and* API-key auth callers.
+      if (
+        body.scope === 'admin' &&
+        !request.user!.is_superuser &&
+        request.user!.role !== 'owner'
+      ) {
+        return reply.status(403).send({
+          error: {
+            code: 'ADMIN_SCOPE_OWNER_ONLY',
+            message: "Admin-scope API keys can only be created by an organization owner.",
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
       // If using API key auth, the caller's API key scope must be >= the requested scope
       if (request.user!.api_key_scope !== null) {
         const scopeHierarchy = ['read', 'read_write', 'admin'];

@@ -370,9 +370,12 @@ export async function updateMembershipRole(
   orgId: string,
   role: string,
 ): Promise<void> {
+  // Bump optimistic-concurrency token (P1-25) — the SuperUser path shares
+  // a table with org admins, so we keep the version monotonic regardless
+  // of who edited.
   await db
     .update(organizationMemberships)
-    .set({ role })
+    .set({ role, version: sql`${organizationMemberships.version} + 1` })
     .where(
       and(
         eq(organizationMemberships.user_id, userId),
@@ -394,13 +397,14 @@ export async function setDefaultOrg(
   orgId: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    // Bump version on every membership row we touch (P1-25).
     await tx
       .update(organizationMemberships)
-      .set({ is_default: false })
+      .set({ is_default: false, version: sql`${organizationMemberships.version} + 1` })
       .where(eq(organizationMemberships.user_id, userId));
     await tx
       .update(organizationMemberships)
-      .set({ is_default: true })
+      .set({ is_default: true, version: sql`${organizationMemberships.version} + 1` })
       .where(
         and(
           eq(organizationMemberships.user_id, userId),

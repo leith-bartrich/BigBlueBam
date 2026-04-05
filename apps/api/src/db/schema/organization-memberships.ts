@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, boolean, timestamp, uniqueIndex, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, boolean, integer, timestamp, uniqueIndex, index, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 import { users } from './users.js';
@@ -17,6 +17,9 @@ export const organizationMemberships = pgTable(
     is_default: boolean('is_default').default(false).notNull(),
     joined_at: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
     invited_by: uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
+    // Optimistic-concurrency token for role/is_default updates (P1-25).
+    // Every UPDATE that touches role or is_default MUST bump version.
+    version: integer('version').default(1).notNull(),
   },
   (table) => [
     uniqueIndex('org_memberships_user_org_idx').on(table.user_id, table.org_id),

@@ -78,6 +78,7 @@ export async function listOrgMembers(orgId: string) {
       is_active: users.is_active,
       created_at: users.created_at,
       last_seen_at: users.last_seen_at,
+      version: organizationMemberships.version,
     })
     .from(organizationMemberships)
     .innerJoin(users, eq(organizationMemberships.user_id, users.id))
@@ -196,6 +197,18 @@ export class InsufficientRankError extends Error {
   }
 }
 
+/** Raised when an optimistic-concurrency update found the row, but the
+ *  row's version didn't match the caller's `expected_version`. The caller
+ *  should re-read the membership and retry (P1-25). `currentVersion` is
+ *  surfaced so the API layer can echo it back in the 409 response. */
+export class VersionConflictError extends Error {
+  public readonly code = 'VERSION_CONFLICT' as const;
+  constructor(public readonly currentVersion: number) {
+    super('Membership was updated by someone else');
+    this.name = 'VersionConflictError';
+  }
+}
+
 /**
  * Rank check: caller's level must be strictly ABOVE target's level, AND
  * caller must be at least admin. SuperUsers bypass the check entirely.
@@ -261,10 +274,13 @@ export async function updateMemberRole(
   orgId: string,
   userId: string,
   role: string,
-  opts: { callerRole: string; callerIsSuperuser: boolean },
-) {
+  opts: { callerRole: string; callerIsSuperuser: boolean; expectedVersion?: number },
+): Promise<(typeof users.$inferSelect & { membership_version: number }) | null> {
   // Update the organization_memberships row — that's the per-org role.
-  // Locking via SELECT FOR UPDATE serializes concurrent role changes.
+  // Locking via SELECT FOR UPDATE serializes concurrent role changes,
+  // and the `version` column (P1-25) catches the narrower window where
+  // two tabs both read the SAME version and then race: the second UPDATE
+  // will see version mismatch and throw VersionConflictError.
   // users.role is a legacy single-org column; keep it synced ONLY when
   // the target user's home org matches the org we're editing, otherwise
   // we'd clobber their role in a different org.
@@ -273,9 +289,13 @@ export async function updateMemberRole(
       sql`SELECT 1 FROM organization_memberships WHERE user_id = ${userId} AND org_id = ${orgId} FOR UPDATE`,
     );
 
-    // Load target's current membership role for the rank check.
+    // Load target's current membership role + version for the rank check
+    // and for the optimistic-concurrency gate.
     const [existing] = await tx
-      .select({ role: organizationMemberships.role })
+      .select({
+        role: organizationMemberships.role,
+        version: organizationMemberships.version,
+      })
       .from(organizationMemberships)
       .where(
         and(
@@ -292,16 +312,25 @@ export async function updateMemberRole(
       throw new InsufficientRankError(rank.reason);
     }
 
+    if (
+      opts.expectedVersion !== undefined &&
+      existing.version !== opts.expectedVersion
+    ) {
+      throw new VersionConflictError(existing.version);
+    }
+
+    // Even when the caller didn't send expected_version, we still bump
+    // the column so any CONCURRENT opted-in caller sees the drift.
     const [membership] = await tx
       .update(organizationMemberships)
-      .set({ role })
+      .set({ role, version: sql`${organizationMemberships.version} + 1` })
       .where(
         and(
           eq(organizationMemberships.user_id, userId),
           eq(organizationMemberships.org_id, orgId),
         ),
       )
-      .returning();
+      .returning({ version: organizationMemberships.version });
 
     if (!membership) return null;
 
@@ -318,7 +347,8 @@ export async function updateMemberRole(
         .where(eq(users.id, userId));
     }
 
-    return user ?? null;
+    if (!user) return null;
+    return { ...user, membership_version: membership.version };
   });
 }
 
@@ -473,6 +503,7 @@ export async function getOrgMemberDetail(orgId: string, userId: string) {
       role: organizationMemberships.role,
       joined_at: organizationMemberships.joined_at,
       is_default_org: organizationMemberships.is_default,
+      version: organizationMemberships.version,
     })
     .from(organizationMemberships)
     .innerJoin(users, eq(organizationMemberships.user_id, users.id))
@@ -531,6 +562,7 @@ export async function getOrgMemberDetail(orgId: string, userId: string) {
     disabled_by: disabledBy,
     joined_at: row.joined_at,
     is_default_org: row.is_default_org,
+    version: row.version,
     created_at: row.created_at,
     last_seen_at: row.last_seen_at,
     projects: userProjects,
@@ -574,12 +606,18 @@ export async function setMemberActive(
   orgId: string,
   userId: string,
   isActive: boolean,
-  opts: { callerUserId: string; callerRole: string; callerIsSuperuser: boolean },
+  opts: {
+    callerUserId: string;
+    callerRole: string;
+    callerIsSuperuser: boolean;
+    expectedVersion?: number;
+  },
 ): Promise<{
   user_id: string;
   is_active: boolean;
   disabled_at: Date | null;
   last_owner_remaining: boolean;
+  membership_version: number;
 } | null> {
   if (userId === opts.callerUserId) {
     throw new InsufficientRankError('You cannot change your own active status');
@@ -594,13 +632,48 @@ export async function setMemberActive(
   }
 
   const result = await db.transaction(async (tx) => {
+    // Optimistic-concurrency gate on the membership row. Even though the
+    // active/disabled columns live on `users`, we version by membership so
+    // a single UI ("People in THIS org") sees all member-targeted edits
+    // through one token.
+    const [existing] = await tx
+      .select({ version: organizationMemberships.version })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.user_id, userId),
+          eq(organizationMemberships.org_id, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) return null;
+
+    if (
+      opts.expectedVersion !== undefined &&
+      existing.version !== opts.expectedVersion
+    ) {
+      throw new VersionConflictError(existing.version);
+    }
+
+    const [bumped] = await tx
+      .update(organizationMemberships)
+      .set({ version: sql`${organizationMemberships.version} + 1` })
+      .where(
+        and(
+          eq(organizationMemberships.user_id, userId),
+          eq(organizationMemberships.org_id, orgId),
+        ),
+      )
+      .returning({ version: organizationMemberships.version });
+
     if (isActive) {
       const [u] = await tx
         .update(users)
         .set({ is_active: true, disabled_at: null, disabled_by: null, updated_at: new Date() })
         .where(eq(users.id, userId))
         .returning();
-      return u ?? null;
+      return u ? { user: u, version: bumped!.version } : null;
     }
 
     const [u] = await tx
@@ -615,7 +688,7 @@ export async function setMemberActive(
       .returning();
     // Kill all sessions for the disabled user.
     await tx.delete(sessions).where(eq(sessions.user_id, userId));
-    return u ?? null;
+    return u ? { user: u, version: bumped!.version } : null;
   });
 
   if (!result) return null;
@@ -623,10 +696,11 @@ export async function setMemberActive(
   const counts = await getOrgMemberCounts(orgId);
 
   return {
-    user_id: result.id,
-    is_active: result.is_active,
-    disabled_at: result.disabled_at,
+    user_id: result.user.id,
+    is_active: result.user.is_active,
+    disabled_at: result.user.disabled_at,
     last_owner_remaining: counts.active_owner_count === 0,
+    membership_version: result.version,
   };
 }
 
@@ -705,11 +779,12 @@ export async function transferOwnership(opts: {
     }
 
     // Demote caller to admin (only if caller had a membership — SuperUsers
-    // may not be members of this org).
+    // may not be members of this org). Bump membership `version` (P1-25)
+    // so any UI holding a stale copy of either row is forced to re-read.
     if (callerMembership) {
       await tx
         .update(organizationMemberships)
-        .set({ role: 'admin' })
+        .set({ role: 'admin', version: sql`${organizationMemberships.version} + 1` })
         .where(
           and(
             eq(organizationMemberships.user_id, callerUserId),
@@ -721,7 +796,7 @@ export async function transferOwnership(opts: {
     // Promote target to owner.
     await tx
       .update(organizationMemberships)
-      .set({ role: 'owner' })
+      .set({ role: 'owner', version: sql`${organizationMemberships.version} + 1` })
       .where(
         and(
           eq(organizationMemberships.user_id, targetUserId),

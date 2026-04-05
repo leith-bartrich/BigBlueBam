@@ -474,9 +474,9 @@ Endpoints that power the **`/b3/people`** admin UI. All routes are mounted at `/
 
 #### `GET /org/members/:userId`
 
-Return the full member detail for a user in the caller's current org, including profile, org role, `is_active`, `disabled_at`/`disabled_by`, `force_password_change`, active session count, and project count.
+Return the full member detail for a user in the caller's current org, including profile, org role, `is_active`, `disabled_at`/`disabled_by`, `force_password_change`, active session count, project count, and the membership's `version` (integer, monotonic, bumped on every role/active edit — used for optimistic-concurrency by the mutation endpoints).
 
-**Response (200):** `{ "data": { ...member } }`. **Errors:** `404 NOT_FOUND`.
+**Response (200):** `{ "data": { ...member, "version": number } }`. **Errors:** `404 NOT_FOUND`.
 
 #### `PATCH /org/members/:userId/profile`
 
@@ -490,15 +490,19 @@ Edit a member's `display_name` and/or `timezone`.
 
 Soft-disable or re-enable a member. Disable stamps `disabled_at = now()` and `disabled_by = <caller_id>` and deletes all their sessions. Enable clears both columns.
 
-**Request:** `{ "is_active": boolean }`
+**Request:** `{ "is_active": boolean, "version"?: number }` — the optional `version` is the optimistic-concurrency token from the last `GET /org/members/:userId` response. If provided and the server-side version has advanced, the write is rejected with `409 VERSION_CONFLICT`.
 
-**Response (200):** `{ "data": { ...member } }`. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+**Response (200):** `{ "data": { ...member, "membership_version": number } }`. **Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`, `409 VERSION_CONFLICT` (error `details[0].current_version` is the latest server-side version).
 
 #### `PATCH /org/members/:userId`
 
-Update a member's **org-level** role. Body: `{ "role": "member" | "admin" | "viewer" }`. Owner promotion is not allowed here — use `transfer-ownership`.
+Update a member's **org-level** role. Owner promotion is not allowed here — use `transfer-ownership`.
 
-**Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`.
+**Request:** `{ "role": "member" | "admin" | "viewer", "version"?: number }` — `version` is the optimistic-concurrency token from the last `GET /org/members/:userId` response (P1-25). When provided, the server compares it against the current row; a mismatch returns `409 VERSION_CONFLICT` so the client can refetch and retry instead of silently clobbering a concurrent admin's edit. When omitted, the server still increments `version` on write so any opted-in caller racing against this one will see the drift.
+
+**Response (200):** `{ "data": { ...user, "membership_version": number } }` — `membership_version` is the NEW version the client should cache for its next PATCH.
+
+**Errors:** `403 FORBIDDEN` (rank), `404 NOT_FOUND`, `409 VERSION_CONFLICT` (error `details[0].current_version` is the latest server-side version).
 
 #### `POST /org/members/:userId/transfer-ownership`
 

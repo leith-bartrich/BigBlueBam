@@ -137,7 +137,10 @@ export async function requireChannelAdmin(request: FastifyRequest, reply: Fastif
     });
   }
 
-  // Superuser or org-level admin/owner bypasses channel role check
+  // Superuser or org-level admin/owner bypasses channel role check.
+  // NOTE (P2-15): this only elevates org admins/owners who are already
+  // channel members — `requireChannelMember` (the required predecessor)
+  // blocks non-member org admins. See docs/permissions-audit-findings.md P2-15.
   if (user.is_superuser || ['owner', 'admin'].includes(user.role)) {
     return;
   }

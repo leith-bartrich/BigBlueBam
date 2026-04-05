@@ -14,6 +14,8 @@ export interface PersonListItem {
   is_active: boolean;
   created_at: string;
   last_seen_at: string | null;
+  // P1-25: optimistic-concurrency token bumped on every role/active edit.
+  version: number;
 }
 
 export interface PersonProjectEntry {
@@ -41,6 +43,8 @@ export interface PersonDetail {
   disabled_by: PersonDisabledBy | null;
   joined_at: string;
   is_default_org: boolean;
+  // P1-25: optimistic-concurrency token for role/active edits.
+  version: number;
   created_at: string;
   last_seen_at: string | null;
   projects: PersonProjectEntry[];
@@ -60,6 +64,7 @@ export interface ActiveStatusResult {
   is_active: boolean;
   disabled_at: string | null;
   last_owner_remaining: boolean;
+  membership_version: number;
 }
 
 export interface TransferOwnershipResult {
@@ -97,9 +102,14 @@ export const peopleApi = {
     return api.patch<{ data: PersonDetail }>(`/org/members/${userId}/profile`, body);
   },
 
-  setActive(userId: string, isActive: boolean): Promise<{ data: ActiveStatusResult }> {
+  setActive(
+    userId: string,
+    isActive: boolean,
+    version?: number,
+  ): Promise<{ data: ActiveStatusResult }> {
     return api.patch<{ data: ActiveStatusResult }>(`/org/members/${userId}/active`, {
       is_active: isActive,
+      ...(version !== undefined ? { version } : {}),
     });
   },
 
@@ -133,8 +143,15 @@ export const peopleApi = {
   },
 
   // Reused existing endpoints
-  updateRole(userId: string, role: string): Promise<{ data: PersonListItem }> {
-    return api.patch<{ data: PersonListItem }>(`/org/members/${userId}`, { role });
+  updateRole(
+    userId: string,
+    role: string,
+    version?: number,
+  ): Promise<{ data: PersonListItem & { membership_version: number } }> {
+    return api.patch<{ data: PersonListItem & { membership_version: number } }>(
+      `/org/members/${userId}`,
+      { role, ...(version !== undefined ? { version } : {}) },
+    );
   },
 
   removeMember(userId: string): Promise<void> {

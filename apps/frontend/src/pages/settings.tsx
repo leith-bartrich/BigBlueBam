@@ -618,17 +618,27 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                           onChange={(e) => setNewKeyName(e.target.value)}
                           className="w-56"
                         />
-                        <Select
-                          label="Scope"
-                          options={[
-                            { value: 'read', label: 'Read' },
-                            { value: 'write', label: 'Write' },
-                            { value: 'admin', label: 'Admin' },
-                          ]}
-                          value={newKeyScope}
-                          onValueChange={setNewKeyScope}
-                          className="w-32"
-                        />
+                        <div
+                          title={
+                            user?.role === 'owner' || user?.is_superuser === true
+                              ? undefined
+                              : 'Admin-scope keys can only be created by an organization owner.'
+                          }
+                        >
+                          <Select
+                            label="Scope"
+                            options={[
+                              { value: 'read', label: 'Read' },
+                              { value: 'read_write', label: 'Read / Write' },
+                              ...(user?.role === 'owner' || user?.is_superuser === true
+                                ? [{ value: 'admin', label: 'Admin' }]
+                                : []),
+                            ]}
+                            value={newKeyScope}
+                            onValueChange={setNewKeyScope}
+                            className="w-32"
+                          />
+                        </div>
                         <Button
                           size="sm"
                           onClick={() => createApiKey.mutate({ name: newKeyName, scope: newKeyScope })}
@@ -638,6 +648,11 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                           Create
                         </Button>
                       </div>
+                      {user?.role !== 'owner' && user?.is_superuser !== true && (
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          Admin-scope keys can only be created by an organization owner.
+                        </p>
+                      )}
                     </div>
                   )}
 

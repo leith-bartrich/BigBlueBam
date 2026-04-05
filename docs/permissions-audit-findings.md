@@ -4,9 +4,9 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 
 ## Status Summary (as of granular-permissions branch, 2026-04-05)
 
-- **Resolved:** 69 of 82
+- **Resolved:** 81 of 82
 - **Partial / Documented:** 1 of 82
-- **Open:** 12 of 82
+- **Open:** 0 of 82
 
 ---
 
@@ -53,7 +53,7 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 | P0-15 | RESOLVED | Guest acceptance — two requests can both create accounts for same token; not wrapped in transaction | apps/api/src/routes/guest.routes.ts:161-258 |
 | P0-16 | RESOLVED | `#general` channel auto-creation — two concurrent `GET /channels` create duplicates | apps/banter-api/src/routes/channel.routes.ts:56-100 |
 | P0-17 | RESOLVED | Org owner demoted mid-request — in-flight owner-level request completes with stale role | apps/api/src/plugins/auth.ts + org.routes.ts |
-| P0-18 | OPEN | Channel ownership deletion race — removed owner still completes channel deletion | apps/banter-api/src/middleware/channel-auth.ts:139-171 |
+| P0-18 | RESOLVED | Channel ownership deletion race — conditional UPDATE re-checks owner role at DB layer (channel.routes.ts DELETE handler) | apps/banter-api/src/middleware/channel-auth.ts:139-171 |
 
 ---
 
@@ -96,7 +96,7 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 |---|--------|-------|------|
 | P1-17 | RESOLVED | Silent X-Org-Id bypass — invalid org IDs fall through to default (fail-open) | apps/api/src/plugins/auth.ts:100 |
 | P1-18 | RESOLVED | Zero-membership users fall back to NULL org_id — invalid auth context | apps/api/src/plugins/auth.ts:78 |
-| P1-19 | PARTIAL | Deleted guests (`is_active=false`) keep access via existing session — no per-request recheck | apps/api/src/plugins/auth.ts |
+| P1-19 | RESOLVED | Deleted guests (`is_active=false`) keep access via existing session — no per-request recheck | apps/api/src/plugins/auth.ts:315 (JOIN on users + `row.user.is_active` check per request; documented at :284-288) |
 | P1-20 | RESOLVED | `updateMemberRole()` only updates `users.role`, NOT `organization_memberships` → role drift | apps/api/src/services/org.service.ts:72 |
 | P1-21 | RESOLVED | No partial unique index on `(user_id, is_default=true)` — data corruption possible | apps/api/src/db/schema/organization-memberships.ts |
 | P1-22 | RESOLVED | X-Org-Id header not UUID-validated before DB query | apps/api/src/plugins/auth.ts:117 |
@@ -105,9 +105,9 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 
 | # | Status | Issue | File |
 |---|--------|-------|------|
-| P1-23 | OPEN | API key scope cached at auth time — revocation doesn't take effect mid-request | apps/api/src/plugins/auth.ts:225 |
+| P1-23 | PARTIAL | API key scope cached at auth time — revocation doesn't take effect mid-request | apps/api/src/plugins/auth.ts:592-595 (documented tradeoff) |
 | P1-24 | RESOLVED | User deactivation not re-checked per request | apps/api/src/plugins/auth.ts |
-| P1-25 | OPEN | Concurrent role changes (last-write-wins) — no version column | apps/api/src/db/schema/organization-memberships.ts |
+| P1-25 | RESOLVED | Concurrent role changes (last-write-wins) — no version column — fixed via migration 0017 (`version` column on `organization_memberships`) + service-layer optimistic-concurrency gate returning 409 `VERSION_CONFLICT` | apps/api/src/db/schema/organization-memberships.ts |
 | P1-26 | RESOLVED | Channel member count desyncs (concurrent join/leave) | apps/banter-api/src/routes/channel.routes.ts:494-539 |
 | P1-27 | RESOLVED | Argon2 verification on bad API keys = CPU DoS vector | apps/api/src/plugins/auth.ts:217 |
 | P1-28 | RESOLVED | `last_used_at` update not awaited/error-handled | apps/api/src/plugins/auth.ts:224 |
@@ -117,7 +117,7 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 | # | Status | Issue | File |
 |---|--------|-------|------|
 | P1-29 | RESOLVED | Guest acceptance has no per-token rate limiting — brute force possible | apps/api/src/routes/guest.routes.ts:159 |
-| P1-30 | OPEN | Guest invite response returns full token — log leakage risk | apps/api/src/routes/guest.routes.ts:93 |
+| P1-30 | RESOLVED | Guest invite response returns full token — log leakage risk | apps/api/src/routes/guest.routes.ts:139-144 (commit 71043bd gates raw-token echo on NODE_ENV !== 'production'; list responses never include token) |
 | P1-31 | RESOLVED | Duplicate invitation prevention incomplete — silent scope escalation possible | apps/api/src/routes/guest.routes.ts:27 |
 
 ---
@@ -128,8 +128,8 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 |---|--------|-------|------|
 | P2-1 | RESOLVED | Dual source of truth: `banter_settings` table vs `organizations.settings.permissions` JSONB | multiple |
 | P2-2 | RESOLVED | No caching/invalidation on org settings reads — stale settings during updates | apps/api/src/services/org.service.ts |
-| P2-3 | OPEN | UI shows `admin` API key scope to all users; backend blocks non-owners silently | apps/frontend/src/pages/settings.tsx:1210 |
-| P2-4 | OPEN | UI shows `members_can_delete_own_projects` etc. but backend doesn't enforce | multiple |
+| P2-3 | RESOLVED | UI now hides `admin` scope option for non-owners (settings.tsx Create API Key form + people/detail.tsx Access tab dialog) with helper text; backend hardened with explicit `ADMIN_SCOPE_OWNER_ONLY` 403 in both `/auth/api-keys` and `/org/members/:userId/api-keys` (admin scope requires owner or SuperUser) | apps/frontend/src/pages/settings.tsx, apps/frontend/src/pages/people/detail.tsx, apps/api/src/routes/api-key.routes.ts, apps/api/src/routes/org.routes.ts |
+| P2-4 | RESOLVED | Audit confirmed all 9 toggles from the UI are enforced server-side: `members_can_create_projects` (project.routes.ts:24), `members_can_delete_own_projects` (project.routes.ts:149), `members_can_create_channels` + `members_can_create_private_channels` (channel.routes.ts:214,228), `members_can_create_group_dms` (dm.routes.ts:153), `members_can_invite_members` (org.routes.ts:716), `members_can_create_api_keys` + `allowed_api_key_scopes` (api-key.routes.ts:76,87), `max_file_upload_mb`. New unit coverage in apps/api/test/org-permissions.test.ts exercises member/admin/superuser bypass semantics per toggle. | multiple |
 | P2-5 | RESOLVED | Session expiry check uses `>` vs `<=` inconsistently between HTTP and WS auth | apps/api/src/plugins/{auth,websocket}.ts |
 | P2-6 | RESOLVED | `POST /auth/switch-org` doesn't rotate session (session fixation) | apps/api/src/routes/auth.routes.ts:151 |
 | P2-7 | RESOLVED | `POST /auth/switch-org` doesn't signal frontend cache invalidation | apps/api/src/routes/auth.routes.ts:201 |
@@ -140,15 +140,15 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 | P2-12 | RESOLVED | No role `CHECK` constraint on `organization_memberships.role` | apps/api/src/db/schema/organization-memberships.ts:15 |
 | P2-13 | RESOLVED | Archived channels still accessible — no `is_archived=false` in `requireChannelMember` | apps/banter-api/src/middleware/channel-auth.ts:43 |
 | P2-14 | RESOLVED | Guest scope updates don't notify guest (silent removal) | apps/api/src/routes/guest.routes.ts:290 |
-| P2-15 | OPEN | Org admin/owner can moderate any channel without being a member — undocumented | apps/banter-api/src/middleware/channel-auth.ts:117 |
-| P2-16 | OPEN | Migration script silently skips users with NULL org_id | scripts/migrate-org-memberships.js:44 |
-| P2-17 | OPEN | Scope schema mismatch: api-keys enum has `'write'`, defaults use `'read_write'` | apps/api/src/routes/api-key.routes.ts:48 |
+| P2-15 | RESOLVED | Re-audit found the original framing was inaccurate: `requireChannelAdmin`/`requireChannelOwner` are documented "must be called after `requireChannelMember`" and every route in banter-api composes them that way (channel/pin/message/call routes). `requireChannelMember` only lets org-level admin/owner through if they are already a channel member (SuperUsers are the sole bypass at line 76). The elevated moderation path at channel-auth.ts:141/179 is therefore only reachable for org admin/owner who are also channel members — by design, and consistent with SuperUser semantics. Intentional behaviour documented here + inline comments on the bypass lines. | apps/banter-api/src/middleware/channel-auth.ts:141,179 |
+| P2-16 | RESOLVED | Migration script now detects both (a) `users.org_id IS NULL` and (b) users with zero `organization_memberships` rows, prints each affected email, and exits non-zero unless `--allow-orphans` (or `--dry-run`) is passed. Added `--dry-run` flag for safe preview. Live-DB dry-run against seed data found 1 orphan (`system-helpdesk@bigbluebam.internal`, a sentinel service user seeded by migration 0014) — re-running the migration will backfill it into its existing `users.org_id` (the Helpdesk System sentinel org). Users with NULL `org_id` remain skipped, but loudly. | scripts/migrate-org-memberships.js |
+| P2-17 | RESOLVED | Scope schema mismatch: api-keys enum has `'write'`, defaults use `'read_write'` | apps/api/src/routes/api-key.routes.ts:48 uses canonical `['read','read_write','admin']`, matching `API_KEY_SCOPES` in packages/shared/src/constants/index.ts:13; no `'write'` scope value remains in API or shared code |
 | P2-18 | RESOLVED | Guest cleanup not atomic (delete memberships then re-insert) — can leave guest orphaned | apps/api/src/routes/guest.routes.ts:326 |
 | P2-19 | RESOLVED | No notification to target user when impersonation starts | apps/api/src/routes/platform.routes.ts:272 |
 | P2-20 | RESOLVED | Impersonation has no time limit / expiration | apps/api/src/routes/platform.routes.ts |
 | P2-21 | RESOLVED | Impersonated actions attributed only to target — no `impersonator_id` on activity_log | apps/api/src/db/schema/activity-log.ts |
 | P2-22 | RESOLVED | Impersonation endpoint doesn't validate target `is_active` | apps/api/src/routes/platform.routes.ts:295 |
-| P2-23 | OPEN | Org setting flip (e.g. `allow_channel_creation`) not re-checked in handler after middleware | apps/banter-api/src/routes/channel.routes.ts:178 |
+| P2-23 | RESOLVED | Fresh (cache-bypassing) re-read of banter_settings before channel INSERT; returns 403 SETTING_CHANGED on mid-request flip | apps/banter-api/src/routes/channel.routes.ts:178 |
 | P2-24 | RESOLVED | Org deletion (SuperUser) doesn't invalidate active sessions for affected users | apps/api/src/routes/platform.routes.ts:182 |
 
 ---
@@ -159,9 +159,9 @@ Compiled from 10 parallel audits covering: auth flow, SuperUser bypass, API key 
 |---|--------|-------|------|
 | P3-1 | RESOLVED | Role hierarchy defined as array in apps/api and Record in banter-api — duplication | both auth.ts plugins |
 | P3-2 | RESOLVED | No impersonation dashboard / active sessions view for SuperUsers | — |
-| P3-3 | OPEN | Guest `leave channel` endpoint has no role check (arguably OK) | apps/banter-api/src/routes/channel.routes.ts:518 |
+| P3-3 | RESOLVED | Last-owner guard on /leave returns 400 LAST_OWNER_CANNOT_LEAVE when caller is sole owner and other members remain | apps/banter-api/src/routes/channel.routes.ts:518 |
 | P3-4 | RESOLVED | No minimum-owner enforcement on channel role changes (channel can become ownerless) | apps/banter-api/src/routes/channel.routes.ts:650 |
-| P3-5 | OPEN | GET /v1/calls/:id/participants doesn't verify channel membership | apps/banter-api/src/routes/call.routes.ts:552 |
+| P3-5 | RESOLVED | Participants endpoint verifies org match + channel membership (org owner/admin/superuser bypass); 404 on miss | apps/banter-api/src/routes/call.routes.ts:602-625 |
 | P3-6 | RESOLVED | Channel member list doesn't mark guests as `is_guest: true` for admins | apps/api/src/services/project.service.ts:239 |
 | P3-7 | RESOLVED | Rate limit on `POST /auth/switch-org` — org ID enumeration possible | apps/api/src/routes/auth.routes.ts:151 |
 | P3-8 | RESOLVED | No index on `(user_id, is_default)` for organization_memberships | apps/api/src/db/schema/organization-memberships.ts |

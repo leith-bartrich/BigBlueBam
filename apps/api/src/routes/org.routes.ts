@@ -162,6 +162,20 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       });
       return true;
     }
+    if (err instanceof orgService.VersionConflictError) {
+      // P1-25: optimistic-concurrency conflict. Echo the current version
+      // back so the client can refetch and retry without a round trip to
+      // GET just to learn the new version.
+      reply.status(409).send({
+        error: {
+          code: 'VERSION_CONFLICT',
+          message: err.message,
+          details: [{ field: 'version', current_version: err.currentVersion }],
+          request_id: request.id,
+        },
+      });
+      return true;
+    }
     return false;
   };
 
@@ -229,7 +243,10 @@ export default async function orgRoutes(fastify: FastifyInstance) {
     '/org/members/:userId/active',
     { preHandler: [requireAuth, requireOrgRole('admin', 'owner'), requireScope('admin')] },
     async (request, reply) => {
-      const schema = z.object({ is_active: z.boolean() });
+      const schema = z.object({
+        is_active: z.boolean(),
+        version: z.number().int().nonnegative().optional(),
+      });
       const data = schema.parse(request.body);
 
       try {
@@ -241,6 +258,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
             callerUserId: request.user!.id,
             callerRole: request.user!.role,
             callerIsSuperuser: request.user!.is_superuser,
+            expectedVersion: data.version,
           },
         );
         if (!result) {
@@ -583,6 +601,25 @@ export default async function orgRoutes(fastify: FastifyInstance) {
         expires_days: z.number().int().positive().max(3650).optional(),
       });
       const data = schema.parse(request.body);
+
+      // Admin-scope keys may only be created by org owners or SuperUsers.
+      // An org admin creating a key on behalf of another member cannot grant
+      // admin scope — only owners can.
+      if (
+        data.scope === 'admin' &&
+        !request.user!.is_superuser &&
+        request.user!.role !== 'owner'
+      ) {
+        return reply.status(403).send({
+          error: {
+            code: 'ADMIN_SCOPE_OWNER_ONLY',
+            message: "Admin-scope API keys can only be created by an organization owner.",
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
       try {
         const result = await orgService.createMemberApiKey(
           request.user!.org_id,
@@ -845,6 +882,10 @@ export default async function orgRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schema = z.object({
         role: z.enum(['member', 'admin', 'viewer']),
+        // P1-25: optional optimistic-concurrency token. Clients that send
+        // it get 409 on stale writes; clients that omit it retain today's
+        // last-write-wins behavior but still cause version to increment.
+        version: z.number().int().nonnegative().optional(),
       });
       const data = schema.parse(request.body);
 
@@ -856,6 +897,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
           {
             callerRole: request.user!.role,
             callerIsSuperuser: request.user!.is_superuser,
+            expectedVersion: data.version,
           },
         );
 

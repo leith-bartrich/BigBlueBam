@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/common/dropdown-menu';
 import { useAuthStore } from '@/stores/auth.store';
+import { ApiError } from '@/lib/api';
 import {
   peopleApi,
   canActOn,
@@ -154,16 +155,45 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
     },
   });
 
+  // P1-25: banner shown when a concurrent edit wins the race (HTTP 409).
+  const [versionConflictMsg, setVersionConflictMsg] = useState<string | null>(null);
+  const handleVersionConflict = (err: unknown, subject: string) => {
+    if (err instanceof ApiError && err.status === 409 && err.code === 'VERSION_CONFLICT') {
+      setVersionConflictMsg(
+        `${subject} was just updated by someone else — refreshing the list`,
+      );
+      invalidate();
+      return true;
+    }
+    return false;
+  };
+
   const updateRole = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      peopleApi.updateRole(userId, role),
-    onSuccess: invalidate,
+    mutationFn: ({ userId, role, version }: { userId: string; role: string; version?: number }) =>
+      peopleApi.updateRole(userId, role, version),
+    onSuccess: () => {
+      setVersionConflictMsg(null);
+      invalidate();
+    },
+    onError: (err) => {
+      handleVersionConflict(err, 'This user');
+    },
   });
 
   const setActive = useMutation({
-    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
-      peopleApi.setActive(userId, isActive),
-    onSuccess: invalidate,
+    mutationFn: ({
+      userId,
+      isActive,
+      version,
+    }: { userId: string; isActive: boolean; version?: number }) =>
+      peopleApi.setActive(userId, isActive, version),
+    onSuccess: () => {
+      setVersionConflictMsg(null);
+      invalidate();
+    },
+    onError: (err) => {
+      handleVersionConflict(err, 'This user');
+    },
   });
 
   const remove = useMutation({
@@ -307,14 +337,14 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
     runBulk(
       isActive ? 'Enabling' : 'Disabling',
       selectedMembers.filter((m) => m.is_active !== isActive),
-      (m) => peopleApi.setActive(m.id, isActive),
+      (m) => peopleApi.setActive(m.id, isActive, m.version),
     );
 
   const bulkUpdateRole = (role: string) =>
     runBulk(
       `Changing role to ${role}`,
       selectedMembers.filter((m) => m.role !== role),
-      (m) => peopleApi.updateRole(m.id, role),
+      (m) => peopleApi.updateRole(m.id, role, m.version),
     );
 
   const bulkRemove = () =>
@@ -374,6 +404,23 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
             Invite member
           </Button>
         </div>
+
+        {versionConflictMsg && (
+          <div
+            className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 flex items-center justify-between"
+            role="alert"
+          >
+            <span>{versionConflictMsg}</span>
+            <button
+              type="button"
+              className="text-amber-900/70 hover:text-amber-900 dark:text-amber-200/70 dark:hover:text-amber-200"
+              onClick={() => setVersionConflictMsg(null)}
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* Filters row */}
         <div className="flex items-end gap-3 flex-wrap">
@@ -488,7 +535,9 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
                             <Select
                               options={EDITABLE_ROLE_OPTIONS}
                               value={m.role}
-                              onValueChange={(role) => updateRole.mutate({ userId: m.id, role })}
+                              onValueChange={(role) =>
+                                updateRole.mutate({ userId: m.id, role, version: m.version })
+                              }
                               className="w-28"
                             />
                           ) : (
@@ -532,7 +581,11 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
                             {canAct && !isSelf && (
                               <DropdownMenuItem
                                 onSelect={() =>
-                                  setActive.mutate({ userId: m.id, isActive: !m.is_active })
+                                  setActive.mutate({
+                                    userId: m.id,
+                                    isActive: !m.is_active,
+                                    version: m.version,
+                                  })
                                 }
                               >
                                 {m.is_active ? (

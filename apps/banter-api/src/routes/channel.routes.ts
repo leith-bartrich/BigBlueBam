@@ -6,6 +6,7 @@ import {
   banterChannels,
   banterChannelMemberships,
   banterMessages,
+  banterSettings,
   users,
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
@@ -237,6 +238,36 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         }
       }
 
+      // P2-23 (closing the race): Re-read banter_settings directly from the
+      // DB (bypassing the 30s cache) right before we INSERT the channel. If
+      // an admin flipped `allow_channel_creation` to 'admins' after the
+      // initial cached check above, reject with SETTING_CHANGED so the
+      // in-flight request doesn't slip through on stale settings.
+      if (!isPrivileged) {
+        const [freshSettings] = await db
+          .select({ allow_channel_creation: banterSettings.allow_channel_creation })
+          .from(banterSettings)
+          .where(eq(banterSettings.org_id, user.org_id))
+          .limit(1);
+
+        const membersCanCreate =
+          !freshSettings || (freshSettings.allow_channel_creation ?? 'members') === 'members';
+
+        if (!membersCanCreate) {
+          return reply.status(403).send({
+            error: {
+              code: 'SETTING_CHANGED',
+              message:
+                'Channel creation permissions changed during this request. Your organization no longer allows members to create channels.',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        // Private-channel restriction piggybacks on the same flag today
+        // (see org-permissions-bridge.ts), so no separate re-check needed.
+      }
+
       // Check if this is the first channel for the org (auto-create #general)
       const existingChannels = await db
         .select({ count: sql<number>`count(*)::int` })
@@ -434,6 +465,15 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   );
 
   // DELETE /v1/channels/:id — soft delete (archive)
+  //
+  // P0-18: The middleware chain (requireChannelMember + requireChannelOwner)
+  // verifies ownership, but there is a TOCTOU window between the middleware
+  // check and the UPDATE below. A concurrent request could demote/remove the
+  // caller as owner in that window, and the archive would still complete.
+  //
+  // To close the race we perform an atomic conditional UPDATE that re-checks
+  // ownership at the database layer. Org-level owner/admin and superusers
+  // bypass this check (they moderate without needing a channel membership).
   fastify.delete(
     '/v1/channels/:id',
     { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelOwner] },
@@ -441,11 +481,41 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const { id } = request.params as { id: string };
       const user = request.user!;
 
+      const isOrgPrivileged =
+        user.is_superuser || user.role === 'owner' || user.role === 'admin';
+
+      // Conditional archive: for regular channel owners, require a live
+      // owner-role membership row at UPDATE time. Org-privileged users skip
+      // the ownership re-check (they don't need a membership to moderate).
+      const whereCondition = isOrgPrivileged
+        ? eq(banterChannels.id, id)
+        : and(
+            eq(banterChannels.id, id),
+            sql`EXISTS (
+              SELECT 1 FROM banter_channel_memberships
+              WHERE channel_id = ${id}
+                AND user_id = ${user.id}
+                AND role = 'owner'
+            )`,
+          );
+
       const [archived] = await db
         .update(banterChannels)
         .set({ is_archived: true })
-        .where(eq(banterChannels.id, id))
+        .where(whereCondition)
         .returning();
+
+      if (!archived) {
+        // Ownership was revoked between middleware check and UPDATE.
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Channel ownership was revoked — deletion aborted',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
 
       broadcastToOrg(user.org_id, {
         type: 'channel.archived',
@@ -546,19 +616,68 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
   // POST /v1/channels/:id/leave — leave channel
   //
-  // P3-3: This endpoint intentionally has no channel-role check. Any
-  // authenticated user — including guests — is allowed to leave any
-  // channel they are currently a member of. The delete is keyed on
+  // P3-3: Any authenticated user — including guests — is allowed to leave
+  // any channel they are currently a member of. The delete is keyed on
   // (channel_id, current user id), so the caller can only remove
-  // themselves. There is no attack surface to expand here; a user being
-  // unable to leave a channel would be worse UX than the negligible risk
-  // of making /leave callable by everyone.
+  // themselves. The ONE exception: if the caller is the only owner AND the
+  // channel still has other members, reject with LAST_OWNER_CANNOT_LEAVE
+  // so the channel doesn't become ownerless. If the caller is the only
+  // member (owner or otherwise), allow the leave — the channel becomes
+  // orphaned but a later cleanup task can archive it.
   fastify.post(
     '/v1/channels/:id/leave',
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
+
+      // Look up caller's membership before attempting removal.
+      const [callerMembership] = await db
+        .select({ role: banterChannelMemberships.role })
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (callerMembership?.role === 'owner') {
+        const [totalRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(banterChannelMemberships)
+          .where(eq(banterChannelMemberships.channel_id, id));
+
+        const [otherOwnersRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, id),
+              eq(banterChannelMemberships.role, 'owner'),
+              ne(banterChannelMemberships.user_id, user.id),
+            ),
+          );
+
+        const totalMembers = totalRow?.count ?? 0;
+        const otherOwners = otherOwnersRow?.count ?? 0;
+
+        // Only block if leaving would leave the channel ownerless AND
+        // there are still other members. If caller is the only member,
+        // allow leave — the channel becomes orphaned (cleanup out of scope).
+        if (otherOwners === 0 && totalMembers > 1) {
+          return reply.status(400).send({
+            error: {
+              code: 'LAST_OWNER_CANNOT_LEAVE',
+              message:
+                'You are the only owner of this channel. Transfer ownership to another member before leaving.',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       const deleted = await db.transaction(async (tx) => {
         const removed = await tx

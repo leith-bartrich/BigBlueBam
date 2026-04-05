@@ -24,7 +24,7 @@ import { Avatar } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { useAuthStore } from '@/stores/auth.store';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import {
   peopleApi,
   canActOn,
@@ -118,14 +118,45 @@ export function PersonDetailPage({ userId, onNavigate }: PersonDetailPageProps) 
     },
   });
 
+  // P1-25: banner shown when a PATCH races another admin (HTTP 409).
+  const [versionConflict, setVersionConflict] = useState<string | null>(null);
+
   const updateOrgRole = useMutation({
-    mutationFn: (role: string) => peopleApi.updateRole(userId, role),
-    onSuccess: invalidateAll,
+    mutationFn: (role: string) =>
+      // Send the current version so concurrent edits produce a 409 instead
+      // of silently clobbering a peer admin's change.
+      peopleApi.updateRole(userId, role, member?.version),
+    onSuccess: () => {
+      setVersionConflict(null);
+      invalidateAll();
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409 && err.code === 'VERSION_CONFLICT') {
+        setVersionConflict(
+          "This user's role was just updated by someone else — refresh to see the latest",
+        );
+        // Refetch so the Select snaps to the server-side value and the
+        // cached version is current before the next attempt.
+        queryClient.invalidateQueries({ queryKey: ['people', 'member', userId] });
+      }
+    },
   });
 
   const setActive = useMutation({
-    mutationFn: (isActive: boolean) => peopleApi.setActive(userId, isActive),
-    onSuccess: invalidateAll,
+    mutationFn: (isActive: boolean) =>
+      peopleApi.setActive(userId, isActive, member?.version),
+    onSuccess: () => {
+      setVersionConflict(null);
+      invalidateAll();
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409 && err.code === 'VERSION_CONFLICT') {
+        setVersionConflict(
+          "This user was just updated by someone else — refresh to see the latest",
+        );
+        queryClient.invalidateQueries({ queryKey: ['people', 'member', userId] });
+      }
+    },
   });
 
   const transfer = useMutation({
@@ -382,6 +413,14 @@ export function PersonDetailPage({ userId, onNavigate }: PersonDetailPageProps) 
 
             {/* Membership card */}
             <Card title="Membership">
+              {versionConflict && (
+                <div
+                  className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                  role="alert"
+                >
+                  {versionConflict}
+                </div>
+              )}
               <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
                 <Row label="Role">
                   {canAct ? (
@@ -444,6 +483,7 @@ export function PersonDetailPage({ userId, onNavigate }: PersonDetailPageProps) 
             userId={userId}
             canAct={canAct}
             isSelf={isSelf}
+            callerIsOwner={callerIsOwner}
             onOpenReset={() => setResetOpen(true)}
           />
         )}
@@ -931,11 +971,13 @@ function AccessTab({
   userId,
   canAct,
   isSelf,
+  callerIsOwner,
   onOpenReset,
 }: {
   userId: string;
   canAct: boolean;
   isSelf: boolean;
+  callerIsOwner: boolean;
   onOpenReset: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -1172,6 +1214,7 @@ function AccessTab({
       {showCreateKey && (
         <CreateApiKeyDialog
           userId={userId}
+          callerCanGrantAdmin={callerIsOwner}
           onClose={() => setShowCreateKey(false)}
           onCreated={invalidateKeys}
         />
@@ -1182,13 +1225,18 @@ function AccessTab({
 
 function CreateApiKeyDialog({
   userId,
+  callerCanGrantAdmin,
   onClose,
   onCreated,
 }: {
   userId: string;
+  callerCanGrantAdmin: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const scopeOptions = callerCanGrantAdmin
+    ? API_KEY_SCOPE_OPTIONS
+    : API_KEY_SCOPE_OPTIONS.filter((opt) => opt.value !== 'admin');
   const [name, setName] = useState('');
   const [scope, setScope] = useState<ApiKeyScope>('read');
   const [expiresDays, setExpiresDays] = useState<number | ''>('');
@@ -1254,7 +1302,7 @@ function CreateApiKeyDialog({
           <div>
             <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2">Scope</div>
             <div className="space-y-1.5">
-              {API_KEY_SCOPE_OPTIONS.map((opt) => (
+              {scopeOptions.map((opt) => (
                 <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
@@ -1265,6 +1313,14 @@ function CreateApiKeyDialog({
                 </label>
               ))}
             </div>
+            {!callerCanGrantAdmin && (
+              <p
+                className="mt-2 text-xs text-zinc-500 dark:text-zinc-400"
+                title="Admin-scope keys can only be created by an organization owner."
+              >
+                Admin-scope keys can only be created by an organization owner.
+              </p>
+            )}
           </div>
 
           <div>

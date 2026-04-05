@@ -414,6 +414,24 @@ Every API request follows this evaluation sequence:
 | **Login history** | Every `/auth/login` writes to `login_history`. Read via `GET /superuser/users/:id/login-history`. | `apps/api/src/routes/auth.routes.ts`, `apps/api/src/db/schema/login-history.ts` | Implemented |
 | **Session metadata tracking** | `sessions.created_at / last_used_at / ip_address / user_agent` populated by auth plugin; `last_used_at` throttled to 60s. | `apps/api/src/plugins/auth.ts` | Implemented |
 
+### Org-level permission settings
+
+Every toggle surfaced in the **Settings → Permissions** UI is enforced server-side. Org admins/owners and SuperUsers bypass these toggles; members (and lower roles) are subject to them. Defaults live in `apps/api/src/services/org-permissions.ts`.
+
+| Toggle | Default | Enforcement site | Notes |
+|--------|---------|------------------|-------|
+| `members_can_create_projects` | `true` | `POST /projects` — `apps/api/src/routes/project.routes.ts` | 403 if a non-privileged user creates a project while toggle=false |
+| `members_can_delete_own_projects` | `false` | `DELETE /projects/:id` — `apps/api/src/routes/project.routes.ts` | Combined with `created_by === user.id` check — members can only delete their own, and only if the toggle is on |
+| `members_can_create_channels` | `true` | `POST /banter/channels` — `apps/banter-api/src/routes/channel.routes.ts` | Applies to public channels; private channels also require the next toggle |
+| `members_can_create_private_channels` | `true` | `POST /banter/channels` — `apps/banter-api/src/routes/channel.routes.ts` | Checked separately when `type === 'private'` |
+| `members_can_create_group_dms` | `true` | `POST /banter/dms` — `apps/banter-api/src/routes/dm.routes.ts` | Only for group DMs (3+ participants); 1:1 DMs unaffected |
+| `members_can_invite_members` | `false` | `POST /org/members/invite` — `apps/api/src/routes/org.routes.ts` | Admins/owners can always invite; members need this flag on |
+| `members_can_create_api_keys` | `true` | `POST /auth/api-keys` — `apps/api/src/routes/api-key.routes.ts` | Gates API key creation entirely for members |
+| `allowed_api_key_scopes` | `['read','read_write']` | `POST /auth/api-keys` — `apps/api/src/routes/api-key.routes.ts` | Restricts which scopes members may request. Admin scope is ALSO gated by an owner-only check (see below). |
+| `max_file_upload_mb` | `25` | File upload handlers in Banter + B3 | Enforced at upload time |
+
+**Additional admin-scope API key rule (P2-3):** regardless of `allowed_api_key_scopes`, requests for `scope='admin'` are rejected with `403 ADMIN_SCOPE_OWNER_ONLY` unless the caller is an **org owner or SuperUser**. Org admins cannot grant admin-scope keys — not even on-behalf-of another member via `/org/members/:userId/api-keys`. The frontend hides the "Admin" option for non-owners in both the settings Create API Key form and the people detail Access tab dialog.
+
 ---
 
 ## 9. Known Gaps
