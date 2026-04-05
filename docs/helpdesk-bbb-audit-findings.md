@@ -4,10 +4,10 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 
 ## Status Summary (as of granular-permissions branch, 2026-04-05)
 
-- **Resolved:** 47 of 57
+- **Resolved:** 49 of 57
 - **Partial:** 3 of 57
 - **Deferred:** 1 of 57
-- **Open:** 6 of 57
+- **Open:** 4 of 57
 
 ## Headline Findings
 
@@ -88,7 +88,7 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 | HB-49 | RESOLVED | Agent authentication via shared session cookie fragile (no role check against org_memberships) | apps/helpdesk-api/src/routes/agent.routes.ts:28-72 |
 | HB-50 | PARTIAL | Ticket messages cascade delete, but task comments are orphaned (separate tables, no sync) | — |
 | HB-51 | RESOLVED | Ticket ID enumeration possible (404 for both "not found" and "not yours") | apps/helpdesk-api/src/routes/ticket.routes.ts:207 |
-| HB-52 | OPEN | Missing CSRF protection (SameSite=lax mitigates but doesn't fully protect) | apps/helpdesk-api/src/routes/auth.routes.ts:32 |
+| HB-52 | RESOLVED | Missing CSRF protection (SameSite=lax mitigates but doesn't fully protect) | apps/helpdesk-api/src/routes/auth.routes.ts:32 |
 
 ## P3 — LOW / Design
 
@@ -98,7 +98,7 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 | HB-54 | RESOLVED | No per-endpoint rate limits on agent API | apps/helpdesk-api/src/routes/agent.routes.ts |
 | HB-55 | OPEN | No duplicate/merge ticket support | apps/helpdesk-api/src/db/schema/tickets.ts |
 | HB-56 | RESOLVED | task_id FK uses SET NULL on task deletion — orphaned tickets | infra/postgres/init.sql:415 |
-| HB-57 | OPEN | Account lockout after repeated failed logins not implemented | apps/helpdesk-api/src/routes/auth.routes.ts |
+| HB-57 | RESOLVED | Account lockout after repeated failed logins not implemented | apps/helpdesk-api/src/routes/auth.routes.ts |
 
 ---
 
