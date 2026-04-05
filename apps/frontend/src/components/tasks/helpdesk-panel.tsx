@@ -29,6 +29,15 @@ interface TicketDetail {
   messages: TicketMessage[];
 }
 
+// HB-52: Echo csrf_token cookie in X-CSRF-Token header for cross-app
+// admin writes from the BBB SPA into helpdesk-api (authenticated via
+// the BBB `session` cookie).
+function readCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
 async function helpdeskGet<T>(path: string): Promise<T> {
   const res = await fetch(`/helpdesk-api${path}`, {
     credentials: 'include',
@@ -40,10 +49,13 @@ async function helpdeskGet<T>(path: string): Promise<T> {
 }
 
 async function helpdeskPost<T>(path: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const csrfToken = readCsrfToken();
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
   const res = await fetch(`/helpdesk-api${path}`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Helpdesk API error: ${res.status}`);

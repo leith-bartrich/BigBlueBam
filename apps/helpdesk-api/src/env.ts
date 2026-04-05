@@ -9,7 +9,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
   SESSION_SECRET: z.string().min(32),
-  SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(604800), // 7 days
+  SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(86400), // 1 day (helpdesk customers are higher-risk: unverified email, global pool)
 
   HELPDESK_URL: z.string().default('http://localhost:8080'),
 
@@ -19,6 +19,10 @@ const envSchema = z.object({
 
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
+
+  // HB-57: per-email account lockout after repeated failed logins.
+  LOGIN_LOCKOUT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  LOGIN_LOCKOUT_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
 
   // SMTP (optional — emails disabled when not set)
   SMTP_HOST: z.string().optional(),
@@ -33,9 +37,6 @@ const envSchema = z.object({
   S3_SECRET_KEY: z.string().default('minioadmin'),
   S3_BUCKET: z.string().default('bigbluebam-uploads'),
   S3_REGION: z.string().default('us-east-1'),
-
-  // API key for agent routes (BBB engineers)
-  AGENT_API_KEY: z.string().optional(),
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),

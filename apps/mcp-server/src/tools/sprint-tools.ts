@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { handleScopeError } from '../middleware/scope-check.js';
 
 export function registerSprintTools(server: McpServer, api: ApiClient): void {
   server.tool(
@@ -44,6 +45,8 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/projects/${project_id}/sprints`, sprintData);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('create_sprint', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error creating sprint: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -66,6 +69,8 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/sprints/${sprint_id}/start`, {});
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('start_sprint', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error starting sprint: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -96,6 +101,8 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/sprints/${sprint_id}/complete`, body);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('complete_sprint', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error completing sprint: ${JSON.stringify(result.data)}` }],
           isError: true,

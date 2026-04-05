@@ -8,7 +8,8 @@ import {
   banterMessages,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireChannelMember } from '../middleware/channel-auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 import { enqueueNotification, extractMentions } from '../services/notification-queue.js';
 
@@ -137,34 +138,11 @@ export default async function messageRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/messages — post message
   fastify.post(
     '/v1/channels/:id/messages',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireChannelMember] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
       const body = createMessageSchema.parse(request.body);
-
-      // Verify membership
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (!membership) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Must be a member of this channel to post',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       // Sanitize content: strip dangerous HTML (script tags, event handlers, javascript: URLs)
       let sanitizedContent = body.content;
@@ -327,6 +305,7 @@ export default async function messageRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
+      const user = request.user!;
 
       const [row] = await db
         .select({
@@ -353,6 +332,44 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Verify the user is a member of the message's channel
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(eq(banterChannels.id, row.message.channel_id))
+        .limit(1);
+
+      const [membership] = await db
+        .select()
+        .from(banterChannelMemberships)
+        .where(
+          and(
+            eq(banterChannelMemberships.channel_id, row.message.channel_id),
+            eq(banterChannelMemberships.user_id, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        const isDm = channel && (channel.type === 'dm' || channel.type === 'group_dm');
+        const hasOrgOverride =
+          !isDm &&
+          channel &&
+          channel.org_id === user.org_id &&
+          (user.is_superuser || ['owner', 'admin'].includes(user.role));
+
+        if (!hasOrgOverride) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Message not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       return reply.send({
         data: {
           ...row.message,
@@ -365,7 +382,7 @@ export default async function messageRoutes(fastify: FastifyInstance) {
   // PATCH /v1/messages/:id — edit (own only)
   fastify.patch(
     '/v1/messages/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -425,7 +442,7 @@ export default async function messageRoutes(fastify: FastifyInstance) {
   // DELETE /v1/messages/:id — soft delete (own or admin)
   fastify.delete(
     '/v1/messages/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;

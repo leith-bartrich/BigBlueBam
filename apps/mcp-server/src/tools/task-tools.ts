@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { handleScopeError } from '../middleware/scope-check.js';
 
 export function registerTaskTools(server: McpServer, api: ApiClient): void {
   server.tool(
@@ -81,6 +82,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/projects/${project_id}/tasks`, taskData);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('create_task', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error creating task: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -112,6 +115,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.patch(`/tasks/${task_id}`, updates);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('update_task', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error updating task: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -137,6 +142,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/tasks/${task_id}/move`, moveData);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('move_task', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error moving task: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -169,6 +176,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.delete(`/tasks/${task_id}`);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('delete_task', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error deleting task: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -193,6 +202,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.post('/tasks/bulk', { task_ids, operation, fields });
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('bulk_update_tasks', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error in bulk update: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -218,6 +229,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/tasks/${task_id}/time-entries`, timeData);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('log_time', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error logging time: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -241,6 +254,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/tasks/${task_id}/duplicate`, { include_subtasks: include_subtasks ?? false });
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('duplicate_task', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error duplicating task: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -265,6 +280,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/projects/${project_id}/import/csv`, { rows, mapping });
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('import_csv', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error importing CSV: ${JSON.stringify(result.data)}` }],
           isError: true,

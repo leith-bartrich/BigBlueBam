@@ -18,6 +18,10 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
 
+  // HB-57: per-email account lockout after repeated failed logins.
+  LOGIN_LOCKOUT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  LOGIN_LOCKOUT_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
+
   UPLOAD_MAX_FILE_SIZE: z.coerce.number().int().positive().default(26214400), // 25MB
   UPLOAD_ALLOWED_TYPES: z.string().default('image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt'),
 
@@ -30,6 +34,18 @@ const envSchema = z.object({
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
+
+  // SMTP / email (P1-30). Optional — if SMTP_HOST is unset, outbound emails
+  // are logged by the worker instead of delivered. The API enqueues jobs to
+  // the shared `email` BullMQ queue; the worker owns actual delivery.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('noreply@bigbluebam.com'),
+
+  // Public URL used to build invitation acceptance links in emails.
+  FRONTEND_URL: z.string().default('http://localhost/b3'),
 });
 
 export type Env = z.infer<typeof envSchema>;

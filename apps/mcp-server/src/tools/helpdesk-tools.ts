@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { handleScopeError } from '../middleware/scope-check.js';
 
 export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdeskApiUrl: string): void {
   /** Helper to make requests to the helpdesk-api service */
@@ -85,6 +86,8 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
       });
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('reply_to_ticket', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error replying to ticket: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -108,6 +111,8 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
       const result = await helpdeskRequest('PATCH', `/tickets/${ticket_id}`, { status });
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('update_ticket_status', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error updating ticket status: ${JSON.stringify(result.data)}` }],
           isError: true,

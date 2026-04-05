@@ -110,7 +110,7 @@ describe('useAuthStore', () => {
       ).rejects.toThrow(apiError);
 
       const state = useAuthStore.getState();
-      expect(state.error).toBe('Invalid credentials');
+      expect(state.error).toMatchObject({ message: 'Invalid credentials' });
       expect(state.isLoading).toBe(false);
       expect(state.isAuthenticated).toBe(false);
     });
@@ -129,11 +129,11 @@ describe('useAuthStore', () => {
       expect((thrown as Error).message).toBe('Network error');
 
       const state = useAuthStore.getState();
-      expect(state.error).toBe('Login failed');
+      expect(state.error).toMatchObject({ message: 'Login failed' });
     });
 
     it('clears previous error before attempting login', async () => {
-      useAuthStore.setState({ error: 'Previous error' });
+      useAuthStore.setState({ error: { message: 'Previous error' } });
       vi.mocked(api.post).mockResolvedValue({ data: { user: mockUser } });
 
       await useAuthStore.getState().login('test@example.com', 'password');
@@ -187,7 +187,7 @@ describe('useAuthStore', () => {
 
   describe('clearError', () => {
     it('clears the error', () => {
-      useAuthStore.setState({ error: 'Something went wrong' });
+      useAuthStore.setState({ error: { message: 'Something went wrong' } });
 
       useAuthStore.getState().clearError();
 

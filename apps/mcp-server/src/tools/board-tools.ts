@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { handleScopeError } from '../middleware/scope-check.js';
 
 export function registerBoardTools(server: McpServer, api: ApiClient): void {
   server.tool(
@@ -66,6 +67,8 @@ export function registerBoardTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/projects/${project_id}/phases`, phaseData);
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('create_phase', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error creating phase: ${JSON.stringify(result.data)}` }],
           isError: true,
@@ -89,6 +92,8 @@ export function registerBoardTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/projects/${project_id}/phases/reorder`, { phase_ids });
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('reorder_phases', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error reordering phases: ${JSON.stringify(result.data)}` }],
           isError: true,

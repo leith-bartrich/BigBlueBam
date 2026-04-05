@@ -17,7 +17,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bigbluebam} -d bigbluebam"]
       interval: 10s
@@ -77,6 +76,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/bigbluebam
@@ -98,6 +99,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@bigbluebam.com}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost/b3}
     ports:
       - "${API_PORT:-4000}:4000"
     healthcheck:
@@ -149,6 +151,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/bigbluebam
@@ -202,6 +206,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 4001
@@ -242,6 +248,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 4002
@@ -304,6 +312,12 @@ services:
       - backend
 
   # ── One-shot ────────────────────────────────────────────────────
+  # Applies all pending SQL migrations from /app/migrations (baked into the
+  # api image from infra/postgres/migrations). Tracks applied migrations in
+  # the `schema_migrations` table. Idempotent: rerunning is a no-op when the
+  # DB is already up to date. Every DB-using service declares this as a
+  # `service_completed_successfully` dependency so migrations ALWAYS run
+  # before app code that assumes the current schema.
   migrate:
     build:
       context: .
@@ -315,6 +329,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/bigbluebam
+      MIGRATIONS_DIR: /app/migrations
     restart: "no"
     networks:
       - backend

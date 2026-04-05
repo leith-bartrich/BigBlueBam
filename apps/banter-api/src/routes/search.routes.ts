@@ -159,6 +159,18 @@ export default async function searchRoutes(fastify: FastifyInstance) {
 
       const searchPattern = `%${params.q}%`;
 
+      // SuperUsers see all channels; otherwise hide private channels the user isn't a member of.
+      const visibilityCondition = user.is_superuser
+        ? sql`TRUE`
+        : sql`(
+            ${banterChannels.type} = 'public'
+            OR EXISTS (
+              SELECT 1 FROM ${banterChannelMemberships}
+              WHERE ${banterChannelMemberships.channel_id} = ${banterChannels.id}
+                AND ${banterChannelMemberships.user_id} = ${user.id}
+            )
+          )`;
+
       const channels = await db
         .select()
         .from(banterChannels)
@@ -172,6 +184,7 @@ export default async function searchRoutes(fastify: FastifyInstance) {
               OR ${banterChannels.topic} ILIKE ${searchPattern}
               OR ${banterChannels.description} ILIKE ${searchPattern}
             )`,
+            visibilityCondition,
           ),
         )
         .orderBy(banterChannels.name)

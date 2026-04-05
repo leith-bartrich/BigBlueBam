@@ -1,15 +1,40 @@
-import { useTickets } from '@/hooks/use-tickets';
+import { useTickets, useRealtimeTicketsList } from '@/hooks/use-tickets';
 import { Button } from '@/components/common/button';
 import { StatusBadge, PriorityBadge } from '@/components/common/badge';
 import { formatRelativeTime } from '@/lib/utils';
-import { Plus, Loader2, Inbox } from 'lucide-react';
+import { Plus, Inbox } from 'lucide-react';
 
 interface TicketsListPageProps {
   onNavigate: (path: string) => void;
 }
 
+const VIEWED_STORAGE_PREFIX = 'helpdesk-ticket-viewed-';
+
+function getViewedAt(ticketId: string): string | null {
+  try {
+    return localStorage.getItem(VIEWED_STORAGE_PREFIX + ticketId);
+  } catch {
+    return null;
+  }
+}
+
+function markViewed(ticketId: string): void {
+  try {
+    localStorage.setItem(VIEWED_STORAGE_PREFIX + ticketId, new Date().toISOString());
+  } catch {
+    // ignore
+  }
+}
+
+function isUnread(ticketId: string, updatedAt: string): boolean {
+  const viewedAt = getViewedAt(ticketId);
+  if (!viewedAt) return true;
+  return new Date(updatedAt).getTime() > new Date(viewedAt).getTime();
+}
+
 export function TicketsListPage({ onNavigate }: TicketsListPageProps) {
   const { data: tickets, isLoading, error } = useTickets();
+  useRealtimeTicketsList();
 
   return (
     <div>
@@ -22,10 +47,22 @@ export function TicketsListPage({ onNavigate }: TicketsListPageProps) {
         </Button>
       </div>
 
-      {/* Loading */}
+      {/* Loading - skeleton rows */}
       {isLoading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="grid grid-cols-[60px_1fr_120px_90px_110px_120px] gap-4 px-4 py-3 border-b border-zinc-50 dark:border-zinc-800/50 last:border-b-0 animate-pulse"
+            >
+              <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-8" />
+              <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
+              <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-16" />
+              <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-14" />
+              <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-20" />
+              <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-16" />
+            </div>
+          ))}
         </div>
       )}
 
@@ -63,26 +100,44 @@ export function TicketsListPage({ onNavigate }: TicketsListPageProps) {
           </div>
 
           {/* Rows */}
-          {tickets.map((ticket) => (
-            <button
-              key={ticket.id}
-              onClick={() => onNavigate(`/tickets/${ticket.id}`)}
-              className="w-full text-left grid grid-cols-1 sm:grid-cols-[60px_1fr_120px_90px_110px_120px] gap-2 sm:gap-4 px-4 py-3 border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors last:border-b-0"
-            >
-              <span className="text-sm text-zinc-400 font-mono">#{ticket.ticket_number}</span>
-              <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                {ticket.subject}
-              </span>
-              <span>
-                <StatusBadge status={ticket.status} />
-              </span>
-              <span>
-                <PriorityBadge priority={ticket.priority} />
-              </span>
-              <span className="text-sm text-zinc-500 truncate">{ticket.category ?? '--'}</span>
-              <span className="text-sm text-zinc-400">{formatRelativeTime(ticket.updated_at)}</span>
-            </button>
-          ))}
+          {tickets.map((ticket) => {
+            const unread = isUnread(ticket.id, ticket.updated_at);
+            return (
+              <button
+                key={ticket.id}
+                onClick={() => {
+                  markViewed(ticket.id);
+                  onNavigate(`/tickets/${ticket.id}`);
+                }}
+                className="w-full text-left grid grid-cols-1 sm:grid-cols-[60px_1fr_120px_90px_110px_120px] gap-2 sm:gap-4 px-4 py-3 border-b border-zinc-50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors last:border-b-0"
+              >
+                <span className="text-sm text-zinc-400 font-mono">#{ticket.ticket_number}</span>
+                <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate flex items-center gap-2">
+                  {unread && (
+                    <span
+                      aria-label="New activity"
+                      title="New activity"
+                      className="inline-flex items-center gap-1 flex-shrink-0"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-primary-500" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">
+                        New
+                      </span>
+                    </span>
+                  )}
+                  <span className="truncate">{ticket.subject}</span>
+                </span>
+                <span>
+                  <StatusBadge status={ticket.status} />
+                </span>
+                <span>
+                  <PriorityBadge priority={ticket.priority} />
+                </span>
+                <span className="text-sm text-zinc-500 truncate">{ticket.category ?? '--'}</span>
+                <span className="text-sm text-zinc-400">{formatRelativeTime(ticket.updated_at)}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

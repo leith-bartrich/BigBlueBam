@@ -7,6 +7,11 @@ import { TicketsListPage } from '@/pages/tickets-list';
 import { NewTicketPage } from '@/pages/new-ticket';
 import { TicketDetailPage } from '@/pages/ticket-detail';
 import { Header } from '@/components/layout/header';
+import { NotificationPrompt } from '@/components/notification-prompt';
+import { OfflineBanner } from '@/components/offline-banner';
+import { ws } from '@/lib/websocket';
+import { useBrowserNotifications } from '@/hooks/use-browser-notifications';
+import { useMutationRetry } from '@/hooks/use-mutation-retry';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -44,9 +49,20 @@ export function App() {
   const { isAuthenticated, isLoading, fetchMe } = useAuthStore();
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
 
+  useBrowserNotifications();
+  useMutationRetry();
+
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
+
+  // Connect WebSocket when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      ws.connect();
+      return () => ws.disconnect();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -89,6 +105,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <OfflineBanner />
       <Header onNavigate={navigate} />
       <main className="max-w-5xl mx-auto px-4 py-8">
         {(() => {
@@ -99,7 +116,12 @@ export function App() {
               return <TicketDetailPage ticketId={route.ticketId} onNavigate={navigate} />;
             case 'tickets':
             default:
-              return <TicketsListPage onNavigate={navigate} />;
+              return (
+                <>
+                  <NotificationPrompt />
+                  <TicketsListPage onNavigate={navigate} />
+                </>
+              );
           }
         })()}
       </main>

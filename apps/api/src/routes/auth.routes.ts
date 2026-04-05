@@ -1,8 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { registerSchema, loginSchema, updateProfileSchema } from '@bigbluebam/shared';
+import { eq, and } from 'drizzle-orm';
+import { z } from 'zod';
 import * as authService from '../services/auth.service.js';
 import { requireAuth } from '../plugins/auth.js';
 import { env } from '../env.js';
+import { db } from '../db/index.js';
+import { organizationMemberships } from '../db/schema/organization-memberships.js';
+import { organizations } from '../db/schema/organizations.js';
+import {
+  checkLockout,
+  recordFailure,
+  clearLockout,
+  LOCKOUT_MESSAGE,
+} from '../lib/login-lockout.js';
+import { issueCsrfToken } from '../plugins/csrf.js';
 
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
@@ -19,6 +31,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     const result = await authService.register(data);
 
     reply.setCookie('session', result.session.id, cookieOptions);
+    issueCsrfToken(reply);
 
     return reply.status(201).send({
       data: {
@@ -28,6 +41,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
           display_name: result.user.display_name,
           role: result.user.role,
           org_id: result.user.org_id,
+          is_superuser: result.user.is_superuser,
+          active_org_id: result.user.org_id,
         },
         organization: {
           id: result.org.id,
@@ -41,10 +56,27 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/auth/login', async (request, reply) => {
     const data = loginSchema.parse(request.body);
 
+    // HB-57: short-circuit on lockout BEFORE any DB lookup or argon2.verify
+    // so brute-force attackers can't burn CPU.
+    if (await checkLockout(fastify.redis, data.email)) {
+      return reply.status(429).send({
+        error: {
+          code: 'ACCOUNT_LOCKED',
+          message: LOCKOUT_MESSAGE,
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
     try {
       const result = await authService.login(data.email, data.password, data.totp_code);
 
+      // Successful login — clear any accumulated failure counter.
+      await clearLockout(fastify.redis, data.email);
+
       reply.setCookie('session', result.session.id, cookieOptions);
+      issueCsrfToken(reply);
 
       return reply.send({
         data: {
@@ -54,11 +86,20 @@ export default async function authRoutes(fastify: FastifyInstance) {
             display_name: result.user.display_name,
             role: result.user.role,
             org_id: result.user.org_id,
+            is_superuser: result.user.is_superuser,
+            active_org_id: result.user.org_id,
           },
         },
       });
     } catch (err) {
       if (err instanceof authService.AuthError) {
+        // HB-57: Count any auth failure (bad password, unknown user, disabled
+        // account) against the lockout counter. The service's existing
+        // timing-safe handling of unknown users stays intact because we
+        // already called into it above.
+        if (err.code === 'INVALID_CREDENTIALS') {
+          await recordFailure(fastify.redis, data.email);
+        }
         return reply.status(err.statusCode).send({
           error: {
             code: err.code,
@@ -78,6 +119,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     reply.clearCookie('session', { path: '/' });
+    reply.clearCookie('csrf_token', { path: '/' });
 
     return reply.send({ data: { success: true } });
   });
@@ -103,9 +145,127 @@ export default async function authRoutes(fastify: FastifyInstance) {
         avatar_url: user.avatar_url,
         role: user.role,
         org_id: user.org_id,
+        active_org_id: request.user!.active_org_id,
+        is_superuser: user.is_superuser,
         timezone: user.timezone,
         notification_prefs: user.notification_prefs,
         created_at: user.created_at.toISOString(),
+      },
+    });
+  });
+
+  fastify.get('/auth/orgs', { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
+
+    const memberships = await db
+      .select({
+        org_id: organizationMemberships.org_id,
+        role: organizationMemberships.role,
+        is_default: organizationMemberships.is_default,
+        joined_at: organizationMemberships.joined_at,
+        org_name: organizations.name,
+        org_slug: organizations.slug,
+        org_logo_url: organizations.logo_url,
+      })
+      .from(organizationMemberships)
+      .innerJoin(organizations, eq(organizationMemberships.org_id, organizations.id))
+      .where(eq(organizationMemberships.user_id, userId));
+
+    return reply.send({
+      data: {
+        active_org_id: request.user!.active_org_id,
+        organizations: memberships.map((m) => ({
+          org_id: m.org_id,
+          name: m.org_name,
+          slug: m.org_slug,
+          logo_url: m.org_logo_url,
+          role: m.role,
+          is_default: m.is_default,
+          joined_at: m.joined_at.toISOString(),
+        })),
+      },
+    });
+  });
+
+  fastify.post('/auth/switch-org', {
+    preHandler: [requireAuth],
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+        keyGenerator: (req) => req.user?.id ?? req.ip,
+      },
+    },
+  }, async (request, reply) => {
+    const bodySchema = z.object({ org_id: z.string().uuid() });
+    const parsed = bodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: parsed.error.issues.map((i) => ({
+            field: i.path.join('.'),
+            issue: i.message,
+          })),
+          request_id: request.id,
+        },
+      });
+    }
+
+    const { org_id } = parsed.data;
+    const userId = request.user!.id;
+
+    // Verify the user is a member of the requested org
+    const [membership] = await db
+      .select({
+        org_id: organizationMemberships.org_id,
+        role: organizationMemberships.role,
+        is_default: organizationMemberships.is_default,
+        org_name: organizations.name,
+        org_slug: organizations.slug,
+      })
+      .from(organizationMemberships)
+      .innerJoin(organizations, eq(organizationMemberships.org_id, organizations.id))
+      .where(
+        and(
+          eq(organizationMemberships.user_id, userId),
+          eq(organizationMemberships.org_id, org_id),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      return reply.status(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You are not a member of that organization',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Rotate the session: delete the old one and issue a new session ID.
+    // This mitigates session fixation risks across org context changes.
+    if (request.sessionId) {
+      await authService.logout(request.sessionId);
+    }
+    const newSession = await authService.createSession(userId);
+    reply.setCookie('session', newSession.id, cookieOptions);
+    issueCsrfToken(reply);
+
+    return reply.send({
+      data: {
+        active_org_id: membership.org_id,
+        organization: {
+          id: membership.org_id,
+          name: membership.org_name,
+          slug: membership.org_slug,
+        },
+        role: membership.role,
+        is_default: membership.is_default,
+        cache_bust: Date.now().toString(),
       },
     });
   });

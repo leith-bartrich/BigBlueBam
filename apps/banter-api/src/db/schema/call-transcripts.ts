@@ -2,7 +2,7 @@ import {
   pgTable,
   uuid,
   text,
-  real,
+  doublePrecision,
   boolean,
   timestamp,
   index,
@@ -23,7 +23,7 @@ export const banterCallTranscripts = pgTable(
     content: text('content').notNull(),
     started_at: timestamp('started_at', { withTimezone: true }).notNull(),
     ended_at: timestamp('ended_at', { withTimezone: true }).notNull(),
-    confidence: real('confidence'),
+    confidence: doublePrecision('confidence'),
     is_final: boolean('is_final').notNull().default(true),
   },
   (table) => [

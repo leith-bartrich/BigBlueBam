@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './sidebar';
 import { Avatar } from '@/components/common/avatar';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
+import { SuperuserContextBanner } from '@/components/superuser-context-banner';
 import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
@@ -71,6 +72,7 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
       />
 
       <div className="flex flex-col flex-1 overflow-hidden">
+        <SuperuserContextBanner />
         <header className="flex items-center justify-between h-14 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0">
           <div className="flex items-center gap-4">
             {/* Cross-app navigation */}
@@ -208,6 +210,9 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
                 <p className="text-xs text-zinc-500">{user?.email}</p>
               </div>
               <DropdownMenuItem onSelect={() => onNavigate('/settings')}>Settings</DropdownMenuItem>
+              {user?.is_superuser === true && (
+                <DropdownMenuItem onSelect={() => onNavigate('/superuser')}>SuperUser Console</DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={handleLogout} destructive>
                 <LogOut className="h-4 w-4" />

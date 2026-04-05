@@ -8,8 +8,14 @@ BigBlueBam uses PostgreSQL 16 as its primary database, with Row-Level Security (
 
 ```mermaid
 erDiagram
-    organizations ||--o{ users : "has many"
+    organizations ||--o{ organization_memberships : "has many"
     organizations ||--o{ projects : "has many"
+    organizations ||--o{ guest_invitations : "has many"
+    organizations ||--o{ banter_audit_log : "has many"
+
+    users ||--o{ organization_memberships : "has many"
+    organization_memberships }o--|| organizations : "belongs to"
+    organization_memberships }o--|| users : "belongs to"
 
     projects ||--o{ phases : "has many"
     projects ||--o{ sprints : "has many"
@@ -19,11 +25,17 @@ erDiagram
     projects ||--o{ custom_field_definitions : "has many"
     projects ||--o{ task_states : "has many"
     projects ||--o{ project_memberships : "has many"
+    projects }o--o| users : "created by"
 
     users ||--o{ project_memberships : "has many"
     users ||--o{ sessions : "has many"
     users ||--o{ api_keys : "has many"
     users ||--o{ notifications : "has many"
+    users ||--o{ superuser_audit_log : "acted as superuser"
+    users ||--o{ impersonation_sessions : "initiated impersonation"
+    users ||--o{ guest_invitations : "invited by"
+
+    sessions }o--o| organizations : "active org"
 
     project_memberships }o--|| projects : "belongs to"
     project_memberships }o--|| users : "belongs to"
@@ -49,6 +61,7 @@ erDiagram
     comment_reactions }o--|| users : "reacted by"
     attachments }o--|| users : "uploaded by"
     activity_log }o--|| users : "acted by"
+    activity_log }o--o| users : "impersonated by"
     time_entries }o--|| users : "logged by"
 
     organizations ||--o{ banter_channels : "has many"
@@ -84,17 +97,28 @@ erDiagram
 
     users {
         uuid id PK
-        uuid org_id FK
-        varchar email UK
+        uuid org_id FK "legacy; use organization_memberships"
+        varchar email UK "varchar(320), RFC 5321"
         varchar display_name
         text avatar_url
         varchar role
         varchar timezone
         jsonb notification_prefs
         boolean is_active
+        boolean is_superuser
         timestamptz last_seen_at
         timestamptz created_at
         timestamptz updated_at
+    }
+
+    organization_memberships {
+        uuid id PK
+        uuid user_id FK
+        uuid org_id FK
+        varchar role "owner/admin/member/viewer/guest"
+        boolean is_default
+        uuid invited_by FK
+        timestamptz joined_at
     }
 
     projects {
@@ -110,6 +134,7 @@ erDiagram
         integer task_id_sequence
         jsonb settings
         boolean is_archived
+        uuid created_by FK
         timestamptz created_at
         timestamptz updated_at
     }
@@ -251,6 +276,7 @@ erDiagram
         uuid project_id FK
         uuid task_id FK
         uuid actor_id FK
+        uuid impersonator_id FK
         varchar action
         jsonb details
         timestamptz created_at
@@ -278,11 +304,11 @@ erDiagram
     }
 
     sessions {
-        uuid id PK
+        text id PK
         uuid user_id FK
-        text token_hash
+        uuid active_org_id FK
+        jsonb data
         timestamptz expires_at
-        timestamptz created_at
     }
 
     api_keys {
@@ -353,6 +379,60 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
+
+    superuser_audit_log {
+        uuid id PK
+        uuid superuser_id FK
+        varchar action
+        uuid target_org_id
+        uuid target_user_id
+        jsonb details
+        varchar ip_address
+        text user_agent
+        timestamptz created_at
+    }
+
+    impersonation_sessions {
+        uuid id PK
+        uuid superuser_id FK
+        uuid target_user_id FK
+        text reason
+        timestamptz started_at
+        timestamptz expires_at
+        timestamptz ended_at
+    }
+
+    guest_invitations {
+        uuid id PK
+        uuid org_id FK
+        uuid invited_by FK
+        varchar email
+        varchar role
+        text_array project_ids
+        text_array channel_ids
+        varchar token UK
+        timestamptz expires_at
+        timestamptz accepted_at
+        timestamptz revoked_at
+        timestamptz created_at
+    }
+
+    banter_audit_log {
+        uuid id PK
+        uuid org_id FK
+        uuid user_id FK
+        varchar action
+        varchar entity_type
+        uuid entity_id
+        jsonb details
+        timestamptz created_at
+    }
+
+    schema_migrations {
+        text id PK
+        text checksum
+        timestamptz applied_at
+    }
 ```
 
 ---
@@ -364,8 +444,9 @@ erDiagram
 | Table | Purpose | Key Columns |
 |---|---|---|
 | `organizations` | Top-level tenant. All data is scoped to an org. | `slug` (unique), `settings` (JSONB for org-wide defaults) |
-| `users` | User accounts within an organization. | `email` (unique), `role` (owner/admin/member), `notification_prefs` (JSONB) |
-| `projects` | Discrete bodies of work with their own boards. | `task_id_prefix` (e.g., "BBB"), `task_id_sequence` (auto-increment), `settings` (JSONB) |
+| `users` | User accounts. | `email` (unique, varchar(320)), `role` (owner/admin/member), `is_superuser`, `notification_prefs` (JSONB, NOT NULL). The legacy `org_id` column is retained for backward compatibility but membership is authoritative in `organization_memberships`. |
+| `organization_memberships` | Many-to-many join between `users` and `organizations`. Replaces the single-org model of `users.org_id`. | `role` (owner/admin/member/viewer/guest), `is_default` (exactly one default per user, enforced by partial unique index), `invited_by`, unique on `(user_id, org_id)` |
+| `projects` | Discrete bodies of work with their own boards. | `task_id_prefix` (e.g., "BBB"), `task_id_sequence` (auto-increment), `settings` (JSONB, NOT NULL), `created_by` |
 | `project_memberships` | Join table linking users to projects with roles. | `role` (admin/member/viewer), unique on `(project_id, user_id)` |
 
 ### Board Structure
@@ -392,7 +473,7 @@ erDiagram
 |---|---|---|
 | `comments` | Task comments (user and system-generated). | `body` (HTML), `body_plain` (for search), `is_system` |
 | `attachments` | File uploads linked to tasks. | `storage_key` (S3 object key), `content_type`, `size_bytes` |
-| `activity_log` | Append-only audit trail. Partitioned monthly. | `action` (e.g., "task.created"), `details` (JSONB diff) |
+| `activity_log` | Append-only audit trail. Partitioned monthly. | `action` (e.g., "task.created"), `details` (JSONB diff), `impersonator_id` (set when the actor was a superuser acting as another user) |
 | `notifications` | Per-user notification queue. | `type`, `payload` (JSONB), `is_read` |
 
 ### Templates and Views
@@ -424,8 +505,13 @@ erDiagram
 
 | Table | Purpose | Key Columns |
 |---|---|---|
-| `sessions` | Redis-backed session references. | `token_hash`, `expires_at` (30-day sliding) |
+| `sessions` | Server-side session rows (id is a text token). | `user_id`, `active_org_id` (persists the user's selected org across requests/WebSockets/jobs, replacing the `X-Org-Id` header echo), `data` (JSONB, NOT NULL), `expires_at` (30-day sliding) |
 | `api_keys` | API keys for automation and MCP. | `key_hash` (Argon2id), `scope` (read/read_write/admin), `expires_at` |
+| `superuser_audit_log` | Append-only record of every `/superuser/*` API call. | `superuser_id`, `action`, `target_org_id`/`target_user_id`, `details` (JSONB), `ip_address`, `user_agent` |
+| `impersonation_sessions` | Time-bounded "act as user" grants issued by a superuser. | `superuser_id`, `target_user_id`, `started_at`, `expires_at` (NOT NULL), `ended_at`, `reason`. Writes made while impersonating are stamped on `activity_log.impersonator_id`. |
+| `guest_invitations` | Limited-scope, token-based invitations for guest users. | `org_id`, `email`, `role` (default `guest`), `project_ids` / `channel_ids` (text[] scoping the grant), `token` (unique), `expires_at`, `accepted_at`, `revoked_at` |
+| `banter_audit_log` | Append-only record of Banter admin actions. | `org_id`, `user_id`, `action`, `entity_type`, `entity_id`, `details` (JSONB) |
+| `schema_migrations` | Migration runner tracking table. | `id` (filename without `.sql`), `checksum` (SHA-256 of SQL body), `applied_at`. Managed by `apps/api/src/migrate.ts` — do not edit directly. |
 
 ---
 
@@ -581,54 +667,105 @@ ALTER TABLE activity_log DETACH PARTITION activity_log_2024_01;
 
 ---
 
-## Migration Workflow
+## Migrations
 
-BigBlueBam uses **Drizzle ORM** for type-safe schema definitions and migrations.
+BigBlueBam uses a **hand-written, forward-only SQL migration system** driven by a small runner at `apps/api/src/migrate.ts`. Drizzle schemas in `apps/{api,helpdesk-api,banter-api}/src/db/schema/*.ts` are the TypeScript source of truth for table shapes; the SQL files in `infra/postgres/migrations/` are the authoritative on-disk history that the runner applies to Postgres.
 
-```mermaid
-graph LR
-    A["Edit Drizzle schema<br/>(apps/api/src/db/schema/*.ts)"] --> B["Generate migration<br/>pnpm db:generate"]
-    B --> C["Review SQL in<br/>migrations/ directory"]
-    C --> D["Apply migration<br/>docker compose run --rm migrate"]
-    D --> E["Verify in database"]
-```
+> **Note:** The legacy `infra/postgres/init.sql` bootstrap file has been **deleted**. The canonical initial schema now lives in `infra/postgres/migrations/0000_init.sql` and is applied by the `migrate` service like every other migration. There is no special first-boot path.
 
-### Commands
-
-```bash
-# Generate a migration from schema changes
-pnpm db:generate
-
-# Push schema directly (dev only, no migration file)
-pnpm db:push
-
-# Apply pending migrations
-docker compose run --rm migrate
-
-# Alternatively, apply from a local environment
-pnpm --filter @bigbluebam/api db:migrate
-```
-
-### Migration File Structure
+### Directory layout
 
 ```
-apps/api/src/db/
-  schema/
-    index.ts          Re-exports all table definitions
-    tasks.ts          24 table definition files (one per table)
-    ...
-  migrations/
-    0001_initial_schema.sql
-    0002_activity_log_partitions.sql
-    0003_add_custom_fields.sql
-    meta/
-      _journal.json   Migration history tracking
+infra/postgres/migrations/
+  0000_init.sql                         Canonical initial schema (replaces old init.sql)
+  0001_baseline.sql                     Marker migration — stamps a consistent row in schema_migrations
+  0002_granular_permissions_and_drift.sql
+  0003_session_active_org.sql
+  0004_activity_log_impersonator.sql
+  0005_projects_created_by.sql
+  0006_drizzle_drift_sweep.sql
+  README.md
 ```
 
-### Best Practices
+### How migrations are applied
 
-1. **Never edit applied migrations.** Create a new migration instead.
-2. **Test migrations against a copy of production data** before applying to production.
-3. **Keep migrations small and focused.** One logical change per migration file.
-4. **Use transactions** for DDL changes (PostgreSQL supports transactional DDL).
-5. **Add indexes concurrently** in production to avoid table locks: `CREATE INDEX CONCURRENTLY ...`.
+The `migrate` service in `docker-compose.yml` runs `apps/api/src/migrate.ts` and must complete successfully before `api`, `helpdesk-api`, `banter-api`, and `worker` start. It runs on **every `docker compose up`** — running against an up-to-date DB is a no-op.
+
+For each file (in lexicographic order) the runner:
+
+1. Computes a **SHA-256 checksum over the SQL body only** (the leading block of `--` comment lines and blank lines is stripped before hashing, so maintainers can edit the documented header without invalidating the fingerprint).
+2. Checks the `schema_migrations` table for a row with the same `id` (the filename without `.sql`).
+3. If not applied, runs the entire file inside a single transaction and records the checksum.
+4. If already applied with a matching checksum, skips.
+5. If already applied with a **different** checksum, aborts loudly — migrations are **immutable**. The only exception is a one-time re-stamp from the legacy full-file checksum to the new body-only checksum, and an opt-in `MIGRATE_ALLOW_HEADER_RESTAMP=1` env var for header-only edits.
+
+Because migrations may run against fresh DBs (where `0000_init.sql` already created everything) or older DBs catching up, every statement must be **idempotent**:
+
+- `CREATE TABLE IF NOT EXISTS`
+- `CREATE [UNIQUE] INDEX IF NOT EXISTS` (or preceded by `DROP INDEX IF EXISTS`)
+- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+- `DROP TABLE|INDEX|COLUMN IF EXISTS`
+- `CREATE TRIGGER` wrapped in `DO $$ ... END $$` or preceded by `DROP TRIGGER IF EXISTS`
+- Data migrations via `INSERT ... ON CONFLICT DO NOTHING` or `DO $$` blocks
+
+### Required file header
+
+Every migration file **must** begin with a header matching this shape within the first ~20 lines:
+
+```sql
+-- ─────────────────────────────────────────────────────────────────────────
+-- NNNN_short_name.sql
+-- ─────────────────────────────────────────────────────────────────────────
+-- Why: <one-sentence description of what problem this migration solves>
+-- Client impact: <what clients will see — "additive only", "breaking", etc.>
+-- ─────────────────────────────────────────────────────────────────────────
+```
+
+The filename, `Why:` line, and `Client impact:` line are all enforced by the linter. Since header comments are stripped before checksum computation, you can freely amend the documented reason after the fact without tripping the immutability guard.
+
+### Filename convention
+
+Files must match `^[0-9]{4}_[a-z][a-z0-9_]*\.sql$` — a zero-padded 4-digit sequence number, an underscore, and a short snake_case name.
+
+### Linter — `pnpm lint:migrations`
+
+`scripts/lint-migrations.mjs` enforces all of the above:
+
+- Filename pattern
+- Required header lines (filename, `Why:`, `Client impact:`)
+- Idempotency (`IF NOT EXISTS` / `IF EXISTS` / guarded triggers)
+- Warning on unguarded `CREATE TYPE ... AS ENUM` (no `IF NOT EXISTS` syntax exists; wrap in a `DO $$` block)
+
+Rule escape hatch: append `-- noqa: <rule-name>` (or `-- noqa: all`) on a line to silence a single rule. Use sparingly.
+
+### Drift guard — `pnpm db:check`
+
+`scripts/db-check.mjs` parses every `pgTable(...)` declaration across the three schema roots (`apps/api`, `apps/helpdesk-api`, `apps/banter-api`), unions them by table name, and compares the result against the live database pointed to by `DATABASE_URL`. It reports:
+
+- **Missing tables / columns in DB** (Drizzle declares something the DB lacks) — fails with exit code 1
+- **Unknown tables / columns in DB** (DB has something no Drizzle schema declares) — fails with exit code 1
+- **Type mismatches** — warnings only (the regex parser can't perfectly reproduce Postgres canonical types)
+
+Table `schema_migrations` is always ignored.
+
+### CI enforcement
+
+`.github/workflows/db-drift.yml` runs both `pnpm lint:migrations` and `pnpm db:check` (against a freshly-migrated Postgres 16 container) on every push and PR. A PR that adds a Drizzle column without a corresponding migration, or a migration that violates idempotency rules, will fail CI.
+
+### Schema-change workflow — adding a column
+
+1. **Edit the Drizzle schema** in `apps/<app>/src/db/schema/<table>.ts` to add the column.
+2. **Write a new migration** at `infra/postgres/migrations/NNNN_short_name.sql` — pick the next free 4-digit prefix and include the required header.
+3. **Use idempotent DDL** — `ALTER TABLE <t> ADD COLUMN IF NOT EXISTS ...`, `CREATE INDEX IF NOT EXISTS ...`.
+4. **Run `pnpm lint:migrations`** locally to verify the header and idempotency rules.
+5. **Apply locally:** `docker compose up -d postgres && docker compose run --rm migrate` (or restart the stack — the `migrate` service runs automatically).
+6. **Run `pnpm db:check`** to verify Drizzle ↔ DB are in sync.
+7. **Commit both** the schema file and the migration file together.
+
+### Best practices
+
+1. **Never edit an applied migration** — the checksum guard will abort startup. Create a new numbered file instead.
+2. **One logical change per migration file.** Keep them small and focused.
+3. **Forward-only.** There are no down migrations. If you need to roll back, write a new forward migration that undoes the change.
+4. **Additive is safer than breaking.** Add a new column nullable; backfill in a separate migration; tighten `NOT NULL` in a third. Document breaking changes clearly in `Client impact:`.
+5. **For production, add indexes concurrently** to avoid table locks: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ...`. (Note: `CONCURRENTLY` cannot run inside a transaction, so such a migration must be the only statement in its file.)

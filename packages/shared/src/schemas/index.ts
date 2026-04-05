@@ -6,3 +6,4 @@ export * from './phase.js';
 export * from './sprint.js';
 export * from './task.js';
 export * from './comment.js';
+export * from './superuser.js';

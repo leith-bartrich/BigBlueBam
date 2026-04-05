@@ -4,12 +4,12 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { timeEntries } from '../db/schema/time-entries.js';
 import { tasks } from '../db/schema/tasks.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 
 export default async function timeEntryRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/time-entries',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const schema = z.object({
         minutes: z.number().int().positive(),

@@ -7,7 +7,7 @@ import { db } from '../db/index.js';
 import { sessions } from '../db/schema/sessions.js';
 import { users } from '../db/schema/users.js';
 import { env } from '../env.js';
-import type { AuthUser } from './auth.js';
+import { buildAuthUser, type AuthUser } from './auth.js';
 
 const REDIS_CHANNEL = 'bigbluebam:events';
 
@@ -107,6 +107,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<AuthUser | 
         role: users.role,
         timezone: users.timezone,
         is_active: users.is_active,
+        is_superuser: users.is_superuser,
       },
     })
     .from(sessions)
@@ -116,10 +117,10 @@ async function authenticateRequest(request: FastifyRequest): Promise<AuthUser | 
 
   const row = result[0];
   if (!row) return null;
-  if (new Date(row.session.expires_at) <= new Date()) return null;
+  if (!(new Date(row.session.expires_at).getTime() + 30_000 > Date.now())) return null;
   if (!row.user.is_active) return null;
 
-  return row.user;
+  return await buildAuthUser(row.user, null, request);
 }
 
 // ── Plugin ───────────────────────────────────────────────────

@@ -3,7 +3,8 @@ import { eq, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { webhooks } from '../db/schema/webhooks.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireProjectRole } from '../middleware/authorize.js';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
@@ -30,7 +31,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/webhooks',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectRole('admin', 'member'), requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const schema = z.object({
         url: z.string().url(),
@@ -55,7 +56,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/webhooks/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const schema = z.object({
         url: z.string().url().optional(),
@@ -94,7 +95,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/webhooks/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const [deleted] = await db
         .delete(webhooks)

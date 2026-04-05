@@ -49,7 +49,7 @@ describe('Email Job', () => {
       SMTP_HOST: undefined,
       SMTP_PORT: 587,
       SMTP_USER: undefined,
-      SMTP_PASSWORD: undefined,
+      SMTP_PASS: undefined,
       EMAIL_FROM: 'noreply@bigbluebam.com',
     } as any;
 
@@ -72,7 +72,7 @@ describe('Email Job', () => {
       SMTP_HOST: undefined,
       SMTP_PORT: 587,
       SMTP_USER: undefined,
-      SMTP_PASSWORD: undefined,
+      SMTP_PASS: undefined,
       EMAIL_FROM: 'noreply@bigbluebam.com',
     } as any;
 

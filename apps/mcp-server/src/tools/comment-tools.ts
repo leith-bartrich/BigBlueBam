@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { handleScopeError } from '../middleware/scope-check.js';
 
 export function registerCommentTools(server: McpServer, api: ApiClient): void {
   server.tool(
@@ -43,6 +44,8 @@ export function registerCommentTools(server: McpServer, api: ApiClient): void {
       const result = await api.post(`/tasks/${task_id}/comments`, { body });
 
       if (!result.ok) {
+        const scopeErr = handleScopeError('add_comment', 'read_write', result);
+        if (scopeErr) return scopeErr;
         return {
           content: [{ type: 'text' as const, text: `Error adding comment: ${JSON.stringify(result.data)}` }],
           isError: true,

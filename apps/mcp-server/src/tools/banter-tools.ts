@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { handleScopeError } from '../middleware/scope-check.js';
 
 /**
  * Helper to make requests to the banter-api service.
@@ -57,6 +58,13 @@ function err(label: string, data: unknown) {
   };
 }
 
+/** Return a scope-aware error for write operations, falling back to the standard err(). */
+function writeErr(toolName: string, label: string, result: { ok: boolean; status: number; data: unknown }) {
+  const scopeResult = handleScopeError(toolName, 'read_write', result);
+  if (scopeResult) return scopeResult;
+  return err(label, result.data);
+}
+
 export function registerBanterTools(server: McpServer, api: ApiClient, banterApiUrl: string): void {
   const banter = createBanterClient(banterApiUrl, api);
 
@@ -106,7 +114,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async (params) => {
       const result = await banter.post('/banter/api/v1/channels', params);
-      return result.ok ? ok(result.data) : err('creating channel', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_create_channel', 'creating channel', result);
     },
   );
 
@@ -121,7 +129,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id, ...updates }) => {
       const result = await banter.patch(`/banter/api/v1/channels/${channel_id}`, updates);
-      return result.ok ? ok(result.data) : err('updating channel', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_update_channel', 'updating channel', result);
     },
   );
 
@@ -133,7 +141,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id }) => {
       const result = await banter.patch(`/banter/api/v1/channels/${channel_id}`, { is_archived: true });
-      return result.ok ? ok(result.data) : err('archiving channel', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_archive_channel', 'archiving channel', result);
     },
   );
 
@@ -156,7 +164,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       const result = await banter.delete(`/banter/api/v1/channels/${channel_id}`);
       return result.ok
         ? { content: [{ type: 'text' as const, text: `Channel ${channel_id} deleted successfully.` }] }
-        : err('deleting channel', result.data);
+        : writeErr('banter_delete_channel', 'deleting channel', result);
     },
   );
 
@@ -168,7 +176,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id }) => {
       const result = await banter.post(`/banter/api/v1/channels/${channel_id}/join`);
-      return result.ok ? ok(result.data) : err('joining channel', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_join_channel', 'joining channel', result);
     },
   );
 
@@ -180,7 +188,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id }) => {
       const result = await banter.post(`/banter/api/v1/channels/${channel_id}/leave`);
-      return result.ok ? ok(result.data) : err('leaving channel', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_leave_channel', 'leaving channel', result);
     },
   );
 
@@ -193,7 +201,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id, user_ids }) => {
       const result = await banter.post(`/banter/api/v1/channels/${channel_id}/members`, { user_ids });
-      return result.ok ? ok(result.data) : err('adding channel members', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_add_channel_members', 'adding channel members', result);
     },
   );
 
@@ -208,7 +216,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       const result = await banter.delete(`/banter/api/v1/channels/${channel_id}/members/${user_id}`);
       return result.ok
         ? { content: [{ type: 'text' as const, text: `User ${user_id} removed from channel ${channel_id}.` }] }
-        : err('removing channel member', result.data);
+        : writeErr('banter_remove_channel_member', 'removing channel member', result);
     },
   );
 
@@ -258,7 +266,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id, ...body }) => {
       const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, body);
-      return result.ok ? ok(result.data) : err('posting message', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_post_message', 'posting message', result);
     },
   );
 
@@ -271,7 +279,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ message_id, content }) => {
       const result = await banter.patch(`/banter/api/v1/messages/${message_id}`, { content });
-      return result.ok ? ok(result.data) : err('editing message', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_edit_message', 'editing message', result);
     },
   );
 
@@ -294,7 +302,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       const result = await banter.delete(`/banter/api/v1/messages/${message_id}`);
       return result.ok
         ? { content: [{ type: 'text' as const, text: `Message ${message_id} deleted successfully.` }] }
-        : err('deleting message', result.data);
+        : writeErr('banter_delete_message', 'deleting message', result);
     },
   );
 
@@ -307,7 +315,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ message_id, emoji }) => {
       const result = await banter.post(`/banter/api/v1/messages/${message_id}/reactions`, { emoji });
-      return result.ok ? ok(result.data) : err('reacting to message', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_react', 'reacting to message', result);
     },
   );
 
@@ -320,7 +328,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id, message_id }) => {
       const result = await banter.post(`/banter/api/v1/channels/${channel_id}/pins`, { message_id });
-      return result.ok ? ok(result.data) : err('pinning message', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_pin_message', 'pinning message', result);
     },
   );
 
@@ -335,7 +343,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       const result = await banter.delete(`/banter/api/v1/channels/${channel_id}/pins/${message_id}`);
       return result.ok
         ? { content: [{ type: 'text' as const, text: `Message ${message_id} unpinned.` }] }
-        : err('unpinning message', result.data);
+        : writeErr('banter_unpin_message', 'unpinning message', result);
     },
   );
 
@@ -372,7 +380,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ message_id, ...body }) => {
       const result = await banter.post(`/banter/api/v1/messages/${message_id}/thread`, body);
-      return result.ok ? ok(result.data) : err('replying to thread', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_reply_to_thread', 'replying to thread', result);
     },
   );
 
@@ -454,7 +462,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     async ({ user_id, content }) => {
       // Step 1: Create or get existing DM channel
       const dmResult = await banter.post('/banter/api/v1/dm', { user_id });
-      if (!dmResult.ok) return err('creating DM channel', dmResult.data);
+      if (!dmResult.ok) return writeErr('banter_send_dm', 'creating DM channel', dmResult);
 
       const channelId = (dmResult.data as Record<string, unknown>).id ??
         ((dmResult.data as Record<string, unknown>).data as Record<string, unknown>)?.id;
@@ -463,7 +471,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
       // Step 2: Post message in the DM channel
       const msgResult = await banter.post(`/banter/api/v1/channels/${channelId}/messages`, { content });
-      return msgResult.ok ? ok(msgResult.data) : err('sending DM', msgResult.data);
+      return msgResult.ok ? ok(msgResult.data) : writeErr('banter_send_dm', 'sending DM', msgResult);
     },
   );
 
@@ -477,7 +485,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     async ({ user_ids, content }) => {
       // Step 1: Create or get existing group DM channel
       const dmResult = await banter.post('/banter/api/v1/group-dm', { user_ids });
-      if (!dmResult.ok) return err('creating group DM', dmResult.data);
+      if (!dmResult.ok) return writeErr('banter_send_group_dm', 'creating group DM', dmResult);
 
       const channelId = (dmResult.data as Record<string, unknown>).id ??
         ((dmResult.data as Record<string, unknown>).data as Record<string, unknown>)?.id;
@@ -486,7 +494,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
       // Step 2: Post message in the group DM channel
       const msgResult = await banter.post(`/banter/api/v1/channels/${channelId}/messages`, { content });
-      return msgResult.ok ? ok(msgResult.data) : err('sending group DM', msgResult.data);
+      return msgResult.ok ? ok(msgResult.data) : writeErr('banter_send_group_dm', 'sending group DM', msgResult);
     },
   );
 
@@ -523,7 +531,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async (params) => {
       const result = await banter.post('/banter/api/v1/user-groups', params);
-      return result.ok ? ok(result.data) : err('creating user group', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_create_user_group', 'creating user group', result);
     },
   );
 
@@ -538,7 +546,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ group_id, ...updates }) => {
       const result = await banter.patch(`/banter/api/v1/user-groups/${group_id}`, updates);
-      return result.ok ? ok(result.data) : err('updating user group', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_update_user_group', 'updating user group', result);
     },
   );
 
@@ -551,7 +559,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ group_id, user_ids }) => {
       const result = await banter.post(`/banter/api/v1/user-groups/${group_id}/members`, { user_ids });
-      return result.ok ? ok(result.data) : err('adding group members', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_add_group_members', 'adding group members', result);
     },
   );
 
@@ -566,7 +574,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       const result = await banter.delete(`/banter/api/v1/user-groups/${group_id}/members/${user_id}`);
       return result.ok
         ? { content: [{ type: 'text' as const, text: `User ${user_id} removed from group ${group_id}.` }] }
-        : err('removing group member', result.data);
+        : writeErr('banter_remove_group_member', 'removing group member', result);
     },
   );
 
@@ -583,7 +591,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ channel_id, ...body }) => {
       const result = await banter.post(`/banter/api/v1/channels/${channel_id}/calls`, body);
-      return result.ok ? ok(result.data) : err('starting call', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_start_call', 'starting call', result);
     },
   );
 
@@ -595,7 +603,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ call_id }) => {
       const result = await banter.post(`/banter/api/v1/calls/${call_id}/join`);
-      return result.ok ? ok(result.data) : err('joining call', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_join_call', 'joining call', result);
     },
   );
 
@@ -607,7 +615,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ call_id }) => {
       const result = await banter.post(`/banter/api/v1/calls/${call_id}/leave`);
-      return result.ok ? ok(result.data) : err('leaving call', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_leave_call', 'leaving call', result);
     },
   );
 
@@ -630,7 +638,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       const result = await banter.post(`/banter/api/v1/calls/${call_id}/end`);
       return result.ok
         ? { content: [{ type: 'text' as const, text: `Call ${call_id} ended.` }] }
-        : err('ending call', result.data);
+        : writeErr('banter_end_call', 'ending call', result);
     },
   );
 
@@ -687,7 +695,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
     async ({ call_id, ...body }) => {
       const result = await banter.post(`/banter/api/v1/calls/${call_id}/invite-agent`, body);
-      return result.ok ? ok(result.data) : err('inviting agent to call', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_invite_agent_to_call', 'inviting agent to call', result);
     },
   );
 
@@ -704,7 +712,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
         content,
         metadata: { call_id },
       });
-      return result.ok ? ok(result.data) : err('posting call text', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_post_call_text', 'posting call text', result);
     },
   );
 
@@ -749,7 +757,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
         content,
         embeds: [{ type: 'bbb_task', id: task_id }],
       });
-      return result.ok ? ok(result.data) : err('sharing task', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_share_task', 'sharing task', result);
     },
   );
 
@@ -767,7 +775,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
         content,
         embeds: [{ type: 'bbb_sprint', id: sprint_id }],
       });
-      return result.ok ? ok(result.data) : err('sharing sprint', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_share_sprint', 'sharing sprint', result);
     },
   );
 
@@ -785,7 +793,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
         content,
         embeds: [{ type: 'helpdesk_ticket', id: ticket_id }],
       });
-      return result.ok ? ok(result.data) : err('sharing ticket', result.data);
+      return result.ok ? ok(result.data) : writeErr('banter_share_ticket', 'sharing ticket', result);
     },
   );
 

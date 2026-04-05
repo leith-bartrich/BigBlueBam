@@ -8,8 +8,10 @@ import {
   banterMessages,
   users,
 } from '../db/schema/index.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireChannelMember, requireChannelAdmin, requireChannelOwner } from '../middleware/channel-auth.js';
 import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
+import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
 
 const createChannelSchema = z.object({
   name: z
@@ -51,7 +53,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const user = request.user!;
 
-      // Auto-create #general if no channels exist for this org
+      // Auto-create #general if no channels exist for this org.
+      // Uses INSERT ... ON CONFLICT DO NOTHING on the unique (org_id, slug) index
+      // to avoid a race where two concurrent requests both try to create #general.
       try {
         const [existing] = await db
           .select({ id: banterChannels.id })
@@ -60,41 +64,59 @@ export default async function channelRoutes(fastify: FastifyInstance) {
           .limit(1);
 
         if (!existing) {
-          const [general] = await db
-            .insert(banterChannels)
-            .values({
-              org_id: user.org_id,
-              name: 'general',
-              slug: 'general',
-              type: 'public',
-              topic: 'General discussion',
-              description: 'The default channel for team communication',
-              is_default: true,
-              created_by: user.id,
-            })
-            .returning();
+          await db.transaction(async (tx) => {
+            // Atomic insert: if another request already created #general, this is a no-op.
+            const inserted = await tx
+              .insert(banterChannels)
+              .values({
+                org_id: user.org_id,
+                name: 'general',
+                slug: 'general',
+                type: 'public',
+                topic: 'General discussion',
+                description: 'The default channel for team communication',
+                is_default: true,
+                created_by: user.id,
+              })
+              .onConflictDoNothing({
+                target: [banterChannels.org_id, banterChannels.slug],
+              })
+              .returning();
 
-          if (general) {
+            const general = inserted[0];
+            if (!general) {
+              // Another concurrent request won the race; nothing to do.
+              return;
+            }
+
             // Add current user as owner
-            await db.insert(banterChannelMemberships).values({
+            await tx.insert(banterChannelMemberships).values({
               channel_id: general.id,
               user_id: user.id,
               role: 'owner',
-            });
+            }).onConflictDoNothing();
 
             // Add all other active org members
-            const orgMembers = await db.execute(
+            const orgMembers = await tx.execute(
               sql`SELECT id FROM users WHERE org_id = ${user.org_id} AND is_active = true AND id != ${user.id}`
             );
             const memberRows = Array.isArray(orgMembers) ? orgMembers : (orgMembers as any).rows ?? [];
             for (const m of memberRows) {
-              await db.insert(banterChannelMemberships).values({
+              await tx.insert(banterChannelMemberships).values({
                 channel_id: general.id,
                 user_id: (m as any).id,
                 role: 'member',
               }).onConflictDoNothing();
             }
-          }
+
+            // Set authoritative member_count from actual memberships
+            await tx
+              .update(banterChannels)
+              .set({
+                member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${general.id})`,
+              })
+              .where(eq(banterChannels.id, general.id));
+          });
         }
       } catch {
         // Don't fail the channel list if auto-creation fails
@@ -168,10 +190,52 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels — create channel
   fastify.post(
     '/v1/channels',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const user = request.user!;
       const body = createChannelSchema.parse(request.body);
+
+      // Enforce org-level banter permissions for non-admin members.
+      //
+      // P2-23 (accepted staleness): There is a small TOCTOU window between
+      // reading banter_settings.allow_channel_creation here and performing
+      // the INSERT below. If an org admin flips the setting to 'admins_only'
+      // in that window (<10ms for a hot-path Postgres read + insert on the
+      // same connection), a member could still create a channel. We accept
+      // this — an admin who wants to lock this down can delete the stray
+      // channel afterwards, and wrapping check + insert in a serializable
+      // transaction would add contention without meaningful safety.
+      const isPrivileged = user.is_superuser || user.role === 'admin' || user.role === 'owner';
+      if (!isPrivileged) {
+        // Single code path for banter permission reads. Cached with 30s TTL
+        // and normalized into the OrgPermissions shape used by apps/api.
+        const perms = await getEffectiveBanterPermissions(user.org_id);
+
+        if (!perms.members_can_create_channels) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to create channels',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        // Private channel restriction: piggybacks on allow_channel_creation
+        // in the current banter_settings schema. Admins can always create
+        // private channels; members obey the mapped flag above.
+        if (body.type === 'private' && !perms.members_can_create_private_channels) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to create private channels',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       // Check if this is the first channel for the org (auto-create #general)
       const existingChannels = await db
@@ -333,55 +397,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /v1/channels/:id — update settings
   fastify.patch(
     '/v1/channels/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const user = request.user!;
       const body = updateChannelSchema.parse(request.body);
-
-      // Verify channel exists and user has permission
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Check membership role
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !membership ||
-        (membership.role === 'member' && !['owner', 'admin'].includes(user.role))
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to update this channel',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       const updateData: Record<string, unknown> = {};
       if (body.name !== undefined) {
@@ -417,53 +436,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id — soft delete (archive)
   fastify.delete(
     '/v1/channels/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelOwner] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
-
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Only org admin/owner or channel owner can archive
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !['owner', 'admin'].includes(user.role) &&
-        (!membership || membership.role !== 'owner')
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to archive this channel',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       const [archived] = await db
         .update(banterChannels)
@@ -484,7 +460,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/join — join public channel
   fastify.post(
     '/v1/channels/:id/join',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
@@ -539,16 +515,22 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         return reply.send({ data: { channel_id: id, user_id: user.id, already_member: true } });
       }
 
-      await db.insert(banterChannelMemberships).values({
-        channel_id: id,
-        user_id: user.id,
-        role: 'member',
-      });
+      await db.transaction(async (tx) => {
+        await tx.insert(banterChannelMemberships).values({
+          channel_id: id,
+          user_id: user.id,
+          role: 'member',
+        }).onConflictDoNothing();
 
-      await db
-        .update(banterChannels)
-        .set({ member_count: sql`${banterChannels.member_count} + 1` })
-        .where(eq(banterChannels.id, id));
+        // Recompute member_count from authoritative source to avoid drift
+        // under concurrent join/leave operations.
+        await tx
+          .update(banterChannels)
+          .set({
+            member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+          })
+          .where(eq(banterChannels.id, id));
+      });
 
       broadcastToChannel(id, {
         type: 'member.joined',
@@ -563,29 +545,45 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   );
 
   // POST /v1/channels/:id/leave — leave channel
+  //
+  // P3-3: This endpoint intentionally has no channel-role check. Any
+  // authenticated user — including guests — is allowed to leave any
+  // channel they are currently a member of. The delete is keyed on
+  // (channel_id, current user id), so the caller can only remove
+  // themselves. There is no attack surface to expand here; a user being
+  // unable to leave a channel would be worse UX than the negligible risk
+  // of making /leave callable by everyone.
   fastify.post(
     '/v1/channels/:id/leave',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;
 
-      const deleted = await db
-        .delete(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .returning();
+      const deleted = await db.transaction(async (tx) => {
+        const removed = await tx
+          .delete(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, id),
+              eq(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .returning();
+
+        if (removed.length > 0) {
+          await tx
+            .update(banterChannels)
+            .set({
+              member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+            })
+            .where(eq(banterChannels.id, id));
+        }
+
+        return removed;
+      });
 
       if (deleted.length > 0) {
-        await db
-          .update(banterChannels)
-          .set({ member_count: sql`GREATEST(${banterChannels.member_count} - 1, 0)` })
-          .where(eq(banterChannels.id, id));
-
         broadcastToChannel(id, {
           type: 'member.left',
           data: { channel_id: id, user_id: user.id },
@@ -627,80 +625,42 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/members — add members
   fastify.post(
     '/v1/channels/:id/members',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const user = request.user!;
       const body = addMembersSchema.parse(request.body);
 
-      // Verify channel exists
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Check requester has permission
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !membership ||
-        (membership.role === 'member' && !['owner', 'admin'].includes(user.role))
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to add members',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Insert memberships (ignore conflicts)
-      let addedCount = 0;
-      for (const userId of body.user_ids) {
-        try {
-          await db
-            .insert(banterChannelMemberships)
-            .values({
-              channel_id: id,
-              user_id: userId,
-              role: 'member',
-            })
-            .onConflictDoNothing();
-          addedCount++;
-        } catch {
-          // Skip users that don't exist
+      // Insert memberships (ignore conflicts) and recompute member_count atomically.
+      const addedCount = await db.transaction(async (tx) => {
+        let count = 0;
+        for (const userId of body.user_ids) {
+          try {
+            const inserted = await tx
+              .insert(banterChannelMemberships)
+              .values({
+                channel_id: id,
+                user_id: userId,
+                role: 'member',
+              })
+              .onConflictDoNothing()
+              .returning();
+            if (inserted.length > 0) count++;
+          } catch {
+            // Skip users that don't exist
+          }
         }
-      }
 
-      if (addedCount > 0) {
-        await db
-          .update(banterChannels)
-          .set({ member_count: sql`${banterChannels.member_count} + ${addedCount}` })
-          .where(eq(banterChannels.id, id));
-      }
+        if (count > 0) {
+          await tx
+            .update(banterChannels)
+            .set({
+              member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+            })
+            .where(eq(banterChannels.id, id));
+        }
+
+        return count;
+      });
 
       return reply.send({ data: { added: addedCount } });
     },
@@ -709,53 +669,34 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // DELETE /v1/channels/:id/members/:userId — remove member
   fastify.delete(
     '/v1/channels/:id/members/:userId',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelAdmin] },
     async (request, reply) => {
       const { id, userId } = request.params as { id: string; userId: string };
-      const user = request.user!;
 
-      // Check requester has permission
-      const [membership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
+      const deleted = await db.transaction(async (tx) => {
+        const removed = await tx
+          .delete(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, id),
+              eq(banterChannelMemberships.user_id, userId),
+            ),
+          )
+          .returning();
 
-      if (
-        !membership ||
-        (membership.role === 'member' && !['owner', 'admin'].includes(user.role))
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Insufficient permissions to remove members',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
+        if (removed.length > 0) {
+          await tx
+            .update(banterChannels)
+            .set({
+              member_count: sql`(SELECT COUNT(*)::int FROM banter_channel_memberships WHERE channel_id = ${id})`,
+            })
+            .where(eq(banterChannels.id, id));
+        }
 
-      const deleted = await db
-        .delete(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, userId),
-          ),
-        )
-        .returning();
+        return removed;
+      });
 
       if (deleted.length > 0) {
-        await db
-          .update(banterChannels)
-          .set({ member_count: sql`GREATEST(${banterChannels.member_count} - 1, 0)` })
-          .where(eq(banterChannels.id, id));
-
         broadcastToChannel(id, {
           type: 'member.left',
           data: { channel_id: id, user_id: userId },
@@ -770,55 +711,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /v1/channels/:id/members/:userId — update member role
   fastify.patch(
     '/v1/channels/:id/members/:userId',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelOwner] },
     async (request, reply) => {
       const { id, userId } = request.params as { id: string; userId: string };
-      const user = request.user!;
       const body = z.object({ role: z.enum(['admin', 'member']) }).parse(request.body);
-
-      // Verify channel exists and belongs to org
-      const [channel] = await db
-        .select()
-        .from(banterChannels)
-        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
-        .limit(1);
-
-      if (!channel) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Channel not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-
-      // Only channel owner or org admin can change member roles
-      const [requesterMembership] = await db
-        .select()
-        .from(banterChannelMemberships)
-        .where(
-          and(
-            eq(banterChannelMemberships.channel_id, id),
-            eq(banterChannelMemberships.user_id, user.id),
-          ),
-        )
-        .limit(1);
-
-      if (
-        !['owner', 'admin'].includes(user.role) &&
-        (!requesterMembership || requesterMembership.role !== 'owner')
-      ) {
-        return reply.status(403).send({
-          error: {
-            code: 'FORBIDDEN',
-            message: 'Only the channel owner or org admin can update member roles',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
 
       // Verify target membership exists
       const [targetMembership] = await db
@@ -843,16 +739,30 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Cannot change the owner's role
+      // When demoting an owner, ensure at least one other owner remains.
       if (targetMembership.role === 'owner') {
-        return reply.status(400).send({
-          error: {
-            code: 'BAD_REQUEST',
-            message: 'Cannot change the channel owner role',
-            details: [],
-            request_id: request.id,
-          },
-        });
+        const [ownerCountRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, id),
+              eq(banterChannelMemberships.role, 'owner'),
+              ne(banterChannelMemberships.user_id, userId),
+            ),
+          );
+
+        const otherOwners = ownerCountRow?.count ?? 0;
+        if (otherOwners === 0) {
+          return reply.status(400).send({
+            error: {
+              code: 'BAD_REQUEST',
+              message: 'Cannot demote the last owner of the channel. Transfer ownership first.',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
       }
 
       const [updated] = await db
@@ -874,7 +784,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /v1/channels/:id/mark-read — update last_read_message_id
   fastify.post(
     '/v1/channels/:id/mark-read',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireChannelMember] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;

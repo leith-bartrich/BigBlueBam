@@ -4,9 +4,19 @@ import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import * as Minio from 'minio';
 import { env } from '../env.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { getBanterSettingsCached } from '../services/settings-cache.js';
 
-const MAX_FILE_SIZE = 26214400; // 25MB
+const DEFAULT_MAX_FILE_SIZE_MB = 25;
+// Absolute cap: the multipart plugin needs a static ceiling. Org-specific
+// limits are enforced below via the max_file_size_mb setting.
+const ABSOLUTE_MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB hard ceiling
+
+async function getOrgMaxFileSizeBytes(orgId: string): Promise<number> {
+  const settings = await getBanterSettingsCached(orgId);
+  const mb = settings?.max_file_size_mb ?? DEFAULT_MAX_FILE_SIZE_MB;
+  return mb * 1024 * 1024;
+}
 
 const ALLOWED_MIME_PREFIXES = ['image/', 'audio/', 'video/'];
 const ALLOWED_MIME_EXACT = [
@@ -48,14 +58,14 @@ function getMinioClient(): Minio.Client {
 export default async function fileRoutes(fastify: FastifyInstance) {
   await fastify.register(multipart, {
     limits: {
-      fileSize: MAX_FILE_SIZE,
+      fileSize: ABSOLUTE_MAX_FILE_SIZE,
     },
   });
 
   // POST /v1/files/upload — multipart file upload to MinIO
   fastify.post(
     '/v1/files/upload',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const file = await request.file();
 
@@ -85,11 +95,12 @@ export default async function fileRoutes(fastify: FastifyInstance) {
 
       const buffer = await file.toBuffer();
 
-      if (buffer.length > MAX_FILE_SIZE) {
+      const maxFileSize = await getOrgMaxFileSizeBytes(request.user!.org_id);
+      if (buffer.length > maxFileSize) {
         return reply.status(400).send({
           error: {
             code: 'BAD_REQUEST',
-            message: `File exceeds maximum size of ${MAX_FILE_SIZE} bytes`,
+            message: `File exceeds maximum size of ${maxFileSize} bytes`,
             details: [],
             request_id: request.id,
           },
@@ -129,14 +140,27 @@ export default async function fileRoutes(fastify: FastifyInstance) {
   // POST /v1/files/presigned-upload — generate a presigned PUT URL
   fastify.post(
     '/v1/files/presigned-upload',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const body = z
         .object({
           filename: z.string().min(1).max(255),
           content_type: z.string().min(1).max(255),
+          size_bytes: z.number().int().nonnegative().optional(),
         })
         .parse(request.body);
+
+      const maxFileSize = await getOrgMaxFileSizeBytes(request.user!.org_id);
+      if (body.size_bytes !== undefined && body.size_bytes > maxFileSize) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: `File exceeds maximum size of ${maxFileSize} bytes`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
 
       if (!isAllowedMimeType(body.content_type)) {
         return reply.status(400).send({
@@ -169,6 +193,7 @@ export default async function fileRoutes(fastify: FastifyInstance) {
           upload_url: uploadUrl,
           key,
           expires_in: expiresIn,
+          max_size_bytes: maxFileSize,
         },
       });
     },
