@@ -505,8 +505,15 @@ cd BigBlueBam
 cp .env.example .env
 # Edit .env with your secrets (passwords, session secret)
 
-# Start all services
+# Start all services (or use the cross-platform helpers below)
 docker compose up -d
+
+# Cross-platform deploy/restart helpers:
+#   Mac / Linux: ./scripts/deploy.sh          # up|restart|rebuild|stop|down|logs
+#   Windows:     scripts\deploy.bat           # same subcommands
+# These detect a private ./site checkout automatically and serve the
+# marketing site at the root domain when present; otherwise `/` redirects
+# to `/helpdesk/` exactly like before.
 
 # Create your admin account
 docker compose exec api node dist/cli.js create-admin \

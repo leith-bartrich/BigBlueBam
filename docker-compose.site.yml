@@ -1,0 +1,38 @@
+# Overlay that turns on the marketing site served at the root domain.
+#
+# Applied only when the ./site directory is checked out — the deploy scripts
+# (scripts/deploy.sh and scripts/deploy.ps1) detect it and pass `-f
+# docker-compose.site.yml` after the base compose file. When this overlay is
+# NOT applied the base nginx config is used, which redirects `/` to
+# `/helpdesk/`.
+#
+# The `site/` directory itself lives in its own private git repo and is
+# listed in the public repo's .gitignore — contributors without access to
+# the private repo simply won't have the directory and the overlay stays
+# off by default.
+services:
+  site:
+    build:
+      context: .
+      dockerfile: infra/site/Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - frontend
+
+  frontend:
+    depends_on:
+      site:
+        condition: service_healthy
+    volumes:
+      - ./infra/nginx/nginx-with-site.conf:/etc/nginx/conf.d/default.conf:ro
