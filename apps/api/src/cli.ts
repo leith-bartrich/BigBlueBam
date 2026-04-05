@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { organizations } from './db/schema/organizations.js';
 import { users } from './db/schema/users.js';
@@ -50,6 +50,8 @@ Commands:
   revoke-superuser   Remove SuperUser privileges from a user by email
   create-api-key     Issue an API key for a user (for agentic / programmatic access)
   create-helpdesk-agent-key  Issue a per-agent helpdesk API key (HB-28 + HB-49)
+  revoke-api-key     Revoke a BBB API key by its key_prefix (hard delete)
+  revoke-helpdesk-agent-key  Revoke a helpdesk agent API key by its key_prefix (soft by default)
   list-orgs          List all organizations (id, slug, name) — helper for other commands
 
 Common user roles:       owner, admin, member, viewer, guest
@@ -86,12 +88,21 @@ Examples:
   # Mint a per-agent helpdesk API key for a BBB employee (printed ONCE)
   cli create-helpdesk-agent-key --email agent@co.com --name "agent-mbp" \\
       --expires-days 365
+
+  # Revoke a BBB API key by its prefix (user's token is destroyed)
+  cli revoke-api-key --prefix bbam_abc
+
+  # Soft-revoke a helpdesk agent key (row kept with revoked_at set)
+  cli revoke-helpdesk-agent-key --prefix hdag_xyz
+
+  # Hard-delete (emergencies)
+  cli revoke-helpdesk-agent-key --prefix hdag_xyz --hard
 `);
 }
 
 function parseArgs(args: string[]): Record<string, string> {
   const result: Record<string, string> = {};
-  const booleanFlags = new Set(['superuser']);
+  const booleanFlags = new Set(['superuser', 'hard', 'force']);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg.startsWith('--')) {
@@ -413,6 +424,116 @@ async function createHelpdeskAgentKey(flags: Record<string, string>) {
   }
 }
 
+async function revokeApiKey(flags: Record<string, string>) {
+  requireFlags(flags, ['prefix']);
+  const { prefix } = flags;
+  const idFlag = flags.id;
+
+  const { db, client } = getDb();
+  try {
+    const rows = await db
+      .select({
+        id: apiKeys.id,
+        name: apiKeys.name,
+        user_id: apiKeys.user_id,
+        user_email: users.email,
+      })
+      .from(apiKeys)
+      .leftJoin(users, eq(apiKeys.user_id, users.id))
+      .where(eq(apiKeys.key_prefix, prefix!));
+
+    if (rows.length === 0) {
+      console.error(`Error: no API key found with prefix "${prefix}"`);
+      process.exit(1);
+    }
+
+    if (rows.length > 1 && !idFlag) {
+      console.error(`Error: prefix "${prefix}" matches ${rows.length} keys. Re-run with --id <uuid> to pick one:`);
+      for (const r of rows) {
+        console.error(`  ${r.id}  name="${r.name}"  user=${r.user_email ?? '(deleted user)'}`);
+      }
+      process.exit(1);
+    }
+
+    const target = idFlag ? rows.find((r) => r.id === idFlag) : rows[0];
+    if (!target) {
+      console.error(`Error: --id ${idFlag} does not match any of the keys with prefix "${prefix}"`);
+      process.exit(1);
+    }
+
+    await db.delete(apiKeys).where(eq(apiKeys.id, target.id));
+
+    console.log('API key revoked (deleted):');
+    console.log(`  Key ID:    ${target.id}`);
+    console.log(`  Name:      ${target.name}`);
+    console.log(`  User:      ${target.user_email ?? '(deleted user)'}`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function revokeHelpdeskAgentKey(flags: Record<string, string>) {
+  requireFlags(flags, ['prefix']);
+  const { prefix } = flags;
+  const idFlag = flags.id;
+  const hard = flags.hard === 'true' || flags.force === 'true';
+
+  const { db, client } = getDb();
+  try {
+    const rows = await db
+      .select({
+        id: helpdeskAgentApiKeys.id,
+        name: helpdeskAgentApiKeys.name,
+        bbb_user_id: helpdeskAgentApiKeys.bbb_user_id,
+        revoked_at: helpdeskAgentApiKeys.revoked_at,
+        display_name: users.display_name,
+        user_email: users.email,
+      })
+      .from(helpdeskAgentApiKeys)
+      .leftJoin(users, eq(helpdeskAgentApiKeys.bbb_user_id, users.id))
+      .where(eq(helpdeskAgentApiKeys.key_prefix, prefix!));
+
+    if (rows.length === 0) {
+      console.error(`Error: no helpdesk agent key found with prefix "${prefix}"`);
+      process.exit(1);
+    }
+
+    if (rows.length > 1 && !idFlag) {
+      console.error(`Error: prefix "${prefix}" matches ${rows.length} keys. Re-run with --id <uuid> to pick one:`);
+      for (const r of rows) {
+        console.error(`  ${r.id}  name="${r.name}"  agent=${r.display_name ?? '(deleted)'} <${r.user_email ?? '?'}>`);
+      }
+      process.exit(1);
+    }
+
+    const target = idFlag ? rows.find((r) => r.id === idFlag) : rows[0];
+    if (!target) {
+      console.error(`Error: --id ${idFlag} does not match any of the keys with prefix "${prefix}"`);
+      process.exit(1);
+    }
+
+    if (hard) {
+      await db.delete(helpdeskAgentApiKeys).where(eq(helpdeskAgentApiKeys.id, target.id));
+      console.log('Helpdesk agent API key HARD-deleted:');
+    } else {
+      if (target.revoked_at) {
+        console.log(`Note: key already soft-revoked at ${target.revoked_at.toISOString()} — updating timestamp.`);
+      }
+      await db
+        .update(helpdeskAgentApiKeys)
+        .set({ revoked_at: sql`now()` })
+        .where(eq(helpdeskAgentApiKeys.id, target.id));
+      console.log('Helpdesk agent API key soft-revoked (revoked_at set):');
+    }
+    console.log(`  Key ID:       ${target.id}`);
+    console.log(`  Name:         ${target.name}`);
+    console.log(`  BBB user ID:  ${target.bbb_user_id}`);
+    console.log(`  Agent:        ${target.display_name ?? '(deleted user)'} <${target.user_email ?? '?'}>`);
+  } finally {
+    await client.end();
+  }
+}
+
 async function listOrgs() {
   const { db, client } = getDb();
   try {
@@ -464,6 +585,12 @@ async function main() {
         break;
       case 'create-helpdesk-agent-key':
         await createHelpdeskAgentKey(flags);
+        break;
+      case 'revoke-api-key':
+        await revokeApiKey(flags);
+        break;
+      case 'revoke-helpdesk-agent-key':
+        await revokeHelpdeskAgentKey(flags);
         break;
       case 'list-orgs':
         await listOrgs();

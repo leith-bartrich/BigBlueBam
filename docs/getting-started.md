@@ -269,6 +269,29 @@ The token is printed ONCE. Agents present it on every request as:
 X-Agent-Key: hdag_<rest-of-token>
 ```
 
+#### Revoking keys
+
+Both key families can be revoked by their 8-character `key_prefix` (the
+first 8 characters of the token that was printed at creation time — e.g.
+`bbam_abc` or `hdag_xyz`). BBB API keys are hard-deleted; helpdesk agent
+keys are soft-revoked by default (the row is kept with `revoked_at` set)
+so the audit trail stays intact, with `--hard` available for emergencies.
+
+```bash
+# Revoke a BBB API key (hard delete — the token is destroyed immediately)
+docker compose exec api node dist/cli.js revoke-api-key --prefix bbam_abc
+
+# Soft-revoke a helpdesk agent key (row kept, revoked_at stamped)
+docker compose exec api node dist/cli.js revoke-helpdesk-agent-key --prefix hdag_xyz
+
+# Hard-delete a helpdesk agent key (ops emergency only — breaks audit trail)
+docker compose exec api node dist/cli.js revoke-helpdesk-agent-key --prefix hdag_xyz --hard
+```
+
+If two keys happen to share the same 8-char prefix (rare but possible),
+the CLI lists the candidates and asks you to disambiguate with
+`--id <uuid>`.
+
 ### Role & scope reference
 
 | **User role** | **What it can do** |
