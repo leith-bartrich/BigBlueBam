@@ -1,0 +1,26 @@
+-- ─────────────────────────────────────────────────────────────────────────
+-- 0001_baseline.sql
+-- ─────────────────────────────────────────────────────────────────────────
+-- Why: Marker migration that stamps a consistent starting row in
+--      schema_migrations for both fresh DBs and ones bootstrapped from
+--      the historical init.sql. Does no schema work.
+-- Client impact: none.
+-- ─────────────────────────────────────────────────────────────────────────
+-- Baseline marker migration.
+--
+-- The canonical schema lives in infra/postgres/init.sql and is applied by
+-- the postgres container on first volume initialization. This migration
+-- exists so that `schema_migrations` has a consistent starting row on every
+-- DB (fresh or existing). It does no schema work — subsequent migrations
+-- (0002+) hold the actual deltas that older databases need to catch up on.
+--
+-- Rule of thumb going forward:
+--   - Fresh DBs get everything from init.sql, then migrations 0001..N no-op
+--     against an already-matching schema (idempotency guarantees).
+--   - Existing DBs get init.sql's original state from their initial boot,
+--     then migrations 0001..N bring them forward.
+--
+-- Do NOT add DDL here. Create a new numbered file instead.
+-- ─────────────────────────────────────────────────────────────────────────
+
+SELECT 1;
