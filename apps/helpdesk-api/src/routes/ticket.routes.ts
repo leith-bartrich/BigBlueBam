@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { eq, and, desc, sql, gte } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, lt, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { tickets } from '../db/schema/tickets.js';
 import { ticketMessages } from '../db/schema/ticket-messages.js';
@@ -9,6 +9,8 @@ import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { tasks, projects, phases, labels } from '../db/schema/bbb-refs.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
 import { broadcastTaskCreated, broadcastTicketStatusChanged } from '../lib/broadcast.js';
+import { mirrorTicketMessageToTask, mirrorTicketClosedToTask } from '../lib/task-sync.js';
+import { stripHtml } from '../lib/strip-html.js';
 import {
   broadcastTicketMessage,
   broadcastTicketStatusChanged as broadcastTicketStatusChangedRT,
@@ -25,12 +27,6 @@ const createTicketSchema = z.object({
 const createMessageSchema = z.object({
   body: z.string().min(1),
 });
-
-// Lightweight HTML stripper — removes tags to prevent stored-HTML injection.
-// For richer sanitization, install DOMPurify/sanitize-html.
-function stripHtml(input: string): string {
-  return input.replace(/<[^>]*>/g, '').trim();
-}
 
 // Lightweight dedup: hash (user_id + subject + description + hour-bucket) so that
 // rapid retries within the same hour return the existing ticket rather than creating
@@ -74,6 +70,11 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
     // HB-19: Sanitize HTML before storing anywhere.
     const safeSubject = stripHtml(data.subject).slice(0, 500);
     const safeDescription = stripHtml(data.description);
+    // HB-43: description_plain is the plain-text form of the (potentially
+    // rich-text) description. We derive it explicitly via stripHtml rather
+    // than reusing safeDescription so that future changes which keep HTML in
+    // `description` don't accidentally store HTML in `description_plain`.
+    const plainDescription = stripHtml(data.description).trim();
 
     if (!safeSubject || !safeDescription) {
       return reply.status(400).send({
@@ -236,7 +237,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
                 human_id: humanId,
                 title: safeSubject,
                 description: safeDescription,
-                description_plain: safeDescription,
+                description_plain: plainDescription,
                 phase_id: phaseId,
                 priority: data.priority,
                 labels: labelIds,
@@ -386,6 +387,117 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
     });
   });
 
+  // GET /helpdesk/tickets/:id/messages — HB-31: paginated customer-facing
+  // message history. Newest-first, cursor-based.
+  //
+  // Query params:
+  //   ?before=<message-uuid>  — return messages strictly older than this one
+  //                              (tuple-compare by (created_at, id) DESC)
+  //   ?limit=<1..100>          — page size, defaults to 50
+  //
+  // Response:
+  //   { data: TicketMessage[], has_more: boolean, next_before: string | null }
+  //
+  // Ordering matches the tuple comparison (created_at DESC, id DESC). The
+  // cursor is the id of the oldest message in the current page; passing it
+  // as ?before= yields the next older page.
+  fastify.get(
+    '/helpdesk/tickets/:id/messages',
+    {
+      preHandler: [requireHelpdeskAuth],
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const user = request.helpdeskUser!;
+      const { id } = request.params as { id: string };
+      const query = z
+        .object({
+          before: z.string().uuid().optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(50),
+        })
+        .parse(request.query ?? {});
+
+      // Ownership check — same as GET /helpdesk/tickets/:id. Returns 404
+      // regardless of whether the ticket exists but belongs to another user
+      // (HB-51 anti-enumeration).
+      const [ticket] = await db
+        .select({ id: tickets.id })
+        .from(tickets)
+        .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
+        .limit(1);
+
+      if (!ticket) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Ticket not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // Resolve cursor: look up the (created_at, id) of the `before` message.
+      // If the cursor refers to a message on another ticket we silently
+      // ignore it — it cannot leak anything because we only use its
+      // timestamp to filter messages on the current ticket.
+      let cursorCreatedAt: Date | null = null;
+      let cursorId: string | null = null;
+      if (query.before) {
+        const [cursorRow] = await db
+          .select({ id: ticketMessages.id, created_at: ticketMessages.created_at })
+          .from(ticketMessages)
+          .where(
+            and(
+              eq(ticketMessages.id, query.before),
+              eq(ticketMessages.ticket_id, id),
+            ),
+          )
+          .limit(1);
+        if (cursorRow) {
+          cursorCreatedAt = cursorRow.created_at;
+          cursorId = cursorRow.id;
+        }
+      }
+
+      // Fetch limit+1 to determine has_more without a second count query.
+      const whereClause = cursorCreatedAt && cursorId
+        ? and(
+            eq(ticketMessages.ticket_id, id),
+            eq(ticketMessages.is_internal, false),
+            or(
+              lt(ticketMessages.created_at, cursorCreatedAt),
+              and(
+                eq(ticketMessages.created_at, cursorCreatedAt),
+                lt(ticketMessages.id, cursorId),
+              ),
+            ),
+          )
+        : and(
+            eq(ticketMessages.ticket_id, id),
+            eq(ticketMessages.is_internal, false),
+          );
+
+      const rows = await db
+        .select()
+        .from(ticketMessages)
+        .where(whereClause)
+        .orderBy(desc(ticketMessages.created_at), desc(ticketMessages.id))
+        .limit(query.limit + 1);
+
+      const hasMore = rows.length > query.limit;
+      const page = hasMore ? rows.slice(0, query.limit) : rows;
+      const lastRow = page.length > 0 ? page[page.length - 1] : undefined;
+      const nextBefore = hasMore && lastRow ? lastRow.id : null;
+
+      return reply.send({
+        data: page,
+        has_more: hasMore,
+        next_before: nextBefore,
+      });
+    },
+  );
+
   // POST /helpdesk/tickets/:id/messages — post a message
   fastify.post('/helpdesk/tickets/:id/messages', { preHandler: [requireHelpdeskAuth] }, async (request, reply) => {
     const user = request.helpdeskUser!;
@@ -431,6 +543,10 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         author_name: user.display_name,
         created_at: message.created_at,
       });
+
+      // HB-50: Mirror the customer message onto the linked BBB task so the
+      // audit trail survives if the ticket is later deleted.
+      await mirrorTicketMessageToTask(ticket.task_id, user.display_name, message.body, request.log);
     }
 
     // HB-15: If the ticket was waiting on the customer, flip it back to open
@@ -555,6 +671,9 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
 
     if (updated) {
       await broadcastTicketStatusChangedRT(id, 'closed');
+      // HB-50: Record the closure on the linked BBB task so the trail survives
+      // even if the ticket row is later deleted.
+      await mirrorTicketClosedToTask(ticket.task_id, user.display_name, request.log);
     }
 
     // HB-16: Move the linked BBB task to a terminal phase so the board reflects
