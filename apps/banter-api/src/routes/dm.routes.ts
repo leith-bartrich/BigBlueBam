@@ -111,14 +111,19 @@ export default async function dmRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Create new DM channel
+      // Create new DM channel. The stored `name` is a best-effort
+      // fallback label (other user's display_name at creation time).
+      // The UI resolves the actual display via `dm_other_participant`
+      // returned by GET /v1/channels — that handles the case where
+      // the viewing user is the OTHER participant (whose name we'd
+      // never want them to see as their own DM label).
       const slug = `dm-${[user.id, body.user_id].sort().join('-')}`.slice(0, 80);
 
       const [channel] = await db
         .insert(banterChannels)
         .values({
           org_id: user.org_id,
-          name: `dm-${otherUser.display_name}`,
+          name: otherUser.display_name,
           slug,
           type: 'dm',
           created_by: user.id,

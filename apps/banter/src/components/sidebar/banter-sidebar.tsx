@@ -16,7 +16,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { useChannels, useCreateChannel, type Channel } from '@/hooks/use-channels';
+import { useChannels, useCreateChannel, channelDisplayName, type Channel } from '@/hooks/use-channels';
 import { useAuthStore } from '@/stores/auth.store';
 import { useChannelStore } from '@/stores/channel.store';
 import { cn, generateAvatarInitials, presenceColor } from '@/lib/utils';
@@ -210,8 +210,12 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
                   onClick={() => onNavigate(`/dm/${channel.id}`)}
                 />
               ))}
-              {/* Show org members for starting DMs */}
-              {orgMembers.filter(m => !dmChannels.some(d => d.name === m.display_name)).map((member) => (
+              {/* Show org members for starting DMs — dedup against the
+                  existing DM channels by the OTHER participant's user id,
+                  since channel.name is an unreliable fallback label. */}
+              {orgMembers.filter(m =>
+                !dmChannels.some(d => d.dm_other_participant?.id === m.id)
+              ).map((member) => (
                 <button
                   key={member.id}
                   onClick={() => handleStartDM(member.id)}
@@ -486,13 +490,22 @@ function DmItem({
     >
       <div className="relative flex-shrink-0">
         <div className="h-5 w-5 rounded-md bg-zinc-600 flex items-center justify-center text-[10px] font-medium text-zinc-200">
-          {generateAvatarInitials(channel.name)}
+          {generateAvatarInitials(channelDisplayName(channel))}
         </div>
-        {/* Presence dot would come from channel member data */}
-        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-sidebar bg-presence-online" />
+        {/* Presence dot derived from the counterparty's users.last_seen_at —
+            online < 5min, idle < 30min, offline otherwise. Non-DM channels
+            don't have a counterparty so the dot is suppressed. */}
+        {channel.dm_other_participant && (
+          <span
+            className={cn(
+              'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-sidebar',
+              presenceColor(channel.dm_other_participant.presence),
+            )}
+          />
+        )}
       </div>
       <span className={cn('truncate', hasUnread && !active && 'font-semibold')}>
-        {channel.name}
+        {channelDisplayName(channel)}
       </span>
       {hasUnread && (
         <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">

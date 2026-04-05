@@ -8,7 +8,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { Track } from 'livekit-client';
-import { useChannel } from '@/hooks/use-channels';
+import { useChannel, channelDisplayName } from '@/hooks/use-channels';
 import { useChannelStore } from '@/stores/channel.store';
 import { useRealtimeChannel } from '@/hooks/use-realtime';
 import { useLiveKit } from '@/hooks/use-livekit';
@@ -174,7 +174,7 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
         <div className="flex items-center gap-2 min-w-0">
           {type === 'channel' && <Hash className="h-5 w-5 text-zinc-400 flex-shrink-0" />}
           <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-            {channel.name}
+            {channelDisplayName(channel)}
           </h2>
         </div>
 
@@ -276,7 +276,7 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
       {/* Typing indicator + Compose */}
       <div className="flex-shrink-0">
         <TypingIndicator channelId={channel.id} />
-        <MessageCompose channelId={channel.id} channelName={channel.name} />
+        <MessageCompose channelId={channel.id} channelName={channelDisplayName(channel)} />
       </div>
 
       {/* Channel settings modal */}

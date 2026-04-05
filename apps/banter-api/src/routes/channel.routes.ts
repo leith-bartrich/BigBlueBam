@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, and, sql, desc, ne, isNull } from 'drizzle-orm';
+import { eq, and, sql, desc, ne, isNull, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   banterChannels,
@@ -13,6 +13,26 @@ import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireChannelMember, requireChannelAdmin, requireChannelOwner } from '../middleware/channel-auth.js';
 import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
 import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
+
+/**
+ * Derive a coarse presence label from the user's last_seen_at timestamp.
+ * This is a LIGHTWEIGHT approximation — real presence (typing indicators,
+ * active-tab detection, etc.) would need a per-connection tracker. For
+ * sidebar dots, the heuristic is:
+ *   - seen within 5 min  → 'online'
+ *   - seen within 30 min → 'idle'
+ *   - older / never seen → 'offline'
+ * Frontend passes this through presenceColor() which maps to Tailwind
+ * bg-presence-{online,idle,dnd,offline} classes.
+ */
+function derivePresence(lastSeenAt: Date | string | null): 'online' | 'idle' | 'offline' {
+  if (!lastSeenAt) return 'offline';
+  const t = typeof lastSeenAt === 'string' ? new Date(lastSeenAt).getTime() : lastSeenAt.getTime();
+  const ageMs = Date.now() - t;
+  if (ageMs < 5 * 60 * 1000) return 'online';
+  if (ageMs < 30 * 60 * 1000) return 'idle';
+  return 'offline';
+}
 
 const createChannelSchema = z.object({
   name: z
@@ -141,6 +161,45 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         )
         .orderBy(desc(banterChannels.last_message_at));
 
+      // Resolve the OTHER participant for every DM channel in one query.
+      // For type='dm' we need the display_name + avatar_url of the
+      // membership row whose user_id is NOT the caller — that's what
+      // the sidebar renders as the DM label. Doing this once upfront
+      // avoids N+1 lookups in the per-channel loop below.
+      const dmChannelIds = rows
+        .filter((r) => r.channel.type === 'dm')
+        .map((r) => r.channel.id);
+      const dmParticipants = new Map<
+        string,
+        { id: string; display_name: string; avatar_url: string | null }
+      >();
+      if (dmChannelIds.length > 0) {
+        const participantRows = await db
+          .select({
+            channel_id: banterChannelMemberships.channel_id,
+            user_id: users.id,
+            display_name: users.display_name,
+            avatar_url: users.avatar_url,
+            last_seen_at: users.last_seen_at,
+          })
+          .from(banterChannelMemberships)
+          .innerJoin(users, eq(users.id, banterChannelMemberships.user_id))
+          .where(
+            and(
+              inArray(banterChannelMemberships.channel_id, dmChannelIds),
+              ne(banterChannelMemberships.user_id, user.id),
+            ),
+          );
+        for (const p of participantRows) {
+          dmParticipants.set(p.channel_id, {
+            id: p.user_id,
+            display_name: p.display_name,
+            avatar_url: p.avatar_url,
+            presence: derivePresence(p.last_seen_at),
+          });
+        }
+      }
+
       // Compute unread counts
       const channels = await Promise.all(
         rows.map(async (row) => {
@@ -180,6 +239,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
             notifications: row.membership.notifications,
             last_read_message_id: row.membership.last_read_message_id,
             unread_count,
+            dm_other_participant: dmParticipants.get(row.channel.id) ?? null,
           };
         }),
       );
@@ -421,7 +481,42 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         }
       }
 
-      return reply.send({ data: channel });
+      // Resolve the DM "other participant" so the detail view can show
+      // the counterparty's name/avatar instead of the stored `name`
+      // field (which is relative to the creator's perspective).
+      let dm_other_participant: {
+        id: string;
+        display_name: string;
+        avatar_url: string | null;
+      } | null = null;
+      if (channel.type === 'dm') {
+        const [other] = await db
+          .select({
+            id: users.id,
+            display_name: users.display_name,
+            avatar_url: users.avatar_url,
+            last_seen_at: users.last_seen_at,
+          })
+          .from(banterChannelMemberships)
+          .innerJoin(users, eq(users.id, banterChannelMemberships.user_id))
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, channel.id),
+              ne(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .limit(1);
+        if (other) {
+          dm_other_participant = {
+            id: other.id,
+            display_name: other.display_name,
+            avatar_url: other.avatar_url,
+            presence: derivePresence(other.last_seen_at),
+          };
+        }
+      }
+
+      return reply.send({ data: { ...channel, dm_other_participant } });
     },
   );
 

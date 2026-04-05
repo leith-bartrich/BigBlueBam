@@ -304,6 +304,7 @@ async function authPlugin(fastify: FastifyInstance) {
             timezone: users.timezone,
             is_active: users.is_active,
             is_superuser: users.is_superuser,
+            last_seen_at: users.last_seen_at,
           },
         })
         .from(sessions)
@@ -334,6 +335,20 @@ async function authPlugin(fastify: FastifyInstance) {
             .where(eq(sessions.id, sessionId))
             .catch((err) => {
               request.log.warn({ err }, 'Failed to update sessions.last_used_at');
+            });
+        }
+
+        // Also bump users.last_seen_at, throttled to at most once per 5
+        // minutes per user. This drives the presence dots in Banter.
+        const lastSeen = row.user.last_seen_at
+          ? new Date(row.user.last_seen_at).getTime()
+          : 0;
+        if (Date.now() - lastSeen > 5 * 60_000) {
+          db.update(users)
+            .set({ last_seen_at: new Date() })
+            .where(eq(users.id, row.user.id))
+            .catch((err) => {
+              request.log.warn({ err }, 'Failed to update users.last_seen_at');
             });
         }
         return;

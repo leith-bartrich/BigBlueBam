@@ -1,6 +1,7 @@
 -- ─────────────────────────────────────────────────────────────────────────
 -- 0015_ticket_events.sql
 -- ─────────────────────────────────────────────────────────────────────────
+-- Client impact: additive only (new table + two indexes).
 -- Why: HB-47 — helpdesk realtime is delivered via Redis PubSub. PubSub is
 --      push-only and non-durable: any subscriber that is not connected at
 --      publish time silently misses the event. Customers with flaky mobile

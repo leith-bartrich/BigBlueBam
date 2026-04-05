@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
+export interface DmOtherParticipant {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  presence: 'online' | 'idle' | 'offline';
+}
+
 export interface Channel {
   id: string;
   slug: string;
@@ -15,6 +22,21 @@ export interface Channel {
   created_at: string;
   created_by: string;
   last_message_at: string | null;
+  /** For type='dm' only — the OTHER participant in the DM (not the
+   *  current user). Resolved server-side from channel_memberships so
+   *  both sides of the DM see the counterparty's name, not their own. */
+  dm_other_participant?: DmOtherParticipant | null;
+}
+
+/** The label to display for a channel in the sidebar / header.
+ *  For DMs this resolves to the other participant's display name so
+ *  both sides see the counterparty's name. Falls back to channel.name
+ *  (e.g. for group DMs or if the server hasn't enriched the response). */
+export function channelDisplayName(channel: Channel): string {
+  if (channel.type === 'dm' && channel.dm_other_participant) {
+    return channel.dm_other_participant.display_name;
+  }
+  return channel.name;
 }
 
 export interface ChannelMember {
