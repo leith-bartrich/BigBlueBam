@@ -8,6 +8,17 @@ import { sessions } from '../db/schema/sessions.js';
 import { env } from '../env.js';
 import type { RegisterInput, LoginInput, UpdateProfileInput } from '@bigbluebam/shared';
 
+// Precomputed dummy Argon2id hash used to equalize wall-clock time in login()
+// when the supplied email does not correspond to a real user, preventing
+// timing-based email enumeration. Lazily initialized once per process.
+let dummyHashPromise: Promise<string> | null = null;
+function getDummyPasswordHash(): Promise<string> {
+  if (!dummyHashPromise) {
+    dummyHashPromise = argon2.hash(nanoid(32));
+  }
+  return dummyHashPromise;
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -56,6 +67,11 @@ export async function login(email: string, password: string, _totpCode?: string)
     .limit(1);
 
   if (!user || !user.password_hash) {
+    // Burn the same amount of CPU as a real argon2.verify() would, so that
+    // response time cannot be used to distinguish "user does not exist" from
+    // "user exists but password is wrong" (email enumeration defense).
+    const dummyHash = await getDummyPasswordHash();
+    await argon2.verify(dummyHash, password);
     throw new AuthError('INVALID_CREDENTIALS', 'Invalid email or password');
   }
 

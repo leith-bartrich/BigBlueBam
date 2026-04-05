@@ -39,6 +39,17 @@ const verifyEmailSchema = z.object({
 const REQUIRE_EMAIL_VERIFICATION =
   (process.env.REQUIRE_EMAIL_VERIFICATION ?? 'false').toLowerCase() === 'true';
 
+// Precomputed dummy Argon2id hash used to equalize wall-clock time on login
+// when the email does not correspond to a real helpdesk user. Prevents
+// timing-based email enumeration. Lazily initialized once per process.
+let dummyHashPromise: Promise<string> | null = null;
+function getDummyPasswordHash(): Promise<string> {
+  if (!dummyHashPromise) {
+    dummyHashPromise = argon2.hash(nanoid(32));
+  }
+  return dummyHashPromise;
+}
+
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
     httpOnly: true,
@@ -195,6 +206,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
       .limit(1);
 
     if (!user) {
+      // Burn the same amount of CPU as a real argon2.verify() would, so that
+      // response time cannot be used to distinguish "user does not exist" from
+      // "user exists but password is wrong" (email enumeration defense).
+      const dummyHash = await getDummyPasswordHash();
+      await argon2.verify(dummyHash, data.password);
       await recordFailure(fastify.redis, data.email);
       return reply.status(401).send({
         error: {
