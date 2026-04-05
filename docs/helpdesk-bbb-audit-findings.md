@@ -2,12 +2,12 @@
 
 Compiled from 9 parallel audits covering: data model linkage, ticket creation flow, agent reply flow, realtime WebSocket, cross-service auth, status sync, frontend polling, user auth isolation, and error/retry handling.
 
-## Status Summary (as of granular-permissions branch)
+## Status Summary (as of granular-permissions branch, 2026-04-05)
 
-- **Resolved:** 39 of 57
-- **Partial:** 4 of 57
+- **Resolved:** 47 of 57
+- **Partial:** 3 of 57
 - **Deferred:** 1 of 57
-- **Open:** 13 of 57
+- **Open:** 6 of 57
 
 ## Headline Findings
 
@@ -52,17 +52,17 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 |---|--------|-------|------|
 | HB-19 | RESOLVED | No HTML sanitization on ticket description (XSS via stored description → rendered in BBB) | apps/helpdesk-api/src/routes/ticket.routes.ts:12 |
 | HB-20 | RESOLVED | Ticket↔task linkage is unidirectional (no `ticket_id` on tasks) + stored in JSONB `custom_fields` | apps/api/src/db/schema/tasks.ts, apps/helpdesk-api/src/routes/ticket.routes.ts:166 |
-| HB-21 | OPEN | Two separate Drizzle schemas for same `tickets` table (B3 minimal, helpdesk fuller) — drift risk | apps/api/src/db/schema/tickets.ts vs apps/helpdesk-api/src/db/schema/tickets.ts |
+| HB-21 | RESOLVED | Two separate Drizzle schemas for same `tickets` table (B3 minimal, helpdesk fuller) — drift risk | apps/api/src/db/schema/tickets.ts vs apps/helpdesk-api/src/db/schema/tickets.ts |
 | HB-22 | RESOLVED | No Fastify request timeout — long DB queries hang connections indefinitely | apps/helpdesk-api/src/server.ts |
 | HB-23 | RESOLVED | BullMQ is a dependency but never used — no dead-letter queue, no retry for failed task creation | apps/helpdesk-api/package.json |
 | HB-24 | RESOLVED | No health checks between services — helpdesk-api doesn't verify BBB reachability | apps/helpdesk-api/src/server.ts |
 | HB-25 | RESOLVED | Global rate limit keyed by IP only — one compromised customer account can spam 100 tickets/min | apps/helpdesk-api/src/server.ts:63 |
 | HB-26 | RESOLVED | Dead code in `requireAgentAuth` (`if (true)`) makes auth logic confusing/potentially broken | apps/helpdesk-api/src/routes/agent.routes.ts:63 |
 | HB-27 | RESOLVED | Agent's message post uses non-timing-safe key comparison (string `===`) | apps/helpdesk-api/src/routes/agent.routes.ts:48 |
-| HB-28 | OPEN | Shared `AGENT_API_KEY` not hashed, not rotatable, not per-agent — can't audit individual agents | apps/helpdesk-api/src/env.ts:38 |
+| HB-28 | RESOLVED | Shared `AGENT_API_KEY` not hashed, not rotatable, not per-agent — can't audit individual agents | apps/helpdesk-api/src/env.ts:38 |
 | HB-29 | RESOLVED | Broken optimistic UI — user's input clears but message doesn't appear until server round-trip | apps/helpdesk/src/pages/ticket-detail.tsx:88 |
 | HB-30 | RESOLVED | Full ticket refetch on every message post (`invalidateQueries`) — wasteful on large conversations | apps/helpdesk/src/hooks/use-tickets.ts:84 |
-| HB-31 | PARTIAL | No message pagination/virtualization — long conversations load entire history in DOM | apps/helpdesk/src/pages/ticket-detail.tsx:304 |
+| HB-31 | RESOLVED | No message pagination/virtualization — long conversations load entire history in DOM | apps/helpdesk/src/pages/ticket-detail.tsx:304 |
 | HB-32 | RESOLVED | Default 7-day session TTL for unverified customers (higher-risk than BBB agents) | apps/helpdesk-api/src/env.ts:12 |
 | HB-33 | RESOLVED | Weak rate limiting on login/register (100/min) — brute-force viable | apps/helpdesk-api/src/server.ts:63 |
 | HB-34 | RESOLVED | Lossy phase→status mapping (5 statuses reduce to 3 phase categories) — can't distinguish `waiting_on_customer` from `in_progress` | apps/api/src/services/task.service.ts:245 |
@@ -78,16 +78,16 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 | HB-39 | RESOLVED | No typing indicator (Banter has one) | — |
 | HB-40 | RESOLVED | No unread message badges on ticket list | apps/helpdesk/src/pages/tickets-list.tsx |
 | HB-41 | RESOLVED | No browser notifications / sound | — |
-| HB-42 | PARTIAL | No offline detection or auto-reconnect (helpdesk frontend uses `retry: 1`, no backoff) | apps/helpdesk/src/main.tsx:11 |
-| HB-43 | OPEN | `description_plain` stored identical to `description` (doesn't strip HTML) | apps/helpdesk-api/src/routes/ticket.routes.ts:111 |
+| HB-42 | RESOLVED | No offline detection or auto-reconnect (helpdesk frontend uses `retry: 1`, no backoff) | apps/helpdesk/src/main.tsx:11 |
+| HB-43 | RESOLVED | `description_plain` stored identical to `description` (doesn't strip HTML) | apps/helpdesk-api/src/routes/ticket.routes.ts:111 |
 | HB-44 | RESOLVED | Email verification token stored in plaintext | apps/helpdesk-api/src/db/schema/helpdesk-users.ts:11 |
 | HB-45 | OPEN | No ticket_activity_log equivalent — ticket status changes not audited on helpdesk side | apps/helpdesk-api/src/db/schema/ |
 | HB-46 | PARTIAL | No metrics/observability on task creation latency, failure rate, broadcast success | — |
 | HB-47 | OPEN | Pub/sub not durable — offline subscribers miss events permanently | apps/helpdesk-api/src/lib/broadcast.ts |
 | HB-48 | RESOLVED | Request ID not propagated to dependent services — no cross-service trace | apps/helpdesk-api/src/server.ts:24 |
-| HB-49 | OPEN | Agent authentication via shared session cookie fragile (no role check against org_memberships) | apps/helpdesk-api/src/routes/agent.routes.ts:28-72 |
-| HB-50 | OPEN | Ticket messages cascade delete, but task comments are orphaned (separate tables, no sync) | — |
-| HB-51 | OPEN | Ticket ID enumeration possible (404 for both "not found" and "not yours") | apps/helpdesk-api/src/routes/ticket.routes.ts:207 |
+| HB-49 | RESOLVED | Agent authentication via shared session cookie fragile (no role check against org_memberships) | apps/helpdesk-api/src/routes/agent.routes.ts:28-72 |
+| HB-50 | PARTIAL | Ticket messages cascade delete, but task comments are orphaned (separate tables, no sync) | — |
+| HB-51 | RESOLVED | Ticket ID enumeration possible (404 for both "not found" and "not yours") | apps/helpdesk-api/src/routes/ticket.routes.ts:207 |
 | HB-52 | OPEN | Missing CSRF protection (SameSite=lax mitigates but doesn't fully protect) | apps/helpdesk-api/src/routes/auth.routes.ts:32 |
 
 ## P3 — LOW / Design
@@ -95,7 +95,7 @@ Compiled from 9 parallel audits covering: data model linkage, ticket creation fl
 | # | Status | Issue | File |
 |---|--------|-------|------|
 | HB-53 | PARTIAL | No skeleton loaders — blank pages while loading | apps/helpdesk/src/pages/ |
-| HB-54 | OPEN | No per-endpoint rate limits on agent API | apps/helpdesk-api/src/routes/agent.routes.ts |
+| HB-54 | RESOLVED | No per-endpoint rate limits on agent API | apps/helpdesk-api/src/routes/agent.routes.ts |
 | HB-55 | OPEN | No duplicate/merge ticket support | apps/helpdesk-api/src/db/schema/tickets.ts |
 | HB-56 | RESOLVED | task_id FK uses SET NULL on task deletion — orphaned tickets | infra/postgres/init.sql:415 |
 | HB-57 | OPEN | Account lockout after repeated failed logins not implemented | apps/helpdesk-api/src/routes/auth.routes.ts |
