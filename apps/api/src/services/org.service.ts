@@ -1,7 +1,9 @@
 import { eq, and, sql, inArray, desc, lt, or } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
+import type Redis from 'ioredis';
 import { db } from '../db/index.js';
+import { cacheGetOrSet, cacheInvalidate, CACHE_KEYS } from '../lib/cache.js';
 import { organizations } from '../db/schema/organizations.js';
 import { users } from '../db/schema/users.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
@@ -21,26 +23,45 @@ export async function getOrganization(orgId: string) {
   return org ?? null;
 }
 
-// Simple in-memory cache for org settings reads used by permission checks.
-// Not a true LRU — bounded via periodic cleanup when size crosses threshold.
+// In-process fallback cache for callers that don't have a Redis client
+// handy (e.g. CLI entry points). The Redis path below is preferred and is
+// used by every authenticated request route via fastify.redis.
 type CachedOrg = Awaited<ReturnType<typeof getOrganization>>;
 const orgCache = new Map<string, { data: NonNullable<CachedOrg>; expires: number }>();
 const CACHE_TTL_MS = 30_000; // 30 seconds
+const ORG_REDIS_TTL_SECONDS = 60;
 
-export async function getOrganizationCached(orgId: string) {
-  const cached = orgCache.get(orgId);
-  if (cached && cached.expires > Date.now()) {
-    return cached.data;
+export async function getOrganizationCached(
+  orgIdOrRedis: string | Redis,
+  maybeOrgId?: string,
+) {
+  // Overload: `getOrganizationCached(orgId)` keeps the in-process path;
+  // `getOrganizationCached(redis, orgId)` uses the shared Redis cache.
+  if (typeof orgIdOrRedis === 'string') {
+    const orgId = orgIdOrRedis;
+    const cached = orgCache.get(orgId);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
+    const org = await getOrganization(orgId);
+    if (org) {
+      orgCache.set(orgId, { data: org, expires: Date.now() + CACHE_TTL_MS });
+    }
+    return org;
   }
-  const org = await getOrganization(orgId);
-  if (org) {
-    orgCache.set(orgId, { data: org, expires: Date.now() + CACHE_TTL_MS });
-  }
-  return org;
+
+  const redis = orgIdOrRedis;
+  const orgId = maybeOrgId!;
+  return cacheGetOrSet(redis, CACHE_KEYS.orgSettings(orgId), ORG_REDIS_TTL_SECONDS, () =>
+    getOrganization(orgId),
+  );
 }
 
-export function invalidateOrgCache(orgId: string) {
+export function invalidateOrgCache(orgId: string, redis?: Redis) {
   orgCache.delete(orgId);
+  if (redis) {
+    void cacheInvalidate(redis, CACHE_KEYS.orgSettings(orgId));
+  }
 }
 
 export async function updateOrganization(

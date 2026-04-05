@@ -89,7 +89,7 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
 
       // Enforce org-level permissions for non-admin members
       if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
-        const org = await orgService.getOrganizationCached(request.user!.org_id);
+        const org = await orgService.getOrganizationCached(fastify.redis, request.user!.org_id);
         const perms = getOrgPermissions(org?.settings as Record<string, unknown> | null);
 
         if (!perms.members_can_create_api_keys) {
