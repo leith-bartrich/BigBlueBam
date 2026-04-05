@@ -2,12 +2,28 @@ import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import postgres from 'postgres';
 import { organizations } from './db/schema/organizations.js';
 import { users } from './db/schema/users.js';
 import { organizationMemberships } from './db/schema/organization-memberships.js';
 import { apiKeys } from './db/schema/api-keys.js';
+import { pgTable, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core';
+
+// Local reference to the helpdesk_agent_api_keys table (owned by the
+// helpdesk-api app) — duplicated here rather than imported so cli.js
+// has no cross-app build dependency. HB-28 + HB-49.
+const helpdeskAgentApiKeys = pgTable('helpdesk_agent_api_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  bbb_user_id: uuid('bbb_user_id').notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  key_hash: text('key_hash').notNull(),
+  key_prefix: varchar('key_prefix', { length: 8 }).notNull(),
+  expires_at: timestamp('expires_at', { withTimezone: true }),
+  revoked_at: timestamp('revoked_at', { withTimezone: true }),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  last_used_at: timestamp('last_used_at', { withTimezone: true }),
+});
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'viewer', 'guest'] as const;
 const VALID_SCOPES = ['read', 'read_write', 'admin'] as const;
@@ -33,6 +49,7 @@ Commands:
   grant-superuser    Promote an existing user to SuperUser by email
   revoke-superuser   Remove SuperUser privileges from a user by email
   create-api-key     Issue an API key for a user (for agentic / programmatic access)
+  create-helpdesk-agent-key  Issue a per-agent helpdesk API key (HB-28 + HB-49)
   list-orgs          List all organizations (id, slug, name) — helper for other commands
 
 Common user roles:       owner, admin, member, viewer, guest
@@ -58,11 +75,17 @@ Examples:
       --org-slug acme --role viewer
 
   # Issue a read-only API key for an agent (prints the key ONCE — store it)
-  cli create-api-key --email viewer-bot@co.com --name "dashboard-bot" --scope read
+  # --org-slug pins the key to exactly one org even if the user joins others.
+  cli create-api-key --email viewer-bot@co.com --name "dashboard-bot" --scope read \\
+      --org-slug acme
 
   # Issue a scoped read-write key restricted to one project, 90 day expiry
   cli create-api-key --email alice@co.com --name "ci-bot" --scope read_write \\
-      --project-id <uuid> --expires-days 90
+      --org-slug acme --project-id <uuid> --expires-days 90
+
+  # Mint a per-agent helpdesk API key for a BBB employee (printed ONCE)
+  cli create-helpdesk-agent-key --email agent@co.com --name "agent-mbp" \\
+      --expires-days 365
 `);
 }
 
@@ -239,9 +262,15 @@ async function createApiKey(flags: Record<string, string>) {
   const { email, name, scope } = flags;
   const projectId = flags['project-id'];
   const expiresDaysStr = flags['expires-days'];
+  const orgSlug = flags['org-slug'];
+  const orgIdFlag = flags['org-id'];
 
   if (!VALID_SCOPES.includes(scope as (typeof VALID_SCOPES)[number])) {
     console.error(`Error: --scope must be one of ${VALID_SCOPES.join(', ')}`);
+    process.exit(1);
+  }
+  if (!orgSlug && !orgIdFlag) {
+    console.error('Error: provide either --org-slug or --org-id (P2-8: API keys must be bound to one org)');
     process.exit(1);
   }
 
@@ -250,6 +279,37 @@ async function createApiKey(flags: Record<string, string>) {
     const [user] = await db.select().from(users).where(eq(users.email, email!)).limit(1);
     if (!user) {
       console.error(`Error: no user found with email ${email}`);
+      process.exit(1);
+    }
+
+    // Resolve the target org by slug or id.
+    const [org] = orgIdFlag
+      ? await db.select().from(organizations).where(eq(organizations.id, orgIdFlag!)).limit(1)
+      : await db.select().from(organizations).where(eq(organizations.slug, orgSlug!)).limit(1);
+    if (!org) {
+      console.error(
+        `Error: organization not found (${orgIdFlag ? `id=${orgIdFlag}` : `slug=${orgSlug}`})`,
+      );
+      console.error('Hint: run `cli list-orgs` to see available organizations');
+      process.exit(1);
+    }
+
+    // Verify the user is actually a member of that org — don't let operators
+    // mint keys for orgs the user has no business accessing.
+    const membership = await db
+      .select({ id: organizationMemberships.id })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.user_id, user.id),
+          eq(organizationMemberships.org_id, org.id),
+        ),
+      )
+      .limit(1);
+    if (membership.length === 0) {
+      console.error(
+        `Error: user ${user.email} is not a member of org "${org.slug}" — cannot issue a key scoped to that org`,
+      );
       process.exit(1);
     }
 
@@ -269,6 +329,7 @@ async function createApiKey(flags: Record<string, string>) {
       .insert(apiKeys)
       .values({
         user_id: user.id,
+        org_id: org.id,
         name: name!,
         key_hash: keyHash,
         key_prefix: prefix,
@@ -282,6 +343,7 @@ async function createApiKey(flags: Record<string, string>) {
     console.log(`  Key ID:    ${key!.id}`);
     console.log(`  Name:      ${key!.name}`);
     console.log(`  User:      ${user.email}`);
+    console.log(`  Org:       ${org.name} (${org.slug})`);
     console.log(`  Scope:     ${scope}`);
     if (projectId) console.log(`  Project:   ${projectId}`);
     if (expiresAt) console.log(`  Expires:   ${expiresAt.toISOString()}`);
@@ -290,6 +352,62 @@ async function createApiKey(flags: Record<string, string>) {
     console.log(`  Token:     ${fullToken}`);
     console.log('');
     console.log(`  Use in requests as:  Authorization: Bearer ${fullToken}`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function createHelpdeskAgentKey(flags: Record<string, string>) {
+  requireFlags(flags, ['email', 'name']);
+  const { email, name } = flags;
+  const expiresDaysStr = flags['expires-days'];
+
+  const { db, client } = getDb();
+  try {
+    const [user] = await db.select().from(users).where(eq(users.email, email!)).limit(1);
+    if (!user) {
+      console.error(`Error: no BBB user found with email ${email}`);
+      console.error('Hint: helpdesk agent keys are tied to BBB employee accounts. Create the user with `cli create-user` first.');
+      process.exit(1);
+    }
+
+    // Token format: hdag_<base64url 32 bytes>. The prefix `hdag_` is
+    // distinct from the main bbam_ API keys and from any Bearer JWTs
+    // used on customer-facing helpdesk routes, making it obvious at a
+    // glance which kind of credential a leaked token is. The auth
+    // middleware slices the first 8 characters as the lookup prefix
+    // (see apps/helpdesk-api/src/routes/agent.routes.ts), matching the
+    // 8-char key_prefix column.
+    const randomToken = randomBytes(32).toString('base64url');
+    const fullToken = `hdag_${randomToken}`;
+    const prefix = fullToken.slice(0, 8);
+    const keyHash = await argon2.hash(fullToken);
+
+    const expiresAt = expiresDaysStr
+      ? new Date(Date.now() + Number(expiresDaysStr) * 24 * 60 * 60 * 1000)
+      : null;
+
+    const [key] = await db
+      .insert(helpdeskAgentApiKeys)
+      .values({
+        bbb_user_id: user.id,
+        name: name!,
+        key_hash: keyHash,
+        key_prefix: prefix,
+        expires_at: expiresAt,
+      })
+      .returning({ id: helpdeskAgentApiKeys.id, name: helpdeskAgentApiKeys.name });
+
+    console.log('Helpdesk agent API key created successfully:');
+    console.log(`  Key ID:    ${key!.id}`);
+    console.log(`  Name:      ${key!.name}`);
+    console.log(`  Agent:     ${user.email}`);
+    if (expiresAt) console.log(`  Expires:   ${expiresAt.toISOString()}`);
+    console.log('');
+    console.log('  ── Store this token NOW — it will not be shown again ──');
+    console.log(`  Token:     ${fullToken}`);
+    console.log('');
+    console.log(`  Use in requests as:  X-Agent-Key: ${fullToken}`);
   } finally {
     await client.end();
   }
@@ -343,6 +461,9 @@ async function main() {
         break;
       case 'create-api-key':
         await createApiKey(flags);
+        break;
+      case 'create-helpdesk-agent-key':
+        await createHelpdeskAgentKey(flags);
         break;
       case 'list-orgs':
         await listOrgs();

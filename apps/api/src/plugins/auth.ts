@@ -169,8 +169,14 @@ export async function buildAuthUser(
   apiKeyScope: string | null,
   request: FastifyRequest,
   sessionActiveOrgId: string | null = null,
+  apiKeyOrgId: string | null = null,
 ): Promise<AuthUser> {
-  const requestedOrgId = getRequestedOrgId(request);
+  // P2-8: For API-key auth on non-SuperUser callers, the key's own org_id
+  // is authoritative — X-Org-Id header is ignored. For SuperUser API keys
+  // we still honor X-Org-Id (same rules as session auth) because
+  // SuperUsers can legitimately operate across orgs.
+  const requestedOrgId =
+    apiKeyOrgId && !row.is_superuser ? undefined : getRequestedOrgId(request);
   const { memberships, activeOrgId, activeRole } = await resolveOrgContext(
     row.id,
     row.org_id,
@@ -178,14 +184,29 @@ export async function buildAuthUser(
     requestedOrgId,
   );
 
+  // P2-8: Pin the effective org to the key's org_id for non-SuperUser
+  // API-key auth. We still resolve memberships above so downstream code
+  // has the full membership list; we just override the "active" org.
+  let keyScopedOrgId: string | null = null;
+  let keyScopedRole: string | null = null;
+  if (apiKeyOrgId && !row.is_superuser) {
+    const keyMembership = memberships.find((m) => m.org_id === apiKeyOrgId);
+    // Use the user's role within the key's org. If the user is no longer
+    // a member of the key's org (revoked), fall back to 'viewer' — the
+    // key's own scope still gates write access, but org membership loss
+    // should strip role-derived privileges.
+    keyScopedOrgId = apiKeyOrgId;
+    keyScopedRole = keyMembership?.role ?? 'viewer';
+  }
+
   // SuperUser context switch: if this user is a SuperUser AND their session
   // has an active_org_id set (via POST /superuser/context/switch), that org
   // takes precedence over membership-derived org context — SuperUsers can
   // view any org, regardless of membership. Non-SuperUsers with an
   // activeOrgId set on their session are defensively ignored here (this
   // should never happen — the switch endpoint only accepts SuperUsers).
-  let finalOrgId = activeOrgId;
-  let finalRole = activeRole;
+  let finalOrgId = keyScopedOrgId ?? activeOrgId;
+  let finalRole = keyScopedRole ?? activeRole;
   let isSuperuserViewing = false;
   if (row.is_superuser && sessionActiveOrgId) {
     // Only flip the context if it actually differs from the membership-
@@ -348,7 +369,16 @@ async function authPlugin(fastify: FastifyInstance) {
           continue;
         }
         if (valid && candidate.user.is_active) {
-          request.user = await buildAuthUser(candidate.user, candidate.apiKey.scope, request);
+          // P2-8: pass the key's org_id — for non-SuperUser keys this
+          // pins the request's org context to the key's org regardless
+          // of what X-Org-Id says or which orgs the user now belongs to.
+          request.user = await buildAuthUser(
+            candidate.user,
+            candidate.apiKey.scope,
+            request,
+            null,
+            candidate.apiKey.org_id,
+          );
           // Update last_used_at — fire-and-forget, log errors but don't block the response.
           db.update(apiKeys)
             .set({ last_used_at: new Date() })

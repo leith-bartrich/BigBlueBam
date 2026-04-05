@@ -211,8 +211,12 @@ docker compose exec api node dist/cli.js create-user \
   --org-slug my-organization --role viewer
 
 # 2. Issue a read-only API key (printed ONCE — copy and store immediately)
+# --org-slug pins the key to exactly one org. Even if the user later joins
+# other orgs via organization_memberships, this key will never grant access
+# beyond my-organization.
 docker compose exec api node dist/cli.js create-api-key \
-  --email dashboard-bot@co.com --name "grafana-dashboard" --scope read
+  --email dashboard-bot@co.com --name "grafana-dashboard" --scope read \
+  --org-slug my-organization
 ```
 
 The CLI prints the raw token once — after that only its Argon2id hash is
@@ -233,7 +237,7 @@ docker compose exec api node dist/cli.js create-user \
 
 docker compose exec api node dist/cli.js create-api-key \
   --email ci-bot@co.com --name "github-actions" --scope read_write \
-  --project-id <project-uuid> --expires-days 90
+  --org-slug my-organization --project-id <project-uuid> --expires-days 90
 ```
 
 **Admin API key** (for server-to-server integrations that manage org-level
@@ -241,7 +245,28 @@ resources). Use with caution — `admin` scope bypasses read/write restrictions:
 
 ```bash
 docker compose exec api node dist/cli.js create-api-key \
-  --email admin@example.com --name "backfill-tool" --scope admin --expires-days 7
+  --email admin@example.com --name "backfill-tool" --scope admin \
+  --org-slug my-organization --expires-days 7
+```
+
+#### Helpdesk agent API keys
+
+The `/helpdesk/api/agents/*` routes (BBB employees working customer
+tickets) use a separate, per-agent key family prefixed `hdag_`. Each key
+is tied to one BBB user, Argon2id-hashed at rest, and individually
+rotatable / revocable — replacing the legacy shared `AGENT_API_KEY` env
+var (HB-28 + HB-49).
+
+```bash
+# The BBB user must already exist (create-admin or create-user).
+docker compose exec api node dist/cli.js create-helpdesk-agent-key \
+  --email agent@example.com --name "agent-laptop" --expires-days 365
+```
+
+The token is printed ONCE. Agents present it on every request as:
+
+```
+X-Agent-Key: hdag_<rest-of-token>
 ```
 
 ### Role & scope reference
@@ -260,9 +285,12 @@ docker compose exec api node dist/cli.js create-api-key \
 | `read_write` | CRUD on tasks, comments, etc. Cannot change org settings. |
 | `admin` | Full org-level operations. Treat like a root credential. |
 
-`read_write` and `admin` keys can be project-scoped with `--project-id <uuid>`
-to limit their blast radius to a single project. All keys can carry an
-`--expires-days N` TTL.
+Every API key is bound to exactly one org via `--org-slug` (or `--org-id`)
+at creation time and the auth layer enforces that scope on every request,
+regardless of which other orgs the owning user joins later (P2-8).
+`read_write` and `admin` keys can additionally be project-scoped with
+`--project-id <uuid>` to limit their blast radius to a single project
+inside that org. All keys can carry an `--expires-days N` TTL.
 
 See the [Permissions Guide](permissions.md) for the complete authorization
 model, and the [Development Guide](development.md#local-admin-superuser-and-impersonation)
