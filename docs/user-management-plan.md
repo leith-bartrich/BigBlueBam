@@ -1,6 +1,6 @@
 # User Management UI — Design Proposal
 
-Status: DRAFT, awaiting review
+Status: APPROVED (decisions locked in §11)
 Date: 2026-04-05
 
 ## 1. Why we need this
@@ -38,8 +38,8 @@ Non-admins (member/viewer/guest) still see their own profile under `/b3/settings
 | `display_name` | ✓ | ✓ | |
 | `avatar_url` / upload | ✓ | ✓ | Reuses existing S3 upload path |
 | `timezone` | ✓ | ✓ | IANA zone picker |
-| `is_active` (disable) | ✓ | ✓ | Soft-disable — login blocked, sessions invalidated, data kept |
-| `email` | — | ✓ | Risky; requires re-verification on next login. SU only. |
+| `is_active` (disable) | ✓ | ✓ | Soft-disable — login blocked, sessions invalidated, data kept. Allowed on the last owner of an org, but the org will show a persistent "no active owner" banner until someone is promoted. |
+| `email` | — | ✓ | SU only. Reuses the existing `helpdesk_users` email-verification scaffold, extended to BBB users: changing the email sends a verification token to the new address; the change is committed (and `email_verified` flipped) only after the token is redeemed. Old address is notified that the change was initiated. |
 | `is_superuser` | — | ✓ | Grant/revoke (exists via `/platform/users/:id/superuser`) |
 | `notification_prefs` | — | — | User's own domain; admins don't touch |
 
@@ -48,21 +48,21 @@ Non-admins (member/viewer/guest) still see their own profile under `/b3/settings
 | Action | Admin | SuperUser | Notes |
 |---|---|---|---|
 | List orgs user belongs to | org-scoped only | all orgs | Current UI shows only current org |
-| Change user's role in org | ✓ (target ≤ caller) | ✓ | Already exists |
+| Change user's role in org | ✓ (target < caller) | ✓ | Already exists |
 | Set user's default org | — | ✓ | Changes `is_default` flag on memberships |
 | Add user to another org | — | ✓ | Insert `organization_memberships` row |
-| Remove user from org | ✓ (target ≤ caller) | ✓ | Already exists (drops membership, not user) |
-| Transfer org ownership | owner only | ✓ | Promote one member + demote another, atomic |
+| Remove user from org | ✓ (target < caller) | ✓ | Already exists (drops membership, not user) |
+| Transfer org ownership | owner only, or SU | ✓ | **Single-step.** "Transfer ownership" promotes target to owner AND demotes the initiating owner to admin, atomically. If you want a co-owner instead, use the ordinary role change (admin → owner) — that adds an owner without demoting anyone. |
 
 ### 3c. Project memberships
 
 | Action | Admin | SuperUser | Notes |
 |---|---|---|---|
-| List user's project memberships | org-scoped | all orgs | Join projects + memberships |
-| Add user to project (w/ role) | ✓ | ✓ | lead/member/viewer per project |
-| Remove user from project | ✓ | ✓ | |
-| Change role in project | ✓ | ✓ | |
-| Bulk assign user to many projects | ✓ | ✓ | Checkbox multiselect |
+| List user's project memberships | org-scoped | defaults to active org; scope switcher to "all orgs" | Join projects + memberships |
+| Add user to project (w/ role) | ✓ (target < caller) | ✓ | lead/member/viewer per project |
+| Remove user from project | ✓ (target < caller) | ✓ | |
+| Change role in project | ✓ (target < caller) | ✓ | |
+| Bulk assign user to many projects | ✓ (target < caller) | ✓ | Checkbox multiselect. SU can span orgs by flipping the scope switcher. |
 
 ### 3d. Sessions & auth
 
@@ -70,9 +70,9 @@ Non-admins (member/viewer/guest) still see their own profile under `/b3/settings
 |---|---|---|---|
 | List user's active sessions | — | ✓ | ip, user agent, last activity, current flag |
 | Revoke single session | — | ✓ | `DELETE FROM sessions WHERE id = ?` |
-| Sign out everywhere | ✓ | ✓ | Delete all of target's sessions. Admin-available because it's already implicit in password reset. |
-| Force password change on next login | ✓ | ✓ | New `users.force_password_change` flag |
-| Reset password (manual / generated) | ✓ | ✓ | Just shipped, integrate into screen |
+| Sign out everywhere | ✓ (target < caller) | ✓ | Delete all of target's sessions. Admin-available because it's already implicit in password reset. |
+| Force password change on next login | ✓ (target < caller) | ✓ | New `users.force_password_change` flag |
+| Reset password (manual / generated) | ✓ (target < caller) | ✓ | Just shipped — **rule changed from ≤ to < as part of this plan**, see §6 note. |
 | Require 2FA on next login | later | later | 2FA not shipped yet — deferred |
 
 ### 3e. API keys
@@ -109,8 +109,8 @@ Non-admins (member/viewer/guest) still see their own profile under `/b3/settings
 |---|---|---|---|
 | Search users by name/email | ✓ | ✓ | Typeahead — exists via org members list for admin; new cross-org for SU |
 | Filter by role / is_active / is_superuser | ✓ | ✓ | |
-| Bulk disable / enable | ✓ (target ≤ caller) | ✓ | Confirmation required |
-| Bulk role change | ✓ (target ≤ caller) | ✓ | |
+| Bulk disable / enable | ✓ (target < caller) | ✓ | Confirmation required |
+| Bulk role change | ✓ (target < caller) | ✓ | |
 | Bulk remove from org | ✓ | ✓ | |
 | Bulk add to project(s) | ✓ | ✓ | |
 | Export members CSV | ✓ | ✓ | |
@@ -223,23 +223,26 @@ Tabs on a user detail page:
 
 Every action below is enforced server-side. The UI hides unavailable actions.
 
+**Rank rule for admin actions: strictly below (`target < caller`).** A peer admin cannot reset, disable, demote, or kick another admin — only an owner or SuperUser can. Same at the owner tier: one owner cannot modify another owner; that requires SU. This is stricter than the "peer-allowed" rule the password-reset feature originally shipped with — as part of this plan, `resetMemberPassword` will be tightened to `<` to match. The motivation is containment: a single compromised admin credential cannot be used to lock every other admin out of the org.
+
 | Action | Guest | Viewer | Member | Admin | Owner | SuperUser |
 |---|---|---|---|---|---|---|
 | View People list | — | — | — | ✓ | ✓ | ✓ |
 | View other user's detail | — | — | — | ✓ (same org) | ✓ (same org) | ✓ (any) |
-| Edit display_name / timezone | — | — | — | ✓ (target ≤ caller) | ✓ (target ≤ caller) | ✓ |
-| Toggle is_active | — | — | — | ✓ (target ≤ caller) | ✓ (target ≤ caller) | ✓ |
-| Edit email | — | — | — | — | — | ✓ |
+| Edit display_name / timezone | — | — | — | ✓ (target < caller) | ✓ (target < caller) | ✓ |
+| Toggle is_active | — | — | — | ✓ (target < caller) | ✓ (target < caller) | ✓ |
+| Edit email (w/ re-verification) | — | — | — | — | — | ✓ |
 | Grant/revoke is_superuser | — | — | — | — | — | ✓ |
-| Change role in org | — | — | — | ✓ (target < caller) | ✓ (target ≤ caller) | ✓ |
-| Remove from org | — | — | — | ✓ (target ≤ caller) | ✓ (target ≤ caller) | ✓ |
+| Change role in org | — | — | — | ✓ (target < caller) | ✓ (target < caller) | ✓ |
+| Remove from org | — | — | — | ✓ (target < caller) | ✓ (target < caller) | ✓ |
 | Add to another org | — | — | — | — | — | ✓ |
-| Reset password | — | — | — | ✓ (target ≤ caller, admin+) | ✓ | ✓ |
-| Force password change | — | — | — | ✓ (target ≤ caller) | ✓ | ✓ |
-| Revoke API keys on their behalf | — | — | — | ✓ (target ≤ caller) | ✓ | ✓ |
+| Reset password | — | — | — | ✓ (target < caller, admin+) | ✓ (target < caller) | ✓ |
+| Force password change | — | — | — | ✓ (target < caller) | ✓ (target < caller) | ✓ |
+| Revoke API keys on their behalf | — | — | — | ✓ (target < caller) | ✓ (target < caller) | ✓ |
 | View/revoke sessions | — | — | — | — | — | ✓ |
 | Impersonate | — | — | — | — | — | ✓ (non-SU targets only) |
-| Add/remove from project | — | — | — | ✓ (project admin+) | ✓ | ✓ |
+| Add/remove from project | — | — | — | ✓ (target < caller) | ✓ (target < caller) | ✓ |
+| Transfer ownership (owner→admin + target→owner) | — | — | — | — | owner initiating | ✓ |
 
 ## 7. New API endpoints needed
 
@@ -248,8 +251,9 @@ Most capabilities already have endpoints. The gaps:
 ### Must add
 - `GET /org/members/:userId` — single-user detail incl. project memberships for the current org. Currently there's only the list endpoint.
 - `PATCH /org/members/:userId/profile` — edit display_name + timezone + avatar for an org member. Today you'd have to hit user's own profile endpoint.
-- `PATCH /org/members/:userId/active` — body `{ is_active: boolean }`. Soft-disable/enable, invalidates sessions on disable.
+- `PATCH /org/members/:userId/active` — body `{ is_active: boolean }`. Soft-disable/enable, invalidates sessions on disable. Does NOT block disabling the last owner, but the response includes a `last_owner_remaining: boolean` flag the UI uses to show a persistent "no active owner" banner at the org level.
 - `POST /org/members/:userId/force-password-change` — flip a new `users.force_password_change` flag.
+- `POST /org/members/:userId/transfer-ownership` — atomic: caller (owner) → admin, target → owner. Single transaction, rejects if caller is not currently owner.
 - `GET /org/members/:userId/projects` — list their project memberships in this org.
 - `POST /projects/:projectId/members` already exists (probably) — verify, make sure it's bulk-capable (array of user_ids with roles).
 - `POST /org/members/:userId/sign-out-everywhere` — delete all sessions for target.
@@ -259,10 +263,11 @@ Most capabilities already have endpoints. The gaps:
 - `POST /superuser/users/:id/memberships` — add user to arbitrary org.
 - `GET /superuser/users/:id/sessions` — list all sessions across any org.
 - `DELETE /superuser/users/:id/sessions/:sessionId` — revoke one.
-- `PATCH /superuser/users/:id/email` — change email (re-verification required on next login).
+- `PATCH /superuser/users/:id/email` — change email. Reuses the `helpdesk_users` email-verification scaffold: issues a verification token to the NEW address, updates `users.email_verified = false` immediately, and the change only fully commits after the new address's token is redeemed. Old address receives a notification email so a compromised SU can't silently steal an account.
 - `GET /superuser/users` — cross-org user list with search + filters. Currently only per-org listing.
 - `GET /superuser/users/:id` — detail across orgs.
 - `POST /superuser/users/:id/set-default-org` — flip `is_default` on memberships.
+- `GET /superuser/users/:id/projects?scope=active|all` — cross-org project listing for the SU's project-assignment UI.
 
 ### Already have
 - `/auth/api-keys` (GET list, POST create, DELETE revoke) — works for self; extend with `?user_id=` for admin on behalf.
@@ -277,6 +282,9 @@ Minimal schema changes required for this plan:
 1. **`users.force_password_change boolean NOT NULL DEFAULT false`** — checked at login; redirects to password-change form.
 2. **`users.disabled_at timestamptz NULL`** — audit timestamp for when soft-disable happened (complements `is_active`).
 3. **`users.disabled_by uuid REFERENCES users(id)`** — who disabled them.
+4. **`users.email_verified boolean NOT NULL DEFAULT true`** + **`users.email_verification_token text NULL`** + **`users.email_verification_sent_at timestamptz NULL`** — mirror of the existing `helpdesk_users` columns, reused for the SU email-change flow. Existing users backfill with `email_verified = true` so the change is invisible to them.
+5. **(Later, not MVP)** `login_history(id, user_id, ip, user_agent, success, failure_reason, created_at)` for Activity tab surfacing.
+6. **(Later, not MVP)** `admin_audit_log(id, org_id, actor_id, target_user_id, action, details jsonb, created_at)` for admin password resets, disables, forced password changes — currently these only hit pino logs.
 
 ### Nice-to-have (later)
 4. `login_history(id, user_id, ip, user_agent, success, failure_reason, created_at)` — currently login failures are only in pino logs. A table lets us surface this in the UI.
@@ -288,7 +296,9 @@ Minimal schema changes required for this plan:
 - `/b3/people` list with search + role/status filters
 - User detail page: Overview tab only
 - Edit display_name + timezone
-- Toggle is_active (add `disabled_at` + `disabled_by` columns)
+- Toggle is_active (add `disabled_at` + `disabled_by` columns + "no active owner" org-level banner)
+- Tighten rank rule from ≤ to < across invite/remove/role-change/reset-password/force-password-change. This is a behavior change — document in the audit docs + changelog.
+- Transfer ownership action (single-step, owner-initiated)
 - Integrate existing: invite, remove, change role, reset password
 - Sidebar nav entry
 - Hide Members tab in Settings (redirect link → /b3/people)
@@ -329,10 +339,10 @@ Minimal schema changes required for this plan:
 - **Self-service profile editing via People screen** — users edit their own profile in `/b3/settings` as today.
 - **Customer (helpdesk_users) management** — helpdesk customers are a separate identity pool. If needed, build a parallel `/b3/helpdesk/customers` screen later.
 
-## 11. Open questions for review
+## 11. Decisions locked in during review
 
-- **"Target ≤ caller" rule:** do we allow peer-level admin-on-admin actions, or strictly below? The password-reset feature just shipped with ≤ (peer allowed). Consistency vs safety.
-- **Transfer ownership flow:** single-step "promote X to owner" which auto-demotes the current owner? Or a two-step pending-transfer that the new owner must accept?
-- **Disabling an owner:** should `is_active=false` be blocked on the last owner of an org (like we block removing the last owner)?
-- **Project assignments outside your active org (for SU):** show projects from all orgs, or only the active-org context? Probably active-org unless the user explicitly filters otherwise.
-- **Email change verification:** reuse the existing verification scaffold for helpdesk_users, or build a BBB-specific email-change-token flow?
+- **Rank rule is strictly below (`target < caller`)** for every admin action. Peer-admin-on-admin is not allowed — a compromised admin cannot lock out other admins. Escalation to an owner or SuperUser is required to act on a peer. Same at the owner tier. The password-reset feature shipped with `≤` and will be tightened to `<` as part of Phase 1.
+- **Ownership transfer is single-step.** One button: current owner becomes admin, target becomes owner, atomically. Co-owner model remains available via the ordinary "change role → owner" action for orgs that want multiple owners without any demotion.
+- **Disabling the last owner is allowed.** Rather than blocking the action, the org surfaces a persistent "this organization has no active owner" banner until a new owner is promoted. Prevents lockout scenarios where every owner account needs to be rotated.
+- **Project assignment for SU defaults to active-org scope** with a one-click switcher to "all orgs" when cross-org bulk assignment is actually needed. Keeps the common case fast, allows the rare case.
+- **Email change reuses the `helpdesk_users` email-verification scaffold**, extended to BBB `users` (adds `email_verified`, `email_verification_token`, `email_verification_sent_at` columns). The verification token is sent to the NEW address and the old address is notified. Existing users backfill with `email_verified = true` so nothing breaks for them.
