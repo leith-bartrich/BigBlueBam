@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import argon2 from 'argon2';
 import { nanoid } from 'nanoid';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { helpdeskUsers } from '../db/schema/helpdesk-users.js';
 import { helpdeskSessions } from '../db/schema/helpdesk-sessions.js';
@@ -51,6 +51,17 @@ function getDummyPasswordHash(): Promise<string> {
 }
 
 export default async function authRoutes(fastify: FastifyInstance) {
+  // Expose the shared platform-wide signup flag to the helpdesk login page
+  // so "Create one" can route to the cross-app beta-gate when signup is off.
+  fastify.get('/helpdesk/public/config', async () => {
+    const res = await db.execute(
+      sql`SELECT public_signup_disabled FROM platform_settings WHERE id = 1`,
+    );
+    const row = (res as unknown as { rows: Array<{ public_signup_disabled: boolean }> }).rows?.[0];
+    return {
+      data: { public_signup_disabled: row?.public_signup_disabled === true },
+    };
+  });
   const cookieOptions = {
     httpOnly: true,
     secure: env.COOKIE_SECURE,
@@ -83,6 +94,27 @@ export default async function authRoutes(fastify: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
+    // Platform-wide kill switch (shared with BBB): when a SuperUser has
+    // disabled public signup, reject Helpdesk customer self-signup too.
+    // Reads directly from the shared `platform_settings` singleton; no
+    // Drizzle schema needed here since helpdesk-api does not own the table.
+    const flagResult = await db.execute(
+      sql`SELECT public_signup_disabled FROM platform_settings WHERE id = 1`,
+    );
+    // postgres-js returns the rows array directly; node-pg returns {rows: [...]}.
+    const row = Array.isArray(flagResult)
+      ? (flagResult[0] as { public_signup_disabled: boolean } | undefined)
+      : ((flagResult as unknown as { rows?: Array<{ public_signup_disabled: boolean }> }).rows?.[0]);
+    if (row?.public_signup_disabled === true) {
+      return reply.status(403).send({
+        error: {
+          code: 'SIGNUP_DISABLED',
+          message: 'Public signup is currently closed. Join the notify list to be invited.',
+          request_id: request.id,
+        },
+      });
+    }
+
     const data = registerSchema.parse(request.body);
 
     // Check if email already taken

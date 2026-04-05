@@ -29,3 +29,5 @@ export { organizationMemberships } from './organization-memberships.js';
 export { loginHistory } from './login-history.js';
 export { slackIntegrations } from './slack-integrations.js';
 export { githubIntegrations, taskGithubRefs } from './github-integrations.js';
+export { platformSettings } from './platform-settings.js';
+export { betaSignupNotifications } from './beta-signup-notifications.js';

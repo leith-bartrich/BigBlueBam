@@ -1,10 +1,33 @@
+import { useEffect, useState } from 'react';
 import { LoginForm } from '@/components/auth/login-form';
+import { api } from '@/lib/api';
 
 interface LoginPageProps {
   onNavigate: (path: string) => void;
 }
 
 export function LoginPage({ onNavigate }: LoginPageProps) {
+  // Lookup the platform-wide signup flag on mount. When it's on, the
+  // "Create one" link points at the beta-gate page instead of /register.
+  // Defaults to open (false) so we fail permissive if the call errors out.
+  const [signupDisabled, setSignupDisabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ data: { public_signup_disabled: boolean } }>('/public/config')
+      .then((res) => {
+        if (!cancelled) setSignupDisabled(res.data.public_signup_disabled === true);
+      })
+      .catch(() => {
+        // Leave default. Worst case: a user clicks "Create one" and the
+        // register endpoint rejects with SIGNUP_DISABLED anyway.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
       <div className="w-full max-w-md">
@@ -23,7 +46,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         <p className="text-center text-sm text-zinc-500 mt-6">
           Don&apos;t have an account?{' '}
           <button
-            onClick={() => onNavigate('/register')}
+            onClick={() => onNavigate(signupDisabled ? '/beta-gate' : '/register')}
             className="text-primary-600 font-medium hover:text-primary-700"
           >
             Create one

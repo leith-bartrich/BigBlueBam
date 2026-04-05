@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
+import { api } from '@/lib/api';
 
 interface LoginPageProps {
   onNavigate: (path: string) => void;
@@ -12,6 +13,22 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [signupDisabled, setSignupDisabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ data: { public_signup_disabled: boolean } }>('/public/config')
+      .then((res) => {
+        if (!cancelled) setSignupDisabled(res.data.public_signup_disabled === true);
+      })
+      .catch(() => {
+        /* leave default; register endpoint will reject if needed */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +94,14 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         <p className="text-center text-sm text-zinc-500 mt-6">
           Don&apos;t have an account?{' '}
           <button
-            onClick={() => onNavigate('/register')}
+            onClick={() => {
+              if (signupDisabled) {
+                // Cross-app link to the shared beta-gate page under /b3.
+                window.location.href = '/b3/beta-gate';
+              } else {
+                onNavigate('/register');
+              }
+            }}
             className="text-primary-600 font-medium hover:text-primary-700"
           >
             Create one

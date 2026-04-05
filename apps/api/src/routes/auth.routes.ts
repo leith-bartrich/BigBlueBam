@@ -19,6 +19,7 @@ import {
   LOCKOUT_MESSAGE,
 } from '../lib/login-lockout.js';
 import { issueCsrfToken } from '../plugins/csrf.js';
+import { isPublicSignupDisabled } from '../services/platform-settings.service.js';
 
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
@@ -58,6 +59,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }
 
   fastify.post('/auth/register', async (request, reply) => {
+    // Platform-wide kill switch: SuperUsers can freeze public signup from
+    // the superuser panel. Existing accounts continue to function; only
+    // new-account creation is rejected.
+    if (await isPublicSignupDisabled()) {
+      return reply.status(403).send({
+        error: {
+          code: 'SIGNUP_DISABLED',
+          message: 'Public signup is currently closed. Join the notify list to be invited.',
+          request_id: request.id,
+        },
+      });
+    }
     const data = registerSchema.parse(request.body);
     const ipAddress = request.ip;
     const userAgent = truncateUA(request.headers['user-agent']);

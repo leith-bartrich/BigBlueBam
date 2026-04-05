@@ -18,6 +18,8 @@ import { PersonDetailPage } from '@/pages/people/detail';
 import { GuestAcceptPage } from '@/pages/guest-accept';
 import { PasswordChangePage } from '@/pages/password-change';
 import { TaskRefResolverPage } from '@/pages/task-ref-resolver';
+import { BetaGatePage } from '@/pages/beta-gate';
+import { BetaNotifyPage } from '@/pages/beta-notify';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -38,7 +40,9 @@ type Route =
   | { page: 'people' }
   | { page: 'person-detail'; userId: string }
   | { page: 'guest-accept'; token: string }
-  | { page: 'task-ref'; ref: string };
+  | { page: 'task-ref'; ref: string }
+  | { page: 'beta-gate' }
+  | { page: 'beta-notify' };
 
 const BASE_PATH = '/b3';
 
@@ -92,6 +96,8 @@ function parseRoute(path: string): Route {
   }
   if (p === '/people' || p === '/people/') return { page: 'people' };
   if (p === '/register') return { page: 'register' };
+  if (p === '/beta-gate') return { page: 'beta-gate' };
+  if (p === '/notify') return { page: 'beta-notify' };
   if (p === '/login') return { page: 'login' };
   if (p === '/password-change') return { page: 'password-change' };
   if (p === '/settings') return { page: 'settings' };
@@ -173,6 +179,15 @@ export function App() {
   // (The page itself will warn an already-signed-in user.)
   if (route.page === 'guest-accept') {
     return <GuestAcceptPage token={route.token} onNavigate={navigate} />;
+  }
+
+  // Beta-gate + notify-me are public marketing-ish surfaces reachable from
+  // the login page when public signup is disabled.
+  if (route.page === 'beta-gate') {
+    return <BetaGatePage onNavigate={navigate} />;
+  }
+  if (route.page === 'beta-notify') {
+    return <BetaNotifyPage onNavigate={navigate} />;
   }
 
   if (!isAuthenticated) {

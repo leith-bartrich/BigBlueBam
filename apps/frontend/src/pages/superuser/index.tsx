@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft } from 'lucide-react';
+import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft, Settings, Mail, Download } from 'lucide-react';
+import { api } from '@/lib/api';
+import { exportCsv, todayStamp } from '@/lib/csv';
 import type { SuperuserOrgListItem, SuperuserOrgListResponse } from '@bigbluebam/shared';
 import { useAuthStore } from '@/stores/auth.store';
 import { superuserApi } from '@/lib/api/superuser';
@@ -12,7 +14,7 @@ interface SuperuserPageProps {
   onNavigate: (path: string) => void;
 }
 
-type Tab = 'overview' | 'organizations';
+type Tab = 'overview' | 'organizations' | 'platform' | 'beta-signups';
 
 export function SuperuserPage({ onNavigate }: SuperuserPageProps) {
   const { user } = useAuthStore();
@@ -61,11 +63,20 @@ export function SuperuserPage({ onNavigate }: SuperuserPageProps) {
           <TabButton active={tab === 'organizations'} onClick={() => setTab('organizations')}>
             Organizations
           </TabButton>
+          <TabButton active={tab === 'platform'} onClick={() => setTab('platform')}>
+            Platform
+          </TabButton>
+          <TabButton active={tab === 'beta-signups'} onClick={() => setTab('beta-signups')}>
+            Beta Signups
+          </TabButton>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6">
-        {tab === 'overview' ? <OverviewTab /> : <OrganizationsTab onNavigate={onNavigate} />}
+        {tab === 'overview' && <OverviewTab />}
+        {tab === 'organizations' && <OrganizationsTab onNavigate={onNavigate} />}
+        {tab === 'platform' && <PlatformTab />}
+        {tab === 'beta-signups' && <BetaSignupsTab />}
       </main>
     </div>
   );
@@ -368,5 +379,220 @@ function SortHeader({
     >
       {children}
     </th>
+  );
+}
+
+// ─── Platform Tab ───────────────────────────────────────────────────────────
+// Singleton settings row — just the public-signup kill switch for now.
+
+interface PlatformSettingsResponse {
+  data: {
+    public_signup_disabled: boolean;
+    updated_at: string | null;
+    updated_by: string | null;
+  };
+}
+
+function PlatformTab() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['superuser', 'platform-settings'],
+    queryFn: () => api.get<PlatformSettingsResponse>('/superuser/platform-settings'),
+  });
+
+  const toggle = useMutation({
+    mutationFn: (next: boolean) =>
+      api.patch<{ data: { public_signup_disabled: boolean } }>(
+        '/superuser/platform-settings',
+        { public_signup_disabled: next },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['superuser', 'platform-settings'] });
+    },
+  });
+
+  if (isLoading || !data) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+      </div>
+    );
+  }
+
+  const disabled = data.data.public_signup_disabled;
+
+  return (
+    <div className="flex flex-col gap-6 max-w-3xl">
+      <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/30">
+            <Settings className="h-5 w-5 text-primary-600 dark:text-primary-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              Public signup
+            </h3>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              When disabled, the "Create one" link on every login page sends
+              prospects to a beta-gate and a notify-me form instead of the
+              signup page. Existing accounts keep working. Applies to
+              BigBlueBam and Helpdesk.
+            </p>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                onClick={() => toggle.mutate(!disabled)}
+                disabled={toggle.isPending}
+                className={
+                  'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ' +
+                  (disabled ? 'bg-primary-600' : 'bg-zinc-300 dark:bg-zinc-700')
+                }
+                role="switch"
+                aria-checked={disabled}
+                aria-label="Disable public signup"
+              >
+                <span
+                  className={
+                    'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ' +
+                    (disabled ? 'translate-x-5' : 'translate-x-0.5')
+                  }
+                />
+              </button>
+              <div className="text-sm">
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                  {disabled ? 'Signup disabled' : 'Signup open'}
+                </span>
+                {data.data.updated_at && (
+                  <span className="ml-2 text-zinc-500 dark:text-zinc-400">
+                    · last changed {new Date(data.data.updated_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+            {toggle.isError && (
+              <p className="mt-3 text-sm text-red-600 dark:text-red-400">
+                Failed to update: {(toggle.error as Error).message}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ─── Beta Signups Tab ───────────────────────────────────────────────────────
+
+interface BetaSignup {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  message: string | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+function BetaSignupsTab() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['superuser', 'beta-signups'],
+    queryFn: () => api.get<{ data: BetaSignup[] }>('/superuser/beta-signups'),
+  });
+
+  const rows = data?.data ?? [];
+
+  function handleExport() {
+    exportCsv(`beta-signups-${todayStamp()}.csv`, rows, [
+      { header: 'Created', value: (r) => r.created_at },
+      { header: 'Name', value: (r) => r.name },
+      { header: 'Email', value: (r) => r.email },
+      { header: 'Phone', value: (r) => r.phone ?? '' },
+      { header: 'Message', value: (r) => r.message ?? '' },
+      { header: 'IP', value: (r) => r.ip_address ?? '' },
+    ]);
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        Failed to load beta signups: {(error as Error).message}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <Mail className="h-4 w-4 text-primary-600" /> Notify-me submissions
+          </h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+            {rows.length} submission{rows.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <button
+          onClick={handleExport}
+          disabled={rows.length === 0}
+          className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download className="h-4 w-4" /> Export CSV
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            No signups yet. Submissions from the notify-me form will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 dark:bg-zinc-800/50 text-xs uppercase text-zinc-500 dark:text-zinc-400">
+              <tr>
+                <th className="px-4 py-2.5 text-left">Submitted</th>
+                <th className="px-4 py-2.5 text-left">Name</th>
+                <th className="px-4 py-2.5 text-left">Email</th>
+                <th className="px-4 py-2.5 text-left">Phone</th>
+                <th className="px-4 py-2.5 text-left">Message</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {rows.map((r) => (
+                <tr key={r.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30">
+                  <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                    {new Date(r.created_at).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5 font-medium text-zinc-900 dark:text-zinc-100">
+                    {r.name}
+                  </td>
+                  <td className="px-4 py-2.5 text-zinc-700 dark:text-zinc-300">
+                    <a href={`mailto:${r.email}`} className="text-primary-600 hover:underline">
+                      {r.email}
+                    </a>
+                  </td>
+                  <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">
+                    {r.phone ?? '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-zinc-600 dark:text-zinc-400 max-w-md">
+                    {r.message ? (
+                      <span className="line-clamp-2" title={r.message}>{r.message}</span>
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

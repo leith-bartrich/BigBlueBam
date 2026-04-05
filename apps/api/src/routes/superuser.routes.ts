@@ -16,6 +16,11 @@ import { sessions } from '../db/schema/sessions.js';
 import { loginHistory } from '../db/schema/login-history.js';
 import { activityLog } from '../db/schema/activity-log.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
+import { betaSignupNotifications } from '../db/schema/beta-signup-notifications.js';
+import {
+  getPlatformSettings,
+  setPublicSignupDisabled,
+} from '../services/platform-settings.service.js';
 import { requireAuth } from '../plugins/auth.js';
 import { requireSuperuser } from '../middleware/require-superuser.js';
 import { logSuperuserAction } from '../services/superuser-audit.service.js';
@@ -1315,6 +1320,83 @@ export default async function superuserRoutes(fastify: FastifyInstance) {
         })),
         next_cursor: nextCursor,
       });
+    },
+  );
+
+  // ─── GET /superuser/platform-settings ────────────────────────────────────
+  fastify.get(
+    '/platform-settings',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async () => {
+      const settings = await getPlatformSettings();
+      return {
+        data: {
+          public_signup_disabled: settings.public_signup_disabled === true,
+          updated_at: settings.updated_at?.toISOString() ?? null,
+          updated_by: settings.updated_by,
+        },
+      };
+    },
+  );
+
+  // ─── PATCH /superuser/platform-settings ──────────────────────────────────
+  fastify.patch(
+    '/platform-settings',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async (request, reply) => {
+      const schema = z.object({
+        public_signup_disabled: z.boolean(),
+      });
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid payload',
+            details: parsed.error.errors.map((e) => ({
+              path: e.path.join('.'),
+              message: e.message,
+            })),
+            request_id: request.id,
+          },
+        });
+      }
+      const userId = request.user!.id;
+      await setPublicSignupDisabled(parsed.data.public_signup_disabled, userId);
+      await logSuperuserAction({
+        superuserId: userId,
+        action: 'update_platform_settings',
+        details: { public_signup_disabled: parsed.data.public_signup_disabled },
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'] ?? undefined,
+      });
+      return reply.send({
+        data: { public_signup_disabled: parsed.data.public_signup_disabled },
+      });
+    },
+  );
+
+  // ─── GET /superuser/beta-signups ─────────────────────────────────────────
+  fastify.get(
+    '/beta-signups',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async () => {
+      const rows = await db
+        .select()
+        .from(betaSignupNotifications)
+        .orderBy(desc(betaSignupNotifications.created_at))
+        .limit(1000);
+      return {
+        data: rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          email: r.email,
+          phone: r.phone,
+          message: r.message,
+          ip_address: r.ip_address,
+          created_at: r.created_at.toISOString(),
+        })),
+      };
     },
   );
 }
