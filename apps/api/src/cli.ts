@@ -1,9 +1,16 @@
 import 'dotenv/config';
+import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { organizations } from './db/schema/organizations.js';
 import { users } from './db/schema/users.js';
+import { organizationMemberships } from './db/schema/organization-memberships.js';
+import { apiKeys } from './db/schema/api-keys.js';
+
+const VALID_ROLES = ['owner', 'admin', 'member', 'viewer', 'guest'] as const;
+const VALID_SCOPES = ['read', 'read_write', 'admin'] as const;
 
 function slugify(text: string): string {
   return text
@@ -18,17 +25,44 @@ function printUsage() {
 BigBlueBam CLI
 
 Usage:
-  cli create-admin --email <email> --password <password> --name <name> --org <org-name> [--superuser]
+  cli <command> [options]
 
 Commands:
-  create-admin    Create an admin user and organization
+  create-admin       Create a new organization with an owner user (+ optional SuperUser)
+  create-user        Create a user inside an EXISTING organization with any role
+  grant-superuser    Promote an existing user to SuperUser by email
+  revoke-superuser   Remove SuperUser privileges from a user by email
+  create-api-key     Issue an API key for a user (for agentic / programmatic access)
+  list-orgs          List all organizations (id, slug, name) — helper for other commands
 
-Options:
-  --email         User email address
-  --password      User password (min 12 characters)
-  --name          Display name
-  --org           Organization name
-  --superuser     Grant SuperUser privileges (no value needed)
+Common user roles:       owner, admin, member, viewer, guest
+Common API key scopes:   read, read_write, admin
+
+Examples:
+
+  # Bootstrap: create a new org + owner user
+  cli create-admin --email admin@example.com --password <pw> --name "Admin" --org "Acme Inc"
+
+  # Bootstrap + make them a platform SuperUser
+  cli create-admin --email you@co.com --password <pw> --name "You" --org "Acme" --superuser
+
+  # Promote an existing user to SuperUser (no new org)
+  cli grant-superuser --email you@co.com
+
+  # Add a regular member to an existing org
+  cli create-user --email alice@co.com --password <pw> --name "Alice" \\
+      --org-slug acme --role member
+
+  # Add a watch-only viewer (useful for read-only agents or observers)
+  cli create-user --email viewer-bot@co.com --password <pw> --name "Watcher" \\
+      --org-slug acme --role viewer
+
+  # Issue a read-only API key for an agent (prints the key ONCE — store it)
+  cli create-api-key --email viewer-bot@co.com --name "dashboard-bot" --scope read
+
+  # Issue a scoped read-write key restricted to one project, 90 day expiry
+  cli create-api-key --email alice@co.com --name "ci-bot" --scope read_write \\
+      --project-id <uuid> --expires-days 90
 `);
 }
 
@@ -50,68 +84,233 @@ function parseArgs(args: string[]): Record<string, string> {
   return result;
 }
 
-async function createAdmin(flags: Record<string, string>) {
-  const email = flags.email;
-  const password = flags.password;
-  const name = flags.name;
-  const orgName = flags.org;
-
-  if (!email || !password || !name || !orgName) {
-    console.error('Error: --email, --password, --name, and --org are all required');
-    process.exit(1);
-  }
-
-  if (password.length < 12) {
-    console.error('Error: password must be at least 12 characters');
-    process.exit(1);
-  }
-
+function getDb() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.error('Error: DATABASE_URL environment variable is required');
     process.exit(1);
   }
-
   const client = postgres(databaseUrl, { max: 1 });
-  const db = drizzle(client);
+  return { db: drizzle(client), client };
+}
 
+function requireFlags(flags: Record<string, string>, required: string[]): void {
+  const missing = required.filter((k) => !flags[k]);
+  if (missing.length > 0) {
+    console.error(`Error: required flag(s) missing: ${missing.map((f) => `--${f}`).join(', ')}`);
+    process.exit(1);
+  }
+}
+
+async function createAdmin(flags: Record<string, string>) {
+  requireFlags(flags, ['email', 'password', 'name', 'org']);
+  const { email, password, name, org: orgName } = flags;
+  const isSuperuser = flags.superuser === 'true';
+
+  if (password!.length < 12) {
+    console.error('Error: password must be at least 12 characters');
+    process.exit(1);
+  }
+
+  const { db, client } = getDb();
   try {
-    const passwordHash = await argon2.hash(password);
-    const orgSlug = slugify(orgName);
+    const passwordHash = await argon2.hash(password!);
+    const orgSlug = slugify(orgName!);
 
     const [org] = await db
       .insert(organizations)
-      .values({
-        name: orgName,
-        slug: orgSlug,
-      })
+      .values({ name: orgName!, slug: orgSlug })
       .returning();
-
-    const isSuperuser = flags.superuser === 'true';
 
     const [user] = await db
       .insert(users)
       .values({
         org_id: org!.id,
-        email,
-        display_name: name,
+        email: email!,
+        display_name: name!,
         password_hash: passwordHash,
         role: 'owner',
         is_superuser: isSuperuser,
       })
       .returning();
 
+    await db.insert(organizationMemberships).values({
+      user_id: user!.id,
+      org_id: org!.id,
+      role: 'owner',
+      is_default: true,
+    });
+
     console.log('Admin user created successfully:');
-    console.log(`  User ID: ${user!.id}`);
-    console.log(`  Email: ${user!.email}`);
-    console.log(`  Org ID: ${org!.id}`);
-    console.log(`  Org Slug: ${org!.slug}`);
-    if (isSuperuser) {
-      console.log(`  SuperUser: yes`);
-    }
-  } catch (err) {
-    console.error('Failed to create admin:', err);
+    console.log(`  User ID:   ${user!.id}`);
+    console.log(`  Email:     ${user!.email}`);
+    console.log(`  Org ID:    ${org!.id}`);
+    console.log(`  Org Slug:  ${org!.slug}`);
+    if (isSuperuser) console.log(`  SuperUser: yes`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function createUser(flags: Record<string, string>) {
+  requireFlags(flags, ['email', 'password', 'name']);
+  const { email, password, name } = flags;
+  const role = flags.role ?? 'member';
+  const orgSlug = flags['org-slug'];
+  const orgId = flags['org-id'];
+
+  if (password!.length < 12) {
+    console.error('Error: password must be at least 12 characters');
     process.exit(1);
+  }
+  if (!VALID_ROLES.includes(role as (typeof VALID_ROLES)[number])) {
+    console.error(`Error: --role must be one of ${VALID_ROLES.join(', ')}`);
+    process.exit(1);
+  }
+  if (!orgSlug && !orgId) {
+    console.error('Error: provide either --org-slug or --org-id');
+    process.exit(1);
+  }
+
+  const { db, client } = getDb();
+  try {
+    const [org] = orgId
+      ? await db.select().from(organizations).where(eq(organizations.id, orgId!)).limit(1)
+      : await db.select().from(organizations).where(eq(organizations.slug, orgSlug!)).limit(1);
+
+    if (!org) {
+      console.error(`Error: organization not found (${orgId ? `id=${orgId}` : `slug=${orgSlug}`})`);
+      console.error('Hint: run `cli list-orgs` to see available organizations');
+      process.exit(1);
+    }
+
+    const passwordHash = await argon2.hash(password!);
+    const [user] = await db
+      .insert(users)
+      .values({
+        org_id: org.id,
+        email: email!,
+        display_name: name!,
+        password_hash: passwordHash,
+        role,
+        is_superuser: false,
+      })
+      .returning();
+
+    await db.insert(organizationMemberships).values({
+      user_id: user!.id,
+      org_id: org.id,
+      role,
+      is_default: true,
+    });
+
+    console.log('User created successfully:');
+    console.log(`  User ID:  ${user!.id}`);
+    console.log(`  Email:    ${user!.email}`);
+    console.log(`  Role:     ${role}`);
+    console.log(`  Org:      ${org.name} (${org.slug})`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function setSuperuser(flags: Record<string, string>, value: boolean) {
+  requireFlags(flags, ['email']);
+  const { db, client } = getDb();
+  try {
+    const result = await db
+      .update(users)
+      .set({ is_superuser: value })
+      .where(eq(users.email, flags.email!))
+      .returning({ id: users.id, email: users.email });
+
+    if (result.length === 0) {
+      console.error(`Error: no user found with email ${flags.email}`);
+      process.exit(1);
+    }
+    console.log(`${value ? 'Granted' : 'Revoked'} SuperUser on ${result[0]!.email} (${result[0]!.id})`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function createApiKey(flags: Record<string, string>) {
+  requireFlags(flags, ['email', 'name', 'scope']);
+  const { email, name, scope } = flags;
+  const projectId = flags['project-id'];
+  const expiresDaysStr = flags['expires-days'];
+
+  if (!VALID_SCOPES.includes(scope as (typeof VALID_SCOPES)[number])) {
+    console.error(`Error: --scope must be one of ${VALID_SCOPES.join(', ')}`);
+    process.exit(1);
+  }
+
+  const { db, client } = getDb();
+  try {
+    const [user] = await db.select().from(users).where(eq(users.email, email!)).limit(1);
+    if (!user) {
+      console.error(`Error: no user found with email ${email}`);
+      process.exit(1);
+    }
+
+    // Token format: bbam_<base64url 32 bytes>. The auth plugin slices the
+    // first 8 characters as the lookup prefix (apps/api/src/plugins/auth.ts)
+    // so we store exactly 8 characters in key_prefix to match.
+    const randomToken = randomBytes(32).toString('base64url');
+    const fullToken = `bbam_${randomToken}`;
+    const prefix = fullToken.slice(0, 8);
+    const keyHash = await argon2.hash(fullToken);
+
+    const expiresAt = expiresDaysStr
+      ? new Date(Date.now() + Number(expiresDaysStr) * 24 * 60 * 60 * 1000)
+      : null;
+
+    const [key] = await db
+      .insert(apiKeys)
+      .values({
+        user_id: user.id,
+        name: name!,
+        key_hash: keyHash,
+        key_prefix: prefix,
+        scope,
+        project_ids: projectId ? [projectId] : null,
+        expires_at: expiresAt,
+      })
+      .returning({ id: apiKeys.id, name: apiKeys.name });
+
+    console.log('API key created successfully:');
+    console.log(`  Key ID:    ${key!.id}`);
+    console.log(`  Name:      ${key!.name}`);
+    console.log(`  User:      ${user.email}`);
+    console.log(`  Scope:     ${scope}`);
+    if (projectId) console.log(`  Project:   ${projectId}`);
+    if (expiresAt) console.log(`  Expires:   ${expiresAt.toISOString()}`);
+    console.log('');
+    console.log('  ── Store this token NOW — it will not be shown again ──');
+    console.log(`  Token:     ${fullToken}`);
+    console.log('');
+    console.log(`  Use in requests as:  Authorization: Bearer ${fullToken}`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function listOrgs() {
+  const { db, client } = getDb();
+  try {
+    const rows = await db
+      .select({ id: organizations.id, slug: organizations.slug, name: organizations.name })
+      .from(organizations)
+      .orderBy(organizations.name);
+
+    if (rows.length === 0) {
+      console.log('(no organizations)');
+      return;
+    }
+    console.log(`Organizations (${rows.length}):`);
+    for (const r of rows) {
+      console.log(`  ${r.slug.padEnd(30)} ${r.id}  ${r.name}`);
+    }
   } finally {
     await client.end();
   }
@@ -126,12 +325,35 @@ async function main() {
     process.exit(0);
   }
 
-  if (command === 'create-admin') {
-    const flags = parseArgs(args.slice(1));
-    await createAdmin(flags);
-  } else {
-    console.error(`Unknown command: ${command}`);
-    printUsage();
+  const flags = parseArgs(args.slice(1));
+
+  try {
+    switch (command) {
+      case 'create-admin':
+        await createAdmin(flags);
+        break;
+      case 'create-user':
+        await createUser(flags);
+        break;
+      case 'grant-superuser':
+        await setSuperuser(flags, true);
+        break;
+      case 'revoke-superuser':
+        await setSuperuser(flags, false);
+        break;
+      case 'create-api-key':
+        await createApiKey(flags);
+        break;
+      case 'list-orgs':
+        await listOrgs();
+        break;
+      default:
+        console.error(`Unknown command: ${command}`);
+        printUsage();
+        process.exit(1);
+    }
+  } catch (err) {
+    console.error('Failed:', err instanceof Error ? err.message : err);
     process.exit(1);
   }
 }

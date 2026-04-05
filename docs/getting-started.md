@@ -130,7 +130,12 @@ tree and want to apply it without recreating the stack:
 docker compose build migrate && docker compose run --rm migrate
 ```
 
-### Step 5: Create the Admin User
+### Step 5: Create the First User + Organization
+
+Every BigBlueBam deployment needs a bootstrap owner — the first user + their
+organization. After that you can add users of any role into the same org,
+promote SuperUsers, and mint API keys for agentic clients, all from the
+same CLI.
 
 ```bash
 docker compose exec api node dist/cli.js create-admin \
@@ -138,23 +143,130 @@ docker compose exec api node dist/cli.js create-admin \
   --password your-admin-password \
   --name "Admin User" \
   --org "My Organization"
-  # add --superuser to grant platform SuperUser privileges
 ```
-
-> Passwords must be at least 12 characters. See the
-> [Development Guide](development.md#local-admin-superuser-and-impersonation)
-> for how to promote an existing user to SuperUser, use the `/b3/superuser`
-> console, and impersonate users locally.
 
 Expected output:
 
 ```
 Admin user created successfully:
-  User ID: <uuid>
-  Email: admin@example.com
-  Org ID: <uuid>
-  Org Slug: my-organization
+  User ID:   <uuid>
+  Email:     admin@example.com
+  Org ID:    <uuid>
+  Org Slug:  my-organization
 ```
+
+> Passwords must be at least 12 characters. The CLI hashes with Argon2id.
+
+### Step 5a: Other account types (optional, but usually needed)
+
+The CLI supports all role + scope combinations. Full usage: `docker compose
+exec api node dist/cli.js --help`.
+
+**Platform SuperUser** (you, running the server — grants cross-org visibility
+and the `/b3/superuser` console). Either add `--superuser` when creating the
+first admin, or promote an existing user later:
+
+```bash
+# During bootstrap
+docker compose exec api node dist/cli.js create-admin \
+  --email you@co.com --password <pw> --name "You" --org "Acme" --superuser
+
+# Promote an existing user (no new org created)
+docker compose exec api node dist/cli.js grant-superuser --email you@co.com
+# And to revoke:
+docker compose exec api node dist/cli.js revoke-superuser --email you@co.com
+```
+
+**Additional humans inside an existing org.** Find the org slug with
+`list-orgs`, then create users with any of `owner / admin / member / viewer /
+guest`:
+
+```bash
+# See what orgs exist
+docker compose exec api node dist/cli.js list-orgs
+
+# Add an admin (can manage org, cannot delete it or demote the owner)
+docker compose exec api node dist/cli.js create-user \
+  --email alice@co.com --password <pw> --name "Alice" \
+  --org-slug my-organization --role admin
+
+# Add a regular member (the default — can create/edit tasks in projects they join)
+docker compose exec api node dist/cli.js create-user \
+  --email bob@co.com --password <pw> --name "Bob" \
+  --org-slug my-organization --role member
+
+# Add a watch-only viewer (read-only across their org's projects)
+docker compose exec api node dist/cli.js create-user \
+  --email watcher@co.com --password <pw> --name "Watcher" \
+  --org-slug my-organization --role viewer
+```
+
+**Agentic (watch-only) user** — a bot that only needs to observe, never
+write. Create a viewer-role user, then mint a `read` API key for it:
+
+```bash
+# 1. Create the bot's user record with viewer role
+docker compose exec api node dist/cli.js create-user \
+  --email dashboard-bot@co.com --password <rotate-me-pw> --name "Dashboard Bot" \
+  --org-slug my-organization --role viewer
+
+# 2. Issue a read-only API key (printed ONCE — copy and store immediately)
+docker compose exec api node dist/cli.js create-api-key \
+  --email dashboard-bot@co.com --name "grafana-dashboard" --scope read
+```
+
+The CLI prints the raw token once — after that only its Argon2id hash is
+stored. The bot uses it as:
+
+```
+Authorization: Bearer bbam_<rest-of-token>
+```
+
+**Agentic (read-write) user** — a CI bot or automation that creates/updates
+tasks. Create a member-role user and a `read_write` key, optionally scoped
+to a single project and with an expiry:
+
+```bash
+docker compose exec api node dist/cli.js create-user \
+  --email ci-bot@co.com --password <rotate-me-pw> --name "CI Bot" \
+  --org-slug my-organization --role member
+
+docker compose exec api node dist/cli.js create-api-key \
+  --email ci-bot@co.com --name "github-actions" --scope read_write \
+  --project-id <project-uuid> --expires-days 90
+```
+
+**Admin API key** (for server-to-server integrations that manage org-level
+resources). Use with caution — `admin` scope bypasses read/write restrictions:
+
+```bash
+docker compose exec api node dist/cli.js create-api-key \
+  --email admin@example.com --name "backfill-tool" --scope admin --expires-days 7
+```
+
+### Role & scope reference
+
+| **User role** | **What it can do** |
+|---|---|
+| `owner` | Full org control. Cannot be demoted by other roles. |
+| `admin` | Manage org members, settings, projects. Cannot delete org. |
+| `member` | Create/edit tasks in projects they join. Default for new humans. |
+| `viewer` | Read-only across the org. Good for watch-only agents, stakeholders. |
+| `guest` | Invitation-only, scoped to specific projects/channels. |
+
+| **API key scope** | **What it can do** |
+|---|---|
+| `read` | GET endpoints only. Safe for dashboards, observers, metric exporters. |
+| `read_write` | CRUD on tasks, comments, etc. Cannot change org settings. |
+| `admin` | Full org-level operations. Treat like a root credential. |
+
+`read_write` and `admin` keys can be project-scoped with `--project-id <uuid>`
+to limit their blast radius to a single project. All keys can carry an
+`--expires-days N` TTL.
+
+See the [Permissions Guide](permissions.md) for the complete authorization
+model, and the [Development Guide](development.md#local-admin-superuser-and-impersonation)
+for how to use the `/b3/superuser` console and test impersonation locally.
 
 ### Step 6: Access the Application
 
