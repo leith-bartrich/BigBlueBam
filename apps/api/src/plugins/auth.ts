@@ -364,7 +364,15 @@ async function authPlugin(fastify: FastifyInstance) {
         // expired-but-valid-hash keys and invalid-hash keys take the same
         // amount of wall time. Short-circuiting on expiry first would leak
         // (via timing) whether a given prefix corresponds to a real key.
-        const valid = await argon2.verify(candidate.apiKey.key_hash, token);
+        // A malformed stored hash throws — treat that as a verification
+        // failure so one corrupt row can't 500 every request sharing
+        // its prefix.
+        let valid = false;
+        try {
+          valid = await argon2.verify(candidate.apiKey.key_hash, token);
+        } catch (err) {
+          request.log.warn({ err, api_key_id: candidate.apiKey.id }, 'argon2.verify threw on api key candidate; treating as invalid');
+        }
         if (candidate.apiKey.expires_at && new Date(candidate.apiKey.expires_at) < new Date()) {
           continue;
         }
