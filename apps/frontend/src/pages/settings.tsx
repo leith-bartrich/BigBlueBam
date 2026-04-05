@@ -112,12 +112,18 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   // Invite member mutation
   const inviteMember = useMutation({
     mutationFn: (data: { email: string; display_name?: string; role: string }) =>
-      api.post<ApiResponse<OrgMember>>('/org/members/invite', data),
-    onSuccess: (_data, variables) => {
+      api.post<ApiResponse<OrgMember & { was_existing: boolean }>>('/org/members/invite', data),
+    onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: ['org-members'] });
-      setInviteSuccessMessage(
-        `User created. Share these credentials with them:\n- Email: ${variables.email}\n- They will need to set up a password via the admin.`
-      );
+      if (response.data.was_existing) {
+        setInviteSuccessMessage(
+          `Added ${variables.email} to this organization. They can sign in with their existing password.`,
+        );
+      } else {
+        setInviteSuccessMessage(
+          `User created. Share these credentials with them:\n- Email: ${variables.email}\n- They will need to set up a password via the admin.`,
+        );
+      }
       setInviteEmail('');
       setInviteDisplayName('');
       setInviteRole('member');

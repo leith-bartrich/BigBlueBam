@@ -156,13 +156,17 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       const data = schema.parse(request.body);
 
       try {
-        const user = await orgService.inviteMember(
+        const { user, was_existing } = await orgService.inviteMember(
           request.user!.org_id,
           data.email,
           data.role,
           data.display_name,
         );
-        return reply.status(201).send({ data: user });
+        // 201 CREATED for a brand-new user, 200 OK when we added an
+        // existing user to this org as an additional membership.
+        return reply.status(was_existing ? 200 : 201).send({
+          data: { ...user, was_existing },
+        });
       } catch (err: any) {
         if (err instanceof orgService.AlreadyMemberError) {
           return reply.status(409).send({

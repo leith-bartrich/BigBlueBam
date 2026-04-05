@@ -94,7 +94,7 @@ export async function inviteMember(
   email: string,
   role: string,
   displayName?: string,
-) {
+): Promise<{ user: typeof users.$inferSelect; was_existing: boolean }> {
   // Look up an existing user by email first — they may already exist from
   // a different org's invite. The users.email UNIQUE constraint makes email
   // the global identity; multi-org belonging is expressed via
@@ -130,7 +130,7 @@ export async function inviteMember(
       role,
       is_default: false,
     });
-    return existingUser;
+    return { user: existingUser, was_existing: true };
   }
 
   // Brand-new user — create the user row + their first membership. This
@@ -155,7 +155,7 @@ export async function inviteMember(
       is_default: true,
     });
 
-    return user!;
+    return { user: user!, was_existing: false };
   });
 }
 
