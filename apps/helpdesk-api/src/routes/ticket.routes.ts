@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { eq, and, desc, sql, gte, lt, or } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, gte, lt, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { tickets } from '../db/schema/tickets.js';
 import { ticketMessages } from '../db/schema/ticket-messages.js';
+import { ticketActivityLog } from '../db/schema/ticket-activity-log.js';
+import { logTicketActivity } from '../lib/ticket-activity.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { tasks, projects, phases, labels } from '../db/schema/bbb-refs.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
@@ -299,6 +301,20 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         await broadcastTaskCreated(projectId, result.fullTaskForBroadcast);
       }
 
+      // HB-45: audit ticket creation.
+      await logTicketActivity({
+        ticketId: result.ticket.id,
+        actorType: 'customer',
+        actorId: user.id,
+        action: 'ticket.created',
+        details: {
+          subject: result.ticket.subject,
+          priority: result.ticket.priority,
+          category: result.ticket.category,
+        },
+        logger: request.log,
+      });
+
       return reply.status(201).send({
         data: {
           id: result.ticket.id,
@@ -547,6 +563,16 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       // HB-50: Mirror the customer message onto the linked BBB task so the
       // audit trail survives if the ticket is later deleted.
       await mirrorTicketMessageToTask(ticket.task_id, user.display_name, message.body, request.log);
+
+      // HB-45: audit customer reply.
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'customer',
+        actorId: user.id,
+        action: 'message.posted',
+        details: { message_id: message.id, is_internal: false },
+        logger: request.log,
+      });
     }
 
     // HB-15: If the ticket was waiting on the customer, flip it back to open
@@ -561,10 +587,76 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         await broadcastTicketStatusChanged(ticket.project_id, ticket.task_id, 'open');
       }
       await broadcastTicketStatusChangedRT(id, 'open');
+
+      // HB-45: audit auto-flip from waiting_on_customer → open driven by
+      // the customer's reply. The 'system' actor reflects that this was a
+      // server-side reaction, not a manual status change by the customer.
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'system',
+        actorId: null,
+        action: 'ticket.status_changed',
+        details: { from: 'waiting_on_customer', to: 'open', reason: 'customer_reply' },
+        logger: request.log,
+      });
     }
 
     return reply.status(201).send({ data: message });
   });
+
+  // GET /helpdesk/tickets/:id/activity — HB-45: chronological audit trail
+  // for a single ticket. Ownership-guarded: the same 404-everywhere pattern
+  // as the other customer-facing ticket routes, so the endpoint cannot be
+  // used to enumerate ticket UUIDs owned by other customers.
+  //
+  // Response: { data: TicketActivity[] } ordered by created_at ASC, capped
+  // at 200 rows (tickets with extreme histories would paginate in a future
+  // iteration — 200 is comfortably above the expected lifetime per ticket).
+  fastify.get(
+    '/helpdesk/tickets/:id/activity',
+    {
+      preHandler: [requireHelpdeskAuth],
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const user = request.helpdeskUser!;
+      const { id } = request.params as { id: string };
+
+      const [ticket] = await db
+        .select({ id: tickets.id })
+        .from(tickets)
+        .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
+        .limit(1);
+
+      if (!ticket) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Ticket not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const rows = await db
+        .select({
+          id: ticketActivityLog.id,
+          ticket_id: ticketActivityLog.ticket_id,
+          actor_type: ticketActivityLog.actor_type,
+          actor_id: ticketActivityLog.actor_id,
+          action: ticketActivityLog.action,
+          details: ticketActivityLog.details,
+          created_at: ticketActivityLog.created_at,
+        })
+        .from(ticketActivityLog)
+        .where(eq(ticketActivityLog.ticket_id, id))
+        .orderBy(asc(ticketActivityLog.created_at))
+        .limit(200);
+
+      return reply.send({ data: rows });
+    },
+  );
 
   // POST /helpdesk/tickets/:id/reopen — reopen a resolved/closed ticket
   fastify.post('/helpdesk/tickets/:id/reopen', { preHandler: [requireHelpdeskAuth] }, async (request, reply) => {
@@ -614,6 +706,24 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
 
     if (updated) {
       await broadcastTicketStatusChangedRT(id, 'open');
+
+      // HB-45: audit reopen + the corresponding status change.
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'customer',
+        actorId: user.id,
+        action: 'ticket.reopened',
+        details: { from: ticket.status },
+        logger: request.log,
+      });
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'customer',
+        actorId: user.id,
+        action: 'ticket.status_changed',
+        details: { from: ticket.status, to: 'open' },
+        logger: request.log,
+      });
     }
 
     return reply.send({ data: updated });
@@ -642,6 +752,18 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       .set({ priority })
       .where(and(eq(tickets.id, id), eq(tickets.helpdesk_user_id, user.id)))
       .returning();
+
+    if (updated && ticket.priority !== priority) {
+      // HB-45: audit customer-driven priority change.
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'customer',
+        actorId: user.id,
+        action: 'ticket.priority_changed',
+        details: { from: ticket.priority, to: priority },
+        logger: request.log,
+      });
+    }
 
     return reply.send({ data: updated });
   });
@@ -674,6 +796,24 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       // HB-50: Record the closure on the linked BBB task so the trail survives
       // even if the ticket row is later deleted.
       await mirrorTicketClosedToTask(ticket.task_id, user.display_name, request.log);
+
+      // HB-45: audit closure + the corresponding status change.
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'customer',
+        actorId: user.id,
+        action: 'ticket.closed',
+        details: { from: ticket.status },
+        logger: request.log,
+      });
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'customer',
+        actorId: user.id,
+        action: 'ticket.status_changed',
+        details: { from: ticket.status, to: 'closed' },
+        logger: request.log,
+      });
     }
 
     // HB-16: Move the linked BBB task to a terminal phase so the board reflects

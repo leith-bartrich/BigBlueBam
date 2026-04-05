@@ -12,6 +12,7 @@ import {
   broadcastTicketStatusChanged,
 } from '../services/realtime.js';
 import { mirrorTicketMessageToTask, mirrorTicketClosedToTask } from '../lib/task-sync.js';
+import { logTicketActivity } from '../lib/ticket-activity.js';
 
 const updateTicketSchema = z.object({
   status: z.enum(['open', 'in_progress', 'waiting_on_customer', 'resolved', 'closed']).optional(),
@@ -467,6 +468,19 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       await mirrorTicketMessageToTask(ticket.task_id, authorName, message.body, request.log);
     }
 
+    // HB-45: audit every agent message (including internal notes, so
+    // mis-flagged internal-vs-public decisions can be reconstructed).
+    if (message) {
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'agent',
+        actorId: authorId,
+        action: 'message.posted',
+        details: { message_id: message.id, is_internal: message.is_internal },
+        logger: request.log,
+      });
+    }
+
     // TODO: If not internal and notify_on_agent_reply is enabled, queue email to client
 
     return reply.status(201).send({ data: message });
@@ -481,7 +495,13 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const data = updateTicketSchema.parse(request.body);
 
     const [existing] = await db
-      .select({ id: tickets.id, task_id: tickets.task_id })
+      .select({
+        id: tickets.id,
+        task_id: tickets.task_id,
+        status: tickets.status,
+        priority: tickets.priority,
+        category: tickets.category,
+      })
       .from(tickets)
       .where(eq(tickets.id, id))
       .limit(1);
@@ -536,6 +556,67 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       }
     }
 
+    // HB-45: audit every changed field on the PATCH. We emit one row per
+    // field that actually changed (from != to) so that timelines read as
+    // discrete events rather than a combined blob. 'closed' and 'reopened'
+    // get their own higher-level events in addition to status_changed so
+    // the timeline surfaces lifecycle transitions prominently.
+    if (updated) {
+      const agentActorId = request.agentUserId;
+      if (data.status !== undefined && data.status !== existing.status) {
+        await logTicketActivity({
+          ticketId: id,
+          actorType: 'agent',
+          actorId: agentActorId,
+          action: 'ticket.status_changed',
+          details: { from: existing.status, to: data.status },
+          logger: request.log,
+        });
+        if (data.status === 'closed') {
+          await logTicketActivity({
+            ticketId: id,
+            actorType: 'agent',
+            actorId: agentActorId,
+            action: 'ticket.closed',
+            details: { from: existing.status },
+            logger: request.log,
+          });
+        } else if (
+          (existing.status === 'closed' || existing.status === 'resolved') &&
+          (data.status === 'open' || data.status === 'in_progress')
+        ) {
+          await logTicketActivity({
+            ticketId: id,
+            actorType: 'agent',
+            actorId: agentActorId,
+            action: 'ticket.reopened',
+            details: { from: existing.status, to: data.status },
+            logger: request.log,
+          });
+        }
+      }
+      if (data.priority !== undefined && data.priority !== existing.priority) {
+        await logTicketActivity({
+          ticketId: id,
+          actorType: 'agent',
+          actorId: agentActorId,
+          action: 'ticket.priority_changed',
+          details: { from: existing.priority, to: data.priority },
+          logger: request.log,
+        });
+      }
+      if (data.category !== undefined && data.category !== existing.category) {
+        await logTicketActivity({
+          ticketId: id,
+          actorType: 'agent',
+          actorId: agentActorId,
+          action: 'ticket.category_changed',
+          details: { from: existing.category, to: data.category },
+          logger: request.log,
+        });
+      }
+    }
+
     return reply.send({ data: updated });
   });
 
@@ -578,6 +659,26 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       // trail survives if the ticket is later deleted.
       const agentName = await resolveAgentDisplayName(request.agentUserId);
       await mirrorTicketClosedToTask(ticket.task_id, agentName, request.log);
+
+      // HB-45: audit closure + corresponding status change.
+      if (ticket.status !== 'closed') {
+        await logTicketActivity({
+          ticketId: id,
+          actorType: 'agent',
+          actorId: request.agentUserId,
+          action: 'ticket.status_changed',
+          details: { from: ticket.status, to: 'closed' },
+          logger: request.log,
+        });
+      }
+      await logTicketActivity({
+        ticketId: id,
+        actorType: 'agent',
+        actorId: request.agentUserId,
+        action: 'ticket.closed',
+        details: { from: ticket.status },
+        logger: request.log,
+      });
     }
 
     return reply.send({ data: updated });
