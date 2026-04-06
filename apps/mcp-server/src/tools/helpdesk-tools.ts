@@ -8,6 +8,13 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
   async function helpdeskRequest(method: string, path: string, body?: unknown) {
     const url = `${helpdeskApiUrl}${path}`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    // Forward the bearer token from the main API client
+    const token = (api as unknown as { token?: string }).token;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const init: RequestInit = { method, headers };
     if (body !== undefined) {
       init.body = JSON.stringify(body);
@@ -121,6 +128,56 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
 
       return {
         content: [{ type: 'text' as const, text: `Ticket status updated to "${status}".\n${JSON.stringify(result.data, null, 2)}` }],
+      };
+    },
+  );
+
+  server.tool(
+    'helpdesk_get_public_settings',
+    'Get public helpdesk settings (no auth required). Returns email verification requirement, categories, and welcome message.',
+    {},
+    async () => {
+      const result = await helpdeskRequest('GET', '/helpdesk/public-settings');
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+        isError: !result.ok ? true : undefined,
+      };
+    },
+  );
+
+  server.tool(
+    'helpdesk_get_settings',
+    'Get full helpdesk configuration. Requires admin authentication — the caller\'s API key must belong to an org admin or owner.',
+    {},
+    async () => {
+      const result = await helpdeskRequest('GET', '/helpdesk/settings');
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+        isError: !result.ok ? true : undefined,
+      };
+    },
+  );
+
+  server.tool(
+    'helpdesk_update_settings',
+    'Update helpdesk settings. Requires admin authentication.',
+    {
+      categories: z.array(z.string()).optional().describe('Ticket categories available to customers.'),
+      welcome_message: z.string().max(2000).optional().describe('Welcome message shown to customers.'),
+      require_email_verification: z.boolean().optional().describe('Whether customers must verify their email.'),
+      allowed_email_domains: z.array(z.string()).optional().describe('If set, only these email domains can register.'),
+    },
+    async (params) => {
+      const body: Record<string, unknown> = {};
+      if (params.categories !== undefined) body.categories = params.categories;
+      if (params.welcome_message !== undefined) body.welcome_message = params.welcome_message;
+      if (params.require_email_verification !== undefined) body.require_email_verification = params.require_email_verification;
+      if (params.allowed_email_domains !== undefined) body.allowed_email_domains = params.allowed_email_domains;
+
+      const result = await helpdeskRequest('PATCH', '/helpdesk/settings', body);
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+        isError: !result.ok ? true : undefined,
       };
     },
   );
