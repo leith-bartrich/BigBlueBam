@@ -9,9 +9,9 @@ import { broadcastToChannel } from './realtime.js';
 
 /**
  * Activity Feed Bot — posts system messages to Banter channels
- * when BBB events occur (task created/completed, sprint started/completed, etc.)
+ * when Bam events occur (task created/completed, sprint started/completed, etc.)
  *
- * Called from the BBB API or worker via internal HTTP or shared queue.
+ * Called from the Bam API or worker via internal HTTP or shared queue.
  */
 
 const BOT_USER_ID = '00000000-0000-0000-0000-000000000000'; // System bot
@@ -93,7 +93,7 @@ export async function postActivityFeedMessage(event: FeedEvent): Promise<void> {
 }
 
 /**
- * Format common BBB events into feed messages.
+ * Format common Bam events into feed messages.
  */
 export function formatTaskCreated(taskTitle: string, creatorName: string, projectName: string): string {
   return `**${creatorName}** created a new task in **${projectName}**: *${taskTitle}*`;

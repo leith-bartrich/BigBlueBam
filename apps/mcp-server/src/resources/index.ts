@@ -44,7 +44,7 @@ export function registerResources(server: McpServer, api: ApiClient): void {
     },
   );
 
-  // Task detail by human-readable ID (e.g., BBB-42)
+  // Task detail by human-readable ID (e.g., PROJ-42)
   server.resource(
     'task_by_human_id',
     'bigbluebam://tasks/{human_id}',

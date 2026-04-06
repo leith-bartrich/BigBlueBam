@@ -1,7 +1,7 @@
 /**
- * Shared BBB API constants.
+ * Shared Bam API constants.
  *
- * HELPDESK_SYSTEM_USER_ID is the fixed UUID of the dedicated BBB user to
+ * HELPDESK_SYSTEM_USER_ID is the fixed UUID of the dedicated Bam user to
  * which every helpdesk-originated write (tasks, comments, activity_log)
  * is attributed. Seeded by migration 0014_helpdesk_system_user.sql.
  * The same constant lives in apps/helpdesk-api/src/lib/constants.ts — if

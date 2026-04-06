@@ -10,8 +10,8 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-// Minimal stubs for BBB tables referenced by Banter
-// These mirror the existing BBB schema but are defined here so
+// Minimal stubs for Bam tables referenced by Banter
+// These mirror the existing Bam schema but are defined here so
 // banter-api can reference them without importing from @bigbluebam/api.
 
 export const organizations = pgTable('organizations', {

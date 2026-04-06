@@ -4,7 +4,7 @@ import { users } from './users.js';
 /**
  * Singleton row (id=1, enforced by a CHECK constraint in the migration) that
  * holds platform-wide toggles visible only to SuperUsers. Currently just one
- * switch: `public_signup_disabled` — when true, the BBB and Helpdesk register
+ * switch: `public_signup_disabled` — when true, the Bam and Helpdesk register
  * endpoints reject new account creation and the login-page "Create one" links
  * redirect users to a beta-gate page.
  */

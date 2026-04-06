@@ -111,7 +111,7 @@ export function App() {
   }
 
   if (!isAuthenticated) {
-    // Show a message with link to BBB login instead of auto-redirect (prevents loops)
+    // Show a message with link to Bam login instead of auto-redirect (prevents loops)
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
         <div className="text-center space-y-4">

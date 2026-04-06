@@ -1,14 +1,14 @@
 /**
- * HB-50 + HB-7: Mirror helpdesk ticket events onto the linked BBB task.
+ * HB-50 + HB-7: Mirror helpdesk ticket events onto the linked Bam task.
  *
- * Previously this module wrote directly to BBB `comments` + `tasks`
+ * Previously this module wrote directly to Bam `comments` + `tasks`
  * tables via the shared Postgres connection. HB-7 moved those writes
- * behind BBB's /internal/helpdesk/* surface — every mirrored comment
+ * behind Bam's /internal/helpdesk/* surface — every mirrored comment
  * now goes through bbb-client and is attributed to the shared
- * HELPDESK_SYSTEM_USER_ID on the BBB side.
+ * HELPDESK_SYSTEM_USER_ID on the Bam side.
  *
  * This is intentionally best-effort and never throws. Errors are logged
- * and swallowed so helpdesk operations remain resilient to BBB outages.
+ * and swallowed so helpdesk operations remain resilient to Bam outages.
  */
 import { bbbClient } from './bbb-client.js';
 
@@ -19,7 +19,7 @@ type Logger = {
 
 /**
  * Mirror a ticket message (typically from the customer) onto the linked
- * BBB task as a system comment. Best-effort; never throws.
+ * Bam task as a system comment. Best-effort; never throws.
  */
 export async function mirrorTicketMessageToTask(
   taskId: string | null | undefined,
@@ -44,7 +44,7 @@ export async function mirrorTicketMessageToTask(
 }
 
 /**
- * Mirror a ticket closure onto the linked BBB task as a system comment.
+ * Mirror a ticket closure onto the linked Bam task as a system comment.
  */
 export async function mirrorTicketClosedToTask(
   taskId: string | null | undefined,

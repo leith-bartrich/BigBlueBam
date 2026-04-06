@@ -273,14 +273,14 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
   //
   // HB-34 — Lossy phase→status mapping:
   // Helpdesk tickets have 5 statuses (open, in_progress, waiting_on_customer,
-  // resolved, closed) but BBB phases only expose 3 categorical flags
+  // resolved, closed) but Bam phases only expose 3 categorical flags
   // (is_start, is_terminal, or neither). This path therefore collapses the
   // mapping to: is_terminal → resolved, is_start → open, else → in_progress.
   //
-  // This means `waiting_on_customer` and `closed` CANNOT be set via BBB task
+  // This means `waiting_on_customer` and `closed` CANNOT be set via Bam task
   // moves — they are reachable only through helpdesk-api directly. If an
   // agent sets a ticket to `waiting_on_customer` in the helpdesk UI and the
-  // BBB task is then moved, this sync will overwrite it back to one of the
+  // Bam task is then moved, this sync will overwrite it back to one of the
   // three mapped values. A richer mapping would require schema changes
   // (e.g. a phase→status lookup table) and is out of scope here.
   try {

@@ -256,11 +256,11 @@ Format the summary so someone who missed the conversation can quickly get up to 
     'banter_standup_broadcast',
     'Generate a standup summary from BigBlueBam project data and format it for posting to Banter',
     {
-      project_id: z.string().uuid().describe('The BBB project ID to pull standup data from'),
+      project_id: z.string().uuid().describe('The Bam project ID to pull standup data from'),
       channel_id: z.string().uuid().describe('The Banter channel ID where the standup will be posted'),
     },
     async ({ project_id, channel_id }) => {
-      // Fetch project board state from BBB
+      // Fetch project board state from Bam
       const boardResult = await api.get(`/projects/${project_id}/board`);
       const sprintResult = await api.get(`/projects/${project_id}/sprints?status=active&limit=1`);
 

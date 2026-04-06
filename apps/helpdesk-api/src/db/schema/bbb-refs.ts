@@ -1,6 +1,6 @@
 /**
  * Minimal reference definitions for BigBlueBam tables that the helpdesk schema
- * needs to reference via foreign keys. These mirror the real BBB tables but only
+ * needs to reference via foreign keys. These mirror the real Bam tables but only
  * include the columns needed for helpdesk operations.
  */
 import {

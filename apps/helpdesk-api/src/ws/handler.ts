@@ -38,7 +38,7 @@ function broadcastToRoom(room: string, message: string, excludeWs?: WebSocket) {
 }
 
 export default async function websocketHandler(fastify: FastifyInstance) {
-  // Redis subscriber for PubSub — uses same channel as BBB/Banter
+  // Redis subscriber for PubSub — uses same channel as Bam/Banter
   const subscriber = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: 3,
     lazyConnect: true,
@@ -50,7 +50,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
   subscriber.on('message', (_channel: string, message: string) => {
     try {
       const parsed = JSON.parse(message);
-      // Support both {room, event} shape (Banter) and {room, type, payload} shape (BBB)
+      // Support both {room, event} shape (Banter) and {room, type, payload} shape (Bam)
       const room: string = parsed.room;
       if (!room) return;
       let payload: string;

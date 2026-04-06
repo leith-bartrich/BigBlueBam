@@ -3,7 +3,7 @@ import Redis from 'ioredis';
 import { env } from '../env.js';
 
 /**
- * Queue client for HB-23: async fallback for ticket → BBB task creation.
+ * Queue client for HB-23: async fallback for ticket → Bam task creation.
  *
  * When inline task creation fails (after E2's transaction fix), the ticket
  * is persisted alone and this queue is used to retry task creation out-of-band.

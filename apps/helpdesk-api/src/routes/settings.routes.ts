@@ -22,14 +22,14 @@ const updateSettingsSchema = z.object({
 import { sql } from 'drizzle-orm';
 
 /**
- * Require admin auth — accepts a BBB session cookie OR a per-agent
+ * Require admin auth — accepts a Bam session cookie OR a per-agent
  * helpdesk API key (HB-28 + HB-49). The legacy shared `AGENT_API_KEY`
  * env var was removed here; agent-side callers must now present an
  * `hdag_*` token via X-Agent-Key, verified against
  * helpdesk_agent_api_keys (Argon2id-hashed, rotatable, per-agent).
  */
 async function requireAdminAuth(request: FastifyRequest, reply: FastifyReply) {
-  // Check BBB session cookie
+  // Check Bam session cookie
   const sessionCookie = request.cookies?.session;
   if (sessionCookie) {
     try {
@@ -37,7 +37,7 @@ async function requireAdminAuth(request: FastifyRequest, reply: FastifyReply) {
         sql`SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ${sessionCookie} AND s.expires_at > now() LIMIT 1`
       );
       if (result && (Array.isArray(result) ? result.length > 0 : (result as any).rows?.length > 0)) {
-        return; // Authenticated via BBB session
+        return; // Authenticated via Bam session
       }
     } catch {
       // Fall through

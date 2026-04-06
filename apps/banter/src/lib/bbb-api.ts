@@ -1,14 +1,14 @@
 // Thin client for calling the BigBlueBam API (/b3/api/*) from Banter.
 //
 // Banter's own `api` client targets /banter/api/v1, but several header widgets
-// (org switcher, notifications bell, user menu) need to talk to BBB endpoints
+// (org switcher, notifications bell, user menu) need to talk to Bam endpoints
 // because the two apps share the same session cookie and notification store.
 //
 // This helper:
 //   - prefixes every path with /b3/api
 //   - sends the shared session cookie via credentials: 'include'
 //   - echoes the csrf_token cookie back in the X-CSRF-Token header on
-//     state-changing requests (same contract as BBB's frontend api.ts)
+//     state-changing requests (same contract as Bam's frontend api.ts)
 //   - throws a BbbApiError with parsed error envelope on non-2xx
 
 function readCsrfToken(): string | null {

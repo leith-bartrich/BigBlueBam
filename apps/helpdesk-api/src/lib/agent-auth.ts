@@ -23,7 +23,7 @@ import { users } from '../db/schema/bbb-refs.js';
  *  - Always run argon2.verify before checking revoked/expired so timing
  *    doesn't leak whether a prefix corresponds to a live key.
  *
- * Returns the BBB user_id owning the key on success, or null on any
+ * Returns the Bam user_id owning the key on success, or null on any
  * verification failure. Callers are responsible for translating null
  * into an HTTP response.
  */

@@ -24,10 +24,10 @@ export interface HelpdeskTaskCreateJobData {
 // ── Processor ─────────────────────────────────────────────────────
 
 /**
- * Async fallback for helpdesk ticket → BBB task creation (HB-23).
+ * Async fallback for helpdesk ticket → Bam task creation (HB-23).
  *
  * When a customer submits a ticket, helpdesk-api tries to create the
- * corresponding BBB task inline in the same transaction. If that fails
+ * corresponding Bam task inline in the same transaction. If that fails
  * due to a transient error (deadlock, connection blip, etc.), the ticket
  * is rolled back and this job is enqueued. The job retries task creation
  * and then back-links the task_id onto the already-persisted ticket.

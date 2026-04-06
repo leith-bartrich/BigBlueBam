@@ -30,7 +30,7 @@ const agentMessageSchema = z.object({
 
 /**
  * Identity resolved from an authenticated agent request.
- * `userId`/`orgId` are only populated if a valid BBB session cookie accompanied
+ * `userId`/`orgId` are only populated if a valid Bam session cookie accompanied
  * the request (indicating a logged-in human agent). Even when a session is
  * present, a valid X-Agent-Key / Bearer token is still required for auth —
  * the session alone does NOT grant access (see HB-12).
@@ -44,7 +44,7 @@ interface AgentIdentity {
 declare module 'fastify' {
   interface FastifyRequest {
     /**
-     * BBB user id of the agent whose X-Agent-Key authenticated this
+     * Bam user id of the agent whose X-Agent-Key authenticated this
      * request. Populated by requireAgentAuth once the key is verified.
      * Distinct from the session-cookie-derived identity used for
      * org-scoping / message authorship: the key is the authoritative
@@ -56,7 +56,7 @@ declare module 'fastify' {
 }
 
 /**
- * Look up a BBB user + org from a session cookie. Returns null if the session
+ * Look up a Bam user + org from a session cookie. Returns null if the session
  * is missing, invalid, or expired. This is used ONLY to enrich the request
  * with caller identity (for org-scoping and authorship) — it is NOT an
  * authentication mechanism on its own (see HB-12).
@@ -94,11 +94,11 @@ async function resolveSessionIdentity(sessionCookie: string | undefined): Promis
  * helpdesk_agent_api_keys.
  *
  * This used to accept a raw shared secret from env.AGENT_API_KEY with a
- * timing-safe string compare, and would also fall back to a BBB session
+ * timing-safe string compare, and would also fall back to a Bam session
  * cookie alone (HB-49) — both removed here:
  *   - The shared secret had no audit trail, couldn't be rotated per-
  *     agent, and wasn't hashed at rest.
- *   - Session-cookie fallback meant any logged-in BBB end-user could
+ *   - Session-cookie fallback meant any logged-in Bam end-user could
  *     call helpdesk agent endpoints with no role check against
  *     organization_memberships — a fragile cross-app auth surface.
  *
@@ -195,7 +195,7 @@ async function requireAgentAuth(request: FastifyRequest, reply: FastifyReply) {
 
 /**
  * Resolve a display name for the agent who authenticated this request,
- * for attribution in mirrored BBB task comments (HB-50). Prefers the BBB
+ * for attribution in mirrored Bam task comments (HB-50). Prefers the Bam
  * user's display_name, falling back to email, then a static label.
  * Best-effort — never throws.
  */
@@ -220,7 +220,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   // GET /tickets — list tickets visible to the caller (HB-6: org-scoped).
   //
   // Scoping model:
-  //  - If the request carries a valid BBB session cookie, we scope tickets to
+  //  - If the request carries a valid Bam session cookie, we scope tickets to
   //    the session user's org by joining tickets.project_id → projects.org_id.
   //    Tickets with no project_id (unlinked) are excluded from the scoped view.
   //  - If there is no session (X-Agent-Key only), we fall back to the current
@@ -229,7 +229,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   //    helpdesk_users have no org_id column yet, so there is no reliable way
   //    to derive an org boundary from the key alone. Operators deploying the
   //    shared key to multi-tenant installs should either (a) run one helpdesk
-  //    per org, or (b) always access via a BBB session.
+  //    per org, or (b) always access via a Bam session.
   fastify.get('/tickets', { preHandler: [requireAgentAuth] }, async (request, reply) => {
     const query = request.query as { status?: string; project_id?: string };
     const identity = await resolveSessionIdentity(request.cookies?.session);
@@ -343,7 +343,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     }
 
     // HB-14: Resolve author identity from the authenticated session FIRST.
-    // If a valid BBB session accompanies the request, the session's user ID
+    // If a valid Bam session accompanies the request, the session's user ID
     // is authoritative — the client may NOT override it via author_id in the
     // body. If no session is present (X-Agent-Key only), the caller MUST
     // supply author_id AND that UUID must correspond to a real user row; we
@@ -365,7 +365,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({
           error: {
             code: 'AUTHOR_REQUIRED',
-            message: 'author_id is required when not authenticated via a BBB session',
+            message: 'author_id is required when not authenticated via a Bam session',
             details: [{ field: 'author_id', issue: 'required' }],
             request_id: request.id,
           },
@@ -462,10 +462,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
         created_at: message.created_at,
       });
 
-      // HB-50: Mirror the agent message onto the linked BBB task so the
+      // HB-50: Mirror the agent message onto the linked Bam task so the
       // customer-facing audit trail survives if the ticket is later deleted.
       // Internal notes are intentionally NOT mirrored — they must not leak
-      // into the customer-visible BBB task comment thread.
+      // into the customer-visible Bam task comment thread.
       await mirrorTicketMessageToTask(ticket.task_id, authorName, message.body, request.log);
     }
 
@@ -549,7 +549,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     if (updated && data.status !== undefined) {
       await broadcastTicketStatusChanged(id, data.status);
-      // HB-50: Mirror ticket closure onto the linked BBB task so the audit
+      // HB-50: Mirror ticket closure onto the linked Bam task so the audit
       // trail survives if the ticket is later deleted.
       if (data.status === 'closed') {
         const agentName = await resolveAgentDisplayName(request.agentUserId);
@@ -656,7 +656,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     if (updated) {
       await broadcastTicketStatusChanged(id, 'closed');
-      // HB-50: Mirror ticket closure onto the linked BBB task so the audit
+      // HB-50: Mirror ticket closure onto the linked Bam task so the audit
       // trail survives if the ticket is later deleted.
       const agentName = await resolveAgentDisplayName(request.agentUserId);
       await mirrorTicketClosedToTask(ticket.task_id, agentName, request.log);

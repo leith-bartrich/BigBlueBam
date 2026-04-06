@@ -147,7 +147,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
 
     const projectId: string | null = settings?.default_project_id ?? null;
 
-    // HB-7: Task creation now goes through BBB's /internal/helpdesk/* API
+    // HB-7: Task creation now goes through Bam's /internal/helpdesk/* API
     // rather than direct SQL. The request ordering is: (1) persist the
     // ticket standalone; (2) call bbb-client to create the task; (3)
     // back-link ticket.task_id. If (2) fails the ticket remains without
@@ -156,7 +156,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
     // still available for manual re-enqueue. We keep the HB-37 phase
     // validation on the helpdesk side because helpdesk settings store
     // default_phase_id locally; if the configured phase is invalid we
-    // simply don't pass it and let BBB pick a start phase.
+    // simply don't pass it and let Bam pick a start phase.
     try {
       // Resolve + validate helpdesk-configured phase (if any) so we can
       // surface a 500 CONFIGURATION_ERROR early when the admin-configured
@@ -177,7 +177,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       }
 
       // Create the ticket first, standalone. task_id is back-linked after
-      // the remote BBB call succeeds.
+      // the remote Bam call succeeds.
       const [ticket] = await db
         .insert(tickets)
         .values({
@@ -195,7 +195,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         throw new Error('TICKET_INSERT_FAILED');
       }
 
-      // If we have a default project, create the BBB task via the
+      // If we have a default project, create the Bam task via the
       // internal API. Failure is logged but does not fail the request —
       // the ticket exists and the customer sees it; task linkage can be
       // reconciled later.
@@ -227,19 +227,19 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
             .where(eq(tickets.id, ticket.id));
         } catch (bbbErr) {
           const err = bbbErr as Error & { status?: number; body?: unknown };
-          // If BBB returned a 422 CONFIGURATION_ERROR (no valid phase)
+          // If Bam returned a 422 CONFIGURATION_ERROR (no valid phase)
           // that is a setup error worth surfacing — but we've already
           // created the ticket, so we respond 201 with a warning rather
           // than failing. Log at warn; task will have to be created
           // manually by an admin.
           request.log.warn(
             { err, status: err.status, ticketId: ticket.id, projectId },
-            'Helpdesk ticket created but BBB task creation failed; ticket is unlinked',
+            'Helpdesk ticket created but Bam task creation failed; ticket is unlinked',
           );
         }
       }
 
-      // HB-50 compat: if we have a task, broadcast so BBB boards refresh.
+      // HB-50 compat: if we have a task, broadcast so Bam boards refresh.
       if (taskIdFromBbb && projectId) {
         await broadcastTaskCreated(projectId, {
           id: taskIdFromBbb,
@@ -560,7 +560,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         created_at: message.created_at,
       });
 
-      // HB-50: Mirror the customer message onto the linked BBB task so the
+      // HB-50: Mirror the customer message onto the linked Bam task so the
       // audit trail survives if the ticket is later deleted.
       await mirrorTicketMessageToTask(ticket.task_id, user.display_name, message.body, request.log);
 
@@ -793,7 +793,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
 
     if (updated) {
       await broadcastTicketStatusChangedRT(id, 'closed');
-      // HB-50: Record the closure on the linked BBB task so the trail survives
+      // HB-50: Record the closure on the linked Bam task so the trail survives
       // even if the ticket row is later deleted.
       await mirrorTicketClosedToTask(ticket.task_id, user.display_name, request.log);
 
@@ -816,7 +816,7 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // HB-16 + HB-7: Move the linked BBB task to a terminal phase via the
+    // HB-16 + HB-7: Move the linked Bam task to a terminal phase via the
     // internal API. Best-effort — don't fail the close.
     if (ticket.task_id && ticket.project_id) {
       try {

@@ -10,7 +10,7 @@ import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
  */
 
 /**
- * Matches BBB task human_ids such as "MAGE-38" or "bbam-1024". GitHub
+ * Matches Bam task human_ids such as "MAGE-38" or "bbam-1024". GitHub
  * commit messages and PR bodies commonly embed these inline, so we scan
  * for any 2–10 letter prefix followed by a dash and digits. The prefix
  * portion is case-insensitive at the regex level; the caller uppercases

@@ -30,8 +30,8 @@ interface TicketDetail {
 }
 
 // HB-52: Echo csrf_token cookie in X-CSRF-Token header for cross-app
-// admin writes from the BBB SPA into helpdesk-api (authenticated via
-// the BBB `session` cookie).
+// admin writes from the Bam SPA into helpdesk-api (authenticated via
+// the Bam `session` cookie).
 function readCsrfToken(): string | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);

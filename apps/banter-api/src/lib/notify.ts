@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
  * Unified notifications emitter for Banter.
  *
  * Writes directly into the shared `notifications` table (see migration
- * 0019) so events surface in the SAME bell the BBB frontend already
+ * 0019) so events surface in the SAME bell the Bam frontend already
  * renders. All fields map 1:1 to the notifications columns.
  *
  * This helper is intentionally fire-and-forget at the call site: every

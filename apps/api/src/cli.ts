@@ -50,7 +50,7 @@ Commands:
   revoke-superuser   Remove SuperUser privileges from a user by email
   create-api-key     Issue an API key for a user (for agentic / programmatic access)
   create-helpdesk-agent-key  Issue a per-agent helpdesk API key (HB-28 + HB-49)
-  revoke-api-key     Revoke a BBB API key by its key_prefix (hard delete)
+  revoke-api-key     Revoke a Bam API key by its key_prefix (hard delete)
   revoke-helpdesk-agent-key  Revoke a helpdesk agent API key by its key_prefix (soft by default)
   list-orgs          List all organizations (id, slug, name) — helper for other commands
 
@@ -85,11 +85,11 @@ Examples:
   cli create-api-key --email alice@co.com --name "ci-bot" --scope read_write \\
       --org-slug acme --project-id <uuid> --expires-days 90
 
-  # Mint a per-agent helpdesk API key for a BBB employee (printed ONCE)
+  # Mint a per-agent helpdesk API key for a Bam employee (printed ONCE)
   cli create-helpdesk-agent-key --email agent@co.com --name "agent-mbp" \\
       --expires-days 365
 
-  # Revoke a BBB API key by its prefix (user's token is destroyed)
+  # Revoke a Bam API key by its prefix (user's token is destroyed)
   cli revoke-api-key --prefix bbam_abc
 
   # Soft-revoke a helpdesk agent key (row kept with revoked_at set)
@@ -377,8 +377,8 @@ async function createHelpdeskAgentKey(flags: Record<string, string>) {
   try {
     const [user] = await db.select().from(users).where(eq(users.email, email!)).limit(1);
     if (!user) {
-      console.error(`Error: no BBB user found with email ${email}`);
-      console.error('Hint: helpdesk agent keys are tied to BBB employee accounts. Create the user with `cli create-user` first.');
+      console.error(`Error: no Bam user found with email ${email}`);
+      console.error('Hint: helpdesk agent keys are tied to Bam employee accounts. Create the user with `cli create-user` first.');
       process.exit(1);
     }
 
@@ -527,7 +527,7 @@ async function revokeHelpdeskAgentKey(flags: Record<string, string>) {
     }
     console.log(`  Key ID:       ${target.id}`);
     console.log(`  Name:         ${target.name}`);
-    console.log(`  BBB user ID:  ${target.bbb_user_id}`);
+    console.log(`  Bam user ID:  ${target.bbb_user_id}`);
     console.log(`  Agent:        ${target.display_name ?? '(deleted user)'} <${target.user_email ?? '?'}>`);
   } finally {
     await client.end();

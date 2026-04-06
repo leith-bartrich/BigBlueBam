@@ -19,7 +19,7 @@ interface NotificationsBellProps {
 }
 
 /**
- * Banter port of BBB's notifications dropdown. The unified notifications
+ * Banter port of Bam's notifications dropdown. The unified notifications
  * source is /b3/api/me/notifications (a sibling agent is extending the
  * backend to include Banter notifications).
  *

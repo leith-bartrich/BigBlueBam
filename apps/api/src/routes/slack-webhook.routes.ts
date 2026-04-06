@@ -20,7 +20,7 @@ import { users } from '../db/schema/users.js';
 // Verification: the `token` field is compared against the matching
 // project's slack_integrations.slash_command_token when one is set. We
 // look the token up by the token value itself (across all projects) since
-// Slack doesn't tell us which BBB project the slash command is "from" —
+// Slack doesn't tell us which Bam project the slash command is "from" —
 // the token IS the scoping mechanism. Admins who leave the token blank
 // accept commands from any workspace (fine for single-tenant setups).
 

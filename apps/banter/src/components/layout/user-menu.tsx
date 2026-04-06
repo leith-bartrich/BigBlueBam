@@ -21,7 +21,7 @@ interface UserMenuProps {
 }
 
 /**
- * Banter port of BBB's user avatar dropdown menu. Menu items:
+ * Banter port of Bam's user avatar dropdown menu. Menu items:
  *   - name/email header (non-clickable)
  *   - Settings → onNavigate('/settings') (or /b3/settings if hasLocalSettings=false)
  *   - People → /b3/people (owner/admin/superuser only, cross-app)
@@ -31,7 +31,7 @@ interface UserMenuProps {
 export function UserMenu({ onNavigate, hasLocalSettings = true }: UserMenuProps) {
   const user = useAuthStore((s) => s.user);
 
-  // BBB's /auth/me returns is_superuser; the Banter auth store currently
+  // Bam's /auth/me returns is_superuser; the Banter auth store currently
   // doesn't surface it explicitly, so we read it off the raw object if
   // present (the shared user object includes it).
   const isSuperUser =

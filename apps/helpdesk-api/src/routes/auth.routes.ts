@@ -94,7 +94,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    // Platform-wide kill switch (shared with BBB): when a SuperUser has
+    // Platform-wide kill switch (shared with Bam): when a SuperUser has
     // disabled public signup, reject Helpdesk customer self-signup too.
     // Reads directly from the shared `platform_settings` singleton; no
     // Drizzle schema needed here since helpdesk-api does not own the table.
@@ -210,7 +210,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   // POST /helpdesk/auth/login
   // HB-33: 5 attempts per 15 minutes per IP to slow brute-force guessing.
   // TODO: record helpdesk login attempts to a `helpdesk_login_history` table
-  // once that schema exists. The BBB `login_history` table cannot be used
+  // once that schema exists. The Bam `login_history` table cannot be used
   // here because its user_id FK points at `users`, not `helpdesk_users`.
   fastify.post('/helpdesk/auth/login', {
     config: {

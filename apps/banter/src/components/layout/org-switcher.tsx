@@ -24,7 +24,7 @@ interface OrgsResponse {
 }
 
 /**
- * Banter port of BBB's OrgSwitcher. Calls the BBB auth API (shared session)
+ * Banter port of Bam's OrgSwitcher. Calls the Bam auth API (shared session)
  * directly via bbb-api.ts because both apps share the same session cookie.
  *
  * On switch: calls POST /b3/api/auth/switch-org (which rotates the session),

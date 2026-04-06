@@ -86,7 +86,7 @@ export async function postToSlack(
   }
 }
 
-/** Build a deep link to a task in BBB (used as the "view" link in Slack messages). */
+/** Build a deep link to a task in Bam (used as the "view" link in Slack messages). */
 export function taskDeepLink(projectId: string, taskId: string): string {
   return `${env.FRONTEND_URL}/projects/${projectId}/board?task=${taskId}`;
 }

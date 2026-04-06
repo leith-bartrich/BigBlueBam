@@ -1,10 +1,10 @@
 /**
- * HB-7: Typed client for BBB's /internal/helpdesk/* surface.
+ * HB-7: Typed client for Bam's /internal/helpdesk/* surface.
  *
  * helpdesk-api uses this client (and only this client) to create or
- * mutate BBB-owned data. All direct SQL writes to `tasks`, `comments`,
+ * mutate Bam-owned data. All direct SQL writes to `tasks`, `comments`,
  * or `activity_log` from helpdesk-api are forbidden — they have moved
- * into BBB API, which owns the data and attributes every write to the
+ * into Bam API, which owns the data and attributes every write to the
  * shared HELPDESK_SYSTEM_USER_ID.
  *
  * Transport: Node fetch, POSTing JSON with the X-Internal-Token header.

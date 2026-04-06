@@ -6,7 +6,7 @@
  * `ticket_activity_log`. The table is the authoritative timeline for
  * "what happened to this ticket, and who did it?" queries, independent
  * of the `ticket_messages` stream (which only records conversational
- * content) and of the BBB-side `activity_log` (which is scoped to tasks
+ * content) and of the Bam-side `activity_log` (which is scoped to tasks
  * and projects, not tickets).
  *
  * This helper is intentionally non-throwing — same contract as

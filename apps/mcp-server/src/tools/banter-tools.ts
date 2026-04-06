@@ -748,7 +748,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     'Share a BigBlueBam task as a rich embed in a Banter channel',
     {
       channel_id: z.string().uuid().describe('The channel ID to post in'),
-      task_id: z.string().uuid().describe('The BBB task ID to share'),
+      task_id: z.string().uuid().describe('The Bam task ID to share'),
       comment: z.string().optional().describe('Optional comment to include with the share'),
     },
     async ({ channel_id, task_id, comment }) => {
@@ -766,7 +766,7 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     'Share a BigBlueBam sprint summary as a rich embed in a Banter channel',
     {
       channel_id: z.string().uuid().describe('The channel ID to post in'),
-      sprint_id: z.string().uuid().describe('The BBB sprint ID to share'),
+      sprint_id: z.string().uuid().describe('The Bam sprint ID to share'),
       comment: z.string().optional().describe('Optional comment to include'),
     },
     async ({ channel_id, sprint_id, comment }) => {

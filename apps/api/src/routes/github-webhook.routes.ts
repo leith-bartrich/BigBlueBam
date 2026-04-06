@@ -11,7 +11,7 @@ import {
 import { logActivity } from '../services/activity.service.js';
 
 /**
- * Phase 6: GitHub → BBB webhook ingest.
+ * Phase 6: GitHub → Bam webhook ingest.
  *
  * GitHub POSTs events here with an X-Hub-Signature-256 header we must
  * verify using the per-integration webhook_secret BEFORE parsing or

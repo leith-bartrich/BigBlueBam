@@ -20,7 +20,7 @@ export function Sidebar({ currentProjectId, onNavigate, onCreateProject }: Sideb
         <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary-600 text-white font-bold text-sm">
           B
         </div>
-        <span className="font-semibold text-white text-lg">BigBlueBam</span>
+        <span className="font-semibold text-white text-lg">Bam</span>
       </div>
 
       <nav className="flex-1 overflow-y-auto custom-scrollbar py-2">

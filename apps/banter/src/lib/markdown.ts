@@ -44,7 +44,7 @@ export function markdownToHtml(md: string): string {
   // @mentions
   html = html.replace(/@(\w+)/g, '<span class="mention-highlight">@$1</span>');
 
-  // BBB task references: PREFIX-123 → clickable link that resolves to
+  // Bam task references: PREFIX-123 → clickable link that resolves to
   // the task's project board via /b3/tasks/ref/<REF>. Works with ANY
   // project prefix (MAGE-38, FRND-7, etc.) — matches the tasks.human_id
   // column format. Case-sensitive (prefixes are stored uppercase).

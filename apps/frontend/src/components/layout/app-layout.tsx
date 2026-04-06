@@ -148,7 +148,7 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
                 className="px-2 py-1 text-xs font-medium rounded-md bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
                 title="BigBlueBam"
               >
-                BBB
+                Bam
               </button>
               <button
                 onClick={() => { window.location.href = '/banter/'; }}

@@ -1,10 +1,10 @@
 /**
- * HB-7: Internal API surface for helpdesk-api → BBB writes.
+ * HB-7: Internal API surface for helpdesk-api → Bam writes.
  *
  * Every endpoint in this file is guarded by requireServiceAuth and is
  * attributed to the HELPDESK_SYSTEM_USER_ID in activity_log. These are
  * the ONLY endpoints helpdesk-api should use when it needs to create or
- * mutate BBB-owned data (tasks, comments, phase transitions). Direct
+ * mutate Bam-owned data (tasks, comments, phase transitions). Direct
  * SQL from helpdesk-api to `tasks` / `comments` / `activity_log` is
  * forbidden.
  *
@@ -217,7 +217,7 @@ export default async function internalHelpdeskRoutes(fastify: FastifyInstance) {
 
   // ── POST /internal/helpdesk/comments ────────────────────────────────────
   // Posts a comment on a task. Always attributed to HELPDESK_SYSTEM_USER_ID
-  // (author_id), with optional author_label folded into the body so BBB
+  // (author_id), with optional author_label folded into the body so Bam
   // users can see "John Customer (via helpdesk ticket): ...".
   fastify.post(
     '/comments',

@@ -28,7 +28,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   fetchMe: async () => {
     try {
-      // Use the BBB auth endpoint since Banter shares the same session
+      // Use the Bam auth endpoint since Banter shares the same session
       const res = await fetch('/b3/api/auth/me', { credentials: 'include' });
       if (!res.ok) throw new Error('Not authenticated');
       const json = await res.json();

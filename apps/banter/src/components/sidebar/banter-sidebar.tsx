@@ -237,7 +237,7 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
         </div>
       </div>
 
-      {/* Bottom: admin/settings links (BBB-style) */}
+      {/* Bottom: admin/settings links (Bam-style) */}
       <div className="border-t border-zinc-800 px-3 py-2 flex-shrink-0">
         {user?.is_superuser === true && (
           <button

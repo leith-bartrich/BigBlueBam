@@ -112,7 +112,7 @@ export function BanterLayout({
                   className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
                   title="BigBlueBam"
                 >
-                  BBB
+                  Bam
                 </button>
                 <button
                   onClick={() => onNavigate('/')}

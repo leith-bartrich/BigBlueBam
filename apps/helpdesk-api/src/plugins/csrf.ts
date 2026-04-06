@@ -51,7 +51,7 @@ function tokensMatch(a: string, b: string): boolean {
 }
 
 async function helpdeskCsrfPlugin(fastify: FastifyInstance) {
-  // Auto-heal: any request with a session cookie (helpdesk OR BBB admin)
+  // Auto-heal: any request with a session cookie (helpdesk OR Bam admin)
   // but no csrf_token cookie gets one issued on the response, so users
   // whose sessions predate CSRF rollout don't have to log out+in.
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -74,8 +74,8 @@ async function helpdeskCsrfPlugin(fastify: FastifyInstance) {
     }
 
     // Enforce CSRF if the request carries any session cookie: either a
-    // helpdesk customer session OR a BBB admin session (some helpdesk-api
-    // admin routes accept the BBB `session` cookie as cross-app auth, e.g.
+    // helpdesk customer session OR a Bam admin session (some helpdesk-api
+    // admin routes accept the Bam `session` cookie as cross-app auth, e.g.
     // /helpdesk/settings). Both cookie paths set a matching csrf_token.
     const sessionCookie =
       request.cookies?.helpdesk_session ?? request.cookies?.session;

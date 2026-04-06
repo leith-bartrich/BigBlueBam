@@ -29,7 +29,7 @@ export function registerMeTools(server: McpServer, api: ApiClient): void {
     'update_me',
     "Update the authenticated user's own profile fields.",
     {
-      display_name: z.string().min(1).max(200).optional().describe('Display name shown across BBB.'),
+      display_name: z.string().min(1).max(200).optional().describe('Display name shown across Bam.'),
       avatar_url: z.string().url().nullable().optional().describe('Avatar URL, or null to clear.'),
       timezone: z.string().optional().describe('IANA timezone (e.g. America/New_York).'),
       notification_prefs: z.record(z.unknown()).optional().describe('JSON object of notification preferences.'),

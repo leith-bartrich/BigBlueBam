@@ -27,7 +27,7 @@ const fastify = Fastify({
   },
   // HB-48: request ID generated here should be forwarded in any future
   // cross-service HTTP calls via the `X-Request-ID` header. Currently moot
-  // since helpdesk writes directly to BBB's DB and does not make outbound
+  // since helpdesk writes directly to Bam's DB and does not make outbound
   // service-to-service HTTP calls.
   genReqId: () => crypto.randomUUID(),
   // HB-22: prevent hung connections when DB queries stall

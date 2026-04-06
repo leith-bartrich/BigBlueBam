@@ -12,7 +12,7 @@ const feedMessageSchema = z.object({
 });
 
 /**
- * Internal API routes — called by other services (BBB API, worker) within the Docker network.
+ * Internal API routes — called by other services (Bam API, worker) within the Docker network.
  * These endpoints don't require user auth since they're called service-to-service.
  */
 export default async function internalRoutes(fastify: FastifyInstance) {
@@ -34,7 +34,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // POST /v1/internal/share — share a BBB entity to a Banter channel
+  // POST /v1/internal/share — share a Bam entity to a Banter channel
   fastify.post(
     '/v1/internal/share',
     async (request, reply) => {
@@ -51,7 +51,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
         .parse(request.body);
 
       const entityLabel = body.entity_type.charAt(0).toUpperCase() + body.entity_type.slice(1);
-      const message = `**${body.shared_by_name}** shared a ${entityLabel}: **${body.entity_title}**${body.entity_url ? ` — [View in BBB](${body.entity_url})` : ''}`;
+      const message = `**${body.shared_by_name}** shared a ${entityLabel}: **${body.entity_title}**${body.entity_url ? ` — [View in Bam](${body.entity_url})` : ''}`;
 
       await postActivityFeedMessage({
         org_id: body.org_id,

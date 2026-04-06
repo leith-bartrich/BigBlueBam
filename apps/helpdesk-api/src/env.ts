@@ -41,9 +41,9 @@ const envSchema = z.object({
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
 
-  // HB-7: URL + shared secret for BBB's /internal/helpdesk/* surface. All
-  // BBB-side writes (tasks, comments, phase transitions) go through these
-  // endpoints instead of direct SQL against the BBB tables.
+  // HB-7: URL + shared secret for Bam's /internal/helpdesk/* surface. All
+  // Bam-side writes (tasks, comments, phase transitions) go through these
+  // endpoints instead of direct SQL against the Bam tables.
   BBB_API_INTERNAL_URL: z.string().url().default('http://api:4000'),
   INTERNAL_HELPDESK_SECRET: z.string().min(32),
 });
