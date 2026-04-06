@@ -160,6 +160,53 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  describe('test_slack_webhook', () => {
+    it('posts to the correct path on success', async () => {
+      mockApiOk({ message: 'Test message sent' });
+      const result = await getTool('test_slack_webhook').handler({ project_id: UUID });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/projects/${UUID}/slack-integration/test`);
+      expect(call[1].method).toBe('POST');
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'No Slack webhook configured' });
+      const result = await getTool('test_slack_webhook').handler({ project_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('disconnect_github_integration', () => {
+    it('returns error when confirm is false', async () => {
+      const result = await getTool('disconnect_github_integration').handler({
+        project_id: UUID, confirm: false,
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toContain('confirm=true');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('calls api.delete when confirm is true', async () => {
+      mockApiOk({ deleted: true });
+      const result = await getTool('disconnect_github_integration').handler({
+        project_id: UUID, confirm: true,
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/projects/${UUID}/github-integration`);
+      expect(call[1].method).toBe('DELETE');
+    });
+
+    it('returns error on API failure with confirm', async () => {
+      mockApiError(404, { error: 'No GitHub integration found' });
+      const result = await getTool('disconnect_github_integration').handler({
+        project_id: UUID, confirm: true,
+      });
+      expectErrorFormat(result);
+    });
+  });
+
   // ===== BOARD TOOLS =====
 
   describe('get_board', () => {
@@ -903,6 +950,7 @@ describe('MCP Integration Tests', () => {
       const expectedTools = [
         // project
         'list_projects', 'get_project', 'create_project',
+        'test_slack_webhook', 'disconnect_github_integration',
         // board
         'get_board', 'list_phases', 'create_phase', 'reorder_phases',
         // task

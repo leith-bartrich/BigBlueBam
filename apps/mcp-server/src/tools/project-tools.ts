@@ -83,4 +83,56 @@ export function registerProjectTools(server: McpServer, api: ApiClient): void {
       };
     },
   );
+
+  server.tool(
+    'test_slack_webhook',
+    'Send a test message to the Slack webhook configured for a project. Requires project admin or org admin role.',
+    {
+      project_id: z.string().uuid().describe('The project ID'),
+    },
+    async ({ project_id }) => {
+      const result = await api.post(`/projects/${project_id}/slack-integration/test`, {});
+
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error testing Slack webhook: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'disconnect_github_integration',
+    'Remove the GitHub integration from a project. This is destructive — it deletes the webhook config and all linked commit/PR references. Requires project admin or org admin role.',
+    {
+      project_id: z.string().uuid().describe('The project ID'),
+      confirm: z.boolean().describe('Must be true to proceed with the destructive action.'),
+    },
+    async ({ project_id, confirm }) => {
+      if (!confirm) {
+        return {
+          content: [{ type: 'text' as const, text: 'Set confirm=true to proceed with this destructive action.' }],
+          isError: true,
+        };
+      }
+
+      const result = await api.delete(`/projects/${project_id}/github-integration`);
+
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error disconnecting GitHub integration: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  );
 }
