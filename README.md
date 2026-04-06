@@ -23,7 +23,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/tests-530%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-86-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/MCP%20tools-103-blue" alt="MCP Tools" />
   <img src="https://img.shields.io/badge/Docker%20services-12-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
@@ -40,7 +40,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **86 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, and team messaging.
+This is made possible by **103 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, and team messaging.
 
 ---
 
@@ -300,7 +300,7 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **86 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, and customer support. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **103 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, and customer support. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -331,21 +331,24 @@ BigBlueBam exposes **86 MCP (Model Context Protocol) tools** that give AI assist
 
 ### MCP Tools Reference
 
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **Projects** | `list_projects`, `get_project`, `create_project` | Browse and create projects |
-| **Board** | `get_board`, `list_phases`, `create_phase`, `reorder_phases` | Read board state, configure columns |
-| **Tasks** | `search_tasks`, `get_task`, `create_task`, `update_task`, `move_task`, `delete_task`, `duplicate_task`, `bulk_update_tasks` | Full CRUD on tasks with search and bulk ops |
-| **Sprints** | `list_sprints`, `create_sprint`, `start_sprint`, `complete_sprint`, `get_sprint_report` | Sprint lifecycle management |
-| **Comments** | `list_comments`, `add_comment` | Read and post comments on tasks |
-| **Members** | `list_members`, `get_my_tasks` | Team member info and personal task lists |
-| **Reports** | `get_velocity_report`, `get_burndown`, `get_cumulative_flow`, `get_overdue_tasks`, `get_workload`, `get_status_distribution` | Analytics and reporting |
-| **Templates** | `list_templates`, `create_from_template` | Task templates for repeatable workflows |
-| **Import** | `import_csv`, `import_github_issues`, `suggest_branch_name` | Data import and git integration |
-| **Time** | `log_time` | Time tracking entries |
-| **Helpdesk** | `list_tickets`, `get_ticket`, `reply_to_ticket`, `update_ticket_status` | Ticket management and customer communication |
-| **Banter** | 44 tools including `banter_post_message`, `banter_list_channels`, `banter_create_channel`, `banter_search_messages`, `banter_start_call`, `banter_invite_agent_to_call` | Team messaging, channels, threads, reactions, calls, voice agent |
-| **Utility** | `get_server_info`, `confirm_action` | Server metadata and confirmation flows |
+**103 tools** across 14 categories:
+
+| Category | Count | What they cover |
+|----------|------:|-----------------|
+| **Task Management** | 10 | CRUD, move, bulk update, duplicate, time logging |
+| **Board & Phases** | 4 | Board view, phase CRUD, reorder |
+| **Sprints** | 5 | CRUD, start, complete, report |
+| **Projects** | 3 | List, get, create |
+| **Reports** | 8 | Velocity, burndown, CFD, cycle time, time tracking, overdue, workload, status distribution |
+| **Comments** | 2 | List, add |
+| **Members** | 2 | List, get my tasks |
+| **Templates** | 2 | List, create from template |
+| **Import** | 2 | CSV import, GitHub Issues import |
+| **User Profile & Notifications** | 10 | Profile CRUD, org switching, password, logout, notification feed management |
+| **Platform Admin** | 5 | Platform settings toggle, beta signups, public config (SuperUser-gated) |
+| **Banter Messaging** | 44 | Channels, DMs, messages, threads, reactions, calls, search, admin, presence |
+| **Helpdesk** | 4 | Ticket operations |
+| **Utility** | 2 | Server info, action confirmation |
 
 ### MCP Setup
 
@@ -552,7 +555,7 @@ All services are accessed through a single nginx container on port 80:
 | `/helpdesk/` | nginx | Helpdesk portal SPA |
 | `/helpdesk/api/` | Fastify `:4001` | Helpdesk API (auth, tickets, messages) |
 | `/files/` | MinIO `:9000` | Uploaded files (shared) |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (86 tools) |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (103 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -605,7 +608,7 @@ pnpm test  # 530+ tests across all packages
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌───────▼──────┐ ┌──────────┐
 │ BBB API   │ │ Banter   │ │ MCP Server│ │ LiveKit SFU  │ │ Worker   │
 │ :4000     │ │ API :4002│ │ :3001     │ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 86 tools  │ │ +voice-agent │ │ jobs     │
+│ +WebSocket│ │ +WS      │ │ 103 tools │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘ └────┬─────┘
       │             │             │                              │
 ┌─────▼─────────────▼─────────────▼──────────────────────────────▼─────┐
@@ -635,7 +638,7 @@ pnpm test  # 530+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (86 tools)
+  mcp-server/       → MCP protocol server (103 tools)
   worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
@@ -657,7 +660,7 @@ scripts/            → Utility and seed scripts
 | Metric | Count |
 |--------|-------|
 | Docker services | 12 |
-| MCP tools | 86 (42 BBB + 44 Banter) |
+| MCP tools | 103 (59 BBB + 44 Banter) |
 | Test cases | 530+ |
 | API route modules | 38 (23 BBB + 15 Banter) |
 | Database tables | 40+ (25 BBB + 18 Banter) |
