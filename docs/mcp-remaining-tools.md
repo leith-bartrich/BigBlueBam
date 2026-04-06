@@ -69,7 +69,7 @@ persistent.
 Parameters: `project_id` (uuid). No body needed -- the route sends a test message
 to the configured Slack webhook URL and returns success/failure.
 
-Uses the main `api.post()` client (BBB API, not Banter). Could go in
+Uses the main `api.post()` client (Bam API, not Banter). Could go in
 `project-tools.ts` alongside other project-scoped operations, but if we expect
 more integration tools later, a dedicated `integration-tools.ts` is cleaner.
 
@@ -154,7 +154,7 @@ All three go into `banter-tools.ts` at the end, in a new comment section
 to every other tool in that file: call `banter.get/patch/post`, return
 `ok()` or `err()`. No new infrastructure needed.
 
-### BBB integration tools (P2: #4-5)
+### Bam integration tools (P2: #4-5)
 
 Add to the bottom of `project-tools.ts` in a new section
 `// Integration tools (2)`. They use the standard `api` client. Tool #5
@@ -183,4 +183,4 @@ Each file's `register*Tools()` function already gets called from the central
 | P3 | 3 | ~45 min (auth-header fix + 3 tools) |
 | **Total** | **8** | **~1.75 hours** |
 
-The MCP server now has **111 tools** (64 BBB + 47 Banter).
+The MCP server now has **111 tools** (64 Bam + 47 Banter).

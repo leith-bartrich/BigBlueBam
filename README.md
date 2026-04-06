@@ -403,7 +403,7 @@ Because Banter shares authentication, database, and deep cross-linking with BigB
 | **Notifications** | Stable | Mention, DM, thread reply, and channel invite notifications |
 | **Voice Calls** | Alpha | Voice and video calls via LiveKit SFU |
 | **AI Voice Agent** | Placeholder | AI participation in calls (STT/TTS pipeline, requires provider config) |
-| **BBB Integration** | Stable | Task references, Share to Banter, activity feed bot |
+| **Bam Integration** | Stable | Task references, Share to Banter, activity feed bot |
 | **47 MCP Tools** | Stable | Full AI agent access to all messaging features |
 
 ### Channel View
@@ -546,8 +546,8 @@ All services are accessed through a single nginx container on port 80:
 | URL Path | Backend | Description |
 |----------|---------|-------------|
 | `/` | redirect | Redirects to `/helpdesk/` |
-| `/b3/` | nginx | BigBlueBam React SPA |
-| `/b3/api/` | Fastify `:4000` | BigBlueBam REST API |
+| `/b3/` | nginx | Bam React SPA |
+| `/b3/api/` | Fastify `:4000` | Bam REST API |
 | `/b3/ws` | Fastify `:4000` | WebSocket (real-time updates) |
 | `/banter/` | nginx | Banter team messaging SPA |
 | `/banter/api/` | Fastify `:4002` | Banter REST API |
@@ -593,7 +593,7 @@ pnpm test  # 530+ tests across all packages
                          │ HTTP :80              │ WebRTC
 ┌────────────────────────▼──────────────────────┐│
 │               nginx (single container, :80)    ││
-│  /b3/          → BigBlueBam SPA (static)       ││
+│  /b3/          → Bam SPA (static)               ││
 │  /b3/api/      → Fastify API :4000             ││
 │  /b3/ws        → WebSocket :4000               ││
 │  /banter/      → Banter SPA (static)           ││
@@ -606,7 +606,7 @@ pnpm test  # 530+ tests across all packages
 └──────┬──────────┬──────────┬───────────────────┘│
        │          │          │                     │
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌───────▼──────┐ ┌──────────┐
-│ BBB API   │ │ Banter   │ │ MCP Server│ │ LiveKit SFU  │ │ Worker   │
+│ Bam API   │ │ Banter   │ │ MCP Server│ │ LiveKit SFU  │ │ Worker   │
 │ :4000     │ │ API :4002│ │ :3001     │ │ :7880 (voice)│ │ BullMQ   │
 │ +WebSocket│ │ +WS      │ │ 111 tools │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘ └────┬─────┘
@@ -660,11 +660,11 @@ scripts/            → Utility and seed scripts
 | Metric | Count |
 |--------|-------|
 | Docker services | 12 |
-| MCP tools | 111 (64 BBB + 47 Banter) |
+| MCP tools | 111 (64 Bam + 47 Banter) |
 | Test cases | 530+ |
-| API route modules | 38 (23 BBB + 15 Banter) |
-| Database tables | 40+ (25 BBB + 18 Banter) |
-| Frontend components | 47+ (33 BBB + 14 Banter) |
+| API route modules | 38 (23 Bam + 15 Banter) |
+| Database tables | 40+ (25 Bam + 18 Banter) |
+| Frontend components | 47+ (33 Bam + 14 Banter) |
 | Documentation pages | 8 |
 
 ---

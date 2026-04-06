@@ -3,7 +3,7 @@
 What's genuinely unfinished on `main`. Updated: 2026-04-04.
 
 Both audits are fully closed:
-- **Helpdesk↔BBB:** 53/57 resolved, 3 partial, 1 deferred, **0 open**
+- **Helpdesk↔Bam:** 53/57 resolved, 3 partial, 1 deferred, **0 open**
 - **Permissions:** 81/82 resolved, 1 partial (documented tradeoff), **0 open**
 
 Phase 6 & 7 roadmap items now landed on main:
@@ -22,7 +22,7 @@ Phase 6 & 7 roadmap items now landed on main:
 `apps/helpdesk-api/test/security.test.ts` has 13 passing unit tests + **7 `it.todo` placeholders** for end-to-end flows that need a real DB fixture (ticket creation, ownership enforcement, internal-note visibility). Would close those out. ~1 day.
 
 ### helpdesk_login_history table
-BBB gained a `login_history` table tracking successful+failed login attempts per user. Helpdesk customer logins are NOT recorded because the FK points at `users`, not `helpdesk_users`. A parallel `helpdesk_login_history` table would close that gap. ~2 hours.
+Bam gained a `login_history` table tracking successful+failed login attempts per user. Helpdesk customer logins are NOT recorded because the FK points at `users`, not `helpdesk_users`. A parallel `helpdesk_login_history` table would close that gap. ~2 hours.
 
 ### Agent-side HB-50 mirror edge cases
 The ticket→task comment mirror fires on customer messages + customer close AND agent messages + agent close. Still NOT mirrored:

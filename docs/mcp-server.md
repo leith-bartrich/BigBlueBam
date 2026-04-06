@@ -2,7 +2,7 @@
 
 BigBlueBam exposes a **Model Context Protocol (MCP)** server, enabling any MCP-compatible AI client to interact with project data through structured tool calls. The MCP server is a first-class citizen of the architecture, not a bolt-on.
 
-**111 tools: 47 Banter, 64 BBB (including helpdesk and platform)**
+**111 tools: 47 Banter, 64 Bam (including helpdesk and platform)**
 
 ---
 
@@ -34,8 +34,8 @@ graph LR
         Auth["Auth Middleware<br/>(API key validation)"]
         Rate["Rate Limiter"]
         Audit["Audit Logger"]
-        Tools["Tool Registry<br/>(111 tools: 64 BBB + 47 Banter)"]
-        Resources["Resource Registry<br/>(BBB + Banter resources)"]
+        Tools["Tool Registry<br/>(111 tools: 64 Bam + 47 Banter)"]
+        Resources["Resource Registry<br/>(Bam + Banter resources)"]
         Prompts["Prompt Registry<br/>(8 prompts)"]
     end
 
