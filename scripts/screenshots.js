@@ -566,6 +566,41 @@ async function safe(label, fn) {
     await hdPage.close();
   });
 
+  // ===== BANTER =====
+  // Banter shares the BBB session, so the logged-in cookie carries over.
+  await safe('banter', async () => {
+    const bnPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await bnPage.goto('http://localhost/banter/', { waitUntil: 'networkidle', timeout: 15000 });
+    await bnPage.waitForTimeout(2000);
+    await snap(bnPage, 'banter-channels.png', 'Banter channels');
+    // Try search
+    const searchBtn = bnPage.locator('button[aria-label*="earch"], button:has-text("Search")').first();
+    if (await searchBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await searchBtn.click();
+      await bnPage.waitForTimeout(800);
+      await snap(bnPage, 'banter-search.png', 'Banter search');
+      await bnPage.keyboard.press('Escape');
+      await bnPage.waitForTimeout(300);
+    }
+    // Browse channels
+    const browseBtn = bnPage.locator('button:has-text("Browse"), a:has-text("Browse")').first();
+    if (await browseBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await browseBtn.click();
+      await bnPage.waitForTimeout(1000);
+      await snap(bnPage, 'banter-browse.png', 'Banter browse channels');
+      await bnPage.goBack();
+      await bnPage.waitForTimeout(800);
+    }
+    // Admin panel
+    const adminBtn = bnPage.locator('button:has-text("Admin"), a:has-text("Admin")').first();
+    if (await adminBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await adminBtn.click();
+      await bnPage.waitForTimeout(1000);
+      await snap(bnPage, 'banter-admin.png', 'Banter admin');
+    }
+    await bnPage.close();
+  });
+
   // ===== MIRROR TO site/public/screenshots =====
   console.log('\nMirroring PNGs to site/public/screenshots/ ...');
   for (const f of fs.readdirSync(IMAGES_DIR)) {
