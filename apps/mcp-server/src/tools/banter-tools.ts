@@ -806,4 +806,44 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       return result.ok ? ok(result.data) : err('getting unread', result.data);
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Preferences & Presence (3)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_get_preferences',
+    'Get the authenticated user\'s Banter notification and theme preferences.',
+    {},
+    async () => {
+      const result = await banter.get('/v1/me/preferences');
+      return result.ok ? ok(result.data) : err('getting preferences', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_update_preferences',
+    'Update the authenticated user\'s Banter notification and theme preferences.',
+    {
+      preferences: z.record(z.unknown()).describe('Preference keys to update (notification settings, theme, etc.).'),
+    },
+    async ({ preferences }) => {
+      const result = await banter.patch('/v1/me/preferences', preferences);
+      return result.ok ? ok(result.data) : writeErr('banter_update_preferences', 'updating preferences', result);
+    },
+  );
+
+  server.tool(
+    'banter_set_presence',
+    'Set the authenticated user\'s presence status in Banter. The status is ephemeral — it auto-expires via a Redis TTL, so callers should not treat it as persistent.',
+    {
+      status: z.enum(['online', 'idle', 'dnd', 'offline']).describe('Presence status.'),
+      status_text: z.string().max(128).optional().describe('Custom status text.'),
+      status_emoji: z.string().max(8).optional().describe('Status emoji.'),
+    },
+    async ({ status, status_text, status_emoji }) => {
+      const result = await banter.post('/v1/me/presence', { status, status_text, status_emoji });
+      return result.ok ? ok(result.data) : writeErr('banter_set_presence', 'setting presence', result);
+    },
+  );
 }
