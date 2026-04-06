@@ -2,7 +2,7 @@
 
 BigBlueBam exposes a **Model Context Protocol (MCP)** server, enabling any MCP-compatible AI client to interact with project data through structured tool calls. The MCP server is a first-class citizen of the architecture, not a bolt-on.
 
-**103 tools: 44 Banter, 59 BBB (including helpdesk and platform)**
+**111 tools: 47 Banter, 64 BBB (including helpdesk and platform)**
 
 ---
 
@@ -34,7 +34,7 @@ graph LR
         Auth["Auth Middleware<br/>(API key validation)"]
         Rate["Rate Limiter"]
         Audit["Audit Logger"]
-        Tools["Tool Registry<br/>(103 tools: 59 BBB + 44 Banter)"]
+        Tools["Tool Registry<br/>(111 tools: 64 BBB + 47 Banter)"]
         Resources["Resource Registry<br/>(BBB + Banter resources)"]
         Prompts["Prompt Registry<br/>(8 prompts)"]
     end
@@ -136,15 +136,17 @@ sequenceDiagram
 
 ---
 
-## Available Tools (103 total)
+## Available Tools (111 total)
 
-### Project Tools (3 tools) -- `project-tools.ts`
+### Project Tools (5 tools) -- `project-tools.ts`
 
 | Tool | Description | Permission |
 |---|---|---|
 | `list_projects` | List all projects the current user has access to | Any authenticated user |
 | `get_project` | Get detailed information about a specific project | Any authenticated user |
 | `create_project` | Create a new project | Any authenticated user |
+| `test_slack_webhook` | Send a test message to a project's configured Slack webhook URL | Project admin/owner |
+| `disconnect_github_integration` | Remove GitHub integration from a project (destructive - requires confirmation) | Project admin/owner |
 
 ### Board and Phase Tools (4 tools) -- `board-tools.ts`
 
@@ -246,7 +248,7 @@ sequenceDiagram
 | `get_public_config` | SuperUser only (MCP gate). Read the unauthenticated /public/config -- currently returns whether public signup is disabled. The underlying endpoint is public, but we gate MCP access to SuperUsers since this is part of the platform-admin surface. | SuperUser only (MCP gate) |
 | `submit_beta_signup` | SuperUser only (MCP gate). Create a notify-me submission via the public /public/beta-signup endpoint. The HTTP endpoint is public-by-anyone, but we only allow SuperUsers to invoke it through MCP (typically for testing or manual entry on behalf of a prospect). | SuperUser only (MCP gate) |
 
-### Helpdesk Tools (4 tools) -- `helpdesk-tools.ts`
+### Helpdesk Tools (7 tools) -- `helpdesk-tools.ts`
 
 | Tool | Description | Permission |
 |---|---|---|
@@ -254,6 +256,9 @@ sequenceDiagram
 | `get_ticket` | Get detailed information about a helpdesk ticket including messages | Any authenticated user |
 | `reply_to_ticket` | Send a message on a helpdesk ticket (public reply or internal note) | Any authenticated user |
 | `update_ticket_status` | Update the status of a helpdesk ticket | Any authenticated user |
+| `helpdesk_get_public_settings` | Get public-facing helpdesk configuration (categories, welcome message) | Any authenticated user |
+| `helpdesk_get_settings` | Get full helpdesk settings including internal configuration | Admin |
+| `helpdesk_update_settings` | Update helpdesk settings (categories, welcome message, default project, etc.) | Admin |
 
 ### Utility Tools (2 tools) -- `utility-tools.ts`
 
@@ -262,7 +267,7 @@ sequenceDiagram
 | `get_server_info` | Get information about this MCP server including version, available tools, authenticated user, and rate limit status | Any authenticated user |
 | `confirm_action` | Confirm a destructive action using a confirmation token. First call without a token to stage the action and receive a token. Then call again with the token to execute. | Any authenticated user |
 
-### Banter Tools (44 tools) -- `banter-tools.ts`
+### Banter Tools (47 tools) -- `banter-tools.ts`
 
 #### Channel Tools (10)
 
@@ -347,6 +352,14 @@ sequenceDiagram
 | `banter_share_sprint` | Share a BigBlueBam sprint summary as a rich embed in a Banter channel | Any authenticated user |
 | `banter_share_ticket` | Share a Helpdesk ticket as a rich embed in a Banter channel | Any authenticated user |
 | `banter_get_unread` | Get the current user's unread message summary across all Banter channels | Any authenticated user |
+
+#### User Preference & Presence Tools (3)
+
+| Tool | Description | Permission |
+|---|---|---|
+| `banter_get_preferences` | Get the current user's Banter notification and theme preferences | Any authenticated user |
+| `banter_update_preferences` | Update the current user's Banter notification and theme preferences | Any authenticated user |
+| `banter_set_presence` | Set an ephemeral presence status (online, idle, dnd, offline) with optional status text and emoji | Any authenticated user |
 
 ---
 

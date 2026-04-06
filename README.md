@@ -23,7 +23,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/tests-530%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-103-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/MCP%20tools-111-blue" alt="MCP Tools" />
   <img src="https://img.shields.io/badge/Docker%20services-12-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
@@ -40,7 +40,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **103 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, and team messaging.
+This is made possible by **111 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, and team messaging.
 
 ---
 
@@ -300,7 +300,7 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **103 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, and customer support. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **111 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, and customer support. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -331,14 +331,14 @@ BigBlueBam exposes **103 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Tools Reference
 
-**103 tools** across 14 categories:
+**111 tools** across 14 categories:
 
 | Category | Count | What they cover |
 |----------|------:|-----------------|
 | **Task Management** | 10 | CRUD, move, bulk update, duplicate, time logging |
 | **Board & Phases** | 4 | Board view, phase CRUD, reorder |
 | **Sprints** | 5 | CRUD, start, complete, report |
-| **Projects** | 3 | List, get, create |
+| **Projects** | 5 | List, get, create, test Slack webhook, disconnect GitHub |
 | **Reports** | 8 | Velocity, burndown, CFD, cycle time, time tracking, overdue, workload, status distribution |
 | **Comments** | 2 | List, add |
 | **Members** | 2 | List, get my tasks |
@@ -346,8 +346,8 @@ BigBlueBam exposes **103 MCP (Model Context Protocol) tools** that give AI assis
 | **Import** | 2 | CSV import, GitHub Issues import |
 | **User Profile & Notifications** | 10 | Profile CRUD, org switching, password, logout, notification feed management |
 | **Platform Admin** | 5 | Platform settings toggle, beta signups, public config (SuperUser-gated) |
-| **Banter Messaging** | 44 | Channels, DMs, messages, threads, reactions, calls, search, admin, presence |
-| **Helpdesk** | 4 | Ticket operations |
+| **Banter Messaging** | 47 | Channels, DMs, messages, threads, reactions, calls, search, admin, presence, preferences |
+| **Helpdesk** | 7 | Ticket operations, public/admin settings |
 | **Utility** | 2 | Server info, action confirmation |
 
 ### MCP Setup
@@ -404,7 +404,7 @@ Because Banter shares authentication, database, and deep cross-linking with BigB
 | **Voice Calls** | Alpha | Voice and video calls via LiveKit SFU |
 | **AI Voice Agent** | Placeholder | AI participation in calls (STT/TTS pipeline, requires provider config) |
 | **BBB Integration** | Stable | Task references, Share to Banter, activity feed bot |
-| **44 MCP Tools** | Stable | Full AI agent access to all messaging features |
+| **47 MCP Tools** | Stable | Full AI agent access to all messaging features |
 
 ### Channel View
 
@@ -434,7 +434,7 @@ The sidebar shows channels, direct messages, and team members. The message compo
 
 ### Banter MCP Tools
 
-AI agents can interact with Banter through **44 dedicated MCP tools**:
+AI agents can interact with Banter through **47 dedicated MCP tools**:
 
 | Category | Tools | What they do |
 |----------|-------|-------------|
@@ -555,7 +555,7 @@ All services are accessed through a single nginx container on port 80:
 | `/helpdesk/` | nginx | Helpdesk portal SPA |
 | `/helpdesk/api/` | Fastify `:4001` | Helpdesk API (auth, tickets, messages) |
 | `/files/` | MinIO `:9000` | Uploaded files (shared) |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (103 tools) |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (111 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -608,7 +608,7 @@ pnpm test  # 530+ tests across all packages
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌───────▼──────┐ ┌──────────┐
 │ BBB API   │ │ Banter   │ │ MCP Server│ │ LiveKit SFU  │ │ Worker   │
 │ :4000     │ │ API :4002│ │ :3001     │ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 103 tools │ │ +voice-agent │ │ jobs     │
+│ +WebSocket│ │ +WS      │ │ 111 tools │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘ └────┬─────┘
       │             │             │                              │
 ┌─────▼─────────────▼─────────────▼──────────────────────────────▼─────┐
@@ -638,7 +638,7 @@ pnpm test  # 530+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (103 tools)
+  mcp-server/       → MCP protocol server (111 tools)
   worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
@@ -660,7 +660,7 @@ scripts/            → Utility and seed scripts
 | Metric | Count |
 |--------|-------|
 | Docker services | 12 |
-| MCP tools | 103 (59 BBB + 44 Banter) |
+| MCP tools | 111 (64 BBB + 47 Banter) |
 | Test cases | 530+ |
 | API route modules | 38 (23 BBB + 15 Banter) |
 | Database tables | 40+ (25 BBB + 18 Banter) |

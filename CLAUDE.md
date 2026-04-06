@@ -28,7 +28,7 @@ apps/
   frontend/     — React SPA served by nginx at /b3/ (port 80) — ~55 source files, 8 pages, command palette, keyboard shortcuts
   banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
   banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (ALPHA)
-  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 103 tools (59 BBB + 44 Banter), 10+ resources, 8 prompts, 14 tool modules
+  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 111 tools (64 BBB + 47 Banter), 10+ resources, 8 prompts, 14 tool modules
   worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
