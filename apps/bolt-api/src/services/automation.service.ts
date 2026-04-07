@@ -1,0 +1,577 @@
+import { eq, and, or, sql, asc, desc, gt, ilike } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import {
+  boltAutomations,
+  boltConditions,
+  boltActions,
+  boltSchedules,
+} from '../db/schema/index.js';
+import { evaluateConditions } from './condition-engine.js';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Escape LIKE/ILIKE metacharacters so user input is treated as literal text. */
+export function escapeLike(s: string): string {
+  return s.replace(/[%_\\]/g, '\\$&');
+}
+
+// ---------------------------------------------------------------------------
+// Error class
+// ---------------------------------------------------------------------------
+
+export class BoltError extends Error {
+  code: string;
+  statusCode: number;
+
+  constructor(code: string, message: string, statusCode = 400) {
+    super(message);
+    this.name = 'BoltError';
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type TriggerSource = 'bam' | 'banter' | 'beacon' | 'brief' | 'helpdesk' | 'schedule';
+export type ConditionOperator =
+  | 'equals' | 'not_equals' | 'contains' | 'not_contains'
+  | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than'
+  | 'is_empty' | 'is_not_empty' | 'in' | 'not_in' | 'matches_regex';
+export type LogicGroup = 'and' | 'or';
+export type OnError = 'stop' | 'continue' | 'retry';
+
+export interface ConditionInput {
+  sort_order: number;
+  field: string;
+  operator: ConditionOperator;
+  value?: unknown;
+  logic_group?: LogicGroup;
+}
+
+export interface ActionInput {
+  sort_order: number;
+  mcp_tool: string;
+  parameters?: Record<string, unknown>;
+  on_error?: OnError;
+  retry_count?: number;
+  retry_delay_ms?: number;
+}
+
+export interface CreateAutomationInput {
+  name: string;
+  description?: string | null;
+  project_id?: string | null;
+  enabled?: boolean;
+  trigger_source: TriggerSource;
+  trigger_event: string;
+  trigger_filter?: Record<string, unknown> | null;
+  cron_expression?: string | null;
+  cron_timezone?: string;
+  max_executions_per_hour?: number;
+  cooldown_seconds?: number;
+  conditions?: ConditionInput[];
+  actions: ActionInput[];
+}
+
+export interface UpdateAutomationInput {
+  name?: string;
+  description?: string | null;
+  project_id?: string | null;
+  enabled?: boolean;
+  trigger_source?: TriggerSource;
+  trigger_event?: string;
+  trigger_filter?: Record<string, unknown> | null;
+  cron_expression?: string | null;
+  cron_timezone?: string;
+  max_executions_per_hour?: number;
+  cooldown_seconds?: number;
+  conditions?: ConditionInput[];
+  actions?: ActionInput[];
+}
+
+export interface PatchAutomationInput {
+  name?: string;
+  description?: string | null;
+  enabled?: boolean;
+}
+
+export interface ListAutomationFilters {
+  orgId: string;
+  projectId?: string;
+  triggerSource?: string;
+  enabled?: boolean;
+  search?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+// ---------------------------------------------------------------------------
+// CRUD
+// ---------------------------------------------------------------------------
+
+export async function listAutomations(filters: ListAutomationFilters) {
+  const conditions = [eq(boltAutomations.org_id, filters.orgId)];
+
+  if (filters.projectId) {
+    conditions.push(eq(boltAutomations.project_id, filters.projectId));
+  }
+
+  if (filters.triggerSource) {
+    conditions.push(eq(boltAutomations.trigger_source, filters.triggerSource as TriggerSource));
+  }
+
+  if (filters.enabled !== undefined) {
+    conditions.push(eq(boltAutomations.enabled, filters.enabled));
+  }
+
+  if (filters.search) {
+    const escaped = escapeLike(filters.search);
+    conditions.push(
+      or(
+        ilike(boltAutomations.name, `%${escaped}%`),
+        ilike(boltAutomations.description, `%${escaped}%`),
+      )!,
+    );
+  }
+
+  const limit = Math.min(filters.limit ?? 50, 100);
+
+  if (filters.cursor) {
+    conditions.push(gt(boltAutomations.created_at, new Date(filters.cursor)));
+  }
+
+  const rows = await db
+    .select()
+    .from(boltAutomations)
+    .where(and(...conditions))
+    .orderBy(asc(boltAutomations.created_at))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const data = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor =
+    hasMore && data.length > 0 ? data[data.length - 1]!.created_at.toISOString() : null;
+
+  return {
+    data,
+    meta: {
+      next_cursor: nextCursor,
+      has_more: hasMore,
+    },
+  };
+}
+
+export async function getAutomation(id: string, orgId: string) {
+  const [automation] = await db
+    .select()
+    .from(boltAutomations)
+    .where(and(eq(boltAutomations.id, id), eq(boltAutomations.org_id, orgId)))
+    .limit(1);
+
+  if (!automation) return null;
+
+  const conditions = await db
+    .select()
+    .from(boltConditions)
+    .where(eq(boltConditions.automation_id, id))
+    .orderBy(asc(boltConditions.sort_order));
+
+  const actions = await db
+    .select()
+    .from(boltActions)
+    .where(eq(boltActions.automation_id, id))
+    .orderBy(asc(boltActions.sort_order));
+
+  return { ...automation, conditions, actions };
+}
+
+export async function getAutomationById(id: string, orgId: string) {
+  const [automation] = await db
+    .select()
+    .from(boltAutomations)
+    .where(and(eq(boltAutomations.id, id), eq(boltAutomations.org_id, orgId)))
+    .limit(1);
+  return automation ?? null;
+}
+
+export async function createAutomation(
+  data: CreateAutomationInput,
+  userId: string,
+  orgId: string,
+) {
+  return await db.transaction(async (tx) => {
+    const [automation] = await tx
+      .insert(boltAutomations)
+      .values({
+        org_id: orgId,
+        project_id: data.project_id ?? null,
+        name: data.name,
+        description: data.description ?? null,
+        enabled: data.enabled ?? true,
+        trigger_source: data.trigger_source,
+        trigger_event: data.trigger_event,
+        trigger_filter: data.trigger_filter ?? null,
+        cron_expression: data.cron_expression ?? null,
+        cron_timezone: data.cron_timezone ?? 'UTC',
+        max_executions_per_hour: data.max_executions_per_hour ?? 100,
+        cooldown_seconds: data.cooldown_seconds ?? 0,
+        created_by: userId,
+        updated_by: userId,
+      })
+      .returning();
+
+    const automationId = automation!.id;
+
+    // Insert conditions
+    let insertedConditions: any[] = [];
+    if (data.conditions && data.conditions.length > 0) {
+      insertedConditions = await tx
+        .insert(boltConditions)
+        .values(
+          data.conditions.map((c) => ({
+            automation_id: automationId,
+            sort_order: c.sort_order,
+            field: c.field,
+            operator: c.operator,
+            value: c.value ?? null,
+            logic_group: c.logic_group ?? 'and',
+          })),
+        )
+        .returning();
+    }
+
+    // Insert actions
+    const insertedActions = await tx
+      .insert(boltActions)
+      .values(
+        data.actions.map((a) => ({
+          automation_id: automationId,
+          sort_order: a.sort_order,
+          mcp_tool: a.mcp_tool,
+          parameters: a.parameters ?? null,
+          on_error: a.on_error ?? 'stop',
+          retry_count: a.retry_count ?? 0,
+          retry_delay_ms: a.retry_delay_ms ?? 1000,
+        })),
+      )
+      .returning();
+
+    // If schedule trigger, create schedule entry
+    if (data.trigger_source === 'schedule' && data.cron_expression) {
+      await tx.insert(boltSchedules).values({
+        automation_id: automationId,
+        next_run_at: null,
+        last_run_at: null,
+      });
+    }
+
+    return {
+      ...automation!,
+      conditions: insertedConditions,
+      actions: insertedActions,
+    };
+  });
+}
+
+export async function updateAutomation(
+  id: string,
+  data: UpdateAutomationInput,
+  userId: string,
+  orgId: string,
+) {
+  const existing = await getAutomationById(id, orgId);
+  if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  return await db.transaction(async (tx) => {
+    const updateValues: Record<string, unknown> = {
+      updated_at: new Date(),
+      updated_by: userId,
+    };
+
+    if (data.name !== undefined) updateValues.name = data.name;
+    if (data.description !== undefined) updateValues.description = data.description;
+    if (data.project_id !== undefined) updateValues.project_id = data.project_id;
+    if (data.enabled !== undefined) updateValues.enabled = data.enabled;
+    if (data.trigger_source !== undefined) updateValues.trigger_source = data.trigger_source;
+    if (data.trigger_event !== undefined) updateValues.trigger_event = data.trigger_event;
+    if (data.trigger_filter !== undefined) updateValues.trigger_filter = data.trigger_filter;
+    if (data.cron_expression !== undefined) updateValues.cron_expression = data.cron_expression;
+    if (data.cron_timezone !== undefined) updateValues.cron_timezone = data.cron_timezone;
+    if (data.max_executions_per_hour !== undefined)
+      updateValues.max_executions_per_hour = data.max_executions_per_hour;
+    if (data.cooldown_seconds !== undefined) updateValues.cooldown_seconds = data.cooldown_seconds;
+
+    const [automation] = await tx
+      .update(boltAutomations)
+      .set(updateValues)
+      .where(eq(boltAutomations.id, id))
+      .returning();
+
+    // Replace conditions if provided
+    let insertedConditions: any[] = [];
+    if (data.conditions !== undefined) {
+      await tx.delete(boltConditions).where(eq(boltConditions.automation_id, id));
+      if (data.conditions.length > 0) {
+        insertedConditions = await tx
+          .insert(boltConditions)
+          .values(
+            data.conditions.map((c) => ({
+              automation_id: id,
+              sort_order: c.sort_order,
+              field: c.field,
+              operator: c.operator,
+              value: c.value ?? null,
+              logic_group: c.logic_group ?? 'and',
+            })),
+          )
+          .returning();
+      }
+    } else {
+      insertedConditions = await tx
+        .select()
+        .from(boltConditions)
+        .where(eq(boltConditions.automation_id, id))
+        .orderBy(asc(boltConditions.sort_order));
+    }
+
+    // Replace actions if provided
+    let insertedActions: any[] = [];
+    if (data.actions !== undefined) {
+      await tx.delete(boltActions).where(eq(boltActions.automation_id, id));
+      if (data.actions.length > 0) {
+        insertedActions = await tx
+          .insert(boltActions)
+          .values(
+            data.actions.map((a) => ({
+              automation_id: id,
+              sort_order: a.sort_order,
+              mcp_tool: a.mcp_tool,
+              parameters: a.parameters ?? null,
+              on_error: a.on_error ?? 'stop',
+              retry_count: a.retry_count ?? 0,
+              retry_delay_ms: a.retry_delay_ms ?? 1000,
+            })),
+          )
+          .returning();
+      }
+    } else {
+      insertedActions = await tx
+        .select()
+        .from(boltActions)
+        .where(eq(boltActions.automation_id, id))
+        .orderBy(asc(boltActions.sort_order));
+    }
+
+    // Manage schedule entry
+    const triggerSource = data.trigger_source ?? existing.trigger_source;
+    const cronExpression = data.cron_expression ?? existing.cron_expression;
+    if (triggerSource === 'schedule' && cronExpression) {
+      const [existingSchedule] = await tx
+        .select()
+        .from(boltSchedules)
+        .where(eq(boltSchedules.automation_id, id))
+        .limit(1);
+      if (!existingSchedule) {
+        await tx.insert(boltSchedules).values({
+          automation_id: id,
+          next_run_at: null,
+          last_run_at: null,
+        });
+      }
+    } else {
+      await tx.delete(boltSchedules).where(eq(boltSchedules.automation_id, id));
+    }
+
+    return {
+      ...automation!,
+      conditions: insertedConditions,
+      actions: insertedActions,
+    };
+  });
+}
+
+export async function patchAutomation(
+  id: string,
+  data: PatchAutomationInput,
+  userId: string,
+  orgId: string,
+) {
+  const existing = await getAutomationById(id, orgId);
+  if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  const updateValues: Record<string, unknown> = {
+    updated_at: new Date(),
+    updated_by: userId,
+  };
+
+  if (data.name !== undefined) updateValues.name = data.name;
+  if (data.description !== undefined) updateValues.description = data.description;
+  if (data.enabled !== undefined) updateValues.enabled = data.enabled;
+
+  const [automation] = await db
+    .update(boltAutomations)
+    .set(updateValues)
+    .where(eq(boltAutomations.id, id))
+    .returning();
+
+  return automation!;
+}
+
+export async function deleteAutomation(id: string, orgId: string) {
+  const existing = await getAutomationById(id, orgId);
+  if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  await db.delete(boltAutomations).where(eq(boltAutomations.id, id));
+  return { deleted: true };
+}
+
+export async function enableAutomation(id: string, userId: string, orgId: string) {
+  const existing = await getAutomationById(id, orgId);
+  if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  if (existing.enabled) {
+    throw new BoltError('BAD_REQUEST', 'Automation is already enabled', 400);
+  }
+
+  const [automation] = await db
+    .update(boltAutomations)
+    .set({ enabled: true, updated_at: new Date(), updated_by: userId })
+    .where(eq(boltAutomations.id, id))
+    .returning();
+
+  return automation!;
+}
+
+export async function disableAutomation(id: string, userId: string, orgId: string) {
+  const existing = await getAutomationById(id, orgId);
+  if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  if (!existing.enabled) {
+    throw new BoltError('BAD_REQUEST', 'Automation is already disabled', 400);
+  }
+
+  const [automation] = await db
+    .update(boltAutomations)
+    .set({ enabled: false, updated_at: new Date(), updated_by: userId })
+    .where(eq(boltAutomations.id, id))
+    .returning();
+
+  return automation!;
+}
+
+export async function duplicateAutomation(id: string, userId: string, orgId: string) {
+  const full = await getAutomation(id, orgId);
+  if (!full) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  const newName = `${full.name} (copy)`;
+
+  return await createAutomation(
+    {
+      name: newName,
+      description: full.description,
+      project_id: full.project_id,
+      enabled: false, // Duplicates start disabled
+      trigger_source: full.trigger_source as TriggerSource,
+      trigger_event: full.trigger_event,
+      trigger_filter: full.trigger_filter as Record<string, unknown> | null,
+      cron_expression: full.cron_expression,
+      cron_timezone: full.cron_timezone,
+      max_executions_per_hour: full.max_executions_per_hour,
+      cooldown_seconds: full.cooldown_seconds,
+      conditions: full.conditions.map((c) => ({
+        sort_order: c.sort_order,
+        field: c.field,
+        operator: c.operator as ConditionOperator,
+        value: c.value,
+        logic_group: (c.logic_group ?? 'and') as LogicGroup,
+      })),
+      actions: full.actions.map((a) => ({
+        sort_order: a.sort_order,
+        mcp_tool: a.mcp_tool,
+        parameters: a.parameters as Record<string, unknown> | undefined,
+        on_error: (a.on_error ?? 'stop') as OnError,
+        retry_count: a.retry_count,
+        retry_delay_ms: a.retry_delay_ms,
+      })),
+    },
+    userId,
+    orgId,
+  );
+}
+
+export async function testAutomation(
+  id: string,
+  simulatedEvent: Record<string, unknown>,
+  orgId: string,
+) {
+  const full = await getAutomation(id, orgId);
+  if (!full) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  if (full.conditions.length === 0) {
+    return {
+      passed: true,
+      log: [],
+      message: 'No conditions defined; all events would trigger this automation.',
+    };
+  }
+
+  const result = evaluateConditions(
+    full.conditions.map((c) => ({
+      field: c.field,
+      operator: c.operator as ConditionOperator,
+      value: c.value,
+      logic_group: (c.logic_group ?? 'and') as LogicGroup,
+    })),
+    simulatedEvent,
+  );
+
+  return {
+    passed: result.passed,
+    log: result.log,
+    message: result.passed
+      ? 'All conditions passed. Actions would execute.'
+      : 'Conditions not met. Actions would be skipped.',
+  };
+}
+
+export async function getStats(orgId: string) {
+  const rows: any[] = await db.execute(sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE enabled = TRUE)::int AS enabled,
+      COUNT(*) FILTER (WHERE enabled = FALSE)::int AS disabled,
+      COUNT(*) FILTER (WHERE trigger_source = 'bam')::int AS source_bam,
+      COUNT(*) FILTER (WHERE trigger_source = 'banter')::int AS source_banter,
+      COUNT(*) FILTER (WHERE trigger_source = 'beacon')::int AS source_beacon,
+      COUNT(*) FILTER (WHERE trigger_source = 'brief')::int AS source_brief,
+      COUNT(*) FILTER (WHERE trigger_source = 'helpdesk')::int AS source_helpdesk,
+      COUNT(*) FILTER (WHERE trigger_source = 'schedule')::int AS source_schedule
+    FROM bolt_automations
+    WHERE org_id = ${orgId}
+  `);
+
+  const row = rows[0] ?? {
+    total: 0, enabled: 0, disabled: 0,
+    source_bam: 0, source_banter: 0, source_beacon: 0,
+    source_brief: 0, source_helpdesk: 0, source_schedule: 0,
+  };
+
+  return {
+    total: row.total,
+    enabled: row.enabled,
+    disabled: row.disabled,
+    by_source: {
+      bam: row.source_bam,
+      banter: row.source_banter,
+      beacon: row.source_beacon,
+      brief: row.source_brief,
+      helpdesk: row.source_helpdesk,
+      schedule: row.source_schedule,
+    },
+  };
+}

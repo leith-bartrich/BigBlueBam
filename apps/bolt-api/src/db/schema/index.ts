@@ -1,0 +1,17 @@
+// Shared BBB table stubs (auth, users, orgs, projects)
+export {
+  organizations,
+  users,
+  sessions,
+  apiKeys,
+  projects,
+  organizationMemberships,
+} from './bbb-refs.js';
+
+// Bolt-specific tables
+export { boltAutomations, boltTriggerSourceEnum } from './bolt-automations.js';
+export { boltConditions, boltConditionOperatorEnum, boltConditionLogicEnum } from './bolt-conditions.js';
+export { boltActions, boltOnErrorEnum } from './bolt-actions.js';
+export { boltExecutions, boltExecutionStatusEnum } from './bolt-executions.js';
+export { boltExecutionSteps, boltStepStatusEnum } from './bolt-execution-steps.js';
+export { boltSchedules } from './bolt-schedules.js';
