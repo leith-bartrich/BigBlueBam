@@ -11,6 +11,7 @@
  */
 
 import { eq, and, or, inArray, ilike, sql } from 'drizzle-orm';
+import { escapeLike } from './beacon.service.js';
 import { db } from '../db/index.js';
 import {
   beaconEntries,
@@ -82,7 +83,7 @@ export interface SearchResponse {
  */
 export async function hybridSearch(
   request: SearchRequest,
-  _userId: string,
+  userId: string,
 ): Promise<SearchResponse> {
   const opts = {
     include_graph_expansion: true,
@@ -418,7 +419,7 @@ export async function suggestBeacons(
   limit: number = 10,
   userId?: string,
 ): Promise<{ id: string; slug: string; title: string; tags: string[] }[]> {
-  const pattern = `%${query}%`;
+  const pattern = `%${escapeLike(query)}%`;
 
   // Search by title
   const titleMatches = await db
@@ -550,8 +551,8 @@ async function fulltextSearch(
   const conditions = [
     eq(beaconEntries.organization_id, orgId),
     or(
-      ilike(beaconEntries.title, `%${query}%`),
-      ilike(beaconEntries.summary, `%${query}%`),
+      ilike(beaconEntries.title, `%${escapeLike(query)}%`),
+      ilike(beaconEntries.summary, `%${escapeLike(query)}%`),
     )!,
   ];
 

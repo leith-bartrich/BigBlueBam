@@ -62,7 +62,10 @@ export default async function searchRoutes(fastify: FastifyInstance) {
   // POST /search — Full hybrid search
   fastify.post(
     '/search',
-    { preHandler: [requireAuth] },
+    {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+      preHandler: [requireAuth],
+    },
     async (request, reply) => {
       const body = searchRequestSchema.parse(request.body);
 
@@ -173,6 +176,7 @@ export default async function searchRoutes(fastify: FastifyInstance) {
       const result = await savedQueryService.getQuery(
         request.params.id,
         request.user!.id,
+        request.user!.org_id,
       );
       if (!result) {
         return reply.status(404).send({
@@ -193,7 +197,7 @@ export default async function searchRoutes(fastify: FastifyInstance) {
     '/search/saved/:id',
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
-      await savedQueryService.deleteQuery(request.params.id, request.user!.id);
+      await savedQueryService.deleteQuery(request.params.id, request.user!.id, request.user!.org_id);
       return reply.send({ data: { deleted: true } });
     },
   );

@@ -54,7 +54,7 @@ export default async function policyRoutes(fastify: FastifyInstance) {
 
       const result = await policyService.setPolicy(
         data.scope,
-        data.organization_id ?? request.user!.org_id,
+        request.user!.org_id, // always use session org — ignore client-supplied org_id
         data.project_id,
         {
           min_expiry_days: data.min_expiry_days,

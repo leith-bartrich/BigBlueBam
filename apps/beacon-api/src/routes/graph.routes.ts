@@ -64,6 +64,7 @@ export default async function graphRoutes(fastify: FastifyInstance) {
         query.tag_affinity_threshold,
         query['filters.status'],
         request.user!.org_id,
+        request.user!.id,
       );
 
       return reply.send(result);
@@ -82,6 +83,7 @@ export default async function graphRoutes(fastify: FastifyInstance) {
         query.project_id ?? null,
         request.user!.org_id,
         query.top_k,
+        request.user!.id,
       );
 
       return reply.send({ data: result.nodes, edges: result.edges });
@@ -100,6 +102,7 @@ export default async function graphRoutes(fastify: FastifyInstance) {
         query.project_id ?? null,
         request.user!.org_id,
         query.days,
+        request.user!.id,
       );
 
       return reply.send({ data: nodes });

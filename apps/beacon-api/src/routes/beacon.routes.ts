@@ -9,7 +9,7 @@ import { transitionBeacon } from '../services/lifecycle.service.js';
 const createBeaconSchema = z.object({
   title: z.string().min(1).max(512),
   summary: z.string().max(500).nullable().optional(),
-  body_markdown: z.string().min(1),
+  body_markdown: z.string().min(1).max(500_000),
   body_html: z.string().nullable().optional(),
   visibility: z.enum(['Public', 'Organization', 'Project', 'Private']).optional(),
   project_id: z.string().uuid().nullable().optional(),
@@ -19,7 +19,7 @@ const createBeaconSchema = z.object({
 const updateBeaconSchema = z.object({
   title: z.string().min(1).max(512).optional(),
   summary: z.string().max(500).nullable().optional(),
-  body_markdown: z.string().min(1).optional(),
+  body_markdown: z.string().min(1).max(500_000).optional(),
   body_html: z.string().nullable().optional(),
   visibility: z.enum(['Public', 'Organization', 'Project', 'Private']).optional(),
   metadata: z.record(z.unknown()).optional(),
@@ -43,7 +43,10 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
   // POST /beacons — Create a new beacon (Draft)
   fastify.post(
     '/beacons',
-    { preHandler: [requireAuth, requireMinOrgRole('member'), requireScope('read_write')] },
+    {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      preHandler: [requireAuth, requireMinOrgRole('member'), requireScope('read_write')],
+    },
     async (request, reply) => {
       const data = createBeaconSchema.parse(request.body);
       const beacon = await beaconService.createBeacon(
@@ -199,7 +202,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/beacons/:id/challenge',
-    { preHandler: [requireAuth, requireMinOrgRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireBeaconReadAccess(), requireMinOrgRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = challengeSchema.parse(request.body ?? {});
       const beacon = await transitionBeacon(

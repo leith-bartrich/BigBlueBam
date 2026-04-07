@@ -21,6 +21,7 @@ export default async function linkRoutes(fastify: FastifyInstance) {
         target_id,
         link_type,
         request.user!.id,
+        request.user!.org_id,
       );
       if (!link) {
         // Conflict — link already exists
@@ -53,7 +54,8 @@ export default async function linkRoutes(fastify: FastifyInstance) {
     '/beacons/:id/links/:linkId',
     { preHandler: [requireAuth, requireBeaconEditAccess(), requireScope('read_write')] },
     async (request, reply) => {
-      const deleted = await linkService.removeLink(request.params.linkId);
+      const beacon = (request as any).beacon;
+      const deleted = await linkService.removeLink(request.params.linkId, beacon.id);
       if (!deleted) {
         return reply.status(404).send({
           error: {

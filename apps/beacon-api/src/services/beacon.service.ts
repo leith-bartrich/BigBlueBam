@@ -10,6 +10,15 @@ import {
 } from '../db/schema/index.js';
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Escape LIKE/ILIKE metacharacters so user input is treated as literal text. */
+export function escapeLike(s: string): string {
+  return s.replace(/[%_\\]/g, '\\$&');
+}
+
+// ---------------------------------------------------------------------------
 // Slug generation
 // ---------------------------------------------------------------------------
 
@@ -239,10 +248,11 @@ export async function listBeacons(filters: ListBeaconsFilters) {
   }
 
   if (filters.search) {
+    const escaped = escapeLike(filters.search);
     conditions.push(
       or(
-        ilike(beaconEntries.title, `%${filters.search}%`),
-        ilike(beaconEntries.summary, `%${filters.search}%`),
+        ilike(beaconEntries.title, `%${escaped}%`),
+        ilike(beaconEntries.summary, `%${escaped}%`),
       )!,
     );
   }
@@ -404,6 +414,10 @@ export async function updateBeacon(
 export async function retireBeacon(id: string, _userId: string, orgId: string) {
   const existing = await getBeaconById(id, orgId);
   if (!existing) throw new BeaconError('NOT_FOUND', 'Beacon not found', 404);
+
+  if (existing.status === 'Retired') {
+    throw new BeaconError('BAD_REQUEST', 'Beacon is already retired', 400);
+  }
 
   const [beacon] = await db
     .update(beaconEntries)

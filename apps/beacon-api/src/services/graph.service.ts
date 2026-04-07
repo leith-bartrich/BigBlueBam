@@ -77,6 +77,7 @@ export async function getNeighbors(
   tagAffinityThreshold: number,
   statusFilter: string[],
   orgId: string,
+  userId: string,
 ): Promise<NeighborResult> {
   // BFS: collect node IDs layer by layer
   const visited = new Set<string>([beaconId]);
@@ -134,7 +135,7 @@ export async function getNeighbors(
 
   // Fetch full node data for all collected IDs
   const nodeIds = Array.from(visited);
-  const nodes = await fetchNodes(nodeIds, statusFilter, orgId);
+  const nodes = await fetchNodes(nodeIds, statusFilter, orgId, userId);
 
   // Deduplicate edges
   const edgeSet = new Set<string>();
@@ -228,8 +229,14 @@ async function fetchNodes(
   nodeIds: string[],
   statusFilter: string[],
   orgId: string,
+  userId?: string,
 ): Promise<GraphNode[]> {
   if (nodeIds.length === 0) return [];
+
+  // Visibility filter: exclude Private beacons not owned by the requesting user
+  const visFilter = userId
+    ? sql`AND (be.visibility <> 'Private' OR be.owned_by = ${userId} OR be.created_by = ${userId})`
+    : sql`AND be.visibility <> 'Private'`;
 
   const rows: any[] = await db.execute(sql`
     SELECT
@@ -258,6 +265,7 @@ async function fetchNodes(
     WHERE be.id IN (${sqlInList(nodeIds)})
       AND be.status IN (${sqlInList(statusFilter)})
       AND be.organization_id = ${orgId}
+      ${visFilter}
   `);
 
   return rows.map((r) => ({
@@ -285,11 +293,16 @@ export async function getHubs(
   projectId: string | null,
   orgId: string,
   topK: number,
-): Promise<GraphNode[]> {
+  userId?: string,
+): Promise<{ nodes: GraphNode[]; edges: ExplicitEdge[] }> {
   const projectFilter =
     scope === 'project' && projectId
       ? sql`AND be.project_id = ${projectId}`
       : sql``;
+
+  const visFilter = userId
+    ? sql`AND (be.visibility <> 'Private' OR be.owned_by = ${userId} OR be.created_by = ${userId})`
+    : sql`AND be.visibility <> 'Private'`;
 
   const rows: any[] = await db.execute(sql`
     SELECT
@@ -318,6 +331,7 @@ export async function getHubs(
     WHERE be.status IN ('Active', 'PendingReview')
       AND be.organization_id = ${orgId}
       ${projectFilter}
+      ${visFilter}
     ORDER BY (COALESCE(lc.cnt, 0) + be.verification_count) DESC
     LIMIT ${topK}
   `);
@@ -369,11 +383,16 @@ export async function getRecent(
   projectId: string | null,
   orgId: string,
   days: number,
+  userId?: string,
 ): Promise<GraphNode[]> {
   const projectFilter =
     scope === 'project' && projectId
       ? sql`AND be.project_id = ${projectId}`
       : sql``;
+
+  const visFilter = userId
+    ? sql`AND (be.visibility <> 'Private' OR be.owned_by = ${userId} OR be.created_by = ${userId})`
+    : sql`AND be.visibility <> 'Private'`;
 
   const rows: any[] = await db.execute(sql`
     SELECT
@@ -402,6 +421,7 @@ export async function getRecent(
     WHERE be.status IN ('Active', 'PendingReview')
       AND be.organization_id = ${orgId}
       ${projectFilter}
+      ${visFilter}
       AND (
         be.updated_at > NOW() - MAKE_INTERVAL(days => ${days})
         OR be.last_verified_at > NOW() - MAKE_INTERVAL(days => ${days})

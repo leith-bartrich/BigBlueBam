@@ -92,7 +92,7 @@ export async function listQueries(
  * Get a single saved query by ID.
  * Returns the query if the user owns it or if it's shared in their scope.
  */
-export async function getQuery(id: string, userId: string) {
+export async function getQuery(id: string, userId: string, orgId: string) {
   const [query] = await db
     .select()
     .from(beaconSavedQueries)
@@ -100,6 +100,9 @@ export async function getQuery(id: string, userId: string) {
     .limit(1);
 
   if (!query) return null;
+
+  // Org isolation: never return queries from a different org
+  if (query.organization_id !== orgId) return null;
 
   // Access control: owner can always see it; shared queries visible to anyone in scope
   if (query.owner_id !== userId && query.scope === 'Private') {
@@ -112,14 +115,14 @@ export async function getQuery(id: string, userId: string) {
 /**
  * Delete a saved query. Only the owner can delete.
  */
-export async function deleteQuery(id: string, userId: string) {
+export async function deleteQuery(id: string, userId: string, orgId: string) {
   const [query] = await db
     .select()
     .from(beaconSavedQueries)
     .where(eq(beaconSavedQueries.id, id))
     .limit(1);
 
-  if (!query) {
+  if (!query || query.organization_id !== orgId) {
     throw new BeaconError('NOT_FOUND', 'Saved query not found', 404);
   }
 
