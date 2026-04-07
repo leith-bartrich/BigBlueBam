@@ -102,7 +102,7 @@ function AutomationCard({ automation, onNavigate }: { automation: BoltAutomation
 
         <div className="text-right">
           <p className="text-xs text-zinc-400">Actions</p>
-          <p className="text-xs text-zinc-600 dark:text-zinc-300">{automation.actions.length}</p>
+          <p className="text-xs text-zinc-600 dark:text-zinc-300">{automation.actions?.length ?? 0}</p>
         </div>
 
         {/* Actions menu */}
