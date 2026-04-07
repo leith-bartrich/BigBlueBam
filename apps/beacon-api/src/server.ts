@@ -37,10 +37,18 @@ fastify.setErrorHandler((error, request, reply) => {
   fastify.log.error(error);
 
   const statusCode = error.statusCode ?? 500;
+  // Only expose error message for known app errors; sanitize everything else
+  const isAppError = error.name === 'BeaconError' || (error as any).code;
+  const message =
+    statusCode >= 500
+      ? 'Internal server error'
+      : isAppError
+        ? error.message
+        : 'Bad request';
   return reply.status(statusCode).send({
     error: {
-      code: statusCode >= 500 ? 'INTERNAL_ERROR' : 'BAD_REQUEST',
-      message: statusCode >= 500 ? 'Internal server error' : error.message,
+      code: statusCode >= 500 ? 'INTERNAL_ERROR' : (error as any).code ?? 'BAD_REQUEST',
+      message,
       details: [],
       request_id: request.id,
     },
@@ -60,6 +68,13 @@ await fastify.register(cookie, {
 await fastify.register(rateLimit, {
   max: env.RATE_LIMIT_MAX,
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
+});
+
+// Security headers
+fastify.addHook('onSend', async (_req, reply) => {
+  reply.header('X-Content-Type-Options', 'nosniff');
+  reply.header('X-Frame-Options', 'DENY');
+  reply.header('Cache-Control', 'no-store');
 });
 
 // Redis plugin

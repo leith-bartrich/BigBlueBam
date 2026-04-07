@@ -60,15 +60,13 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
 
   server.tool(
     'beacon_create',
-    'Create a new Beacon (Draft). Provide title, body, tags, visibility, and optional project/org scope.',
+    'Create a new Beacon (Draft). Provide title, body_markdown, visibility, and optional project scope.',
     {
-      title: z.string().min(1).max(500).describe('Beacon title'),
-      summary: z.string().max(1000).optional().describe('Short summary (plain text)'),
-      body: z.string().describe('Beacon body content (Markdown or rich text)'),
-      tags: z.array(z.string()).optional().describe('Tags to attach'),
+      title: z.string().min(1).max(512).describe('Beacon title'),
+      summary: z.string().max(500).optional().describe('Short summary (plain text)'),
+      body_markdown: z.string().min(1).max(500_000).describe('Beacon body content (Markdown)'),
       visibility: z.enum(['Public', 'Organization', 'Project', 'Private']).optional().describe('Visibility level'),
       project_id: z.string().uuid().optional().describe('Project scope (if project-level)'),
-      owner_id: z.string().uuid().optional().describe('Owner user ID (defaults to caller)'),
     },
     async (params) => {
       const result = await client.request('POST', '/beacons', params);
@@ -84,7 +82,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
       project_id: z.string().uuid().optional().describe('Filter by project'),
       tags: z.string().optional().describe('Comma-separated tag filter'),
       cursor: z.string().optional().describe('Pagination cursor'),
-      limit: z.number().int().positive().max(200).optional().describe('Page size (default 50)'),
+      limit: z.number().int().positive().max(100).optional().describe('Page size (default 50, max 100)'),
       sort: z.string().optional().describe('Sort field (e.g. -updated_at)'),
     },
     async (params) => {
@@ -110,11 +108,11 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'Update a Beacon (creates a new version). Provide only the fields to change.',
     {
       id: z.string().uuid().describe('Beacon ID'),
-      title: z.string().min(1).max(500).optional().describe('Updated title'),
-      summary: z.string().max(1000).optional().describe('Updated summary'),
-      body: z.string().optional().describe('Updated body content'),
-      tags: z.array(z.string()).optional().describe('Replace all tags'),
+      title: z.string().min(1).max(512).optional().describe('Updated title'),
+      summary: z.string().max(500).optional().describe('Updated summary'),
+      body_markdown: z.string().min(1).max(500_000).optional().describe('Updated body content (Markdown)'),
       visibility: z.enum(['Public', 'Organization', 'Project', 'Private']).optional().describe('Updated visibility'),
+      change_note: z.string().max(500).optional().describe('Note describing what changed'),
     },
     async ({ id, ...body }) => {
       const result = await client.request('PUT', `/beacons/${id}`, body);
@@ -151,10 +149,13 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'Record a verification event on a Beacon (confirms content is still accurate).',
     {
       id: z.string().uuid().describe('Beacon ID'),
+      verification_type: z.enum(['Manual', 'AgentAutomatic', 'AgentAssisted', 'ScheduledReview']).describe('Type of verification'),
+      outcome: z.enum(['Confirmed', 'Updated', 'Challenged', 'Retired']).describe('Verification outcome'),
+      confidence_score: z.number().min(0).max(1).optional().describe('Confidence score (0-1)'),
       notes: z.string().max(1000).optional().describe('Optional verification notes'),
     },
     async ({ id, ...body }) => {
-      const result = await client.request('POST', `/beacons/${id}/verify`, Object.keys(body).length ? body : undefined);
+      const result = await client.request('POST', `/beacons/${id}/verify`, body);
       return result.ok ? ok(result.data) : err('verifying beacon', result.data);
     },
   );

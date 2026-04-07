@@ -231,6 +231,12 @@ export async function searchChunks(
         match: { any: visLevels.slice(0, maxIdx + 1) },
       });
     }
+  } else {
+    // Default: exclude Private beacons from vector search to prevent score leakage
+    must.push({
+      key: 'visibility',
+      match: { any: ['Project', 'Organization', 'Public'] },
+    });
   }
 
   const results = await client.search(COLLECTION_NAME, {

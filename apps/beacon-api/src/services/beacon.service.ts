@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { eq, and, or, sql, asc, gt, inArray, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
@@ -37,24 +38,25 @@ export function slugify(title: string): string {
 }
 
 /**
- * Generate a unique slug for a beacon entry.  Appends -2, -3, etc. if the
- * base slug already exists.
+ * Generate a unique slug for a beacon entry.
+ * Uses base slug if available, otherwise appends a random 8-char hex suffix
+ * for O(1) uniqueness without scanning existing slugs.
  */
 async function uniqueSlug(title: string): Promise<string> {
   const base = slugify(title);
-  if (!base) return `beacon-${Date.now()}`;
+  if (!base) return `beacon-${crypto.randomBytes(4).toString('hex')}`;
 
-  const existing = await db
+  // Try the clean slug first
+  const [existing] = await db
     .select({ slug: beaconEntries.slug })
     .from(beaconEntries)
-    .where(or(eq(beaconEntries.slug, base), ilike(beaconEntries.slug, `${base}-%`)));
+    .where(eq(beaconEntries.slug, base))
+    .limit(1);
 
-  const taken = new Set(existing.map((r) => r.slug));
-  if (!taken.has(base)) return base;
+  if (!existing) return base;
 
-  let n = 2;
-  while (taken.has(`${base}-${n}`)) n++;
-  return `${base}-${n}`;
+  // Append random suffix for guaranteed uniqueness
+  return `${base}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
 // ---------------------------------------------------------------------------
