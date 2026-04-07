@@ -18,15 +18,16 @@
   <a href="#helpdesk">Helpdesk</a> &bull;
   <a href="#beacon">Beacon</a> &bull;
   <a href="#brief">Brief</a> &bull;
+  <a href="#bolt">Bolt</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#documentation">Docs</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/tests-650%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-158-blue" alt="MCP Tools" />
-  <img src="https://img.shields.io/badge/Docker%20services-15-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/tests-700%2B%20passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/MCP%20tools-170-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/Docker%20services-16-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -42,7 +43,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **158 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, and collaborative documents.
+This is made possible by **170 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, collaborative documents, and workflow automations.
 
 ---
 
@@ -302,7 +303,7 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **158 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, and collaborative documents. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **170 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, and collaborative documents. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -314,6 +315,7 @@ BigBlueBam exposes **158 MCP (Model Context Protocol) tools** that give AI assis
 - **Message the team via Banter** — post messages, read channels, respond in threads, share task updates, manage channels, react to messages, search conversations, and participate in voice calls as spoken participants
 - **Manage the knowledge base via Beacon** — create and publish Beacons, search with semantic + graph retrieval, verify content freshness, link related knowledge, manage governance policies, and save reusable queries
 - **Author collaborative documents via Brief** — create, edit, and search documents, manage version history, leave inline comments, apply templates, and graduate finished documents into Beacons
+- **Automate workflows with Bolt** — create trigger-condition-action rules, manage executions, browse templates, and orchestrate cross-product automations that compile to MCP tool calls
 
 ### Example: AI-Powered Helpdesk Triage
 
@@ -335,7 +337,7 @@ BigBlueBam exposes **158 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Tools Reference
 
-**158 tools** across 16 categories:
+**170 tools** across 17 categories:
 
 | Category | Count | What they cover |
 |----------|------:|-----------------|
@@ -353,6 +355,7 @@ BigBlueBam exposes **158 MCP (Model Context Protocol) tools** that give AI assis
 | **Banter Messaging** | 47 | Channels, DMs, messages, threads, reactions, calls, search, admin, presence, preferences |
 | **Beacon Knowledge Base** | 29 | CRUD, search, verification, graph, policies, saved queries |
 | **Brief Documents** | 18 | CRUD, collaboration, versions, search, graduation, templates |
+| **Bolt Automation** | 12 | Rule CRUD, execution management, templates, triggers, conditions, actions |
 | **Helpdesk** | 7 | Ticket operations, public/admin settings |
 | **Utility** | 2 | Server info, action confirmation |
 
@@ -610,6 +613,48 @@ AI agents interact with Brief through **18 dedicated MCP tools**:
 
 ---
 
+## Bolt
+
+Bolt is a visual workflow automation engine built into the BigBlueBam suite. Define trigger-condition-action rules that span every product in the platform, compile down to MCP tool calls, and execute with a full auditable log. No code required -- just wire up events, set conditions, and pick actions.
+
+<p align="center">
+  <img src="images/bolt-editor.png" alt="Bolt Visual Builder" width="100%" />
+</p>
+<p align="center"><em>Visual Builder -- wire triggers, conditions, and actions into automation rules</em></p>
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Visual Rule Builder** | Drag-and-drop trigger-condition-action editor with live preview and validation |
+| **Event-Driven** | 26 events across 6 sources (Bam, Banter, Beacon, Brief, Helpdesk, Schedule) |
+| **Condition Engine** | 13 operators (equals, contains, regex, gt/lt, in, between, isEmpty, etc.) with AND/OR grouping |
+| **MCP-Native Actions** | Every action compiles to one or more MCP tool calls -- same permissions, same audit trail |
+| **Execution Audit Log** | Every run is recorded with trigger context, condition evaluation, action results, and duration |
+| **Pre-Built Templates** | 10 starter templates covering common patterns (helpdesk triage, sprint reminders, stale-task alerts) |
+| **Rate Limiting & Cooldowns** | Per-rule rate limits and cooldown windows prevent runaway automations |
+| **AI-Assisted Authoring** | Describe what you want in plain English; an AI agent drafts the rule for you |
+| **Schedule Triggers (cron)** | Time-based triggers using cron expressions for recurring automations |
+| **12 MCP Tools** | AI agents can create, manage, and inspect automations programmatically |
+
+<p align="center">
+  <img src="images/bolt-templates.png" alt="Bolt Automation Templates" width="100%" />
+</p>
+<p align="center"><em>Pre-built templates -- start from a proven pattern and customize</em></p>
+
+### Bolt MCP Tools
+
+AI agents interact with Bolt through **12 dedicated MCP tools**:
+
+| Category | Tools | What they do |
+|----------|-------|-------------|
+| **Rules** | `bolt_create_rule`, `bolt_list_rules`, `bolt_get_rule`, `bolt_update_rule`, `bolt_delete_rule`, `bolt_toggle_rule` | Full rule lifecycle management |
+| **Executions** | `bolt_list_executions`, `bolt_get_execution`, `bolt_retry_execution` | Execution history, inspection, and retry |
+| **Templates** | `bolt_list_templates`, `bolt_create_from_template` | Browse and instantiate pre-built templates |
+| **Schema** | `bolt_get_schema` | Discover available triggers, conditions, and actions |
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -646,7 +691,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "My Organization"
 ```
 
-Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, **http://localhost/brief/** for Brief, or **http://localhost/helpdesk/** for the helpdesk portal.
+Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, **http://localhost/brief/** for Brief, **http://localhost/bolt/** for Bolt, or **http://localhost/helpdesk/** for the helpdesk portal.
 
 <p align="center">
   <img src="images/01-login.png" alt="Login Page" width="60%" />
@@ -680,7 +725,9 @@ All services are accessed through a single nginx container on port 80:
 | `/brief/` | nginx | Brief collaborative document editor SPA |
 | `/brief/api/` | Fastify `:4005` | Brief REST API |
 | `/brief/ws` | Fastify `:4005` | Brief WebSocket (real-time co-editing) |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (158 tools) |
+| `/bolt/` | nginx | Bolt workflow automation SPA |
+| `/bolt/api/` | Fastify `:4006` | Bolt REST API |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (170 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -706,7 +753,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Run Tests
 
 ```bash
-pnpm test  # 590+ tests across all packages
+pnpm test  # 700+ tests across all packages
 ```
 
 ---
@@ -731,6 +778,8 @@ pnpm test  # 590+ tests across all packages
 │  /brief/       → Brief SPA (static)            ││
 │  /brief/api/   → Brief API :4005               ││
 │  /brief/ws     → Brief WebSocket :4005         ││
+│  /bolt/        → Bolt SPA (static)             ││
+│  /bolt/api/    → Bolt API :4006                ││
 │  /helpdesk/    → Helpdesk SPA (static)         ││
 │  /helpdesk/api/→ Helpdesk API :4001            ││
 │  /files/       → MinIO :9000                   ││
@@ -738,9 +787,9 @@ pnpm test  # 590+ tests across all packages
 └──────┬──────────┬──────────┬───────────────────┘│
        │          │          │                     │
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌──────────┐ ┌───────▼──────┐ ┌──────────┐
-│ Bam API   │ │ Banter   │ │ MCP Server│ │ Brief    │ │ LiveKit SFU  │ │ Worker   │
-│ :4000     │ │ API :4002│ │ :3001     │ │ API :4005│ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 158 tools │ │ +WS      │ │ +voice-agent │ │ jobs     │
+│ Bam API   │ │ Banter   │ │ MCP Server│ │ Brief    │ │ Bolt API │ │ LiveKit SFU  │ │ Worker   │
+│ :4000     │ │ API :4002│ │ :3001     │ │ API :4005│ │ :4006    │ │ :7880 (voice)│ │ BullMQ   │
+│ +WebSocket│ │ +WS      │ │ 170 tools │ │ +WS      │ │          │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └────┬─────┘ └──────────────┘ └────┬─────┘
       │             │             │            │                  │
 ┌─────▼─────────────▼─────────────▼────────────▼───────────────────▼───┐
@@ -761,7 +810,7 @@ pnpm test  # 590+ tests across all packages
 | **Database** | PostgreSQL 16, Redis 7, MinIO, Qdrant |
 | **Worker** | BullMQ, Nodemailer |
 | **Build** | Turborepo, pnpm workspaces, tsup, Vite |
-| **Testing** | Vitest (590+ tests) |
+| **Testing** | Vitest (700+ tests) |
 | **Deploy** | Docker Compose, multi-stage Dockerfiles |
 
 ### Monorepo Structure
@@ -770,7 +819,7 @@ pnpm test  # 590+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (158 tools)
+  mcp-server/       → MCP protocol server (170 tools)
   worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
@@ -780,6 +829,8 @@ apps/
   beacon/           → Beacon React SPA (knowledge home, graph explorer, editor)
   brief-api/        → Brief Fastify REST API + WebSocket (8 route modules, 11 DB tables)
   brief/            → Brief React SPA (collaborative editor, templates, version history)
+  bolt-api/         → Bolt Fastify REST API (workflow automation, rules, executions)
+  bolt/             → Bolt React SPA (visual rule builder, execution log, templates)
   voice-agent/      → AI voice agent (Python/FastAPI, LiveKit Agents SDK)
 packages/
   shared/           → Zod schemas, TypeScript types, constants
@@ -795,9 +846,9 @@ scripts/            → Utility and seed scripts
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 15 |
-| MCP tools | 158 (64 Bam + 47 Banter + 29 Beacon + 18 Brief) |
-| Test cases | 590+ |
+| Docker services | 16 |
+| MCP tools | 170 (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt) |
+| Test cases | 700+ |
 | API route modules | 46 (23 Bam + 15 Banter + 8 Brief) |
 | Database tables | 51+ (25 Bam + 18 Banter + 11 Brief) |
 | Frontend components | 47+ (33 Bam + 14 Banter) |
