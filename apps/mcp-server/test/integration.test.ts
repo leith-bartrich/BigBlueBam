@@ -68,6 +68,7 @@ import { registerTemplateTools } from '../src/tools/template-tools.js';
 import { registerImportTools } from '../src/tools/import-tools.js';
 import { registerMeTools } from '../src/tools/me-tools.js';
 import { registerPlatformTools } from '../src/tools/platform-tools.js';
+import { registerBeaconTools } from '../src/tools/beacon-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -90,6 +91,7 @@ describe('MCP Integration Tests', () => {
     registerImportTools(mock.server, api);
     registerMeTools(mock.server, api);
     registerPlatformTools(mock.server, api);
+    registerBeaconTools(mock.server, api, 'http://localhost:4004');
   });
 
   function getTool(name: string): RegisteredTool {
@@ -943,6 +945,94 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== BEACON TOOLS =====
+
+  describe('beacon_create', () => {
+    it('creates a beacon on success', async () => {
+      mockApiOk({ id: UUID, title: 'Deploy Guide', status: 'Draft' });
+      const result = await getTool('beacon_create').handler({
+        title: 'Deploy Guide', body: '# Steps\n1. Build\n2. Deploy',
+      });
+      expectSuccessFormat(result);
+      expect(JSON.parse(result.content[0]!.text).status).toBe('Draft');
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Validation error' });
+      const result = await getTool('beacon_create').handler({ title: '', body: '' });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('beacon_search', () => {
+    it('returns search results on success', async () => {
+      mockApiOk({ results: [{ id: UUID, title: 'Deploy Guide', score: 0.95 }], total_candidates: 1 });
+      const result = await getTool('beacon_search').handler({ query: 'deploy' });
+      expectSuccessFormat(result);
+      expect(JSON.parse(result.content[0]!.text).results).toHaveLength(1);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(500, { error: 'Search engine error' });
+      const result = await getTool('beacon_search').handler({ query: 'deploy' });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('beacon_graph_neighbors', () => {
+    it('returns graph data on success', async () => {
+      mockApiOk({
+        focal_beacon_id: UUID,
+        nodes: [{ id: UUID, title: 'Node 1' }],
+        edges: [{ source: UUID, target: UUID2, type: 'RelatedTo' }],
+      });
+      const result = await getTool('beacon_graph_neighbors').handler({ beacon_id: UUID });
+      expectSuccessFormat(result);
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.nodes).toHaveLength(1);
+      expect(data.edges).toHaveLength(1);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Beacon not found' });
+      const result = await getTool('beacon_graph_neighbors').handler({ beacon_id: UUID });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('beacon_tag_add', () => {
+    it('adds tags on success', async () => {
+      mockApiOk({ id: UUID, tags: ['devops', 'staging'] });
+      const result = await getTool('beacon_tag_add').handler({ id: UUID, tags: ['devops', 'staging'] });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(404, { error: 'Beacon not found' });
+      const result = await getTool('beacon_tag_add').handler({ id: UUID, tags: ['devops'] });
+      expectErrorFormat(result);
+    });
+  });
+
+  describe('beacon_query_save', () => {
+    it('saves a query on success', async () => {
+      mockApiOk({ id: UUID, name: 'My Deploy Query' });
+      const result = await getTool('beacon_query_save').handler({
+        name: 'My Deploy Query',
+        query_body: { query: 'deploy', filters: { tags: ['devops'] } },
+      });
+      expectSuccessFormat(result);
+    });
+
+    it('returns error on failure', async () => {
+      mockApiError(400, { error: 'Duplicate name' });
+      const result = await getTool('beacon_query_save').handler({
+        name: 'Dup', query_body: {},
+      });
+      expectErrorFormat(result);
+    });
+  });
+
   // ===== TOOL REGISTRATION COMPLETENESS =====
 
   describe('tool registration', () => {
@@ -979,6 +1069,16 @@ describe('MCP Integration Tests', () => {
         // platform (superuser)
         'get_platform_settings', 'set_public_signup_disabled',
         'list_beta_signups', 'get_public_config', 'submit_beta_signup',
+        // beacon
+        'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
+        'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
+        'beacon_restore', 'beacon_versions', 'beacon_version_get',
+        'beacon_search', 'beacon_suggest', 'beacon_search_context',
+        'beacon_policy_get', 'beacon_policy_set', 'beacon_policy_resolve',
+        'beacon_tags_list', 'beacon_tag_add', 'beacon_tag_remove',
+        'beacon_link_create', 'beacon_link_remove',
+        'beacon_query_save', 'beacon_query_list', 'beacon_query_get', 'beacon_query_delete',
+        'beacon_graph_neighbors', 'beacon_graph_hubs', 'beacon_graph_recent',
       ];
 
       for (const name of expectedTools) {
