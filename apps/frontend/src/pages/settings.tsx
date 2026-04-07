@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Users, Trash2, Plug, Copy, Check, Plus, Headset, Pencil, Lock } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Users, Trash2, Plug, Copy, Check, Plus, Headset, Pencil, Lock, Zap } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -9,6 +9,7 @@ import { Select } from '@/components/common/select';
 import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import { SettingsLlmProviders } from '@/pages/settings-llm-providers';
 
 interface ApiKeyData {
   id: string;
@@ -63,7 +64,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk' | 'permissions'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk' | 'permissions' | 'ai-providers'>('profile');
   const [displayName, setDisplayName] = useState(user?.display_name ?? '');
   const [timezone, setTimezone] = useState(user?.timezone ?? 'UTC');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
@@ -530,6 +531,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     { id: 'members' as const, label: 'Members', icon: Users },
     { id: 'permissions' as const, label: 'Permissions', icon: Lock },
     { id: 'integrations' as const, label: 'Integrations', icon: Plug },
+    { id: 'ai-providers' as const, label: 'AI Providers', icon: Zap },
     { id: 'helpdesk' as const, label: 'Helpdesk', icon: Headset },
   ];
 
@@ -1474,6 +1476,9 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                   </div>
                 )}
               </div>
+            )}
+            {activeTab === 'ai-providers' && (
+              <SettingsLlmProviders />
             )}
             {activeTab === 'helpdesk' && (
               <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">

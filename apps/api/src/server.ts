@@ -46,6 +46,7 @@ import slackIntegrationRoutes from './routes/slack-integration.routes.js';
 import githubWebhookRoutes from './routes/github-webhook.routes.js';
 import githubIntegrationRoutes from './routes/github-integration.routes.js';
 import publicConfigRoutes from './routes/public-config.routes.js';
+import llmProviderRoutes from './routes/llm-provider.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -177,6 +178,7 @@ await fastify.register(slackIntegrationRoutes);
 await fastify.register(githubWebhookRoutes);
 await fastify.register(githubIntegrationRoutes);
 await fastify.register(publicConfigRoutes);
+await fastify.register(llmProviderRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

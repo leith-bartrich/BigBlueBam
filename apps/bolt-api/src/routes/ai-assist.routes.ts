@@ -1,10 +1,12 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../plugins/auth.js';
+import { env } from '../env.js';
 
 const generateSchema = z.object({
   prompt: z.string().min(1).max(2000),
   context: z.record(z.unknown()).optional(),
+  project_id: z.string().uuid().optional(),
 });
 
 const explainSchema = z.object({
@@ -15,7 +17,50 @@ const explainSchema = z.object({
     conditions: z.array(z.record(z.unknown())).optional().default([]),
     actions: z.array(z.record(z.unknown())).optional().default([]),
   }),
+  project_id: z.string().uuid().optional(),
 });
+
+/**
+ * Resolves the effective LLM provider by calling the Bam API's
+ * /llm-providers/resolve endpoint. Returns null if no provider is
+ * configured, which should cause the route to return AI_NOT_CONFIGURED.
+ */
+async function resolveProvider(
+  request: FastifyRequest,
+  projectId?: string,
+): Promise<{ provider: unknown } | null> {
+  try {
+    const url = new URL('/llm-providers/resolve', env.BBB_API_INTERNAL_URL);
+    if (projectId) url.searchParams.set('project_id', projectId);
+
+    // Forward the caller's session cookie so the Bam API can authenticate
+    const cookieHeader = request.headers.cookie ?? '';
+    const res = await fetch(url.toString(), {
+      headers: { cookie: cookieHeader },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) return null;
+
+    const body = (await res.json()) as { data: unknown };
+    if (!body.data) return null;
+    return { provider: body.data };
+  } catch {
+    return null;
+  }
+}
+
+function sendAiNotConfigured(reply: FastifyReply, requestId: string) {
+  return reply.status(422).send({
+    error: {
+      code: 'AI_NOT_CONFIGURED',
+      message:
+        'AI features require an LLM provider to be configured. Ask your organization administrator to set up an AI provider in Settings \u2192 AI Providers.',
+      details: [],
+      request_id: requestId,
+    },
+  });
+}
 
 export default async function aiAssistRoutes(fastify: FastifyInstance) {
   // POST /ai/generate — Generate an automation definition from a natural language prompt
@@ -26,7 +71,13 @@ export default async function aiAssistRoutes(fastify: FastifyInstance) {
       preHandler: [requireAuth],
     },
     async (request, reply) => {
-      const { prompt } = generateSchema.parse(request.body);
+      const { prompt, project_id } = generateSchema.parse(request.body);
+
+      // Resolve LLM provider — if none configured, return informative error
+      const resolved = await resolveProvider(request, project_id);
+      if (!resolved) {
+        return sendAiNotConfigured(reply, request.id);
+      }
 
       // Stub implementation — returns a sample automation definition
       const sample = {
@@ -74,7 +125,13 @@ export default async function aiAssistRoutes(fastify: FastifyInstance) {
       preHandler: [requireAuth],
     },
     async (request, reply) => {
-      const { automation } = explainSchema.parse(request.body);
+      const { automation, project_id } = explainSchema.parse(request.body);
+
+      // Resolve LLM provider — if none configured, return informative error
+      const resolved = await resolveProvider(request, project_id);
+      if (!resolved) {
+        return sendAiNotConfigured(reply, request.id);
+      }
 
       const conditionCount = automation.conditions?.length ?? 0;
       const actionCount = automation.actions?.length ?? 0;

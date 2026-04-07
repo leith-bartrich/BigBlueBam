@@ -31,3 +31,4 @@ export { slackIntegrations } from './slack-integrations.js';
 export { githubIntegrations, taskGithubRefs } from './github-integrations.js';
 export { platformSettings } from './platform-settings.js';
 export { betaSignupNotifications } from './beta-signup-notifications.js';
+export { llmProviders } from './llm-providers.js';
