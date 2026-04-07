@@ -107,11 +107,13 @@ import beaconRoutes from './routes/beacon.routes.js';
 import versionRoutes from './routes/version.routes.js';
 import tagRoutes from './routes/tag.routes.js';
 import linkRoutes from './routes/link.routes.js';
+import policyRoutes from './routes/policy.routes.js';
 
 await fastify.register(beaconRoutes);
 await fastify.register(versionRoutes);
 await fastify.register(tagRoutes);
 await fastify.register(linkRoutes);
+await fastify.register(policyRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

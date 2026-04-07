@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole, requireBeaconEditAccess, requireBeaconReadAccess } from '../middleware/authorize.js';
 import * as beaconService from '../services/beacon.service.js';
+import * as verificationService from '../services/verification.service.js';
+import { transitionBeacon } from '../services/lifecycle.service.js';
 
 const createBeaconSchema = z.object({
   title: z.string().min(1).max(512),
@@ -133,6 +135,53 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
       const beacon = await beaconService.restoreBeacon(
         request.params.id,
         request.user!.id,
+      );
+      return reply.send({ data: beacon });
+    },
+  );
+
+  // POST /beacons/:id/verify — Record a verification event
+  const verifySchema = z.object({
+    verification_type: z.enum(['Manual', 'AgentAutomatic', 'AgentAssisted', 'ScheduledReview']),
+    outcome: z.enum(['Confirmed', 'Updated', 'Challenged', 'Retired']),
+    confidence_score: z.number().min(0).max(1).nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+  });
+
+  fastify.post<{ Params: { id: string } }>(
+    '/beacons/:id/verify',
+    { preHandler: [requireAuth, requireBeaconEditAccess(), requireScope('read_write')] },
+    async (request, reply) => {
+      const data = verifySchema.parse(request.body);
+      const result = await verificationService.verifyBeacon(
+        request.params.id,
+        request.user!.id,
+        {
+          type: data.verification_type,
+          outcome: data.outcome,
+          confidence: data.confidence_score ?? null,
+          notes: data.notes ?? null,
+        },
+      );
+      return reply.send({ data: result });
+    },
+  );
+
+  // POST /beacons/:id/challenge — Flag beacon for review (Active → PendingReview)
+  const challengeSchema = z.object({
+    reason: z.string().max(2000).optional(),
+  });
+
+  fastify.post<{ Params: { id: string } }>(
+    '/beacons/:id/challenge',
+    { preHandler: [requireAuth, requireMinOrgRole('member'), requireScope('read_write')] },
+    async (request, reply) => {
+      const data = challengeSchema.parse(request.body ?? {});
+      const beacon = await transitionBeacon(
+        request.params.id,
+        'PendingReview',
+        request.user!.id,
+        { reason: data.reason },
       );
       return reply.send({ data: beacon });
     },
