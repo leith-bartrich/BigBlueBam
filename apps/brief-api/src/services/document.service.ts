@@ -6,6 +6,7 @@ import {
   briefVersions,
   briefStars,
   briefCollaborators,
+  briefTemplates,
   projectMemberships,
   users,
   projects,
@@ -79,6 +80,7 @@ export async function getUserProjectIds(userId: string): Promise<Set<string>> {
 
 export interface CreateDocumentInput {
   title?: string;
+  plain_text?: string | null;
   project_id?: string | null;
   folder_id?: string | null;
   template_id?: string | null;
@@ -94,6 +96,26 @@ export async function createDocument(
   const title = data.title || 'Untitled';
   const slug = await uniqueSlug(title);
 
+  // If a template is specified, copy its content into the new document
+  let templateContent: string | null = null;
+  let templateIcon: string | null = data.icon ?? null;
+  if (data.template_id) {
+    const [tmpl] = await db
+      .select()
+      .from(briefTemplates)
+      .where(eq(briefTemplates.id, data.template_id))
+      .limit(1);
+    if (tmpl) {
+      templateContent = tmpl.html_preview;
+      if (!data.icon && tmpl.icon) templateIcon = tmpl.icon;
+    }
+  }
+
+  const plainText = data.plain_text ?? templateContent ?? null;
+  const wordCount = plainText
+    ? plainText.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length
+    : 0;
+
   const [doc] = await db
     .insert(briefDocuments)
     .values({
@@ -102,10 +124,13 @@ export async function createDocument(
       folder_id: data.folder_id ?? null,
       title,
       slug,
+      plain_text: plainText,
+      html_snapshot: templateContent,
+      word_count: wordCount,
       template_id: data.template_id ?? null,
       status: 'draft',
       visibility: data.visibility ?? 'project',
-      icon: data.icon ?? null,
+      icon: templateIcon,
       created_by: userId,
       updated_by: userId,
     })

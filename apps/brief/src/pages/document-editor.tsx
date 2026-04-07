@@ -55,6 +55,21 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
     }
   }, [isEditMode, activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pick up template selection from sessionStorage (set by template browser)
+  useEffect(() => {
+    if (!isEditMode && !selectedTemplateId) {
+      try {
+        const stored = sessionStorage.getItem('brief_selected_template');
+        if (stored) {
+          setSelectedTemplateId(stored);
+          sessionStorage.removeItem('brief_selected_template');
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Populate form when editing
   useEffect(() => {
     if (existing) {
