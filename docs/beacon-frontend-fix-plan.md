@@ -1,6 +1,6 @@
 # Beacon Frontend Fix Plan
 
-**Status:** Phase A + C (P0/P1) complete
+**Status:** Complete (all phases)
 **Branch:** `beacon`
 **Date:** 2026-04-07
 
