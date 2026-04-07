@@ -378,7 +378,7 @@ Generate an API key from **Settings > Integrations** in the BigBlueBam UI.
 
 > **Alpha Software** — Banter is under active development and in early release. Bug reports and pull requests are welcome.
 
-Banter is a real-time team messaging platform built natively into the BigBlueBam suite. Channels, direct messages, threaded conversations, voice and video calls, and AI agent participation — all deeply integrated with your project board and helpdesk.
+Banter is a real-time team messaging platform built natively into the BigBlueBam suite. Channels, direct messages, threaded conversations, voice and video calls, and AI agent participation — all deeply integrated with your project board, knowledge base, and helpdesk.
 
 <p align="center">
   <img src="images/19-banter-channels.png" alt="Banter Channel View" width="100%" />
