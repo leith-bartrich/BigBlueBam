@@ -10,6 +10,7 @@ COPY pnpm-lock.yaml* ./
 COPY apps/frontend/package.json ./apps/frontend/
 COPY apps/helpdesk/package.json ./apps/helpdesk/
 COPY apps/banter/package.json ./apps/banter/
+COPY apps/beacon/package.json ./apps/beacon/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
@@ -39,10 +40,17 @@ COPY apps/banter/public ./apps/banter/public
 COPY apps/banter/index.html ./apps/banter/
 COPY apps/banter/tsconfig.json apps/banter/tsconfig.node.json apps/banter/vite.config.ts ./apps/banter/
 
+# Beacon frontend
+COPY apps/beacon/src ./apps/beacon/src
+COPY apps/beacon/public ./apps/beacon/public
+COPY apps/beacon/index.html ./apps/beacon/
+COPY apps/beacon/tsconfig.json apps/beacon/tsconfig.node.json apps/beacon/vite.config.ts ./apps/beacon/
+
 RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/frontend build \
  && pnpm --filter @bigbluebam/helpdesk build \
- && pnpm --filter @bigbluebam/banter build
+ && pnpm --filter @bigbluebam/banter build \
+ && pnpm --filter @bigbluebam/beacon build
 
 # ── Stage: production ────────────────────────────────────────────
 FROM nginx:alpine AS production
@@ -50,6 +58,7 @@ FROM nginx:alpine AS production
 COPY --from=build /app/apps/frontend/dist /usr/share/nginx/html/b3
 COPY --from=build /app/apps/helpdesk/dist /usr/share/nginx/html/helpdesk
 COPY --from=build /app/apps/banter/dist /usr/share/nginx/html/banter
+COPY --from=build /app/apps/beacon/dist /usr/share/nginx/html/beacon
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
