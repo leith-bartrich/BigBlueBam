@@ -500,7 +500,7 @@ Beacon is the knowledge base platform built into the BigBlueBam suite. It keeps 
 Unlike a wiki that silently rots, Beacon treats every article as a living document with a verification lifecycle. Governance policies define how often content must be re-verified; stale Beacons are surfaced automatically through the **Fridge Cleanout** workflow so nothing quietly expires into irrelevance.
 
 <p align="center">
-  <img src="images/beacon-knowledge-home.png" alt="Beacon Knowledge Home" width="100%" />
+  <img src="images/beacon-home.png" alt="Beacon Knowledge Home" width="100%" />
 </p>
 <p align="center"><em>Knowledge Home -- hub nodes, recent activity, and expiry alerts at a glance</em></p>
 
@@ -517,7 +517,7 @@ Unlike a wiki that silently rots, Beacon treats every article as a living docume
 | **Hierarchical Policies** | Org-level defaults with project-level overrides; `beacon_policy_resolve` previews the effective merged policy |
 
 <p align="center">
-  <img src="images/beacon-graph-explorer.png" alt="Beacon Graph Explorer" width="100%" />
+  <img src="images/beacon-graph.png" alt="Beacon Graph Explorer" width="100%" />
 </p>
 <p align="center"><em>Knowledge Graph Explorer -- visualize connections between Beacons</em></p>
 
