@@ -11,7 +11,7 @@ export interface DocumentSearchResult {
   title: string;
   excerpt: string | null;
   status: DocumentStatus;
-  author_name: string | null;
+  creator_name: string | null;
   updated_at: string;
   relevance_score: number;
 }

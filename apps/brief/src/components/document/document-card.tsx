@@ -18,14 +18,14 @@ export function DocumentCard({ document, onClick }: DocumentCardProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-lg shrink-0">
-            {document.icon_emoji ?? <FileText className="h-5 w-5 text-zinc-400" />}
+            {document.icon ?? <FileText className="h-5 w-5 text-zinc-400" />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
                 {document.title}
               </h3>
-              {document.is_starred && (
+              {document.pinned && (
                 <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
               )}
             </div>
@@ -36,8 +36,8 @@ export function DocumentCard({ document, onClick }: DocumentCardProps) {
             )}
             <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
               <div className="flex items-center gap-1.5">
-                <Avatar src={document.author_avatar_url} name={document.author_name} size="sm" />
-                <span>{document.author_name ?? 'Unknown'}</span>
+                <Avatar src={document.creator_avatar_url} name={document.creator_name} size="sm" />
+                <span>{document.creator_name ?? 'Unknown'}</span>
               </div>
               <span>{formatRelativeTime(document.updated_at)}</span>
               {document.word_count > 0 && (

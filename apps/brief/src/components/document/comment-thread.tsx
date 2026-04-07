@@ -17,14 +17,14 @@ export function CommentThread({ comment, onResolve, onDelete, isResolving, isDel
     <div className={`rounded-lg border p-3 ${comment.is_resolved ? 'border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-900/10' : 'border-zinc-200 dark:border-zinc-700'}`}>
       <div className="flex items-start gap-2.5">
         <Avatar
-          src={comment.author_avatar_url}
-          name={comment.author_name}
+          src={comment.creator_avatar_url}
+          name={comment.creator_name}
           size="sm"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-              {comment.author_name ?? 'Unknown'}
+              {comment.creator_name ?? 'Unknown'}
             </span>
             <span className="text-xs text-zinc-500 dark:text-zinc-400">
               {formatRelativeTime(comment.created_at)}

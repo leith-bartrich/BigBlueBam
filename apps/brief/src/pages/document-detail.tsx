@@ -95,7 +95,7 @@ export function DocumentDetailPage({ idOrSlug, onNavigate }: DocumentDetailPageP
         />
       );
     }
-    const md = doc.body_markdown ?? '';
+    const md = doc.plain_text ?? '';
     if (md) {
       const html = markdownToHtml(md);
       return (
@@ -127,7 +127,7 @@ export function DocumentDetailPage({ idOrSlug, onNavigate }: DocumentDetailPageP
         <div className="flex items-start justify-between gap-4 mb-6">
           <div className="min-w-0">
             <div className="flex items-center gap-3 mb-2">
-              {doc.icon_emoji && <span className="text-2xl">{doc.icon_emoji}</span>}
+              {doc.icon && <span className="text-2xl">{doc.icon}</span>}
               <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 truncate">
                 {doc.title}
               </h1>
@@ -142,9 +142,9 @@ export function DocumentDetailPage({ idOrSlug, onNavigate }: DocumentDetailPageP
               variant="ghost"
               size="sm"
               onClick={handleStar}
-              title={doc.is_starred ? 'Remove star' : 'Star document'}
+              title={doc.pinned ? 'Remove star' : 'Star document'}
             >
-              <Star className={`h-4 w-4 ${doc.is_starred ? 'text-yellow-500 fill-yellow-500' : ''}`} />
+              <Star className={`h-4 w-4 ${doc.pinned ? 'text-yellow-500 fill-yellow-500' : ''}`} />
             </Button>
             <Button
               variant="secondary"
@@ -195,9 +195,9 @@ export function DocumentDetailPage({ idOrSlug, onNavigate }: DocumentDetailPageP
           {/* Author */}
           <SidebarField label="Author">
             <div className="flex items-center gap-2">
-              <Avatar src={doc.author_avatar_url} name={doc.author_name} size="sm" />
+              <Avatar src={doc.creator_avatar_url} name={doc.creator_name} size="sm" />
               <span className="text-sm text-zinc-700 dark:text-zinc-300">
-                {doc.author_name ?? 'Unknown'}
+                {doc.creator_name ?? 'Unknown'}
               </span>
             </div>
           </SidebarField>

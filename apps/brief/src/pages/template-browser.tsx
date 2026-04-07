@@ -55,7 +55,7 @@ export function TemplateBrowserPage({ onNavigate }: TemplateBrowserPageProps) {
             >
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-lg">
-                  {template.icon_emoji ?? <FileText className="h-5 w-5 text-zinc-400" />}
+                  {template.icon ?? <FileText className="h-5 w-5 text-zinc-400" />}
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">

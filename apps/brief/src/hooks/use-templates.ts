@@ -28,9 +28,9 @@ export function useCreateTemplate() {
     mutationFn: (data: {
       name: string;
       description?: string;
-      icon_emoji?: string;
+      icon?: string;
       category?: string;
-      body_markdown: string;
+      plain_text: string;
     }) => api.post<ApiResponse<BriefTemplate>>('/templates', data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['document-templates'] });

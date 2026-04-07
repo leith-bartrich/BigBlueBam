@@ -60,12 +60,12 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
     if (existing) {
       setTitle(existing.title);
       setSummary(existing.summary ?? '');
-      setIconEmoji(existing.icon_emoji ?? '');
+      setIconEmoji(existing.icon ?? '');
       setProjectId(existing.project_id ?? '');
       setVisibility(existing.visibility ?? 'organization');
 
-      // Convert stored markdown to HTML for the editor
-      const md = existing.body_markdown ?? existing.plain_text ?? '';
+      // Convert stored content to HTML for the editor
+      const md = existing.plain_text ?? '';
       const html = markdownToHtml(md);
       setInitialContent(html);
       setEditorHtml(html);
@@ -85,10 +85,11 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
       const template = templates.find((t) => t.id === selectedTemplateId);
       if (template) {
         if (!title) setTitle(template.name);
-        const html = markdownToHtml(template.body_markdown);
+        // Template content is already HTML (html_preview)
+        const html = template.html_preview ?? '';
         setInitialContent(html);
         setEditorHtml(html);
-        setIconEmoji(template.icon_emoji ?? '');
+        setIconEmoji(template.icon ?? '');
       }
     }
   }, [selectedTemplateId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,13 +107,26 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
     setWordCount(words.length);
   }, []);
 
+  // Wait for content to be ready before creating the editor.
+  // Tiptap's `content` prop is only read on initialization — passing it
+  // after the hook has already created the editor is a silent no-op.
+  const contentReady = initialContent !== null;
   const editor = useBriefEditor({
-    content: initialContent ?? '',
+    content: contentReady ? initialContent : '',
     onUpdate: handleEditorUpdate,
     editable: true,
+    // Re-create the editor when initialContent first becomes available
+    key: contentReady ? 'loaded' : 'empty',
   });
 
-  if (isEditMode && loadingExisting) {
+  // Sync content into existing editor when template changes or content is set
+  useEffect(() => {
+    if (editor && initialContent && editor.getHTML() !== initialContent) {
+      editor.commands.setContent(initialContent);
+    }
+  }, [editor, initialContent]);
+
+  if (isEditMode && (loadingExisting || !contentReady)) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
@@ -138,9 +152,9 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
           id: existing.id,
           data: {
             title,
-            body_markdown: bodyMarkdown,
+            plain_text: bodyMarkdown,
             summary: summary || undefined,
-            icon_emoji: iconEmoji || undefined,
+            icon: iconEmoji || undefined,
             visibility,
             status: 'draft' as DocumentStatus,
           },
@@ -149,9 +163,9 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
       } else {
         const res = await createDocument.mutateAsync({
           title,
-          body_markdown: bodyMarkdown,
+          plain_text: bodyMarkdown,
           summary: summary || undefined,
-          icon_emoji: iconEmoji || undefined,
+          icon: iconEmoji || undefined,
           project_id: projectId || undefined,
           template_id: selectedTemplateId || undefined,
           visibility,
@@ -173,9 +187,9 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
           id: existing.id,
           data: {
             title,
-            body_markdown: bodyMarkdown,
+            plain_text: bodyMarkdown,
             summary: summary || undefined,
-            icon_emoji: iconEmoji || undefined,
+            icon: iconEmoji || undefined,
             visibility,
             status: 'approved' as DocumentStatus,
           },
@@ -184,9 +198,9 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
       } else {
         const res = await createDocument.mutateAsync({
           title,
-          body_markdown: bodyMarkdown,
+          plain_text: bodyMarkdown,
           summary: summary || undefined,
-          icon_emoji: iconEmoji || undefined,
+          icon: iconEmoji || undefined,
           project_id: projectId || undefined,
           template_id: selectedTemplateId || undefined,
           visibility,
@@ -353,7 +367,7 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
                   <option value="__none__">Blank document</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.icon_emoji ? `${t.icon_emoji} ` : ''}{t.name}
+                      {t.icon ? `${t.icon} ` : ''}{t.name}
                     </option>
                   ))}
                 </select>

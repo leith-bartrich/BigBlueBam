@@ -103,15 +103,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">{doc.icon_emoji ?? ''}</span>
+                    <span className="text-sm">{doc.icon ?? ''}</span>
                     <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
                       {doc.title}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <Avatar src={doc.author_avatar_url} name={doc.author_name} size="sm" />
+                    <Avatar src={doc.creator_avatar_url} name={doc.creator_name} size="sm" />
                     <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {doc.author_name ?? 'Unknown'}
+                      {doc.creator_name ?? 'Unknown'}
                     </span>
                     <span className="text-xs text-zinc-400">
                       {formatRelativeTime(doc.updated_at)}
@@ -141,7 +141,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">{doc.icon_emoji ?? ''}</span>
+                    <span className="text-sm">{doc.icon ?? ''}</span>
                     <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
                       {doc.title}
                     </p>

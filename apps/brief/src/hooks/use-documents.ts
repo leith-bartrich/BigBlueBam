@@ -10,27 +10,25 @@ export interface BriefDocument {
   id: string;
   slug: string;
   title: string;
-  icon_emoji: string | null;
-  summary: string | null;
-  body_markdown: string;
-  html_snapshot: string | null;
+  icon: string | null;
   plain_text: string | null;
+  html_snapshot: string | null;
+  cover_image_url: string | null;
+  template_id: string | null;
   status: DocumentStatus;
   visibility: DocumentVisibility;
+  pinned: boolean;
+  word_count: number;
+  promoted_to_beacon_id: string | null;
   project_id: string | null;
   project_name: string | null;
   folder_id: string | null;
-  folder_name: string | null;
-  template_id: string | null;
   created_by: string;
-  author_name: string | null;
-  author_avatar_url: string | null;
-  word_count: number;
-  is_starred: boolean;
-  version: number;
+  updated_by: string | null;
+  creator_name: string | null;
   created_at: string;
   updated_at: string;
-  published_at: string | null;
+  archived_at: string | null;
 }
 
 export interface BriefFolder {
@@ -47,7 +45,7 @@ export interface BriefVersion {
   document_id: string;
   version: number;
   title: string;
-  body_markdown: string;
+  plain_text: string;
   changed_by: string;
   changed_by_name: string | null;
   created_at: string;
@@ -58,8 +56,8 @@ export interface BriefComment {
   document_id: string;
   body: string;
   author_id: string;
-  author_name: string | null;
-  author_avatar_url: string | null;
+  creator_name: string | null;
+  creator_avatar_url: string | null;
   is_resolved: boolean;
   parent_id: string | null;
   created_at: string;
@@ -70,10 +68,13 @@ export interface BriefTemplate {
   id: string;
   name: string;
   description: string | null;
-  icon_emoji: string | null;
+  icon: string | null;
   category: string | null;
-  body_markdown: string;
+  html_preview: string | null;
+  sort_order: number;
+  created_by: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface BriefEmbed {
@@ -171,9 +172,9 @@ export function useCreateDocument() {
   return useMutation({
     mutationFn: (data: {
       title: string;
-      body_markdown: string;
+      plain_text: string;
       summary?: string;
-      icon_emoji?: string;
+      icon?: string;
       project_id?: string;
       folder_id?: string;
       template_id?: string;
@@ -194,9 +195,9 @@ export function useUpdateDocument() {
       id: string;
       data: Partial<{
         title: string;
-        body_markdown: string;
+        plain_text: string;
         summary: string;
-        icon_emoji: string;
+        icon: string;
         visibility: DocumentVisibility;
         status: DocumentStatus;
         folder_id: string | null;

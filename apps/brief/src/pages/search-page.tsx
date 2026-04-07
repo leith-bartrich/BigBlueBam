@@ -74,7 +74,7 @@ export function SearchPage({ onNavigate }: SearchPageProps) {
                   </p>
                 )}
                 <div className="flex items-center gap-3 text-xs text-zinc-400 mt-1">
-                  {result.author_name && <span>{result.author_name}</span>}
+                  {result.creator_name && <span>{result.creator_name}</span>}
                   <span>{formatRelativeTime(result.updated_at)}</span>
                 </div>
               </div>

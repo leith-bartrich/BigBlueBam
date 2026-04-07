@@ -30,10 +30,13 @@ export function useBriefEditor({
   content,
   onUpdate,
   editable = true,
+  key,
 }: {
   content: string;
   onUpdate: (html: string) => void;
   editable?: boolean;
+  /** Change this value to force the editor to re-create with new content */
+  key?: string;
 }) {
   const editor = useEditor({
     extensions: [
