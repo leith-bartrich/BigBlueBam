@@ -21,6 +21,7 @@ import { registerUtilityTools } from './tools/utility-tools.js';
 import { registerHelpdeskTools } from './tools/helpdesk-tools.js';
 import { registerBanterTools } from './tools/banter-tools.js';
 import { registerBeaconTools } from './tools/beacon-tools.js';
+import { registerBriefTools } from './tools/brief-tools.js';
 import { registerMeTools } from './tools/me-tools.js';
 import { registerPlatformTools } from './tools/platform-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
@@ -90,6 +91,7 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
   registerHelpdeskTools(server, apiClient, env.HELPDESK_API_URL);
   registerBanterTools(server, apiClient, env.BANTER_API_URL);
   registerBeaconTools(server, apiClient, env.BEACON_API_URL);
+  registerBriefTools(server, apiClient, env.BRIEF_API_URL);
   registerMeTools(server, apiClient);
   registerPlatformTools(server, apiClient);
 

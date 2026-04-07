@@ -17,15 +17,16 @@
   <a href="#banter">Banter</a> &bull;
   <a href="#helpdesk">Helpdesk</a> &bull;
   <a href="#beacon">Beacon</a> &bull;
+  <a href="#brief">Brief</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#documentation">Docs</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/tests-530%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-140-blue" alt="MCP Tools" />
-  <img src="https://img.shields.io/badge/Docker%20services-14-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/tests-590%2B%20passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/MCP%20tools-158-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/Docker%20services-15-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -41,7 +42,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **140 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, and the knowledge base.
+This is made possible by **158 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, and collaborative documents.
 
 ---
 
@@ -301,7 +302,7 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **140 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, and knowledge base. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **158 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, and collaborative documents. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -312,6 +313,7 @@ BigBlueBam exposes **140 MCP (Model Context Protocol) tools** that give AI assis
 - **Collaborate** — post comments, log time, bulk update tasks, suggest branch names
 - **Message the team via Banter** — post messages, read channels, respond in threads, share task updates, manage channels, react to messages, search conversations, and participate in voice calls as spoken participants
 - **Manage the knowledge base via Beacon** — create and publish Beacons, search with semantic + graph retrieval, verify content freshness, link related knowledge, manage governance policies, and save reusable queries
+- **Author collaborative documents via Brief** — create, edit, and search documents, manage version history, leave inline comments, apply templates, and graduate finished documents into Beacons
 
 ### Example: AI-Powered Helpdesk Triage
 
@@ -333,7 +335,7 @@ BigBlueBam exposes **140 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Tools Reference
 
-**140 tools** across 15 categories:
+**158 tools** across 16 categories:
 
 | Category | Count | What they cover |
 |----------|------:|-----------------|
@@ -350,6 +352,7 @@ BigBlueBam exposes **140 MCP (Model Context Protocol) tools** that give AI assis
 | **Platform Admin** | 5 | Platform settings toggle, beta signups, public config (SuperUser-gated) |
 | **Banter Messaging** | 47 | Channels, DMs, messages, threads, reactions, calls, search, admin, presence, preferences |
 | **Beacon Knowledge Base** | 29 | CRUD, search, verification, graph, policies, saved queries |
+| **Brief Documents** | 18 | CRUD, collaboration, versions, search, graduation, templates |
 | **Helpdesk** | 7 | Ticket operations, public/admin settings |
 | **Utility** | 2 | Server info, action confirmation |
 
@@ -536,6 +539,48 @@ AI agents interact with Beacon through **29 dedicated MCP tools**:
 
 ---
 
+## Brief
+
+Brief is a collaborative document editor built into the BigBlueBam suite. Write documents alongside your project board, knowledge base, and team chat -- with real-time co-editing, templates, version history, and a graduation path that lets polished documents become Beacons when they mature into lasting knowledge.
+
+<p align="center">
+  <img src="images/brief-home.png" alt="Brief Home" width="100%" />
+</p>
+<p align="center"><em>Brief Home -- recent documents, templates, and quick-create actions</em></p>
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Collaborative Editing** | Real-time multi-user editing with presence cursors, conflict-free merging, and per-paragraph locking |
+| **Document Templates** | Start from scratch or pick a template (RFC, ADR, meeting notes, post-mortem, runbook) |
+| **Brief-to-Beacon Graduation** | Promote a finished document to a Beacon with one click -- metadata, tags, and links carry over |
+| **Cross-Product Linking** | Reference tasks (`BBB-247`), Banter messages, and Beacons inline with rich previews |
+| **Version History** | Every save creates a version; full diff view and one-click restore |
+| **Inline Comments** | Highlight any text and leave a comment thread -- resolved threads collapse automatically |
+| **Semantic Search** | Find documents by meaning via Qdrant vector search, not just keywords |
+| **18 MCP Tools** | AI agents can create, edit, search, comment on, and graduate documents programmatically |
+
+<p align="center">
+  <img src="images/brief-documents.png" alt="Document Browser" width="100%" />
+</p>
+<p align="center"><em>Document browser -- filter by project, author, template, and status</em></p>
+
+### Brief MCP Tools
+
+AI agents interact with Brief through **18 dedicated MCP tools**:
+
+| Category | Tools | What they do |
+|----------|-------|-------------|
+| **CRUD** | `brief_create`, `brief_list`, `brief_get`, `brief_update`, `brief_delete`, `brief_publish`, `brief_archive` | Full document lifecycle management |
+| **Collaboration** | `brief_comment_add`, `brief_comment_list`, `brief_comment_resolve` | Inline comment threads |
+| **Versions** | `brief_versions`, `brief_version_get`, `brief_version_restore` | Version history and restore |
+| **Search** | `brief_search`, `brief_suggest` | Semantic and keyword search, typeahead suggestions |
+| **Graduation** | `brief_graduate_to_beacon` | Promote a document to a Beacon with metadata carry-over |
+| **Templates** | `brief_template_list`, `brief_template_create` | Template management |
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -572,7 +617,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "My Organization"
 ```
 
-Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, or **http://localhost/helpdesk/** for the helpdesk portal.
+Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, **http://localhost/brief/** for Brief, or **http://localhost/helpdesk/** for the helpdesk portal.
 
 <p align="center">
   <img src="images/01-login.png" alt="Login Page" width="60%" />
@@ -603,7 +648,10 @@ All services are accessed through a single nginx container on port 80:
 | `/files/` | MinIO `:9000` | Uploaded files (shared) |
 | `/beacon/` | nginx | Beacon knowledge base SPA |
 | `/beacon/api/` | Fastify `:4004` | Beacon REST API |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (140 tools) |
+| `/brief/` | nginx | Brief collaborative document editor SPA |
+| `/brief/api/` | Fastify `:4005` | Brief REST API |
+| `/brief/ws` | Fastify `:4005` | Brief WebSocket (real-time co-editing) |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (158 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -629,7 +677,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Run Tests
 
 ```bash
-pnpm test  # 530+ tests across all packages
+pnpm test  # 590+ tests across all packages
 ```
 
 ---
@@ -651,19 +699,22 @@ pnpm test  # 530+ tests across all packages
 │  /banter/ws    → Banter WebSocket :4002        ││
 │  /beacon/      → Beacon SPA (static)           ││
 │  /beacon/api/  → Beacon API :4004              ││
+│  /brief/       → Brief SPA (static)            ││
+│  /brief/api/   → Brief API :4005               ││
+│  /brief/ws     → Brief WebSocket :4005         ││
 │  /helpdesk/    → Helpdesk SPA (static)         ││
 │  /helpdesk/api/→ Helpdesk API :4001            ││
 │  /files/       → MinIO :9000                   ││
 │  /mcp/         → MCP Server :3001              ││
 └──────┬──────────┬──────────┬───────────────────┘│
        │          │          │                     │
-┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌───────▼──────┐ ┌──────────┐
-│ Bam API   │ │ Banter   │ │ MCP Server│ │ LiveKit SFU  │ │ Worker   │
-│ :4000     │ │ API :4002│ │ :3001     │ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 140 tools │ │ +voice-agent │ │ jobs     │
-└─────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘ └────┬─────┘
-      │             │             │                              │
-┌─────▼─────────────▼─────────────▼──────────────────────────────▼─────┐
+┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌──────────┐ ┌───────▼──────┐ ┌──────────┐
+│ Bam API   │ │ Banter   │ │ MCP Server│ │ Brief    │ │ LiveKit SFU  │ │ Worker   │
+│ :4000     │ │ API :4002│ │ :3001     │ │ API :4005│ │ :7880 (voice)│ │ BullMQ   │
+│ +WebSocket│ │ +WS      │ │ 158 tools │ │ +WS      │ │ +voice-agent │ │ jobs     │
+└─────┬─────┘ └────┬─────┘ └─────┬─────┘ └────┬─────┘ └──────────────┘ └────┬─────┘
+      │             │             │            │                  │
+┌─────▼─────────────▼─────────────▼────────────▼───────────────────▼───┐
 │  PostgreSQL 16  │  Redis 7        │  MinIO (S3)   │  Qdrant (vectors)    │
 │  40+ tables     │  PubSub + cache │  File storage │  Semantic search     │
 └──────────────────────┴──────────────────────┴────────────────────────┘
@@ -681,7 +732,7 @@ pnpm test  # 530+ tests across all packages
 | **Database** | PostgreSQL 16, Redis 7, MinIO, Qdrant |
 | **Worker** | BullMQ, Nodemailer |
 | **Build** | Turborepo, pnpm workspaces, tsup, Vite |
-| **Testing** | Vitest (530+ tests) |
+| **Testing** | Vitest (590+ tests) |
 | **Deploy** | Docker Compose, multi-stage Dockerfiles |
 
 ### Monorepo Structure
@@ -690,7 +741,7 @@ pnpm test  # 530+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (140 tools)
+  mcp-server/       → MCP protocol server (158 tools)
   worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
@@ -698,12 +749,14 @@ apps/
   banter/           → Banter React SPA (14 components, 7 pages)
   beacon-api/       → Beacon Fastify API (knowledge base, search, graph, policies)
   beacon/           → Beacon React SPA (knowledge home, graph explorer, editor)
+  brief-api/        → Brief Fastify REST API + WebSocket (8 route modules, 11 DB tables)
+  brief/            → Brief React SPA (collaborative editor, templates, version history)
   voice-agent/      → AI voice agent (Python/FastAPI, LiveKit Agents SDK)
 packages/
   shared/           → Zod schemas, TypeScript types, constants
 infra/
   postgres/         → Database schema (init.sql — 40+ tables)
-  nginx/            → Reverse proxy config (single nginx serves all 3 SPAs)
+  nginx/            → Reverse proxy config (single nginx serves all SPAs)
   livekit/          → LiveKit SFU configuration
 docs/               → 8 documentation pages with Mermaid diagrams
 scripts/            → Utility and seed scripts
@@ -713,11 +766,11 @@ scripts/            → Utility and seed scripts
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 14 |
-| MCP tools | 140 (64 Bam + 47 Banter + 29 Beacon) |
-| Test cases | 530+ |
-| API route modules | 38 (23 Bam + 15 Banter) |
-| Database tables | 40+ (25 Bam + 18 Banter) |
+| Docker services | 15 |
+| MCP tools | 158 (64 Bam + 47 Banter + 29 Beacon + 18 Brief) |
+| Test cases | 590+ |
+| API route modules | 46 (23 Bam + 15 Banter + 8 Brief) |
+| Database tables | 51+ (25 Bam + 18 Banter + 11 Brief) |
 | Frontend components | 47+ (33 Bam + 14 Banter) |
 | Documentation pages | 8 |
 

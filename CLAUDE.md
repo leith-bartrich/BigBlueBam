@@ -14,7 +14,7 @@ The authoritative design specification is `BigBlueBam_Design_Document.md` in the
 
 **API:** Node.js 22 LTS, Fastify v5, Drizzle ORM, Zod (shared validation schemas with client), Socket.IO or native WebSocket + Redis PubSub, BullMQ
 
-**Data:** PostgreSQL 16 (RLS, JSONB custom fields, partitioned activity log), Redis 7 (sessions, cache, pubsub, queues), MinIO/S3 (attachments), Qdrant (vector search for Beacon semantic retrieval)
+**Data:** PostgreSQL 16 (RLS, JSONB custom fields, partitioned activity log), Redis 7 (sessions, cache, pubsub, queues), MinIO/S3 (attachments), Qdrant (vector search for Beacon and Brief semantic retrieval)
 
 **MCP Server:** `@modelcontextprotocol/sdk`, Streamable HTTP + SSE + stdio transports, runs as sidecar container on internal :3001, exposed at `/mcp/` via nginx on port 80
 
@@ -28,12 +28,14 @@ apps/
   frontend/     — React SPA served by nginx at /b3/ (port 80) — ~55 source files, 8 pages, command palette, keyboard shortcuts
   banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
   banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (ALPHA)
-  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 140 tools (64 Bam + 47 Banter + 29 Beacon), 10+ resources, 8 prompts, 15 tool modules
+  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 158 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief), 10+ resources, 8 prompts, 16 tool modules
   worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
   beacon-api/   — Beacon Fastify API (internal :4004, proxied at /beacon/api/) — knowledge base, search, graph, policies
   beacon/       — Beacon React SPA served by nginx at /beacon/ — knowledge home, graph explorer, editor
+  brief-api/    — Brief Fastify REST API + WebSocket (internal :4005, proxied at /brief/api/) — 8 route files, 11 schema tables
+  brief/        — Brief React SPA served by nginx at /brief/
   voice-agent/  — AI voice agent (Python/FastAPI, internal :4003) — LiveKit Agents SDK, STT/TTS pipeline (placeholder)
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
@@ -56,12 +58,14 @@ The entire stack runs via `docker compose up`. All services are accessed through
 - `http://DOMAIN/banter/ws` proxies Banter WebSocket connections
 - `http://DOMAIN/beacon/` serves the Beacon knowledge base SPA
 - `http://DOMAIN/beacon/api/` proxies to the Beacon API
+- `http://DOMAIN/brief/` serves the Brief collaborative document editor SPA
+- `http://DOMAIN/brief/api/` proxies to the Brief API
 - `http://DOMAIN/helpdesk/` serves the Helpdesk portal SPA
 - `http://DOMAIN/helpdesk/api/` proxies to the Helpdesk API
 - `http://DOMAIN/files/` serves uploaded files from MinIO
 - `http://DOMAIN/mcp/` proxies to the MCP server
 
-Application containers (api, banter-api, beacon-api, mcp-server, worker, helpdesk-api, frontend, voice-agent) are stateless and scale horizontally. Data services (postgres, redis, minio, qdrant) can be swapped for managed cloud equivalents by changing environment variables only.
+Application containers (api, banter-api, beacon-api, brief-api, mcp-server, worker, helpdesk-api, frontend, voice-agent) are stateless and scale horizontally. Data services (postgres, redis, minio, qdrant) can be swapped for managed cloud equivalents by changing environment variables only.
 
 ## IMPORTANT: Preserving Test Data
 
@@ -78,7 +82,7 @@ The test database contains seeded projects, users, tickets, and conversations th
 
 **Single source of truth:** `infra/postgres/migrations/NNNN_*.sql` — append-only, idempotent numbered migration files. `0000_init.sql` is the canonical baseline; subsequent files layer schema evolution on top. There is no `init.sql` — the postgres container boots with an empty DB and the `migrate` service creates everything.
 
-The `migrate` service (reuses the api image, runs `node dist/migrate.js`) is a `service_completed_successfully` dependency of every DB-using service — api, helpdesk-api, banter-api, worker. It runs automatically on every `docker compose up`, tracks applied migrations in the `schema_migrations` table with SHA-256 checksums, and is a no-op once the DB is current.
+The `migrate` service (reuses the api image, runs `node dist/migrate.js`) is a `service_completed_successfully` dependency of every DB-using service — api, helpdesk-api, banter-api, beacon-api, brief-api, worker. It runs automatically on every `docker compose up`, tracks applied migrations in the `schema_migrations` table with SHA-256 checksums, and is a no-op once the DB is current.
 
 **When you change the schema:**
 
