@@ -11,6 +11,7 @@ import { processExportJob, type ExportJobData } from './jobs/export.job.js';
 import { processBanterNotificationJob, type BanterNotificationJobData } from './jobs/banter-notification.job.js';
 import { processBanterRetentionJob, type BanterRetentionJobData } from './jobs/banter-retention.job.js';
 import { processHelpdeskTaskCreateJob, type HelpdeskTaskCreateJobData } from './jobs/helpdesk-task-create.job.js';
+import { processBeaconVectorSyncJob, type BeaconVectorSyncJobData } from './jobs/beacon-vector-sync.job.js';
 
 const env = loadEnv();
 
@@ -156,6 +157,23 @@ helpdeskTaskCreateWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'helpdesk-task-create', err }, 'Job failed');
 });
 
+// Beacon vector sync worker
+const beaconVectorSyncWorker = new Worker<BeaconVectorSyncJobData>(
+  'beacon-vector-sync',
+  async (job: Job<BeaconVectorSyncJobData>) => {
+    await processBeaconVectorSyncJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+
+beaconVectorSyncWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'beacon-vector-sync' }, 'Job completed');
+});
+
+beaconVectorSyncWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'beacon-vector-sync', err }, 'Job failed');
+});
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -177,10 +195,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'analytics'] },
   'All workers started',
 );
 
