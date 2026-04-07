@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/tests-590%2B%20passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/tests-650%2B%20passing-brightgreen" alt="Tests" />
   <img src="https://img.shields.io/badge/MCP%20tools-158-blue" alt="MCP Tools" />
   <img src="https://img.shields.io/badge/Docker%20services-15-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
@@ -541,7 +541,7 @@ AI agents interact with Beacon through **29 dedicated MCP tools**:
 
 ## Brief
 
-Brief is a collaborative document editor built into the BigBlueBam suite. Write documents alongside your project board, knowledge base, and team chat -- with real-time co-editing, templates, version history, and a graduation path that lets polished documents become Beacons when they mature into lasting knowledge.
+Brief is a collaborative document editor built into the BigBlueBam suite. Its rich-text collaborative editor features a formatting toolbar, auto-generated table of contents, and slash commands -- plus real-time co-editing, templates, version history, and a graduation path that lets polished documents become Beacons when they mature into lasting knowledge.
 
 <p align="center">
   <img src="images/brief-home.png" alt="Brief Home" width="100%" />
@@ -552,8 +552,10 @@ Brief is a collaborative document editor built into the BigBlueBam suite. Write 
 
 | Feature | Description |
 |---------|-------------|
+| **WYSIWYG Editor** | Tiptap-based rich text with formatting toolbar, heading dropdown, tables, code blocks, task lists, and syntax highlighting |
+| **Auto Table of Contents** | Generated in real-time from document headings, clickable to navigate |
 | **Collaborative Editing** | Real-time multi-user editing with presence cursors, conflict-free merging, and per-paragraph locking |
-| **Document Templates** | Start from scratch or pick a template (RFC, ADR, meeting notes, post-mortem, runbook) |
+| **33 Built-in Templates** | Meeting notes, PRDs, RFCs, post-mortems, onboarding guides, and more across 7 categories |
 | **Brief-to-Beacon Graduation** | Promote a finished document to a Beacon with one click -- metadata, tags, and links carry over |
 | **Cross-Product Linking** | Reference tasks (`BBB-247`), Banter messages, and Beacons inline with rich previews |
 | **Version History** | Every save creates a version; full diff view and one-click restore |
@@ -565,6 +567,33 @@ Brief is a collaborative document editor built into the BigBlueBam suite. Write 
   <img src="images/brief-documents.png" alt="Document Browser" width="100%" />
 </p>
 <p align="center"><em>Document browser -- filter by project, author, template, and status</em></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/brief-editor.png" alt="Brief WYSIWYG Editor — new document" width="100%" /></td>
+    <td width="50%"><img src="images/brief-editor-with-content.png" alt="Brief WYSIWYG Editor — editing" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>WYSIWYG editor with formatting toolbar and Table of Contents</em></td>
+    <td align="center"><em>Editing an existing document with rich text</em></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="images/brief-templates.png" alt="Brief Template Library" width="100%" />
+</p>
+<p align="center"><em>33 built-in templates across 7 categories — business operations, engineering, strategy, HR, communications, sales, and creative</em></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/brief-template-meeting-notes.png" alt="Meeting Notes template loaded in editor" width="100%" /></td>
+    <td width="50%"><img src="images/brief-template-prd.png" alt="PRD template loaded in editor" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Meeting Notes template — agenda, attendees, action items with checkboxes</em></td>
+    <td align="center"><em>PRD template — metadata table, problem statement, requirements, rollout plan</em></td>
+  </tr>
+</table>
 
 ### Brief MCP Tools
 
