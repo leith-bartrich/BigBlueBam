@@ -12,6 +12,7 @@ COPY apps/helpdesk/package.json ./apps/helpdesk/
 COPY apps/banter/package.json ./apps/banter/
 COPY apps/beacon/package.json ./apps/beacon/
 COPY apps/brief/package.json ./apps/brief/
+COPY apps/bolt/package.json ./apps/bolt/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
@@ -53,12 +54,19 @@ COPY apps/brief/public ./apps/brief/public
 COPY apps/brief/index.html ./apps/brief/
 COPY apps/brief/tsconfig.json apps/brief/tsconfig.node.json apps/brief/vite.config.ts ./apps/brief/
 
+# Bolt frontend
+COPY apps/bolt/src ./apps/bolt/src
+COPY apps/bolt/public ./apps/bolt/public
+COPY apps/bolt/index.html ./apps/bolt/
+COPY apps/bolt/tsconfig.json apps/bolt/tsconfig.node.json apps/bolt/vite.config.ts ./apps/bolt/
+
 RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/frontend build \
  && pnpm --filter @bigbluebam/helpdesk build \
  && pnpm --filter @bigbluebam/banter build \
  && pnpm --filter @bigbluebam/beacon build \
- && pnpm --filter @bigbluebam/brief build
+ && pnpm --filter @bigbluebam/brief build \
+ && pnpm --filter @bigbluebam/bolt build
 
 # ── Stage: production ────────────────────────────────────────────
 FROM nginx:alpine AS production
@@ -68,6 +76,7 @@ COPY --from=build /app/apps/helpdesk/dist /usr/share/nginx/html/helpdesk
 COPY --from=build /app/apps/banter/dist /usr/share/nginx/html/banter
 COPY --from=build /app/apps/beacon/dist /usr/share/nginx/html/beacon
 COPY --from=build /app/apps/brief/dist /usr/share/nginx/html/brief
+COPY --from=build /app/apps/bolt/dist /usr/share/nginx/html/bolt
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
