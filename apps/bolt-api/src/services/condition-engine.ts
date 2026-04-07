@@ -37,12 +37,15 @@ export interface EvaluationResult {
  * Resolve a dot-delimited field path against a payload object.
  * e.g. "task.assignee.email" resolves to payload.task.assignee.email
  */
+const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function resolveField(payload: Record<string, unknown>, field: string): unknown {
   const parts = field.split('.');
   let current: unknown = payload;
   for (const part of parts) {
     if (current === null || current === undefined) return undefined;
     if (typeof current !== 'object') return undefined;
+    if (BLOCKED_KEYS.has(part)) return undefined;
     current = (current as Record<string, unknown>)[part];
   }
   return current;
@@ -116,7 +119,10 @@ function evaluateSingle(operator: ConditionOperator, actual: unknown, expected: 
 
     case 'matches_regex': {
       try {
-        const regex = new RegExp(toString(expected));
+        const pattern = toString(expected);
+        // Limit regex pattern length to mitigate ReDoS
+        if (pattern.length > 500) return false;
+        const regex = new RegExp(pattern);
         return regex.test(toString(actual));
       } catch {
         // Invalid regex — treat as not matching

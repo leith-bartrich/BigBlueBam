@@ -63,7 +63,7 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'List workflow automations with optional filters and pagination.',
     {
       project_id: z.string().uuid().optional().describe('Filter by project'),
-      trigger_source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule', 'webhook']).optional().describe('Filter by trigger source'),
+      trigger_source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule']).optional().describe('Filter by trigger source'),
       enabled: z.boolean().optional().describe('Filter by enabled state'),
       cursor: z.string().optional().describe('Pagination cursor'),
       limit: z.number().int().positive().max(100).optional().describe('Page size (default 50, max 100)'),
@@ -93,7 +93,7 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
       name: z.string().max(255).describe('Automation name (max 255 chars)'),
       description: z.string().max(2000).optional().describe('Description (max 2000 chars)'),
       project_id: z.string().uuid().optional().describe('Project to scope the automation to'),
-      trigger_source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule', 'webhook']).describe('Source system that fires the trigger'),
+      trigger_source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule']).describe('Source system that fires the trigger'),
       trigger_event: z.string().max(60).describe('Event name within the source (max 60 chars)'),
       trigger_filter: z.record(z.unknown()).optional().describe('Optional filter object narrowing which events match'),
       conditions: z.array(z.record(z.unknown())).optional().describe('Array of condition objects that must all pass'),
@@ -115,7 +115,7 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
       id: z.string().uuid().describe('Automation ID'),
       name: z.string().max(255).optional().describe('Updated name'),
       description: z.string().max(2000).optional().describe('Updated description'),
-      trigger_source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule', 'webhook']).optional().describe('Updated trigger source'),
+      trigger_source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule']).optional().describe('Updated trigger source'),
       trigger_event: z.string().max(60).optional().describe('Updated trigger event'),
       trigger_filter: z.record(z.unknown()).optional().describe('Updated trigger filter'),
       conditions: z.array(z.record(z.unknown())).optional().describe('Updated conditions array'),
@@ -171,10 +171,10 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'Test-fire an automation with a simulated event payload.',
     {
       id: z.string().uuid().describe('Automation ID to test'),
-      event_payload: z.record(z.unknown()).describe('Simulated event payload object'),
+      event: z.record(z.unknown()).describe('Simulated event payload object'),
     },
-    async ({ id, event_payload }) => {
-      const result = await client.request('POST', `/automations/${id}/test`, { event_payload });
+    async ({ id, event }) => {
+      const result = await client.request('POST', `/automations/${id}/test`, { event });
       return result.ok ? ok(result.data) : err('testing automation', result.data);
     },
   );
@@ -186,7 +186,7 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'List execution history for an automation.',
     {
       automation_id: z.string().uuid().describe('Automation ID'),
-      status: z.enum(['pending', 'running', 'success', 'failure', 'skipped']).optional().describe('Filter by execution status'),
+      status: z.enum(['running', 'success', 'partial', 'failed', 'skipped']).optional().describe('Filter by execution status'),
       limit: z.number().int().positive().max(100).optional().describe('Max results (default 50, max 100)'),
     },
     async ({ automation_id, ...rest }) => {
@@ -213,7 +213,7 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_events',
     'List available trigger events, optionally filtered by source.',
     {
-      source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule', 'webhook']).optional().describe('Filter events by source system'),
+      source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule']).optional().describe('Filter events by source system'),
     },
     async ({ source }) => {
       const path = source ? `/events/${source}` : '/events';
