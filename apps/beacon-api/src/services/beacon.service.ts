@@ -4,6 +4,7 @@ import {
   beaconEntries,
   beaconVersions,
   beaconExpiryPolicies,
+  projectMemberships,
 } from '../db/schema/index.js';
 
 // ---------------------------------------------------------------------------
@@ -172,17 +173,17 @@ export async function createBeacon(
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function getBeacon(idOrSlug: string, userId: string) {
+export async function getBeacon(idOrSlug: string, userId: string, orgId: string) {
   const isUuid = UUID_REGEX.test(idOrSlug);
 
-  const condition = isUuid
+  const idCondition = isUuid
     ? eq(beaconEntries.id, idOrSlug)
     : eq(beaconEntries.slug, idOrSlug);
 
   const [beacon] = await db
     .select()
     .from(beaconEntries)
-    .where(condition)
+    .where(and(idCondition, eq(beaconEntries.organization_id, orgId)))
     .limit(1);
 
   if (!beacon) return null;
@@ -194,11 +195,22 @@ export async function getBeacon(idOrSlug: string, userId: string) {
     }
   }
 
+  // Visibility check: Project-scoped beacons require project membership
+  if (beacon.visibility === 'Project' && beacon.project_id) {
+    if (beacon.owned_by !== userId && beacon.created_by !== userId) {
+      const userProjects = await getUserProjectIds(userId);
+      if (!userProjects.has(beacon.project_id)) {
+        return null;
+      }
+    }
+  }
+
   return beacon;
 }
 
 export interface ListBeaconsFilters {
   orgId: string;
+  userId: string;
   projectIds?: string[];
   status?: string;
   tags?: string[];
@@ -232,6 +244,42 @@ export async function listBeacons(filters: ListBeaconsFilters) {
       )!,
     );
   }
+
+  // Visibility enforcement:
+  // - Private beacons: only visible to owner/creator
+  // - Project beacons: only visible to project members (or owner/creator)
+  const userProjectIds = await getUserProjectIds(filters.userId);
+  const userProjectArray = [...userProjectIds];
+
+  // Exclude beacons the user cannot see based on visibility rules:
+  // Allow if: visibility is Public/Organization, OR
+  //           visibility is Private and user is owner/creator, OR
+  //           visibility is Project and (user is owner/creator OR user is a project member)
+  conditions.push(
+    or(
+      // Public and Organization visibility — visible to all org members
+      sql`${beaconEntries.visibility} IN ('Public', 'Organization')`,
+      // Private — only owner/creator
+      and(
+        eq(beaconEntries.visibility, 'Private'),
+        or(
+          eq(beaconEntries.owned_by, filters.userId),
+          eq(beaconEntries.created_by, filters.userId),
+        ),
+      ),
+      // Project — owner/creator or project member
+      and(
+        eq(beaconEntries.visibility, 'Project'),
+        or(
+          eq(beaconEntries.owned_by, filters.userId),
+          eq(beaconEntries.created_by, filters.userId),
+          userProjectArray.length > 0
+            ? inArray(beaconEntries.project_id, userProjectArray)
+            : sql`FALSE`,
+        ),
+      ),
+    )!,
+  );
 
   const limit = Math.min(filters.limit ?? 50, 100);
 
@@ -276,8 +324,9 @@ export async function updateBeacon(
   id: string,
   data: UpdateBeaconInput,
   userId: string,
+  orgId: string,
 ) {
-  const existing = await getBeaconById(id);
+  const existing = await getBeaconById(id, orgId);
   if (!existing) throw new BeaconError('NOT_FOUND', 'Beacon not found', 404);
 
   const newVersion = existing.version + 1;
@@ -313,8 +362,8 @@ export async function updateBeacon(
   return beacon!;
 }
 
-export async function retireBeacon(id: string, _userId: string) {
-  const existing = await getBeaconById(id);
+export async function retireBeacon(id: string, _userId: string, orgId: string) {
+  const existing = await getBeaconById(id, orgId);
   if (!existing) throw new BeaconError('NOT_FOUND', 'Beacon not found', 404);
 
   const [beacon] = await db
@@ -330,8 +379,8 @@ export async function retireBeacon(id: string, _userId: string) {
   return beacon!;
 }
 
-export async function publishBeacon(id: string, _userId: string) {
-  const existing = await getBeaconById(id);
+export async function publishBeacon(id: string, _userId: string, orgId: string) {
+  const existing = await getBeaconById(id, orgId);
   if (!existing) throw new BeaconError('NOT_FOUND', 'Beacon not found', 404);
 
   if (existing.status !== 'Draft') {
@@ -361,8 +410,8 @@ export async function publishBeacon(id: string, _userId: string) {
   return beacon!;
 }
 
-export async function restoreBeacon(id: string, _userId: string) {
-  const existing = await getBeaconById(id);
+export async function restoreBeacon(id: string, _userId: string, orgId: string) {
+  const existing = await getBeaconById(id, orgId);
   if (!existing) throw new BeaconError('NOT_FOUND', 'Beacon not found', 404);
 
   if (existing.status !== 'Archived') {
@@ -393,14 +442,29 @@ export async function restoreBeacon(id: string, _userId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Project membership helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the set of project IDs the user is a member of.
+ */
+export async function getUserProjectIds(userId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ project_id: projectMemberships.project_id })
+    .from(projectMemberships)
+    .where(eq(projectMemberships.user_id, userId));
+  return new Set(rows.map((r) => r.project_id));
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-export async function getBeaconById(id: string) {
+export async function getBeaconById(id: string, orgId: string) {
   const [beacon] = await db
     .select()
     .from(beaconEntries)
-    .where(eq(beaconEntries.id, id))
+    .where(and(eq(beaconEntries.id, id), eq(beaconEntries.organization_id, orgId)))
     .limit(1);
   return beacon ?? null;
 }

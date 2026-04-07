@@ -39,8 +39,9 @@ export async function verifyBeacon(
   beaconId: string,
   userId: string,
   data: VerifyInput,
+  orgId: string,
 ) {
-  const existing = await getBeaconById(beaconId);
+  const existing = await getBeaconById(beaconId, orgId);
   if (!existing) {
     throw new BeaconError('NOT_FOUND', 'Beacon not found', 404);
   }
@@ -73,9 +74,9 @@ export async function verifyBeacon(
   // Status side-effects
   let beacon = existing;
   if (data.outcome === 'Confirmed' && existing.status === 'PendingReview') {
-    beacon = await transitionBeacon(beaconId, 'Active', userId);
+    beacon = await transitionBeacon(beaconId, 'Active', userId, undefined, orgId);
   } else if (data.outcome === 'Challenged' && existing.status === 'Active') {
-    beacon = await transitionBeacon(beaconId, 'PendingReview', userId);
+    beacon = await transitionBeacon(beaconId, 'PendingReview', userId, undefined, orgId);
   }
 
   return { verification: verification!, beacon };
@@ -96,6 +97,7 @@ export async function processAgentVerification(
   beaconId: string,
   agentUserId: string,
   confidence: number,
+  orgId: string,
 ) {
   // Look up agent config
   const [agent] = await db
@@ -123,7 +125,7 @@ export async function processAgentVerification(
       outcome: 'Confirmed',
       confidence,
       notes: `Agent auto-confirmed with confidence ${confidence.toFixed(2)}`,
-    });
+    }, orgId);
   }
 
   if (confidence >= assistedThreshold) {
@@ -133,7 +135,7 @@ export async function processAgentVerification(
       outcome: 'Challenged',
       confidence,
       notes: `Agent flagged for human review with confidence ${confidence.toFixed(2)}`,
-    });
+    }, orgId);
   }
 
   // Below assisted threshold — escalate without making a verification record
@@ -150,7 +152,7 @@ export async function processAgentVerification(
     })
     .returning();
 
-  const beacon = await getBeaconById(beaconId);
+  const beacon = await getBeaconById(beaconId, orgId);
 
   return { verification: verification!, beacon, escalated: true };
 }

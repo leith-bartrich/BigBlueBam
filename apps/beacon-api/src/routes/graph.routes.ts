@@ -63,6 +63,7 @@ export default async function graphRoutes(fastify: FastifyInstance) {
         query.include_implicit,
         query.tag_affinity_threshold,
         query['filters.status'],
+        request.user!.org_id,
       );
 
       return reply.send(result);

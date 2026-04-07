@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { beaconEntries, organizationMemberships } from '../db/schema/index.js';
+import { beaconEntries, organizationMemberships, projectMemberships } from '../db/schema/index.js';
 
 /**
  * Role hierarchy for Beacon authorization.
@@ -135,6 +135,34 @@ export function requireBeaconEditAccess() {
 
     if (request.user.is_superuser) return;
 
+    // Project-scoped beacons require project membership
+    if (beacon.project_id) {
+      const isOwnerOrCreator = beacon.owned_by === request.user.id || beacon.created_by === request.user.id;
+      if (!isOwnerOrCreator) {
+        const [membership] = await db
+          .select({ id: projectMemberships.id })
+          .from(projectMemberships)
+          .where(
+            and(
+              eq(projectMemberships.project_id, beacon.project_id),
+              eq(projectMemberships.user_id, request.user.id),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Beacon not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+    }
+
     // Admin / Owner can edit any beacon in org
     if (roleLevel(request.user.role) >= roleLevel('admin')) return;
 
@@ -235,6 +263,37 @@ export function requireBeaconReadAccess() {
           request_id: request.id,
         },
       });
+    }
+
+    // Project visibility check: require project membership
+    if (
+      beacon.visibility === 'Project' &&
+      beacon.project_id &&
+      beacon.owned_by !== request.user.id &&
+      beacon.created_by !== request.user.id &&
+      !request.user.is_superuser
+    ) {
+      const [membership] = await db
+        .select({ id: projectMemberships.id })
+        .from(projectMemberships)
+        .where(
+          and(
+            eq(projectMemberships.project_id, beacon.project_id),
+            eq(projectMemberships.user_id, request.user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Beacon not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
     }
 
     (request as any).beacon = beacon;

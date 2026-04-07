@@ -16,6 +16,7 @@ import {
   beaconEntries,
   beaconTags,
   beaconLinks,
+  projectMemberships,
 } from '../db/schema/index.js';
 import { searchChunks, type QdrantSearchFilters, type QdrantSearchResult } from './qdrant.service.js';
 import { embedTexts } from './embedding.service.js';
@@ -253,12 +254,38 @@ export async function hybridSearch(
     return { results: [], total_candidates: 0, retrieval_stages: stages };
   }
 
-  // Fetch full beacon data for all candidates
+  // Fetch full beacon data for all candidates, scoped to org
   const candidateIds = [...candidates.keys()];
-  const beacons = await db
+  const allBeacons = await db
     .select()
     .from(beaconEntries)
-    .where(inArray(beaconEntries.id, candidateIds));
+    .where(
+      and(
+        inArray(beaconEntries.id, candidateIds),
+        eq(beaconEntries.organization_id, request.filters.organization_id),
+      ),
+    );
+
+  // Enforce visibility: filter out Private/Project beacons the user cannot see
+  const userProjectRows = await db
+    .select({ project_id: projectMemberships.project_id })
+    .from(projectMemberships)
+    .where(eq(projectMemberships.user_id, userId));
+  const userProjectIds = new Set(userProjectRows.map((r) => r.project_id));
+
+  const beacons = allBeacons.filter((beacon) => {
+    if (beacon.visibility === 'Private') {
+      return beacon.owned_by === userId || beacon.created_by === userId;
+    }
+    if (beacon.visibility === 'Project' && beacon.project_id) {
+      return (
+        beacon.owned_by === userId ||
+        beacon.created_by === userId ||
+        userProjectIds.has(beacon.project_id)
+      );
+    }
+    return true; // Public, Organization
+  });
 
   // Fetch tags for all candidate beacons
   const allTags = await db
@@ -389,6 +416,7 @@ export async function suggestBeacons(
   query: string,
   orgId: string,
   limit: number = 10,
+  userId?: string,
 ): Promise<{ id: string; slug: string; title: string; tags: string[] }[]> {
   const pattern = `%${query}%`;
 
@@ -398,6 +426,10 @@ export async function suggestBeacons(
       id: beaconEntries.id,
       slug: beaconEntries.slug,
       title: beaconEntries.title,
+      visibility: beaconEntries.visibility,
+      project_id: beaconEntries.project_id,
+      owned_by: beaconEntries.owned_by,
+      created_by: beaconEntries.created_by,
     })
     .from(beaconEntries)
     .where(
@@ -406,7 +438,7 @@ export async function suggestBeacons(
         ilike(beaconEntries.title, pattern),
       ),
     )
-    .limit(limit);
+    .limit(limit * 2); // fetch extra to allow for visibility filtering
 
   // Search by tag
   const tagMatches = await db
@@ -414,6 +446,10 @@ export async function suggestBeacons(
       id: beaconEntries.id,
       slug: beaconEntries.slug,
       title: beaconEntries.title,
+      visibility: beaconEntries.visibility,
+      project_id: beaconEntries.project_id,
+      owned_by: beaconEntries.owned_by,
+      created_by: beaconEntries.created_by,
     })
     .from(beaconEntries)
     .innerJoin(beaconTags, eq(beaconTags.beacon_id, beaconEntries.id))
@@ -423,17 +459,43 @@ export async function suggestBeacons(
         ilike(beaconTags.tag, pattern),
       ),
     )
-    .limit(limit);
+    .limit(limit * 2);
 
-  // Deduplicate
+  // Visibility filtering: get user's project memberships
+  let suggestUserProjectIds: Set<string> | null = null;
+  if (userId) {
+    const projRows = await db
+      .select({ project_id: projectMemberships.project_id })
+      .from(projectMemberships)
+      .where(eq(projectMemberships.user_id, userId));
+    suggestUserProjectIds = new Set(projRows.map((r) => r.project_id));
+  }
+
+  // Deduplicate and filter by visibility
   const seen = new Set<string>();
   const results: { id: string; slug: string; title: string; tags: string[] }[] = [];
 
   for (const match of [...titleMatches, ...tagMatches]) {
-    if (!seen.has(match.id)) {
-      seen.add(match.id);
-      results.push({ ...match, tags: [] });
+    if (seen.has(match.id)) continue;
+    seen.add(match.id);
+
+    // Enforce visibility rules
+    if (userId) {
+      if (match.visibility === 'Private') {
+        if (match.owned_by !== userId && match.created_by !== userId) continue;
+      }
+      if (match.visibility === 'Project' && match.project_id) {
+        if (
+          match.owned_by !== userId &&
+          match.created_by !== userId &&
+          !suggestUserProjectIds?.has(match.project_id)
+        ) {
+          continue;
+        }
+      }
     }
+
+    results.push({ id: match.id, slug: match.slug, title: match.title, tags: [] });
   }
 
   // Fetch tags for results

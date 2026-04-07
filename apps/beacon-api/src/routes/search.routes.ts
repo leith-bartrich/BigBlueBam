@@ -66,10 +66,11 @@ export default async function searchRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = searchRequestSchema.parse(request.body);
 
+      // Always enforce the session org — never trust client-supplied organization_id
       const searchRequest: searchService.SearchRequest = {
         query: body.query,
         filters: {
-          organization_id: body.filters?.organization_id ?? request.user!.org_id,
+          organization_id: request.user!.org_id,
           project_ids: body.filters?.project_ids,
           status: body.filters?.status,
           tags: body.filters?.tags,
@@ -94,6 +95,7 @@ export default async function searchRoutes(fastify: FastifyInstance) {
         query.q,
         request.user!.org_id,
         query.limit,
+        request.user!.id,
       );
       return reply.send({ data: results });
     },
@@ -106,10 +108,11 @@ export default async function searchRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = searchRequestSchema.parse(request.body);
 
+      // Always enforce the session org — never trust client-supplied organization_id
       const searchRequest: searchService.SearchRequest = {
         query: body.query,
         filters: {
-          organization_id: body.filters?.organization_id ?? request.user!.org_id,
+          organization_id: request.user!.org_id,
           project_ids: body.filters?.project_ids,
           status: body.filters?.status,
           tags: body.filters?.tags,

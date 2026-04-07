@@ -61,6 +61,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
       const query = listBeaconsQuerySchema.parse(request.query);
       const filters: beaconService.ListBeaconsFilters = {
         orgId: request.user!.org_id,
+        userId: request.user!.id,
         projectIds: query.project_ids
           ? query.project_ids.split(',').filter(Boolean)
           : undefined,
@@ -96,6 +97,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.params.id,
         data,
         request.user!.id,
+        request.user!.org_id,
       );
       return reply.send({ data: beacon });
     },
@@ -109,6 +111,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
       const beacon = await beaconService.retireBeacon(
         request.params.id,
         request.user!.id,
+        request.user!.org_id,
       );
       return reply.send({ data: beacon });
     },
@@ -122,6 +125,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
       const beacon = await beaconService.publishBeacon(
         request.params.id,
         request.user!.id,
+        request.user!.org_id,
       );
       return reply.send({ data: beacon });
     },
@@ -135,6 +139,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
       const beacon = await beaconService.restoreBeacon(
         request.params.id,
         request.user!.id,
+        request.user!.org_id,
       );
       return reply.send({ data: beacon });
     },
@@ -162,6 +167,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
           confidence: data.confidence_score ?? null,
           notes: data.notes ?? null,
         },
+        request.user!.org_id,
       );
       return reply.send({ data: result });
     },
@@ -182,6 +188,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         'PendingReview',
         request.user!.id,
         { reason: data.reason },
+        request.user!.org_id,
       );
       return reply.send({ data: beacon });
     },

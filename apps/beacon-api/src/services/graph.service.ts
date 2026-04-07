@@ -69,6 +69,7 @@ export async function getNeighbors(
   includeImplicit: boolean,
   tagAffinityThreshold: number,
   statusFilter: string[],
+  orgId: string,
 ): Promise<NeighborResult> {
   // BFS: collect node IDs layer by layer
   const visited = new Set<string>([beaconId]);
@@ -85,6 +86,8 @@ export async function getNeighbors(
       WHERE (bl.source_id = ANY(${frontier}) OR bl.target_id = ANY(${frontier}))
         AND be_src.status = ANY(${statusFilter})
         AND be_tgt.status = ANY(${statusFilter})
+        AND be_src.organization_id = ${orgId}
+        AND be_tgt.organization_id = ${orgId}
     `);
 
     const nextFrontier: string[] = [];
@@ -112,7 +115,7 @@ export async function getNeighbors(
   if (includeImplicit) {
     const nodeIds = Array.from(visited);
     for (const nodeId of nodeIds) {
-      const implicit = await getImplicitEdges(nodeId, tagAffinityThreshold, statusFilter);
+      const implicit = await getImplicitEdges(nodeId, tagAffinityThreshold, statusFilter, orgId);
       for (const edge of implicit) {
         // Only include edges where both ends are in our node set OR we add the new node
         visited.add(edge.source_id);
@@ -124,7 +127,7 @@ export async function getNeighbors(
 
   // Fetch full node data for all collected IDs
   const nodeIds = Array.from(visited);
-  const nodes = await fetchNodes(nodeIds, statusFilter);
+  const nodes = await fetchNodes(nodeIds, statusFilter, orgId);
 
   // Deduplicate edges
   const edgeSet = new Set<string>();
@@ -156,6 +159,7 @@ async function getImplicitEdges(
   beaconId: string,
   threshold: number,
   statusFilter: string[],
+  orgId: string,
 ): Promise<ImplicitEdge[]> {
   const cacheKey = `beacon:implicit:${beaconId}`;
 
@@ -184,6 +188,7 @@ async function getImplicitEdges(
     JOIN beacon_entries be ON be.id = t2.beacon_id
     WHERE t1.beacon_id = ${beaconId}
       AND be.status = ANY(${statusFilter})
+      AND be.organization_id = ${orgId}
     GROUP BY t1.beacon_id, t2.beacon_id
     HAVING COUNT(*) >= 2
   `);
@@ -215,6 +220,7 @@ async function getImplicitEdges(
 async function fetchNodes(
   nodeIds: string[],
   statusFilter: string[],
+  orgId: string,
 ): Promise<GraphNode[]> {
   if (nodeIds.length === 0) return [];
 
@@ -241,6 +247,7 @@ async function fetchNodes(
     ) lc ON lc.target_id = be.id
     WHERE be.id = ANY(${nodeIds})
       AND be.status = ANY(${statusFilter})
+      AND be.organization_id = ${orgId}
   `);
 
   return rows.map((r) => ({
@@ -267,10 +274,10 @@ export async function getHubs(
   orgId: string,
   topK: number,
 ): Promise<GraphNode[]> {
-  const scopeFilter =
+  const projectFilter =
     scope === 'project' && projectId
       ? sql`AND be.project_id = ${projectId}`
-      : sql`AND be.organization_id = ${orgId}`;
+      : sql``;
 
   const rows: any[] = await db.execute(sql`
     SELECT
@@ -294,7 +301,8 @@ export async function getHubs(
       GROUP BY target_id
     ) lc ON lc.target_id = be.id
     WHERE be.status IN ('Active', 'PendingReview')
-      ${scopeFilter}
+      AND be.organization_id = ${orgId}
+      ${projectFilter}
     ORDER BY (COALESCE(lc.cnt, 0) + be.verification_count) DESC
     LIMIT ${topK}
   `);
@@ -323,10 +331,10 @@ export async function getRecent(
   orgId: string,
   days: number,
 ): Promise<GraphNode[]> {
-  const scopeFilter =
+  const projectFilter =
     scope === 'project' && projectId
       ? sql`AND be.project_id = ${projectId}`
-      : sql`AND be.organization_id = ${orgId}`;
+      : sql``;
 
   const rows: any[] = await db.execute(sql`
     SELECT
@@ -350,7 +358,8 @@ export async function getRecent(
       GROUP BY target_id
     ) lc ON lc.target_id = be.id
     WHERE be.status IN ('Active', 'PendingReview')
-      ${scopeFilter}
+      AND be.organization_id = ${orgId}
+      ${projectFilter}
       AND (
         be.updated_at > NOW() - MAKE_INTERVAL(days => ${days})
         OR be.last_verified_at > NOW() - MAKE_INTERVAL(days => ${days})

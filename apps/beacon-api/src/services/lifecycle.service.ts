@@ -83,8 +83,14 @@ export async function transitionBeacon(
   targetStatus: BeaconStatus,
   userId: string,
   opts?: TransitionOpts,
+  orgId?: string,
 ) {
-  const existing = await getBeaconById(beaconId);
+  const existing = orgId ? await getBeaconById(beaconId, orgId) : null;
+  if (!existing && !orgId) {
+    // Fallback: should not happen in properly updated callers, but
+    // throw to surface the missing orgId during development
+    throw new BeaconError('BAD_REQUEST', 'orgId is required for transitionBeacon', 400);
+  }
   if (!existing) {
     throw new BeaconError('NOT_FOUND', 'Beacon not found', 404);
   }

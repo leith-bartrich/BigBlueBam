@@ -224,7 +224,7 @@ describe('transitionBeacon', () => {
     const updateChain = chainable([updatedBeacon]);
     mockUpdate.mockReturnValue(updateChain);
 
-    const result = await transitionBeacon(BEACON_ID, 'Active', USER_ID);
+    const result = await transitionBeacon(BEACON_ID, 'Active', USER_ID, undefined, ORG_ID);
     expect(result).toBeDefined();
     expect(mockUpdate).toHaveBeenCalled();
   });
@@ -232,7 +232,7 @@ describe('transitionBeacon', () => {
   it('throws 404 when beacon not found', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    await expect(transitionBeacon(BEACON_ID, 'Active', USER_ID)).rejects.toThrow(
+    await expect(transitionBeacon(BEACON_ID, 'Active', USER_ID, undefined, ORG_ID)).rejects.toThrow(
       'Beacon not found',
     );
   });
@@ -242,7 +242,7 @@ describe('transitionBeacon', () => {
     mockSelect.mockReturnValue(chainable([beacon]));
 
     await expect(
-      transitionBeacon(BEACON_ID, 'Active', USER_ID),
+      transitionBeacon(BEACON_ID, 'Active', USER_ID, undefined, ORG_ID),
     ).rejects.toThrow("Cannot transition from 'Retired' to 'Active'");
   });
 });
@@ -582,7 +582,7 @@ describe('verifyBeacon', () => {
     const result = await verifyBeacon(BEACON_ID, USER_ID, {
       type: 'Manual',
       outcome: 'Confirmed',
-    });
+    }, ORG_ID);
 
     expect(result.verification).toBeDefined();
     expect(mockInsert).toHaveBeenCalled();
@@ -593,7 +593,7 @@ describe('verifyBeacon', () => {
     mockSelect.mockReturnValue(chainable([]));
 
     await expect(
-      verifyBeacon(BEACON_ID, USER_ID, { type: 'Manual', outcome: 'Confirmed' }),
+      verifyBeacon(BEACON_ID, USER_ID, { type: 'Manual', outcome: 'Confirmed' }, ORG_ID),
     ).rejects.toThrow('Beacon not found');
   });
 });
@@ -652,7 +652,7 @@ describe('processAgentVerification', () => {
     mockInsert.mockReturnValue(chainable([{ id: 'ver-1' }]));
     mockUpdate.mockReturnValue(chainable([makeBeacon({ status: 'Active' })]));
 
-    const result = await processAgentVerification(BEACON_ID, USER_ID, 0.92);
+    const result = await processAgentVerification(BEACON_ID, USER_ID, 0.92, ORG_ID);
     expect(result).toBeDefined();
     expect(mockInsert).toHaveBeenCalled();
   });
@@ -681,7 +681,7 @@ describe('processAgentVerification', () => {
 
     mockInsert.mockReturnValue(chainable([{ id: 'ver-esc' }]));
 
-    const result = await processAgentVerification(BEACON_ID, USER_ID, 0.30);
+    const result = await processAgentVerification(BEACON_ID, USER_ID, 0.30, ORG_ID);
     expect(result.escalated).toBe(true);
   });
 
@@ -689,7 +689,7 @@ describe('processAgentVerification', () => {
     mockSelect.mockReturnValue(chainable([]));
 
     await expect(
-      processAgentVerification(BEACON_ID, USER_ID, 0.90),
+      processAgentVerification(BEACON_ID, USER_ID, 0.90, ORG_ID),
     ).rejects.toThrow('Agent not found');
   });
 
@@ -705,7 +705,7 @@ describe('processAgentVerification', () => {
     );
 
     await expect(
-      processAgentVerification(BEACON_ID, USER_ID, 0.90),
+      processAgentVerification(BEACON_ID, USER_ID, 0.90, ORG_ID),
     ).rejects.toThrow('Agent is deactivated');
   });
 });

@@ -5,6 +5,7 @@ export {
   sessions,
   apiKeys,
   projects,
+  projectMemberships,
   organizationMemberships,
 } from './bbb-refs.js';
 
