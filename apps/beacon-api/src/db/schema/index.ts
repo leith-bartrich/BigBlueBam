@@ -1,5 +1,4 @@
-// Beacon schema exports
-// Re-export shared tables needed for auth (from the main BBB schema)
+// Shared BBB table stubs (auth, users, orgs, projects)
 export {
   organizations,
   users,
@@ -9,4 +8,13 @@ export {
   organizationMemberships,
 } from './bbb-refs.js';
 
-// TODO: Add beacon-specific table schemas here
+// Beacon-specific tables
+export { beaconEntries, beaconStatusEnum, beaconVisibilityEnum } from './beacon-entries.js';
+export { beaconAgents } from './beacon-agents.js';
+export type { BeaconAgentConfig } from './beacon-agents.js';
+export { beaconVersions } from './beacon-versions.js';
+export { beaconTags } from './beacon-tags.js';
+export { beaconLinks, beaconLinkTypeEnum } from './beacon-links.js';
+export { beaconExpiryPolicies, expiryScopeEnum } from './beacon-expiry-policies.js';
+export { beaconVerifications, verificationTypeEnum, verificationOutcomeEnum } from './beacon-verifications.js';
+export { beaconSavedQueries, savedQueryScopeEnum } from './beacon-saved-queries.js';
