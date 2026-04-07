@@ -5,6 +5,8 @@ import {
   beaconVersions,
   beaconExpiryPolicies,
   projectMemberships,
+  users,
+  projects,
 } from '../db/schema/index.js';
 
 // ---------------------------------------------------------------------------
@@ -288,17 +290,28 @@ export async function listBeacons(filters: ListBeaconsFilters) {
   }
 
   const result = await db
-    .select()
+    .select({
+      beacon: beaconEntries,
+      owner_name: users.display_name,
+      project_name: projects.name,
+    })
     .from(beaconEntries)
+    .leftJoin(users, eq(users.id, beaconEntries.owned_by))
+    .leftJoin(projects, eq(projects.id, beaconEntries.project_id))
     .where(and(...conditions))
     .orderBy(asc(beaconEntries.created_at))
     .limit(limit + 1);
 
   const hasMore = result.length > limit;
-  const data = hasMore ? result.slice(0, limit) : result;
+  const rows = hasMore ? result.slice(0, limit) : result;
+  const data = rows.map((r) => ({
+    ...r.beacon,
+    owner_name: r.owner_name ?? null,
+    project_name: r.project_name ?? null,
+  }));
   const nextCursor =
-    hasMore && data.length > 0
-      ? data[data.length - 1]!.created_at.toISOString()
+    hasMore && rows.length > 0
+      ? rows[rows.length - 1]!.beacon.created_at.toISOString()
       : null;
 
   return {
@@ -307,6 +320,32 @@ export async function listBeacons(filters: ListBeaconsFilters) {
       next_cursor: nextCursor,
       has_more: hasMore,
     },
+  };
+}
+
+export async function getStats(orgId: string) {
+  const rows: any[] = await db.execute(sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (
+        WHERE expires_at IS NOT NULL
+          AND expires_at > NOW()
+          AND expires_at <= NOW() + INTERVAL '7 days'
+      )::int AS at_risk,
+      COUNT(*) FILTER (
+        WHERE updated_at > NOW() - INTERVAL '7 days'
+          OR last_verified_at > NOW() - INTERVAL '7 days'
+      )::int AS recently_updated
+    FROM beacon_entries
+    WHERE organization_id = ${orgId}
+      AND status IN ('Active', 'PendingReview', 'Draft')
+  `);
+
+  const row = rows[0] ?? { total: 0, at_risk: 0, recently_updated: 0 };
+  return {
+    total: row.total,
+    at_risk: row.at_risk,
+    recently_updated: row.recently_updated,
   };
 }
 

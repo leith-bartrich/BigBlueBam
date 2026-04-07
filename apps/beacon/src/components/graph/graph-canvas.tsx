@@ -9,8 +9,9 @@ import type { BeaconStatus } from '@/hooks/use-beacons';
 
 function nodeRadius(node: GraphNode): number {
   const authority = node.verification_count + node.inbound_link_count;
-  // Linear scale: min 20, max 60
-  return Math.max(20, Math.min(60, 20 + authority * 3));
+  // Log scale for better differentiation: min 22, max 60
+  if (authority <= 0) return 22;
+  return Math.max(22, Math.min(60, 22 + Math.log2(authority + 1) * 8));
 }
 
 function nodeRingColor(node: GraphNode): string {
@@ -137,10 +138,10 @@ export function GraphCanvas({
     }));
 
     const settled = runForceLayout(layoutNodes, layoutEdges, {
-      iterations: Math.min(120, 40 + nodes.length * 2),
-      repulsion: 1000,
-      attraction: 0.03,
-      idealLength: 140,
+      iterations: Math.min(150, 50 + nodes.length * 3),
+      repulsion: 2500,
+      attraction: 0.025,
+      idealLength: 180,
     });
 
     return settled.map((pos) => {

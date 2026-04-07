@@ -77,14 +77,14 @@ export default async function graphRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const query = hubsQuerySchema.parse(request.query);
 
-      const nodes = await graphService.getHubs(
+      const result = await graphService.getHubs(
         query.scope,
         query.project_id ?? null,
         request.user!.org_id,
         query.top_k,
       );
 
-      return reply.send({ data: nodes });
+      return reply.send({ data: result.nodes, edges: result.edges });
     },
   );
 

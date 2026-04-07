@@ -7,12 +7,18 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import Redis from 'ioredis';
 
+/** Convert a JS string array to a sql`IN (...)` fragment safe for Drizzle. */
+function sqlInList(arr: string[]) {
+  return sql.join(arr.map((v) => sql`${v}`), sql`, `);
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface GraphNode {
   id: string;
+  slug: string;
   title: string;
   summary: string | null;
   status: string;
@@ -22,6 +28,7 @@ export interface GraphNode {
   expires_at: string | null;
   last_verified_at: string | null;
   owned_by: string;
+  owner_name: string | null;
 }
 
 export interface ExplicitEdge {
@@ -83,9 +90,9 @@ export async function getNeighbors(
       FROM beacon_links bl
       JOIN beacon_entries be_src ON be_src.id = bl.source_id
       JOIN beacon_entries be_tgt ON be_tgt.id = bl.target_id
-      WHERE (bl.source_id = ANY(${frontier}) OR bl.target_id = ANY(${frontier}))
-        AND be_src.status = ANY(${statusFilter})
-        AND be_tgt.status = ANY(${statusFilter})
+      WHERE (bl.source_id IN (${sqlInList(frontier)}) OR bl.target_id IN (${sqlInList(frontier)}))
+        AND be_src.status IN (${sqlInList(statusFilter)})
+        AND be_tgt.status IN (${sqlInList(statusFilter)})
         AND be_src.organization_id = ${orgId}
         AND be_tgt.organization_id = ${orgId}
     `);
@@ -187,7 +194,7 @@ async function getImplicitEdges(
     JOIN beacon_tags t2 ON t1.tag = t2.tag AND t1.beacon_id <> t2.beacon_id
     JOIN beacon_entries be ON be.id = t2.beacon_id
     WHERE t1.beacon_id = ${beaconId}
-      AND be.status = ANY(${statusFilter})
+      AND be.status IN (${sqlInList(statusFilter)})
       AND be.organization_id = ${orgId}
     GROUP BY t1.beacon_id, t2.beacon_id
     HAVING COUNT(*) >= 2
@@ -227,6 +234,7 @@ async function fetchNodes(
   const rows: any[] = await db.execute(sql`
     SELECT
       be.id,
+      be.slug,
       be.title,
       be.summary,
       be.status,
@@ -234,24 +242,27 @@ async function fetchNodes(
       be.expires_at,
       be.last_verified_at,
       be.owned_by,
+      u.display_name AS owner_name,
       COALESCE(lc.cnt, 0)::int AS inbound_link_count,
       COALESCE(
         (SELECT ARRAY_AGG(bt.tag) FROM beacon_tags bt WHERE bt.beacon_id = be.id),
         '{}'
       ) AS tags
     FROM beacon_entries be
+    LEFT JOIN users u ON u.id = be.owned_by
     LEFT JOIN (
       SELECT target_id, COUNT(*)::int AS cnt
       FROM beacon_links
       GROUP BY target_id
     ) lc ON lc.target_id = be.id
-    WHERE be.id = ANY(${nodeIds})
-      AND be.status = ANY(${statusFilter})
+    WHERE be.id IN (${sqlInList(nodeIds)})
+      AND be.status IN (${sqlInList(statusFilter)})
       AND be.organization_id = ${orgId}
   `);
 
   return rows.map((r) => ({
     id: r.id,
+    slug: r.slug,
     title: r.title,
     summary: r.summary,
     status: r.status,
@@ -261,6 +272,7 @@ async function fetchNodes(
     expires_at: r.expires_at?.toISOString?.() ?? r.expires_at ?? null,
     last_verified_at: r.last_verified_at?.toISOString?.() ?? r.last_verified_at ?? null,
     owned_by: r.owned_by,
+    owner_name: r.owner_name ?? null,
   }));
 }
 
@@ -282,6 +294,7 @@ export async function getHubs(
   const rows: any[] = await db.execute(sql`
     SELECT
       be.id,
+      be.slug,
       be.title,
       be.summary,
       be.status,
@@ -289,12 +302,14 @@ export async function getHubs(
       be.expires_at,
       be.last_verified_at,
       be.owned_by,
+      u.display_name AS owner_name,
       COALESCE(lc.cnt, 0)::int AS inbound_link_count,
       COALESCE(
         (SELECT ARRAY_AGG(bt.tag) FROM beacon_tags bt WHERE bt.beacon_id = be.id),
         '{}'
       ) AS tags
     FROM beacon_entries be
+    LEFT JOIN users u ON u.id = be.owned_by
     LEFT JOIN (
       SELECT target_id, COUNT(*)::int AS cnt
       FROM beacon_links
@@ -307,8 +322,9 @@ export async function getHubs(
     LIMIT ${topK}
   `);
 
-  return rows.map((r) => ({
+  const nodes: GraphNode[] = rows.map((r) => ({
     id: r.id,
+    slug: r.slug,
     title: r.title,
     summary: r.summary,
     status: r.status,
@@ -318,7 +334,30 @@ export async function getHubs(
     expires_at: r.expires_at?.toISOString?.() ?? r.expires_at ?? null,
     last_verified_at: r.last_verified_at?.toISOString?.() ?? r.last_verified_at ?? null,
     owned_by: r.owned_by,
+    owner_name: r.owner_name ?? null,
   }));
+
+  // Fetch explicit edges between hub nodes so the graph canvas can draw connections
+  const nodeIds = nodes.map((n) => n.id);
+  const edges: ExplicitEdge[] = [];
+  if (nodeIds.length > 1) {
+    const edgeRows: any[] = await db.execute(sql`
+      SELECT source_id, target_id, link_type
+      FROM beacon_links
+      WHERE source_id IN (${sqlInList(nodeIds)})
+        AND target_id IN (${sqlInList(nodeIds)})
+    `);
+    for (const row of edgeRows) {
+      edges.push({
+        source_id: row.source_id,
+        target_id: row.target_id,
+        edge_type: 'explicit',
+        link_type: row.link_type,
+      });
+    }
+  }
+
+  return { nodes, edges };
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +378,7 @@ export async function getRecent(
   const rows: any[] = await db.execute(sql`
     SELECT
       be.id,
+      be.slug,
       be.title,
       be.summary,
       be.status,
@@ -346,12 +386,14 @@ export async function getRecent(
       be.expires_at,
       be.last_verified_at,
       be.owned_by,
+      u.display_name AS owner_name,
       COALESCE(lc.cnt, 0)::int AS inbound_link_count,
       COALESCE(
         (SELECT ARRAY_AGG(bt.tag) FROM beacon_tags bt WHERE bt.beacon_id = be.id),
         '{}'
       ) AS tags
     FROM beacon_entries be
+    LEFT JOIN users u ON u.id = be.owned_by
     LEFT JOIN (
       SELECT target_id, COUNT(*)::int AS cnt
       FROM beacon_links
@@ -369,6 +411,7 @@ export async function getRecent(
 
   return rows.map((r) => ({
     id: r.id,
+    slug: r.slug,
     title: r.title,
     summary: r.summary,
     status: r.status,
@@ -378,5 +421,6 @@ export async function getRecent(
     expires_at: r.expires_at?.toISOString?.() ?? r.expires_at ?? null,
     last_verified_at: r.last_verified_at?.toISOString?.() ?? r.last_verified_at ?? null,
     owned_by: r.owned_by,
+    owner_name: r.owner_name ?? null,
   }));
 }

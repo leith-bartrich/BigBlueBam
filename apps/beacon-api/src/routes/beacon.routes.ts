@@ -55,6 +55,16 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /beacons/stats — Org-wide beacon statistics
+  fastify.get(
+    '/beacons/stats',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const stats = await beaconService.getStats(request.user!.org_id);
+      return reply.send({ data: stats });
+    },
+  );
+
   // GET /beacons — List beacons with filters
   fastify.get(
     '/beacons',

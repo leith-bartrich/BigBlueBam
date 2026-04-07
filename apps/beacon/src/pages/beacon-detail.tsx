@@ -38,7 +38,7 @@ export function BeaconDetailPage({ idOrSlug, onNavigate }: BeaconDetailPageProps
     );
   }
 
-  const bodyHtml = sanitizeHtml(markdownToHtml(beacon.body));
+  const bodyHtml = sanitizeHtml(markdownToHtml(beacon.body_markdown));
 
   return (
     <div className="flex h-full overflow-hidden">

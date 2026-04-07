@@ -11,12 +11,13 @@ export interface Beacon {
   slug: string;
   title: string;
   summary: string;
-  body: string;
+  body_markdown: string;
+  body_html?: string | null;
   status: BeaconStatus;
   visibility: BeaconVisibility;
   project_id: string | null;
   project_name?: string;
-  owner_id: string;
+  owned_by: string;
   owner_name?: string;
   owner_avatar_url?: string | null;
   tags: string[];
@@ -35,7 +36,7 @@ export interface BeaconVersion {
   version: number;
   title: string;
   summary: string;
-  body: string;
+  body_markdown: string;
   changed_by_name?: string;
   created_at: string;
 }
@@ -58,7 +59,7 @@ export interface BeaconTag {
 
 interface PaginatedResponse<T> {
   data: T[];
-  pagination?: {
+  meta?: {
     next_cursor?: string | null;
     has_more?: boolean;
   };
@@ -89,7 +90,7 @@ export function useBeaconList(filters: BeaconListFilters = {}) {
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) =>
-      lastPage.pagination?.has_more ? lastPage.pagination.next_cursor : undefined,
+      lastPage.meta?.has_more ? lastPage.meta.next_cursor : undefined,
   });
 }
 
@@ -99,6 +100,21 @@ export function useBeacon(idOrSlug: string | undefined) {
     queryFn: () => api.get<ApiResponse<Beacon>>(`/beacons/${idOrSlug}`),
     enabled: !!idOrSlug,
     select: (res) => res.data,
+  });
+}
+
+export interface BeaconStats {
+  total: number;
+  at_risk: number;
+  recently_updated: number;
+}
+
+export function useBeaconStats() {
+  return useQuery({
+    queryKey: ['beacon-stats'],
+    queryFn: () => api.get<ApiResponse<BeaconStats>>('/beacons/stats'),
+    select: (res) => res.data,
+    staleTime: 60_000,
   });
 }
 
@@ -136,7 +152,7 @@ export function useCreateBeacon() {
     mutationFn: (data: {
       title: string;
       summary: string;
-      body: string;
+      body_markdown: string;
       project_id?: string;
       tags?: string[];
       visibility?: BeaconVisibility;
@@ -156,11 +172,11 @@ export function useUpdateBeacon() {
       data: Partial<{
         title: string;
         summary: string;
-        body: string;
+        body_markdown: string;
         tags: string[];
         visibility: BeaconVisibility;
       }>;
-    }) => api.patch<ApiResponse<Beacon>>(`/beacons/${id}`, data),
+    }) => api.put<ApiResponse<Beacon>>(`/beacons/${id}`, data),
     onSuccess: (_res, variables) => {
       qc.invalidateQueries({ queryKey: ['beacons'] });
       qc.invalidateQueries({ queryKey: ['beacons', variables.id] });

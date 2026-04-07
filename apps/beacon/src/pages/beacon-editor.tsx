@@ -54,7 +54,7 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
     if (existing) {
       setTitle(existing.title);
       setSummary(existing.summary ?? '');
-      setBody(existing.body ?? '');
+      setBody(existing.body_markdown ?? '');
       setProjectId(existing.project_id ?? '');
       setTagsInput(existing.tags?.join(', ') ?? '');
       setVisibility(existing.visibility ?? 'Organization');
@@ -81,14 +81,14 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
       if (isEditMode && existing) {
         await updateBeacon.mutateAsync({
           id: existing.id,
-          data: { title, summary, body, tags: parseTags(), visibility },
+          data: { title, summary, body_markdown: body, tags: parseTags(), visibility },
         });
         onNavigate(`/${idOrSlug}`);
       } else {
         const res = await createBeacon.mutateAsync({
           title,
           summary,
-          body,
+          body_markdown: body,
           project_id: projectId || undefined,
           tags: parseTags(),
           visibility,
@@ -107,7 +107,7 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
       if (isEditMode && existing) {
         await updateBeacon.mutateAsync({
           id: existing.id,
-          data: { title, summary, body, tags: parseTags(), visibility },
+          data: { title, summary, body_markdown: body, tags: parseTags(), visibility },
         });
         await publishBeacon.mutateAsync(existing.id);
         onNavigate(`/${idOrSlug}`);
@@ -115,7 +115,7 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
         const res = await createBeacon.mutateAsync({
           title,
           summary,
-          body,
+          body_markdown: body,
           project_id: projectId || undefined,
           tags: parseTags(),
           visibility,

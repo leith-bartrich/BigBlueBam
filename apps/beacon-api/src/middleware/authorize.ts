@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { beaconEntries, organizationMemberships, projectMemberships } from '../db/schema/index.js';
+import { beaconEntries, organizationMemberships, projectMemberships, users, projects } from '../db/schema/index.js';
 
 /**
  * Role hierarchy for Beacon authorization.
@@ -219,11 +219,19 @@ export function requireBeaconReadAccess() {
       ? eq(beaconEntries.id, id)
       : eq(beaconEntries.slug, id);
 
-    const [beacon] = await db
-      .select()
+    const rows = await db
+      .select({
+        beacon: beaconEntries,
+        owner_name: users.display_name,
+        project_name: projects.name,
+      })
       .from(beaconEntries)
+      .leftJoin(users, eq(users.id, beaconEntries.owned_by))
+      .leftJoin(projects, eq(projects.id, beaconEntries.project_id))
       .where(condition)
       .limit(1);
+    const row = rows[0];
+    const beacon = row ? { ...row.beacon, owner_name: row.owner_name, project_name: row.project_name } : undefined;
 
     if (!beacon) {
       return reply.status(404).send({

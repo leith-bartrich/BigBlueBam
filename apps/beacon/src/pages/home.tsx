@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import {
   PlusCircle,
   List,
@@ -8,7 +7,8 @@ import {
   Clock,
   BookOpen,
 } from 'lucide-react';
-import { useGraphHubs, useGraphRecent } from '@/hooks/use-graph';
+import { useBeaconStats } from '@/hooks/use-beacons';
+import { useGraphRecent } from '@/hooks/use-graph';
 import { StatusBadge } from '@/components/beacon/status-badge';
 import { FreshnessIndicator } from '@/components/beacon/freshness-indicator';
 import { formatRelativeTime } from '@/lib/utils';
@@ -18,21 +18,12 @@ interface HomePageProps {
 }
 
 export function HomePage({ onNavigate }: HomePageProps) {
-  const { data: hubsData } = useGraphHubs('organization');
+  const { data: stats } = useBeaconStats();
   const { data: recentNodes } = useGraphRecent('organization', undefined, 7);
 
-  const hubNodes = hubsData?.data ?? [];
-
-  // Compute summary stats
-  const totalBeacons = hubNodes.length;
-  const atRiskCount = useMemo(() => {
-    return hubNodes.filter((n) => {
-      if (!n.expires_at) return false;
-      const days = (new Date(n.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-      return days > 0 && days <= 7;
-    }).length;
-  }, [hubNodes]);
-  const recentCount = recentNodes?.length ?? 0;
+  const totalBeacons = stats?.total ?? 0;
+  const atRiskCount = stats?.at_risk ?? 0;
+  const recentCount = stats?.recently_updated ?? 0;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
