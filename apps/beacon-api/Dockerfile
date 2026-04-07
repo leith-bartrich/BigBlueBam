@@ -1,0 +1,66 @@
+# ── Stage: deps ───────────────────────────────────────────────────
+FROM node:22-alpine AS deps
+
+WORKDIR /app
+
+RUN corepack enable
+
+COPY package.json pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml* ./
+COPY apps/beacon-api/package.json ./apps/beacon-api/
+COPY packages/shared/package.json ./packages/shared/
+
+RUN pnpm install --no-frozen-lockfile
+
+# ── Stage: build ──────────────────────────────────────────────────
+FROM deps AS build
+
+COPY tsconfig.base.json ./
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsup.config.ts ./packages/shared/
+COPY apps/beacon-api/src ./apps/beacon-api/src
+COPY apps/beacon-api/tsconfig.json apps/beacon-api/tsup.config.ts ./apps/beacon-api/
+
+RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/beacon-api build
+
+# Create a deploy-ready directory with all prod deps
+RUN pnpm --filter @bigbluebam/beacon-api deploy --prod /app/deployed
+
+
+# ── Stage: dev ────────────────────────────────────────────────────
+FROM deps AS dev
+
+COPY tsconfig.base.json ./
+COPY packages/shared/ ./packages/shared/
+COPY apps/beacon-api/ ./apps/beacon-api/
+
+WORKDIR /app/apps/beacon-api
+
+EXPOSE 4004
+
+CMD ["npx", "tsx", "watch", "src/server.ts"]
+
+# ── Stage: production ────────────────────────────────────────────
+FROM node:22-alpine AS production
+
+RUN apk add --no-cache tini curl
+
+WORKDIR /app
+
+RUN addgroup -g 1001 -S bbam \
+ && adduser -S bbam -u 1001 -G bbam
+
+COPY --from=build /app/deployed/node_modules ./node_modules
+COPY --from=build /app/apps/beacon-api/dist ./dist
+COPY --from=build /app/deployed/package.json ./
+COPY infra/postgres/migrations/ ./migrations/
+
+RUN chown -R bbam:bbam /app
+
+USER bbam
+
+EXPOSE 4004
+
+ENTRYPOINT ["tini", "--"]
+CMD ["node", "dist/server.js"]
