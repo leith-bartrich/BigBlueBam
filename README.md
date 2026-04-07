@@ -655,6 +655,41 @@ AI agents interact with Bolt through **12 dedicated MCP tools**:
 
 ---
 
+## AI Provider Configuration
+
+BigBlueBam features a hierarchical LLM provider configuration system that powers AI features across the suite — including Bolt's AI-assisted automation authoring, future summarization, and content generation features.
+
+### How It Works
+
+Providers are configured at three levels, with the most specific taking precedence:
+
+| Scope | Who Configures | Applies To |
+|-------|---------------|-----------|
+| **System** | SuperUser | All organizations (fallback default) |
+| **Organization** | Org Admin/Owner | All projects in the org |
+| **Project** | Project Admin | Only that project |
+
+### Supported Providers
+
+| Provider | Type | Notes |
+|----------|------|-------|
+| **Anthropic** | `anthropic` | Claude models. Uses default API endpoint. |
+| **OpenAI** | `openai` | GPT models. Uses default API endpoint. |
+| **OpenAI-Compatible** | `openai_compatible` | Any endpoint implementing the OpenAI Chat Completions API — Azure OpenAI, Together AI, Ollama, vLLM, local LLMs, etc. Requires custom `api_endpoint`. |
+
+### Security
+
+- API keys are **encrypted at rest** using AES-256-GCM with the server's `SESSION_SECRET`
+- Keys are **never returned in full** — always redacted to `sk-•••XXXX` (last 4 characters only)
+- Scope-based authorization ensures only the right roles can configure each level
+- Test Connection verifies credentials work before saving
+
+### Setup
+
+Configure providers in **Settings → AI Providers** in the Bam frontend. If no provider is configured, AI-dependent features (like Bolt's "Describe your automation" dialog) show a helpful message directing admins to the setup page.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
