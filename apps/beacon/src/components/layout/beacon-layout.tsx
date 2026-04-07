@@ -1,9 +1,12 @@
 import { type ReactNode } from 'react';
 import { ChevronRight, Search, Bell, LogOut } from 'lucide-react';
 import { BeaconSidebar } from '@/components/layout/beacon-sidebar';
+import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { Avatar } from '@/components/common/avatar';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProjectStore } from '@/stores/project.store';
+import { useProjectName } from '@/hooks/use-projects';
 
 type ActiveRoute = { page: string; idOrSlug?: string; focalId?: string };
 
@@ -49,6 +52,8 @@ function breadcrumbsFor(route: ActiveRoute): Crumb[] {
 
 export function BeaconLayout({ children, onNavigate, activeRoute }: BeaconLayoutProps) {
   const user = useAuthStore((s) => s.user);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeProjectName = useProjectName(activeProjectId);
 
   const crumbs = breadcrumbsFor(activeRoute);
 
@@ -109,6 +114,12 @@ export function BeaconLayout({ children, onNavigate, activeRoute }: BeaconLayout
 
               {/* Breadcrumbs */}
               <div className="flex items-center gap-1 text-sm">
+                {activeProjectName && (
+                  <>
+                    <span className="text-zinc-500 dark:text-zinc-400">{activeProjectName}</span>
+                    {crumbs.length > 0 && <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />}
+                  </>
+                )}
                 {crumbs.map((crumb, i) => (
                   <span key={i} className="flex items-center gap-1">
                     {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />}
@@ -128,6 +139,7 @@ export function BeaconLayout({ children, onNavigate, activeRoute }: BeaconLayout
             </div>
 
             <div className="flex items-center gap-4">
+              <OrgSwitcher />
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                 <input

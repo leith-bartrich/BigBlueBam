@@ -1,4 +1,4 @@
-import { Loader2, Edit2, ChevronDown, ExternalLink } from 'lucide-react';
+import { Loader2, Edit2, ChevronDown, ExternalLink, FolderOpen } from 'lucide-react';
 import { useState } from 'react';
 import { useBeacon, useBeaconLinks, useBeaconVersions } from '@/hooks/use-beacons';
 import { StatusBadge } from '@/components/beacon/status-badge';
@@ -7,6 +7,7 @@ import { LifecycleActions } from '@/components/beacon/lifecycle-actions';
 import { Button } from '@/components/common/button';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { useProjectName } from '@/hooks/use-projects';
 
 interface BeaconDetailPageProps {
   idOrSlug: string;
@@ -18,6 +19,8 @@ export function BeaconDetailPage({ idOrSlug, onNavigate }: BeaconDetailPageProps
   const { data: links } = useBeaconLinks(beacon?.id);
   const { data: versions } = useBeaconVersions(beacon?.id);
   const [showVersions, setShowVersions] = useState(false);
+  const projectName = useProjectName(beacon?.project_id);
+  const displayProjectName = beacon?.project_name ?? projectName ?? null;
 
   if (isLoading) {
     return (
@@ -104,6 +107,16 @@ export function BeaconDetailPage({ idOrSlug, onNavigate }: BeaconDetailPageProps
             <span className="text-sm text-zinc-700 dark:text-zinc-300">
               {beacon.owner_name ?? 'Unknown'}
             </span>
+          </SidebarField>
+
+          {/* Project */}
+          <SidebarField label="Project">
+            <div className="flex items-center gap-1.5">
+              <FolderOpen className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                {displayProjectName ?? 'Organization-wide'}
+              </span>
+            </div>
           </SidebarField>
 
           {/* Freshness */}

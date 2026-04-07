@@ -3,6 +3,7 @@ import { Search, ChevronDown, ChevronRight, X, Plus, Bookmark } from 'lucide-rea
 import { useSearchStore } from '@/stores/search.store';
 import { useBeaconTags } from '@/hooks/use-beacons';
 import { useBeaconSearchCount, useSaveQuery } from '@/hooks/use-search';
+import { useProjects } from '@/hooks/use-projects';
 import { cn } from '@/lib/utils';
 
 // ── Tag typeahead ───────────────────────────────────────────────────
@@ -96,24 +97,33 @@ function TagInput({ onAdd }: { onAdd: (tag: string) => void }) {
 function ProjectSelector() {
   const projectIds = useSearchStore((s) => s.projectIds);
   const setProjectIds = useSearchStore((s) => s.setProjectIds);
+  const { projects } = useProjects();
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
-  // TODO: fetch projects from Bam API; for now show IDs as chips
-  if (projectIds.length === 0) {
-    return (
-      <span className="text-sm text-zinc-400 dark:text-zinc-500 italic">
-        All accessible projects
-      </span>
-    );
-  }
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowPicker(false);
+      }
+    };
+    if (showPicker) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showPicker]);
+
+  const getProjectName = (id: string) =>
+    projects.find((p) => p.id === id)?.name ?? id.slice(0, 8) + '...';
+
+  const available = projects.filter((p) => !projectIds.includes(p.id));
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center gap-1.5 flex-wrap" ref={pickerRef}>
       {projectIds.map((id) => (
         <span
           key={id}
           className="inline-flex items-center gap-1 rounded-full bg-primary-100 dark:bg-primary-900/30 px-2 py-0.5 text-xs text-primary-700 dark:text-primary-300"
         >
-          {id.slice(0, 8)}...
+          {getProjectName(id)}
           <button
             onClick={() => setProjectIds(projectIds.filter((p) => p !== id))}
             className="hover:text-primary-900 dark:hover:text-primary-100"
@@ -122,6 +132,46 @@ function ProjectSelector() {
           </button>
         </span>
       ))}
+
+      {projectIds.length === 0 && (
+        <span className="text-sm text-zinc-400 dark:text-zinc-500 italic">
+          All accessible projects
+        </span>
+      )}
+
+      <div className="relative">
+        <button
+          onClick={() => setShowPicker(!showPicker)}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+        >
+          <Plus className="h-3 w-3" />
+          Add
+        </button>
+
+        {showPicker && available.length > 0 && (
+          <div className="absolute top-full left-0 z-20 mt-1 w-56 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg py-1 max-h-48 overflow-y-auto">
+            {available.map((project) => (
+              <button
+                key={project.id}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setProjectIds([...projectIds, project.id]);
+                  setShowPicker(false);
+                }}
+                className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              >
+                <span
+                  className="flex items-center justify-center h-4 w-4 rounded text-[10px] font-medium shrink-0"
+                  style={{ backgroundColor: project.color ?? '#2563eb' }}
+                >
+                  {project.icon ?? project.name.charAt(0).toUpperCase()}
+                </span>
+                <span className="truncate">{project.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

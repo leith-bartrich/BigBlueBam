@@ -10,6 +10,8 @@ import {
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { Select } from '@/components/common/select';
+import { useProjectStore } from '@/stores/project.store';
+import { useProjects } from '@/hooks/use-projects';
 
 interface BeaconEditorPageProps {
   idOrSlug?: string;
@@ -29,6 +31,8 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
   const createBeacon = useCreateBeacon();
   const updateBeacon = useUpdateBeacon();
   const publishBeacon = usePublishBeacon();
+  const { projects } = useProjects();
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
@@ -37,6 +41,13 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
   const [tagsInput, setTagsInput] = useState('');
   const [visibility, setVisibility] = useState<BeaconVisibility>('Organization');
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Pre-select the active project from the store when creating
+  useEffect(() => {
+    if (!isEditMode && activeProjectId && !projectId) {
+      setProjectId(activeProjectId);
+    }
+  }, [isEditMode, activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Populate form when editing
   useEffect(() => {
@@ -199,18 +210,29 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
             />
           </div>
 
-          {/* Project selector (create only) */}
+          {/* Project selector */}
           {!isEditMode ? (
-            <Input
-              label="Project ID (optional)"
-              placeholder="Enter project UUID..."
+            <Select
+              label="Project (optional)"
+              placeholder="Organization-wide (no project)"
+              options={[
+                { value: '', label: 'Organization-wide (no project)' },
+                ...projects.map((p) => ({ value: p.id, label: p.name })),
+              ]}
               value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+              onValueChange={(v) => setProjectId(v)}
             />
           ) : existing?.project_name ? (
             <div>
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Project</span>
               <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">{existing.project_name}</p>
+            </div>
+          ) : existing?.project_id ? (
+            <div>
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Project</span>
+              <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+                {projects.find((p) => p.id === existing.project_id)?.name ?? existing.project_id}
+              </p>
             </div>
           ) : null}
 

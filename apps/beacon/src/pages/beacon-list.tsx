@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Plus, Search, Loader2 } from 'lucide-react';
+import { Plus, Search, Loader2, FolderOpen } from 'lucide-react';
 import { useBeaconList, type BeaconStatus, type BeaconListFilters } from '@/hooks/use-beacons';
 import { BeaconCard } from '@/components/beacon/beacon-card';
 import { Button } from '@/components/common/button';
 import { cn } from '@/lib/utils';
+import { useProjectStore } from '@/stores/project.store';
+import { useProjectName } from '@/hooks/use-projects';
 
 interface BeaconListPageProps {
   onNavigate: (path: string) => void;
@@ -20,12 +22,13 @@ const STATUS_CHIPS: { value: BeaconStatus | 'all'; label: string }[] = [
 export function BeaconListPage({ onNavigate }: BeaconListPageProps) {
   const [statusFilter, setStatusFilter] = useState<BeaconStatus | 'all'>('all');
   const [searchText, setSearchText] = useState('');
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeProjectName = useProjectName(activeProjectId);
 
   const filters: BeaconListFilters = {};
   if (statusFilter !== 'all') filters.status = statusFilter;
   if (searchText.trim()) filters.search = searchText.trim();
-  if (projectFilter) filters.project_id = projectFilter;
+  if (activeProjectId) filters.project_id = activeProjectId;
 
   const {
     data,
@@ -72,14 +75,15 @@ export function BeaconListPage({ onNavigate }: BeaconListPageProps) {
             ))}
           </div>
 
-          {/* Simple project filter input */}
-          <input
-            type="text"
-            placeholder="Project ID..."
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="w-36 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
-          />
+          {/* Project scope indicator */}
+          <div className="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+            <FolderOpen className="h-3.5 w-3.5" />
+            <span>
+              {activeProjectName
+                ? `Showing beacons for: ${activeProjectName}`
+                : 'Showing all org beacons'}
+            </span>
+          </div>
         </div>
 
         <Button size="sm" onClick={() => onNavigate('/create')}>
