@@ -2,7 +2,7 @@
 
 Status: **Complete** | All 8 gaps implemented | Date: 2026-04-05
 
-All 8 tools landed. MCP server now has 111 tools.
+All 8 tools landed. MCP server reached 111 tools. Beacon tools (29) were subsequently added in the `beacon` branch, bringing the total to **140 tools**.
 
 > Note: The original gap analysis listed 9 endpoints, but `GET /v1/me/unread`
 > is already covered by `banter_get_unread` in `banter-tools.ts` (line 801).
@@ -183,4 +183,4 @@ Each file's `register*Tools()` function already gets called from the central
 | P3 | 3 | ~45 min (auth-header fix + 3 tools) |
 | **Total** | **8** | **~1.75 hours** |
 
-The MCP server now has **111 tools** (64 Bam + 47 Banter).
+The MCP server now has **140 tools** (64 Bam + 47 Banter + 29 Beacon).

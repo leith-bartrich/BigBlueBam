@@ -2,7 +2,7 @@
 
 BigBlueBam exposes a **Model Context Protocol (MCP)** server, enabling any MCP-compatible AI client to interact with project data through structured tool calls. The MCP server is a first-class citizen of the architecture, not a bolt-on.
 
-**111 tools: 47 Banter, 64 Bam (including helpdesk and platform)**
+**140 tools: 47 Banter, 29 Beacon, 64 Bam (including helpdesk and platform)**
 
 ---
 
@@ -34,7 +34,7 @@ graph LR
         Auth["Auth Middleware<br/>(API key validation)"]
         Rate["Rate Limiter"]
         Audit["Audit Logger"]
-        Tools["Tool Registry<br/>(111 tools: 64 Bam + 47 Banter)"]
+        Tools["Tool Registry<br/>(140 tools: 64 Bam + 47 Banter + 29 Beacon)"]
         Resources["Resource Registry<br/>(Bam + Banter resources)"]
         Prompts["Prompt Registry<br/>(8 prompts)"]
     end
@@ -42,8 +42,10 @@ graph LR
     subgraph "BigBlueBam Core"
         API["API Server (:4000)"]
         BanterAPI["Banter API (:4002)"]
+        BeaconAPI["Beacon API (:4004)"]
         DB["PostgreSQL"]
         Redis["Redis"]
+        Qdrant["Qdrant (vectors)"]
     end
 
     Claude -->|"SSE / HTTP"| Transport
@@ -59,6 +61,7 @@ graph LR
 
     Tools -->|"Internal HTTP"| API
     Tools -->|"Internal HTTP"| BanterAPI
+    Tools -->|"Internal HTTP"| BeaconAPI
     Resources -->|"Internal HTTP"| API
     Resources -->|"Internal HTTP"| BanterAPI
     Prompts -->|"Internal HTTP"| API
@@ -66,6 +69,8 @@ graph LR
     Audit -->|"Log"| Redis
     API --> DB
     BanterAPI --> DB
+    BeaconAPI --> DB
+    BeaconAPI --> Qdrant
 ```
 
 ### Transport Options
@@ -136,7 +141,7 @@ sequenceDiagram
 
 ---
 
-## Available Tools (111 total)
+## Available Tools (140 total)
 
 ### Project Tools (5 tools) -- `project-tools.ts`
 
@@ -360,6 +365,67 @@ sequenceDiagram
 | `banter_get_preferences` | Get the current user's Banter notification and theme preferences | Any authenticated user |
 | `banter_update_preferences` | Update the current user's Banter notification and theme preferences | Any authenticated user |
 | `banter_set_presence` | Set an ephemeral presence status (online, idle, dnd, offline) with optional status text and emoji | Any authenticated user |
+
+### Beacon Tools (29 tools) -- `beacon-tools.ts`
+
+#### CRUD Tools (11)
+
+| Tool | Description | Permission |
+|---|---|---|
+| `beacon_create` | Create a new Beacon (Draft). Provide title, body, tags, visibility, and optional project/org scope. | Any authenticated user |
+| `beacon_list` | List Beacons with optional filters (status, project, tags) and pagination. | Any authenticated user |
+| `beacon_get` | Retrieve a single Beacon by ID or slug. | Any authenticated user |
+| `beacon_update` | Update a Beacon (creates a new version). Provide only the fields to change. | Any authenticated user |
+| `beacon_retire` | Retire (soft-delete) a Beacon. | Any authenticated user |
+| `beacon_publish` | Transition a Beacon from Draft to Active. | Any authenticated user |
+| `beacon_verify` | Record a verification event on a Beacon (confirms content is still accurate). | Any authenticated user |
+| `beacon_challenge` | Flag a Beacon for review (challenge its accuracy or relevance). | Any authenticated user |
+| `beacon_restore` | Restore an Archived Beacon back to Active status. | Any authenticated user |
+| `beacon_versions` | List the version history of a Beacon. | Any authenticated user |
+| `beacon_version_get` | Get a specific version of a Beacon. | Any authenticated user |
+
+#### Search Tools (3)
+
+| Tool | Description | Permission |
+|---|---|---|
+| `beacon_search` | Hybrid semantic + keyword + graph search across Beacons. Supports filters (project, tags, status, visibility, expiry) and retrieval options (graph expansion, tag expansion, fulltext fallback). | Any authenticated user |
+| `beacon_suggest` | Typeahead suggestions from the Beacon title/tag index. | Any authenticated user |
+| `beacon_search_context` | Structured retrieval optimized for agent consumption -- richer metadata, linked Beacons pre-fetched. | Any authenticated user |
+
+#### Policy Tools (3)
+
+| Tool | Description | Permission |
+|---|---|---|
+| `beacon_policy_get` | Get the effective Beacon governance policy for the current scope. | Any authenticated user |
+| `beacon_policy_set` | Set or update the Beacon governance policy at a given scope level (verification interval, grace period, auto-archive, tag affinity threshold). | Admin |
+| `beacon_policy_resolve` | Preview the resolved effective policy (merging org + project levels). | Any authenticated user |
+
+#### Tag & Link Tools (5)
+
+| Tool | Description | Permission |
+|---|---|---|
+| `beacon_tags_list` | List all tags in scope with usage counts. | Any authenticated user |
+| `beacon_tag_add` | Add one or more tags to a Beacon. | Any authenticated user |
+| `beacon_tag_remove` | Remove a tag from a Beacon. | Any authenticated user |
+| `beacon_link_create` | Create a typed link between two Beacons (RelatedTo, Supersedes, DependsOn, ConflictsWith, SeeAlso). | Any authenticated user |
+| `beacon_link_remove` | Remove a link from a Beacon. | Any authenticated user |
+
+#### Saved Query Tools (4)
+
+| Tool | Description | Permission |
+|---|---|---|
+| `beacon_query_save` | Save a named search query configuration for reuse (private, project, or org-scoped). | Any authenticated user |
+| `beacon_query_list` | List saved queries (own + shared in scope). | Any authenticated user |
+| `beacon_query_get` | Retrieve a saved query by ID. | Any authenticated user |
+| `beacon_query_delete` | Delete a saved query (owner only). | Any authenticated user |
+
+#### Graph Tools (3)
+
+| Tool | Description | Permission |
+|---|---|---|
+| `beacon_graph_neighbors` | Get nodes and edges within N hops of a focal Beacon for graph exploration. Supports implicit tag-affinity edges. | Any authenticated user |
+| `beacon_graph_hubs` | Get the most-connected Beacons in scope (hub nodes for Knowledge Home). | Any authenticated user |
+| `beacon_graph_recent` | Get recently modified or verified Beacons. | Any authenticated user |
 
 ---
 

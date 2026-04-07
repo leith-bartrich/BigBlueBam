@@ -16,6 +16,7 @@
   <a href="#for-ai-agents">For AI Agents</a> &bull;
   <a href="#banter">Banter</a> &bull;
   <a href="#helpdesk">Helpdesk</a> &bull;
+  <a href="#beacon">Beacon</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#documentation">Docs</a>
@@ -23,8 +24,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/tests-530%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-111-blue" alt="MCP Tools" />
-  <img src="https://img.shields.io/badge/Docker%20services-12-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/MCP%20tools-140-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/Docker%20services-14-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -40,7 +41,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **111 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, and team messaging.
+This is made possible by **140 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, and the knowledge base.
 
 ---
 
@@ -300,7 +301,7 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **111 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, and customer support. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **140 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, and knowledge base. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -310,6 +311,7 @@ BigBlueBam exposes **111 MCP (Model Context Protocol) tools** that give AI assis
 - **Generate reports** — velocity reports, burndown charts, cumulative flow, workload distribution, overdue task alerts
 - **Collaborate** — post comments, log time, bulk update tasks, suggest branch names
 - **Message the team via Banter** — post messages, read channels, respond in threads, share task updates, manage channels, react to messages, search conversations, and participate in voice calls as spoken participants
+- **Manage the knowledge base via Beacon** — create and publish Beacons, search with semantic + graph retrieval, verify content freshness, link related knowledge, manage governance policies, and save reusable queries
 
 ### Example: AI-Powered Helpdesk Triage
 
@@ -331,7 +333,7 @@ BigBlueBam exposes **111 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Tools Reference
 
-**111 tools** across 14 categories:
+**140 tools** across 15 categories:
 
 | Category | Count | What they cover |
 |----------|------:|-----------------|
@@ -347,6 +349,7 @@ BigBlueBam exposes **111 MCP (Model Context Protocol) tools** that give AI assis
 | **User Profile & Notifications** | 10 | Profile CRUD, org switching, password, logout, notification feed management |
 | **Platform Admin** | 5 | Platform settings toggle, beta signups, public config (SuperUser-gated) |
 | **Banter Messaging** | 47 | Channels, DMs, messages, threads, reactions, calls, search, admin, presence, preferences |
+| **Beacon Knowledge Base** | 29 | CRUD, search, verification, graph, policies, saved queries |
 | **Helpdesk** | 7 | Ticket operations, public/admin settings |
 | **Utility** | 2 | Server info, action confirmation |
 
@@ -490,6 +493,49 @@ Team members (or AI agents via MCP) reply directly to tickets. Agent replies are
 
 ---
 
+## Beacon
+
+Beacon is the knowledge base platform built into the BigBlueBam suite. It keeps curated, expiry-aware knowledge fresh and discoverable -- by humans and AI agents alike.
+
+Unlike a wiki that silently rots, Beacon treats every article as a living document with a verification lifecycle. Governance policies define how often content must be re-verified; stale Beacons are surfaced automatically through the **Fridge Cleanout** workflow so nothing quietly expires into irrelevance.
+
+<p align="center">
+  <img src="images/beacon-knowledge-home.png" alt="Beacon Knowledge Home" width="100%" />
+</p>
+<p align="center"><em>Knowledge Home -- hub nodes, recent activity, and expiry alerts at a glance</em></p>
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Semantic + Graph Search** | Hybrid retrieval combining vector similarity (Qdrant), knowledge-graph expansion, and PostgreSQL full-text fallback |
+| **Expiry Governance (Fridge Cleanout)** | Hierarchical policies (org > project) define verification intervals, grace periods, and auto-archive rules |
+| **Knowledge Graph Explorer** | Visual graph of Beacons connected by typed links (RelatedTo, Supersedes, DependsOn, ConflictsWith, SeeAlso) and implicit tag-affinity edges |
+| **Versioned Content** | Every edit creates a new version; full history with diff support |
+| **Agent-Native Verification** | AI agents can verify, challenge, publish, and retire Beacons through 29 dedicated MCP tools |
+| **Saved Queries** | Named search configurations (private, project, or org-scoped) for reusable retrieval patterns |
+| **Hierarchical Policies** | Org-level defaults with project-level overrides; `beacon_policy_resolve` previews the effective merged policy |
+
+<p align="center">
+  <img src="images/beacon-graph-explorer.png" alt="Beacon Graph Explorer" width="100%" />
+</p>
+<p align="center"><em>Knowledge Graph Explorer -- visualize connections between Beacons</em></p>
+
+### Beacon MCP Tools
+
+AI agents interact with Beacon through **29 dedicated MCP tools**:
+
+| Category | Tools | What they do |
+|----------|-------|-------------|
+| **CRUD** | `beacon_create`, `beacon_list`, `beacon_get`, `beacon_update`, `beacon_retire`, `beacon_publish`, `beacon_verify`, `beacon_challenge`, `beacon_restore`, `beacon_versions`, `beacon_version_get` | Full lifecycle management with versioning |
+| **Search** | `beacon_search`, `beacon_suggest`, `beacon_search_context` | Hybrid semantic + keyword + graph search, typeahead, agent-optimized retrieval |
+| **Policy** | `beacon_policy_get`, `beacon_policy_set`, `beacon_policy_resolve` | Governance policy management and resolution |
+| **Tags & Links** | `beacon_tags_list`, `beacon_tag_add`, `beacon_tag_remove`, `beacon_link_create`, `beacon_link_remove` | Tag management and typed inter-Beacon links |
+| **Saved Queries** | `beacon_query_save`, `beacon_query_list`, `beacon_query_get`, `beacon_query_delete` | Reusable search configurations |
+| **Graph** | `beacon_graph_neighbors`, `beacon_graph_hubs`, `beacon_graph_recent` | Knowledge graph traversal and exploration |
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -526,7 +572,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "My Organization"
 ```
 
-Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, or **http://localhost/helpdesk/** for the helpdesk portal.
+Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, or **http://localhost/helpdesk/** for the helpdesk portal.
 
 <p align="center">
   <img src="images/01-login.png" alt="Login Page" width="60%" />
@@ -555,7 +601,9 @@ All services are accessed through a single nginx container on port 80:
 | `/helpdesk/` | nginx | Helpdesk portal SPA |
 | `/helpdesk/api/` | Fastify `:4001` | Helpdesk API (auth, tickets, messages) |
 | `/files/` | MinIO `:9000` | Uploaded files (shared) |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (111 tools) |
+| `/beacon/` | nginx | Beacon knowledge base SPA |
+| `/beacon/api/` | Fastify `:4004` | Beacon REST API |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (140 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -566,6 +614,8 @@ Infrastructure services (internal, not exposed via nginx):
 | MinIO | `:9000` | S3-compatible file storage |
 | Worker | -- | BullMQ background job processor |
 | LiveKit | `:7880` | Voice/video SFU (WebRTC media server) |
+| Beacon API | `:4004` | Beacon knowledge base REST API |
+| Qdrant | `:6333` | Vector search engine (semantic embeddings) |
 | Voice Agent | `:4003` | AI voice call participation (Python/FastAPI) |
 
 ### Development Mode
@@ -599,6 +649,8 @@ pnpm test  # 530+ tests across all packages
 │  /banter/      → Banter SPA (static)           ││
 │  /banter/api/  → Banter API :4002              ││
 │  /banter/ws    → Banter WebSocket :4002        ││
+│  /beacon/      → Beacon SPA (static)           ││
+│  /beacon/api/  → Beacon API :4004              ││
 │  /helpdesk/    → Helpdesk SPA (static)         ││
 │  /helpdesk/api/→ Helpdesk API :4001            ││
 │  /files/       → MinIO :9000                   ││
@@ -608,12 +660,12 @@ pnpm test  # 530+ tests across all packages
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌───────▼──────┐ ┌──────────┐
 │ Bam API   │ │ Banter   │ │ MCP Server│ │ LiveKit SFU  │ │ Worker   │
 │ :4000     │ │ API :4002│ │ :3001     │ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 111 tools │ │ +voice-agent │ │ jobs     │
+│ +WebSocket│ │ +WS      │ │ 140 tools │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────────────┘ └────┬─────┘
       │             │             │                              │
 ┌─────▼─────────────▼─────────────▼──────────────────────────────▼─────┐
-│  PostgreSQL 16       │  Redis 7             │  MinIO (S3)            │
-│  40+ tables          │  PubSub + cache      │  File storage          │
+│  PostgreSQL 16  │  Redis 7        │  MinIO (S3)   │  Qdrant (vectors)    │
+│  40+ tables     │  PubSub + cache │  File storage │  Semantic search     │
 └──────────────────────┴──────────────────────┴────────────────────────┘
 ```
 
@@ -626,7 +678,7 @@ pnpm test  # 530+ tests across all packages
 | **Realtime** | WebSocket + Redis PubSub |
 | **MCP** | @modelcontextprotocol/sdk (Streamable HTTP + SSE) |
 | **Voice/Video** | LiveKit SFU, WebRTC, Python voice agent (STT/TTS) |
-| **Database** | PostgreSQL 16, Redis 7, MinIO |
+| **Database** | PostgreSQL 16, Redis 7, MinIO, Qdrant |
 | **Worker** | BullMQ, Nodemailer |
 | **Build** | Turborepo, pnpm workspaces, tsup, Vite |
 | **Testing** | Vitest (530+ tests) |
@@ -638,12 +690,14 @@ pnpm test  # 530+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (111 tools)
+  mcp-server/       → MCP protocol server (140 tools)
   worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
   banter-api/       → Banter Fastify API + WebSocket (15 route modules, 18 DB tables)
   banter/           → Banter React SPA (14 components, 7 pages)
+  beacon-api/       → Beacon Fastify API (knowledge base, search, graph, policies)
+  beacon/           → Beacon React SPA (knowledge home, graph explorer, editor)
   voice-agent/      → AI voice agent (Python/FastAPI, LiveKit Agents SDK)
 packages/
   shared/           → Zod schemas, TypeScript types, constants
@@ -659,8 +713,8 @@ scripts/            → Utility and seed scripts
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 12 |
-| MCP tools | 111 (64 Bam + 47 Banter) |
+| Docker services | 14 |
+| MCP tools | 140 (64 Bam + 47 Banter + 29 Beacon) |
 | Test cases | 530+ |
 | API route modules | 38 (23 Bam + 15 Banter) |
 | Database tables | 40+ (25 Bam + 18 Banter) |
@@ -683,6 +737,7 @@ scripts/            → Utility and seed scripts
 | [Development](docs/development.md) | Contributing, testing, code style |
 | [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
 | [Banter Design](Banter_Design_Document.md) | Team messaging & voice/video design |
+| [Beacon Design](Beacon_Design_Document.md) | Knowledge base platform design |
 
 ---
 
