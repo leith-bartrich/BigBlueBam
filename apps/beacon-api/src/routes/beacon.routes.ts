@@ -28,13 +28,15 @@ const updateBeaconSchema = z.object({
 
 const listBeaconsQuerySchema = z.object({
   project_ids: z.string().optional(),       // comma-separated UUIDs
+  project_id: z.string().uuid().optional(), // single project (frontend convenience)
   status: z.string().optional(),
+  tag: z.string().optional(),               // single tag (frontend convenience)
   tags: z.string().optional(),              // comma-separated
   visibility_max: z.string().optional(),
   expires_after: z.string().optional(),
   search: z.string().optional(),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(1000).optional(),
 });
 
 export default async function beaconRoutes(fastify: FastifyInstance) {
@@ -64,8 +66,15 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         userId: request.user!.id,
         projectIds: query.project_ids
           ? query.project_ids.split(',').filter(Boolean)
-          : undefined,
+          : query.project_id
+            ? [query.project_id]
+            : undefined,
         status: query.status,
+        tags: query.tags
+          ? query.tags.split(',').filter(Boolean)
+          : query.tag
+            ? [query.tag]
+            : undefined,
         expiresAfter: query.expires_after,
         search: query.search,
         cursor: query.cursor,

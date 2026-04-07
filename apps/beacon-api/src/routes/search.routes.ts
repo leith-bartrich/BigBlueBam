@@ -22,7 +22,7 @@ import * as savedQueryService from '../services/saved-query.service.js';
 // ---------------------------------------------------------------------------
 
 const searchRequestSchema = z.object({
-  query: z.string().min(1).max(1000),
+  query: z.string().max(1000),
   filters: z.object({
     organization_id: z.string().uuid().optional(), // falls back to session org
     project_ids: z.array(z.string().uuid()).optional(),

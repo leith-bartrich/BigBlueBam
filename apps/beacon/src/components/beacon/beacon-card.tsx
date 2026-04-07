@@ -29,7 +29,7 @@ export function BeaconCard({ beacon, onClick }: BeaconCardProps) {
             </p>
           )}
 
-          {beacon.tags.length > 0 && (
+          {beacon.tags && beacon.tags.length > 0 && (
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               {beacon.tags.map((tag) => (
                 <span

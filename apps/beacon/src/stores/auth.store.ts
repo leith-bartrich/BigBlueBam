@@ -49,3 +49,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }));
+
+// Expose the store on a global so api.ts can read org_id without circular imports.
+(globalThis as any).__beaconAuthStore = useAuthStore;

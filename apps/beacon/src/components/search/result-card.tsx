@@ -91,7 +91,7 @@ export function ResultCard({ result, onNavigate, onAddTag }: ResultCardProps) {
       )}
 
       {/* Tags (clickable chips) */}
-      {result.tags.length > 0 && (
+      {result.tags?.length > 0 && (
         <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
           {result.tags.map((tag) => (
             <button
@@ -107,7 +107,7 @@ export function ResultCard({ result, onNavigate, onAddTag }: ResultCardProps) {
       )}
 
       {/* Match source badges */}
-      {result.match_sources.length > 0 && (
+      {result.match_sources?.length > 0 && (
         <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
           {result.match_sources.map((source) => {
             const config = MATCH_SOURCE_CONFIG[source];
@@ -146,7 +146,7 @@ export function ResultCard({ result, onNavigate, onAddTag }: ResultCardProps) {
       </div>
 
       {/* Linked Beacons preview (first 2) */}
-      {result.linked_beacons.length > 0 && (
+      {result.linked_beacons?.length > 0 && (
         <div className="mt-2.5 pl-3 border-l-2 border-zinc-200 dark:border-zinc-700 space-y-1">
           {result.linked_beacons.slice(0, 2).map((lb) => (
             <button

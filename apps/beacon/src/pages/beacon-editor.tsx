@@ -216,11 +216,11 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
               label="Project (optional)"
               placeholder="Organization-wide (no project)"
               options={[
-                { value: '', label: 'Organization-wide (no project)' },
+                { value: '__none__', label: 'Organization-wide (no project)' },
                 ...projects.map((p) => ({ value: p.id, label: p.name })),
               ]}
-              value={projectId}
-              onValueChange={(v) => setProjectId(v)}
+              value={projectId || '__none__'}
+              onValueChange={(v) => setProjectId(v === '__none__' ? '' : v)}
             />
           ) : existing?.project_name ? (
             <div>

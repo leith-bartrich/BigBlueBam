@@ -18,6 +18,20 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
+  /**
+   * Resolve the active org_id so the beacon-api knows which org context to use.
+   * We lazily import the auth store to avoid circular dependencies at module init.
+   */
+  private getOrgId(): string | undefined {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = (globalThis as any).__beaconAuthStore;
+      return mod?.getState?.()?.user?.org_id;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -35,6 +49,12 @@ class ApiClient {
     }
 
     const headers: Record<string, string> = {};
+
+    // Send active org context so beacon-api resolves the correct org
+    const orgId = this.getOrgId();
+    if (orgId) {
+      headers['X-Org-Id'] = orgId;
+    }
 
     // Only set Content-Type for requests that have a body
     if (body) {
@@ -96,9 +116,13 @@ class ApiClient {
 
   async upload<T>(path: string, formData: FormData): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`, window.location.origin);
+    const headers: Record<string, string> = {};
+    const orgId = this.getOrgId();
+    if (orgId) headers['X-Org-Id'] = orgId;
 
     const response = await fetch(url.toString(), {
       method: 'POST',
+      headers,
       credentials: 'include',
       body: formData,
       // No Content-Type header — browser sets it with boundary for multipart

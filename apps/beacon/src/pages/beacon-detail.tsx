@@ -79,7 +79,7 @@ export function BeaconDetailPage({ idOrSlug, onNavigate }: BeaconDetailPageProps
         />
 
         {/* Tags */}
-        {beacon.tags.length > 0 && (
+        {beacon.tags && beacon.tags.length > 0 && (
           <div className="flex items-center gap-2 mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex-wrap">
             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Tags:</span>
             {beacon.tags.map((tag) => (
@@ -151,7 +151,7 @@ export function BeaconDetailPage({ idOrSlug, onNavigate }: BeaconDetailPageProps
           </SidebarField>
 
           {/* Tags */}
-          {beacon.tags.length > 0 && (
+          {beacon.tags && beacon.tags.length > 0 && (
             <SidebarField label="Tags">
               <div className="flex flex-wrap gap-1">
                 {beacon.tags.map((tag) => (
