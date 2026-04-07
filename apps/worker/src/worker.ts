@@ -12,6 +12,7 @@ import { processBanterNotificationJob, type BanterNotificationJobData } from './
 import { processBanterRetentionJob, type BanterRetentionJobData } from './jobs/banter-retention.job.js';
 import { processHelpdeskTaskCreateJob, type HelpdeskTaskCreateJobData } from './jobs/helpdesk-task-create.job.js';
 import { processBeaconVectorSyncJob, type BeaconVectorSyncJobData } from './jobs/beacon-vector-sync.job.js';
+import { processBeaconExpirySweepJob, type BeaconExpirySweepJobData } from './jobs/beacon-expiry-sweep.job.js';
 
 const env = loadEnv();
 
@@ -174,6 +175,32 @@ beaconVectorSyncWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'beacon-vector-sync', err }, 'Job failed');
 });
 
+// Beacon expiry sweep worker (Fridge Cleanout §6.1 — daily cron)
+const beaconExpirySweepWorker = new Worker<BeaconExpirySweepJobData>(
+  'beacon-expiry-sweep',
+  async (job: Job<BeaconExpirySweepJobData>) => {
+    await processBeaconExpirySweepJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+
+beaconExpirySweepWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'beacon-expiry-sweep' }, 'Job completed');
+});
+
+beaconExpirySweepWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'beacon-expiry-sweep', err }, 'Job failed');
+});
+
+// Schedule the expiry sweep as a daily repeatable job
+import { Queue } from 'bullmq';
+const beaconExpirySweepQueue = new Queue('beacon-expiry-sweep', { connection: redis });
+beaconExpirySweepQueue.upsertJobScheduler(
+  'beacon-expiry-sweep-daily',
+  { pattern: '0 3 * * *' }, // 3 AM daily
+  { name: 'daily-sweep', data: {} },
+).catch((err) => logger.error({ err }, 'Failed to register beacon expiry sweep scheduler'));
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -195,10 +222,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'analytics'] },
   'All workers started',
 );
 

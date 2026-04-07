@@ -109,6 +109,7 @@ import tagRoutes from './routes/tag.routes.js';
 import linkRoutes from './routes/link.routes.js';
 import policyRoutes from './routes/policy.routes.js';
 import searchRoutes from './routes/search.routes.js';
+import graphRoutes from './routes/graph.routes.js';
 
 await fastify.register(beaconRoutes);
 await fastify.register(versionRoutes);
@@ -116,6 +117,7 @@ await fastify.register(tagRoutes);
 await fastify.register(linkRoutes);
 await fastify.register(policyRoutes);
 await fastify.register(searchRoutes);
+await fastify.register(graphRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

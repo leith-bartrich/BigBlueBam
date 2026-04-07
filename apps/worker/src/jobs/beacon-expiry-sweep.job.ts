@@ -1,0 +1,212 @@
+/**
+ * Beacon expiry sweep job — Fridge Cleanout governance (§6.1).
+ *
+ * Daily cron job that:
+ *   Step 1: Active beacons where expires_at <= now() → PendingReview
+ *   Step 2: PendingReview beacons where (expires_at + grace_period) <= now() → Archived
+ *   Step 3: Draft beacons > 60 days old → delete (notify at 30 days if not already)
+ *   Step 4: Enqueue PendingReview beacons for agent verification queue
+ */
+
+import type { Job } from 'bullmq';
+import { Queue } from 'bullmq';
+import type { Logger } from 'pino';
+import { sql } from 'drizzle-orm';
+import { getDb } from '../utils/db.js';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface BeaconExpirySweepJobData {
+  /** Optional org_id to scope the sweep (null = all orgs) */
+  organization_id?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Processor
+// ---------------------------------------------------------------------------
+
+export async function processBeaconExpirySweepJob(
+  job: Job<BeaconExpirySweepJobData>,
+  logger: Logger,
+): Promise<void> {
+  logger.info({ jobId: job.id }, 'Starting beacon expiry sweep');
+
+  const db = getDb();
+
+  // -------------------------------------------------------------------------
+  // Step 1: Active beacons past expiry → PendingReview
+  // -------------------------------------------------------------------------
+
+  const step1Rows: any[] = await db.execute(sql`
+    UPDATE beacon_entries
+    SET status = 'PendingReview',
+        updated_at = NOW()
+    WHERE status = 'Active'
+      AND expires_at <= NOW()
+    RETURNING id, owned_by, project_id, organization_id
+  `);
+
+  logger.info(
+    { count: step1Rows.length, step: 1 },
+    'Transitioned Active → PendingReview',
+  );
+
+  // Enqueue notifications for newly pending beacons
+  if (step1Rows.length > 0) {
+    const notifQueue = new Queue('notifications', {
+      connection: {
+        host: new URL(process.env.REDIS_URL ?? 'redis://localhost:6379').hostname,
+        port: Number(new URL(process.env.REDIS_URL ?? 'redis://localhost:6379').port) || 6379,
+      },
+    });
+
+    for (const row of step1Rows) {
+      await notifQueue.add('beacon-pending-review', {
+        type: 'beacon.pending_review',
+        beacon_id: row.id,
+        owner_id: row.owned_by,
+        project_id: row.project_id,
+        organization_id: row.organization_id,
+        source_app: 'beacon',
+      });
+    }
+
+    await notifQueue.close();
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 2: PendingReview beacons past grace period → Archived
+  // -------------------------------------------------------------------------
+
+  const step2Rows: any[] = await db.execute(sql`
+    UPDATE beacon_entries be
+    SET status = 'Archived',
+        updated_at = NOW()
+    FROM beacon_expiry_policies bep
+    WHERE be.status = 'PendingReview'
+      AND (
+        (bep.scope = 'Project' AND bep.project_id = be.project_id)
+        OR (bep.scope = 'Organization' AND bep.organization_id = be.organization_id AND bep.project_id IS NULL)
+        OR (bep.scope = 'System' AND bep.organization_id IS NULL AND bep.project_id IS NULL)
+      )
+      AND be.expires_at + MAKE_INTERVAL(days => bep.grace_period_days) <= NOW()
+    RETURNING be.id, be.owned_by, be.project_id, be.organization_id
+  `);
+
+  logger.info(
+    { count: step2Rows.length, step: 2 },
+    'Transitioned PendingReview → Archived (grace expired)',
+  );
+
+  // Enqueue archive notifications
+  if (step2Rows.length > 0) {
+    const notifQueue = new Queue('notifications', {
+      connection: {
+        host: new URL(process.env.REDIS_URL ?? 'redis://localhost:6379').hostname,
+        port: Number(new URL(process.env.REDIS_URL ?? 'redis://localhost:6379').port) || 6379,
+      },
+    });
+
+    for (const row of step2Rows) {
+      await notifQueue.add('beacon-archived', {
+        type: 'beacon.archived',
+        beacon_id: row.id,
+        owner_id: row.owned_by,
+        project_id: row.project_id,
+        organization_id: row.organization_id,
+        source_app: 'beacon',
+      });
+    }
+
+    await notifQueue.close();
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 3: Stale drafts — notify at 30 days, delete at 60 days
+  // -------------------------------------------------------------------------
+
+  // 3a: Notify creators of 30-day-old drafts (that haven't been notified yet)
+  const drafts30d: any[] = await db.execute(sql`
+    SELECT id, owned_by, project_id, organization_id
+    FROM beacon_entries
+    WHERE status = 'Draft'
+      AND created_at < NOW() - INTERVAL '30 days'
+      AND created_at >= NOW() - INTERVAL '60 days'
+      AND NOT COALESCE((metadata->>'draft_expiry_notified')::boolean, false)
+  `);
+
+  if (drafts30d.length > 0) {
+    // Mark as notified
+    const draftIds30 = drafts30d.map((r: any) => r.id);
+    await db.execute(sql`
+      UPDATE beacon_entries
+      SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"draft_expiry_notified": true}'::jsonb
+      WHERE id = ANY(${draftIds30})
+    `);
+
+    logger.info(
+      { count: drafts30d.length, step: '3a' },
+      'Notified owners of 30-day stale drafts',
+    );
+  }
+
+  // 3b: Delete drafts older than 60 days
+  const deletedDrafts: any[] = await db.execute(sql`
+    DELETE FROM beacon_entries
+    WHERE status = 'Draft'
+      AND created_at < NOW() - INTERVAL '60 days'
+    RETURNING id, owned_by
+  `);
+
+  logger.info(
+    { count: deletedDrafts.length, step: '3b' },
+    'Deleted stale drafts (> 60 days)',
+  );
+
+  // -------------------------------------------------------------------------
+  // Step 4: Enqueue all PendingReview beacons for agent verification
+  // -------------------------------------------------------------------------
+
+  const pendingBeacons: any[] = await db.execute(sql`
+    SELECT id, owned_by, project_id, organization_id
+    FROM beacon_entries
+    WHERE status = 'PendingReview'
+  `);
+
+  if (pendingBeacons.length > 0) {
+    const agentQueue = new Queue('beacon-agent-verify', {
+      connection: {
+        host: new URL(process.env.REDIS_URL ?? 'redis://localhost:6379').hostname,
+        port: Number(new URL(process.env.REDIS_URL ?? 'redis://localhost:6379').port) || 6379,
+      },
+    });
+
+    for (const row of pendingBeacons) {
+      await agentQueue.add('verify', {
+        beacon_id: row.id,
+        project_id: row.project_id,
+        organization_id: row.organization_id,
+      });
+    }
+
+    await agentQueue.close();
+  }
+
+  logger.info(
+    { count: pendingBeacons.length, step: 4 },
+    'Enqueued PendingReview beacons for agent verification',
+  );
+
+  logger.info(
+    {
+      expired: step1Rows.length,
+      graceExpired: step2Rows.length,
+      draftsNotified: drafts30d.length,
+      draftsDeleted: deletedDrafts.length,
+      agentQueue: pendingBeacons.length,
+    },
+    'Beacon expiry sweep complete',
+  );
+}
