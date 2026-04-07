@@ -11,6 +11,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useDocument, useToggleStar, useArchiveDocument, useDuplicateDocument, usePromoteToBeacon, useRestoreDocument } from '@/hooks/use-documents';
+import { markdownToHtml } from '@/lib/markdown';
 import { useComments, useCreateComment, useResolveComment, useDeleteComment } from '@/hooks/use-comments';
 import { useVersions } from '@/hooks/use-versions';
 import { StatusBadge } from '@/components/document/status-badge';
@@ -84,21 +85,37 @@ export function DocumentDetailPage({ idOrSlug, onNavigate }: DocumentDetailPageP
     deleteComment.mutate({ documentId: doc.id, commentId });
   };
 
-  // Render the document body: prefer html_snapshot, fall back to plain_text, then body_markdown
+  // Render the document body: prefer html_snapshot, fall back to markdown conversion, then plain_text
   const renderBody = () => {
     if (doc.html_snapshot) {
       return (
         <article
-          className="prose prose-zinc dark:prose-invert max-w-none text-sm leading-relaxed document-content"
+          className="prose prose-zinc dark:prose-invert max-w-none text-sm leading-relaxed document-content ProseMirror"
           dangerouslySetInnerHTML={{ __html: doc.html_snapshot }}
         />
       );
     }
-    const text = doc.plain_text ?? doc.body_markdown ?? '';
+    const md = doc.body_markdown ?? '';
+    if (md) {
+      const html = markdownToHtml(md);
+      return (
+        <article
+          className="prose prose-zinc dark:prose-invert max-w-none text-sm leading-relaxed document-content ProseMirror"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      );
+    }
+    const text = doc.plain_text ?? '';
+    if (text) {
+      return (
+        <article
+          className="prose prose-zinc dark:prose-invert max-w-none text-sm leading-relaxed document-content ProseMirror"
+          dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br>') }}
+        />
+      );
+    }
     return (
-      <pre className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed font-sans">
-        {text}
-      </pre>
+      <p className="text-sm text-zinc-400 dark:text-zinc-500 italic">No content yet.</p>
     );
   };
 

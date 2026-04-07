@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import {
   useDocument,
@@ -9,9 +9,12 @@ import {
 } from '@/hooks/use-documents';
 import { useTemplates } from '@/hooks/use-templates';
 import { Button } from '@/components/common/button';
-import { Input } from '@/components/common/input';
 import { useProjectStore } from '@/stores/project.store';
 import { useProjects } from '@/hooks/use-projects';
+import { useBriefEditor, BriefEditorContent } from '@/components/editor/brief-editor';
+import { EditorToolbar } from '@/components/editor/editor-toolbar';
+import { TableOfContents } from '@/components/editor/table-of-contents';
+import { markdownToHtml, htmlToMarkdown } from '@/lib/markdown';
 
 interface DocumentEditorPageProps {
   idOrSlug?: string;
@@ -35,13 +38,15 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
   const [summary, setSummary] = useState('');
   const [iconEmoji, setIconEmoji] = useState('');
   const [projectId, setProjectId] = useState('');
   const [visibility, setVisibility] = useState<DocumentVisibility>('organization');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [editorHtml, setEditorHtml] = useState('');
+  const [wordCount, setWordCount] = useState(0);
+  const [initialContent, setInitialContent] = useState<string | null>(null);
 
   // Pre-select the active project from the store when creating
   useEffect(() => {
@@ -54,13 +59,25 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
   useEffect(() => {
     if (existing) {
       setTitle(existing.title);
-      setBody(existing.body_markdown ?? '');
       setSummary(existing.summary ?? '');
       setIconEmoji(existing.icon_emoji ?? '');
       setProjectId(existing.project_id ?? '');
       setVisibility(existing.visibility ?? 'organization');
+
+      // Convert stored markdown to HTML for the editor
+      const md = existing.body_markdown ?? existing.plain_text ?? '';
+      const html = markdownToHtml(md);
+      setInitialContent(html);
+      setEditorHtml(html);
     }
   }, [existing]);
+
+  // Set initial content for new documents
+  useEffect(() => {
+    if (!isEditMode && initialContent === null) {
+      setInitialContent('');
+    }
+  }, [isEditMode, initialContent]);
 
   // Apply template content when a template is selected (new documents only)
   useEffect(() => {
@@ -68,11 +85,32 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
       const template = templates.find((t) => t.id === selectedTemplateId);
       if (template) {
         if (!title) setTitle(template.name);
-        setBody(template.body_markdown);
+        const html = markdownToHtml(template.body_markdown);
+        setInitialContent(html);
+        setEditorHtml(html);
         setIconEmoji(template.icon_emoji ?? '');
       }
     }
   }, [selectedTemplateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleEditorUpdate = useCallback((html: string) => {
+    setEditorHtml(html);
+    // Count words from text content
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    const text = tempDiv.textContent || '';
+    const words = text
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    setWordCount(words.length);
+  }, []);
+
+  const editor = useBriefEditor({
+    content: initialContent ?? '',
+    onUpdate: handleEditorUpdate,
+    editable: true,
+  });
 
   if (isEditMode && loadingExisting) {
     return (
@@ -82,15 +120,25 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
     );
   }
 
+  // Don't render editor until initial content is set
+  if (initialContent === null) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+      </div>
+    );
+  }
+
   const handleSaveDraft = async () => {
     setSaveError(null);
+    const bodyMarkdown = htmlToMarkdown(editorHtml);
     try {
       if (isEditMode && existing) {
         await updateDocument.mutateAsync({
           id: existing.id,
           data: {
             title,
-            body_markdown: body,
+            body_markdown: bodyMarkdown,
             summary: summary || undefined,
             icon_emoji: iconEmoji || undefined,
             visibility,
@@ -101,7 +149,7 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
       } else {
         const res = await createDocument.mutateAsync({
           title,
-          body_markdown: body,
+          body_markdown: bodyMarkdown,
           summary: summary || undefined,
           icon_emoji: iconEmoji || undefined,
           project_id: projectId || undefined,
@@ -118,13 +166,14 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
 
   const handlePublish = async () => {
     setSaveError(null);
+    const bodyMarkdown = htmlToMarkdown(editorHtml);
     try {
       if (isEditMode && existing) {
         await updateDocument.mutateAsync({
           id: existing.id,
           data: {
             title,
-            body_markdown: body,
+            body_markdown: bodyMarkdown,
             summary: summary || undefined,
             icon_emoji: iconEmoji || undefined,
             visibility,
@@ -135,7 +184,7 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
       } else {
         const res = await createDocument.mutateAsync({
           title,
-          body_markdown: body,
+          body_markdown: bodyMarkdown,
           summary: summary || undefined,
           icon_emoji: iconEmoji || undefined,
           project_id: projectId || undefined,
@@ -156,19 +205,23 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             onClick={() => onNavigate(isEditMode ? `/documents/${idOrSlug}` : '/documents')}
-            className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+            className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-            {isEditMode ? 'Edit Document' : 'New Document'}
-          </h1>
+          <input
+            type="text"
+            placeholder="Document title..."
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="flex-1 text-lg font-semibold bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 min-w-0"
+          />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button variant="secondary" size="sm" onClick={handleSaveDraft} loading={isSaving} disabled={!title.trim()}>
             Save Draft
           </Button>
@@ -178,61 +231,57 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
         </div>
       </div>
 
+      {saveError && (
+        <div className="mx-6 mt-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-400">
+          {saveError}
+        </div>
+      )}
+
       {/* Content area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Editor area */}
-        <div className="flex-1 overflow-auto p-6 lg:p-8">
-          <div className="max-w-3xl space-y-6">
-            {saveError && (
-              <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-400">
-                {saveError}
-              </div>
-            )}
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* Toolbar */}
+          <EditorToolbar editor={editor} />
 
-            {/* Title */}
-            <div>
-              <input
-                type="text"
-                placeholder="Document title..."
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full text-2xl font-bold bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
-              />
-            </div>
+          {/* Summary (collapsed, optional) */}
+          <div className="px-6 lg:px-8 pt-4 pb-2 shrink-0">
+            <input
+              type="text"
+              placeholder="Brief summary (optional)..."
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              className="w-full max-w-3xl text-sm bg-transparent border-0 outline-none text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
+            />
+          </div>
 
-            {/* Summary */}
-            <div>
-              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
-                Summary (optional)
-              </label>
-              <input
-                type="text"
-                placeholder="Brief description of this document..."
-                value={summary}
-                onChange={(e) => setSummary(e.target.value)}
-                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
-              />
+          {/* Editor */}
+          <div className="flex-1 overflow-auto px-6 lg:px-8 pb-6">
+            <div className="max-w-3xl mx-auto">
+              <BriefEditorContent editor={editor} />
             </div>
+          </div>
 
-            {/* Body */}
-            <div>
-              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
-                Content (Markdown)
-              </label>
-              <textarea
-                placeholder="Start writing your document in Markdown..."
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={24}
-                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 resize-y font-mono leading-relaxed"
-              />
-            </div>
+          {/* Word count footer */}
+          <div className="shrink-0 px-6 py-2 border-t border-zinc-100 dark:border-zinc-800 text-xs text-zinc-400 dark:text-zinc-500">
+            {wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}
           </div>
         </div>
 
-        {/* Settings sidebar */}
+        {/* Right sidebar */}
         <aside className="w-72 shrink-0 border-l border-zinc-200 dark:border-zinc-800 overflow-auto p-5 hidden lg:block">
           <div className="space-y-5">
+            {/* Table of Contents */}
+            <TableOfContents editor={editor} />
+
+            {/* Divider */}
+            <div className="border-t border-zinc-200 dark:border-zinc-800" />
+
+            {/* Settings section header */}
+            <h3 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+              Settings
+            </h3>
+
             {/* Icon emoji */}
             <div>
               <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
