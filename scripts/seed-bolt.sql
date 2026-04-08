@@ -45,14 +45,13 @@ BEGIN
     (a11, v_org, v_proj, 'Document Promoted to Beacon', 'Posts to #knowledge when a Brief doc graduates to Beacon', true, 'brief', 'document.promoted', NULL, 50, 0, v_u4, NULL),
     (a12, v_org, v_proj, 'Critical Mention Alert', 'DMs team lead when @oncall is mentioned in any channel', false, 'banter', 'message.mentioned', '{"mentioned_user": "oncall"}', 30, 60, v_u6, NULL);
 
-  -- ── Conditions ──
+  -- ── Conditions (only where meaningful — automations without conditions always run) ──
   INSERT INTO bolt_conditions (automation_id, sort_order, field, operator, value, logic_group) VALUES
     (a2, 0, 'event.days_overdue', 'greater_than', '2', 'and'),
     (a4, 0, 'event.ticket.category', 'equals', '"billing"', 'and'),
     (a9, 0, 'event.to_phase.name', 'equals', '"Review"', 'and'),
     (a10, 0, 'event.task.has_linked_ticket', 'equals', 'true', 'and'),
-    (a12, 0, 'event.mentioned_user', 'equals', '"oncall"', 'and'),
-    (a8, 0, 'event.schedule_id', 'is_not_empty', NULL, 'and');
+    (a12, 0, 'event.mentioned_user', 'equals', '"oncall"', 'and');
 
   -- ── Actions ──
   INSERT INTO bolt_actions (automation_id, sort_order, mcp_tool, parameters, on_error) VALUES
