@@ -381,20 +381,43 @@ export function DeployGuidePage() {
 
           <Step n={5} title="Create your admin account">
             <p className="text-sm text-zinc-600 leading-relaxed">
-              Once services are running, the script walks you through creating the first user.
+              Once services are running, the script walks you through creating the first user — a SuperUser
+              with full admin access. You can choose to have a strong password generated for you, or type your own.
             </p>
             <CodeBlock>{`Let's create your admin account.
 
 Email address: you@yourcompany.com
-Password: ************
+
+Password:
+  1. Generate a strong password for me (recommended)
+  2. I'll type my own password
+> 1
+
+  Your generated password:
+
+    Falcon-Copper-Ribbon-Sage42!
+
+  ⚠  Copy this now — it will not be shown again.
+
+  ✓ Password saved to macOS Keychain
+    Service: "BigBlueBam"  Account: "you@yourcompany.com"
+
+  I've saved my password and I'm ready to continue (Y/n): Y
+
 Your name: Jane Smith
 Organization: Acme Corp
 
-Creating account... done
-Verifying login... done`}</CodeBlock>
+Creating account... ✓
+Verifying login... ✓`}</CodeBlock>
+            <Callout type="info">
+              The generated password uses a memorable word-based format (like <code>Tiger-Maple-Creek-Storm73!</code>)
+              that is both strong and easy to read. On macOS, Windows, and Linux desktops, the script can
+              automatically save it to your system keychain so you don't need to write it down.
+            </Callout>
             <Callout type="warning">
-              Choose a strong password. This account has full admin access to everything.
-              You can reset it later, but you will need database access to do so.
+              This is a SuperUser account with full access to everything — all organizations, all settings,
+              all data. Keep the password secure. You can create regular admin and member accounts from
+              within the app once you're logged in.
             </Callout>
           </Step>
 
