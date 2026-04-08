@@ -1,9 +1,9 @@
 import { Target, TrendingUp, AlertTriangle, Trophy } from 'lucide-react';
-import { formatProgress } from '@/lib/utils';
-import { usePeriodReport } from '@/hooks/useProgress';
+import type { BearingGoal } from '@/hooks/useGoals';
 
 interface ProgressSummaryProps {
-  periodId?: string;
+  goals: BearingGoal[];
+  isLoading?: boolean;
 }
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: string | number; icon: typeof Target; color: string }) {
@@ -20,13 +20,10 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: s
   );
 }
 
-export function ProgressSummary({ periodId }: ProgressSummaryProps) {
-  const { data, isLoading } = usePeriodReport(periodId);
-  const report = data?.data;
-
+export function ProgressSummary({ goals, isLoading }: ProgressSummaryProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="h-24 rounded-xl border border-zinc-200 dark:border-zinc-700 animate-pulse bg-zinc-100 dark:bg-zinc-800" />
         ))}
@@ -34,23 +31,19 @@ export function ProgressSummary({ periodId }: ProgressSummaryProps) {
     );
   }
 
-  if (!report) {
-    return (
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard label="Total Goals" value={0} icon={Target} color="#4f46e5" />
-        <StatCard label="Avg Progress" value="0%" icon={TrendingUp} color="#059669" />
-        <StatCard label="At Risk" value={0} icon={AlertTriangle} color="#d97706" />
-        <StatCard label="Achieved" value={0} icon={Trophy} color="#2563eb" />
-      </div>
-    );
-  }
+  const total = goals.length;
+  const avgProgress = total > 0
+    ? Math.round((goals.reduce((sum, g) => sum + Number(g.progress ?? 0), 0) / total) * 100)
+    : 0;
+  const atRisk = goals.filter((g) => g.status === 'at_risk' || g.status === 'behind').length;
+  const achieved = goals.filter((g) => g.status === 'achieved').length;
 
   return (
-    <div className="grid grid-cols-4 gap-4">
-      <StatCard label="Total Goals" value={report.total_goals} icon={Target} color="#4f46e5" />
-      <StatCard label="Avg Progress" value={formatProgress(report.avg_progress)} icon={TrendingUp} color="#059669" />
-      <StatCard label="At Risk" value={report.at_risk + report.behind} icon={AlertTriangle} color="#d97706" />
-      <StatCard label="Achieved" value={report.achieved} icon={Trophy} color="#2563eb" />
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <StatCard label="Total Goals" value={total} icon={Target} color="#4f46e5" />
+      <StatCard label="Avg Progress" value={`${avgProgress}%`} icon={TrendingUp} color="#059669" />
+      <StatCard label="At Risk" value={atRisk} icon={AlertTriangle} color="#d97706" />
+      <StatCard label="Achieved" value={achieved} icon={Trophy} color="#2563eb" />
     </div>
   );
 }
