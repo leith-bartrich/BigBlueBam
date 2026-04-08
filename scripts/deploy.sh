@@ -55,28 +55,14 @@ if ! check_node; then
   echo "Node.js $(node -v) installed"
 fi
 
-# Check Docker
-if ! command -v docker &>/dev/null; then
-  echo ""
-  echo "Docker is required but not installed."
-  echo ""
-  echo "Install Docker Desktop from:"
-  echo "  macOS:  https://docs.docker.com/desktop/install/mac-install/"
-  echo "  Linux:  https://docs.docker.com/engine/install/"
-  echo ""
-  echo "After installing, make sure Docker is running, then re-run this script."
-  exit 1
+# Note: Docker check is deferred to the platform-specific prerequisite phase.
+# Railway deployments don't need Docker installed locally.
+echo "✓ Node.js $(node -v)"
+if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+  echo "✓ Docker $(docker --version | awk '{print $3}' | tr -d ',')"
+else
+  echo "○ Docker not detected (only needed for Docker Compose deployments)"
 fi
-
-if ! docker info &>/dev/null 2>&1; then
-  echo ""
-  echo "Docker is installed but not running."
-  echo "Please start Docker Desktop and re-run this script."
-  exit 1
-fi
-
-echo "Node.js $(node -v)"
-echo "Docker $(docker --version | awk '{print $3}' | tr -d ',')"
 echo ""
 
 # Hand off to Node.js orchestrator

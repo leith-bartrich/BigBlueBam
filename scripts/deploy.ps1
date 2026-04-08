@@ -53,40 +53,26 @@ if (-not (Test-NodeVersion)) {
     Write-Host "Node.js $nodeVer installed" -ForegroundColor Green
 }
 
-# Check Docker
-$hasDocker = $null -ne (Get-Command docker -ErrorAction SilentlyContinue)
-if (-not $hasDocker) {
-    Write-Host ""
-    Write-Host "Docker is required but not installed." -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Install Docker Desktop from:"
-    Write-Host "  https://docs.docker.com/desktop/install/windows-install/"
-    Write-Host ""
-    Write-Host "After installing, make sure Docker is running, then re-run this script."
-    exit 1
-}
-
-try {
-    & docker info 2>$null | Out-Null
-} catch {
-    Write-Host ""
-    Write-Host "Docker is installed but not running." -ForegroundColor Yellow
-    Write-Host "Please start Docker Desktop and re-run this script."
-    exit 1
-}
-# Also check via exit code (docker info returns non-zero when daemon is down)
-& docker info 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "Docker is installed but not running." -ForegroundColor Yellow
-    Write-Host "Please start Docker Desktop and re-run this script."
-    exit 1
-}
-
+# Docker check is deferred — Railway deployments don't need Docker locally
 $nodeVer = & node -v
-$dockerVer = (& docker --version) -replace '^Docker version ([^,]+),.*', '$1'
 Write-Host "Node.js $nodeVer" -ForegroundColor Green
-Write-Host "Docker $dockerVer" -ForegroundColor Green
+
+$hasDocker = $null -ne (Get-Command docker -ErrorAction SilentlyContinue)
+if ($hasDocker) {
+    try {
+        & docker info 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $dockerVer = (& docker --version) -replace '^Docker version ([^,]+),.*', '$1'
+            Write-Host "Docker $dockerVer" -ForegroundColor Green
+        } else {
+            Write-Host "Docker installed but not running (only needed for Docker Compose)" -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-Host "Docker installed but not running (only needed for Docker Compose)" -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "Docker not detected (only needed for Docker Compose deployments)" -ForegroundColor DarkGray
+}
 Write-Host ""
 
 # Hand off to Node.js orchestrator

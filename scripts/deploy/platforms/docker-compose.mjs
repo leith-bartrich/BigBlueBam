@@ -6,6 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { bold, check, cross, dim, green, yellow, cyan, red, warn } from '../shared/colors.mjs';
 import { confirm, ask } from '../shared/prompt.mjs';
+import { checkDockerPrerequisites } from '../shared/prerequisites.mjs';
 
 const name = 'Docker Compose';
 const description = 'Run everything locally with Docker (simplest)';
@@ -59,15 +60,8 @@ function sleep(ms) {
 async function checkPrerequisites() {
   console.log(bold('Checking Docker Compose setup...\n'));
 
-  // Docker Compose version
-  const dc = composeCmd();
-  try {
-    const ver = execSync(`${dc} version --short`, { stdio: 'pipe', encoding: 'utf8' }).trim();
-    console.log(`  ${check} Docker Compose ${ver}`);
-  } catch {
-    console.log(`  ${cross} Docker Compose not found`);
-    throw new Error('Docker Compose is required but not installed.');
-  }
+  // Docker + Docker Compose installed and running
+  checkDockerPrerequisites();
 
   // Check compose file exists
   const composeFile = path.resolve(process.cwd(), 'docker-compose.yml');
