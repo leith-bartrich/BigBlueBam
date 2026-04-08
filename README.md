@@ -758,12 +758,26 @@ Configure providers in **Settings → AI Providers** in the Bam frontend. If no 
 
 ## Quick Start
 
-### Prerequisites
+> **📖 Full deployment guide:** [docs/deployment-guide.md](docs/deployment-guide.md) — step-by-step walkthrough with interactive setup wizard, password generation, and platform selection (Railway or Docker Compose).
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- [Node.js 22+](https://nodejs.org/) and [pnpm 9+](https://pnpm.io/) (for development only)
+### Guided Setup (Recommended)
 
-### Run with Docker
+The interactive deploy script handles everything — installs dependencies, generates secrets, provisions infrastructure, and creates your admin account:
+
+```bash
+git clone https://github.com/eoffermann/BigBlueBam.git
+cd BigBlueBam
+
+# Linux / macOS
+./scripts/deploy.sh
+
+# Windows (PowerShell)
+.\scripts\deploy.ps1
+```
+
+### Manual Setup with Docker Compose
+
+If you prefer to set things up manually:
 
 ```bash
 # Clone the repo
@@ -774,15 +788,8 @@ cd BigBlueBam
 cp .env.example .env
 # Edit .env with your secrets (passwords, session secret)
 
-# Start all services (or use the cross-platform helpers below)
+# Start all services
 docker compose up -d
-
-# Cross-platform deploy/restart helpers:
-#   Mac / Linux: ./scripts/deploy.sh          # up|restart|rebuild|stop|down|logs
-#   Windows:     scripts\deploy.bat           # same subcommands
-# These detect a private ./site checkout automatically and serve the
-# marketing site at the root domain when present; otherwise `/` redirects
-# to `/helpdesk/` exactly like before.
 
 # Create your admin account
 docker compose exec api node dist/cli.js create-admin \
@@ -973,6 +980,7 @@ scripts/            → Utility and seed scripts
 | [API Reference](docs/api-reference.md) | All REST endpoints with examples |
 | [MCP Server](docs/mcp-server.md) | Tools, resources, prompts, configuration |
 | [Operations](docs/operations.md) | Updates, backups, scaling, troubleshooting |
+| [Deployment Guide](docs/deployment-guide.md) | Interactive setup wizard, Railway & Docker Compose, step-by-step |
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, scaling, backup |
 | [Development](docs/development.md) | Contributing, testing, code style |
 | [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
