@@ -1,60 +1,95 @@
-# BigBlueBam deploy/restart helper for Windows (PowerShell).
-#
-# Usage (from repo root):
-#   scripts\deploy.ps1            # up (build + start, detached) — default
-#   scripts\deploy.ps1 up         # same
-#   scripts\deploy.ps1 restart    # restart running containers (no rebuild)
-#   scripts\deploy.ps1 rebuild    # force-rebuild + recreate everything
-#   scripts\deploy.ps1 stop       # stop without removing containers
-#   scripts\deploy.ps1 down       # stop + remove containers (KEEPS volumes)
-#   scripts\deploy.ps1 logs       # tail logs from all services
-#
-# If .\site exists, the root domain is served from the site service.
-# Otherwise `/` redirects to `/helpdesk/` per the base nginx config.
-
+# BigBlueBam Deployment Setup — Windows PowerShell bootstrap
 $ErrorActionPreference = 'Stop'
 
-# cd to repo root (this script lives in scripts/)
-Set-Location (Join-Path $PSScriptRoot '..')
+Write-Host ""
+Write-Host "+===========================================+" -ForegroundColor Cyan
+Write-Host "|       BigBlueBam Deployment Setup         |" -ForegroundColor Cyan
+Write-Host "+===========================================+" -ForegroundColor Cyan
+Write-Host ""
 
-$cmd = if ($args.Count -gt 0) { $args[0].ToLower() } else { 'up' }
+# Check we're in the right directory
+$repoRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $repoRoot
 
-$composeArgs = @('-f', 'docker-compose.yml')
-
-if ((Test-Path 'site') -and (Test-Path 'site/package.json')) {
-    Write-Host "==> site/ detected - enabling marketing site overlay (root domain -> site)" -ForegroundColor Cyan
-    $composeArgs += @('-f', 'docker-compose.site.yml')
-} else {
-    Write-Host "==> site/ not present - root domain will redirect to /helpdesk/" -ForegroundColor Yellow
+if (-not (Test-Path "docker-compose.yml") -or -not (Test-Path "apps/api")) {
+    Write-Host "Error: Please run this script from the BigBlueBam repository root." -ForegroundColor Red
+    exit 1
 }
 
-switch ($cmd) {
-    { $_ -in 'up','deploy' } {
-        & docker compose @composeArgs up -d --build
-    }
-    'restart' {
-        & docker compose @composeArgs restart
-    }
-    'rebuild' {
-        & docker compose @composeArgs up -d --build --force-recreate
-    }
-    'stop' {
-        & docker compose @composeArgs stop
-    }
-    'down' {
-        # NOTE: no `-v` - we never wipe volumes from this script. Data is sacred.
-        & docker compose @composeArgs down
-    }
-    'logs' {
-        & docker compose @composeArgs logs -f
-    }
-    { $_ -in 'ps','status' } {
-        & docker compose @composeArgs ps
-    }
-    default {
-        Write-Host "Usage: deploy.ps1 [up|restart|rebuild|stop|down|logs|ps]" -ForegroundColor Red
+# Check/install Node.js 22+
+function Test-NodeVersion {
+    try {
+        $ver = & node -v 2>$null
+        if ($ver) {
+            $major = [int]($ver -replace '^v(\d+)\..*', '$1')
+            return $major -ge 22
+        }
+    } catch {}
+    return $false
+}
+
+if (-not (Test-NodeVersion)) {
+    Write-Host "Node.js 22+ is required but not found." -ForegroundColor Yellow
+    Write-Host ""
+
+    $hasWinget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+    if ($hasWinget) {
+        Write-Host "Installing via winget..."
+        & winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+        # Refresh PATH
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+    } else {
+        Write-Host "Automatic installation not available."
+        Write-Host "Please install Node.js 22+ from: https://nodejs.org/"
+        Write-Host "Then re-run this script."
         exit 1
     }
+
+    if (-not (Test-NodeVersion)) {
+        Write-Host "Node.js installation failed. Please install manually from https://nodejs.org/" -ForegroundColor Red
+        exit 1
+    }
+    $nodeVer = & node -v
+    Write-Host "Node.js $nodeVer installed" -ForegroundColor Green
 }
 
+# Check Docker
+$hasDocker = $null -ne (Get-Command docker -ErrorAction SilentlyContinue)
+if (-not $hasDocker) {
+    Write-Host ""
+    Write-Host "Docker is required but not installed." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Install Docker Desktop from:"
+    Write-Host "  https://docs.docker.com/desktop/install/windows-install/"
+    Write-Host ""
+    Write-Host "After installing, make sure Docker is running, then re-run this script."
+    exit 1
+}
+
+try {
+    & docker info 2>$null | Out-Null
+} catch {
+    Write-Host ""
+    Write-Host "Docker is installed but not running." -ForegroundColor Yellow
+    Write-Host "Please start Docker Desktop and re-run this script."
+    exit 1
+}
+# Also check via exit code (docker info returns non-zero when daemon is down)
+& docker info 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "Docker is installed but not running." -ForegroundColor Yellow
+    Write-Host "Please start Docker Desktop and re-run this script."
+    exit 1
+}
+
+$nodeVer = & node -v
+$dockerVer = (& docker --version) -replace '^Docker version ([^,]+),.*', '$1'
+Write-Host "Node.js $nodeVer" -ForegroundColor Green
+Write-Host "Docker $dockerVer" -ForegroundColor Green
+Write-Host ""
+
+# Hand off to Node.js orchestrator
+$deployScript = Join-Path $PSScriptRoot "deploy" "main.mjs"
+& node $deployScript @args
 exit $LASTEXITCODE
