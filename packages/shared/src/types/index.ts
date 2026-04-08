@@ -270,3 +270,13 @@ export interface BoardResponse {
   phases: (Phase & { tasks: Task[] })[];
   sprint: Sprint | null;
 }
+
+// ── Bearing types ──────────────────────────────────────────────────────
+// Inferred type aliases use "Input" suffix to avoid collision with the
+// Zod schemas of the same name re-exported from schemas/bearing.ts.
+export type BearingPeriodTypeInput = z.infer<typeof import('../schemas/bearing.js').BearingPeriodType>;
+export type BearingPeriodStatusInput = z.infer<typeof import('../schemas/bearing.js').BearingPeriodStatus>;
+export type BearingGoalScopeInput = z.infer<typeof import('../schemas/bearing.js').BearingGoalScope>;
+export type BearingGoalStatusInput = z.infer<typeof import('../schemas/bearing.js').BearingGoalStatus>;
+export type BearingMetricTypeInput = z.infer<typeof import('../schemas/bearing.js').BearingMetricType>;
+export type BearingProgressModeInput = z.infer<typeof import('../schemas/bearing.js').BearingProgressMode>;

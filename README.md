@@ -19,6 +19,7 @@
   <a href="#beacon">Beacon</a> &bull;
   <a href="#brief">Brief</a> &bull;
   <a href="#bolt">Bolt</a> &bull;
+  <a href="#bearing">Bearing</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#documentation">Docs</a>
@@ -26,7 +27,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/tests-700%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-170-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/MCP%20tools-182-blue" alt="MCP Tools" />
   <img src="https://img.shields.io/badge/Docker%20services-16-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
@@ -43,7 +44,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **170 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, collaborative documents, and workflow automations.
+This is made possible by **182 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, collaborative documents, workflow automations, and goals & OKRs.
 
 ---
 
@@ -303,7 +304,7 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **170 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, and collaborative documents. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **182 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, collaborative documents, workflow automations, and goals & OKRs. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -316,6 +317,7 @@ BigBlueBam exposes **170 MCP (Model Context Protocol) tools** that give AI assis
 - **Manage the knowledge base via Beacon** — create and publish Beacons, search with semantic + graph retrieval, verify content freshness, link related knowledge, manage governance policies, and save reusable queries
 - **Author collaborative documents via Brief** — create, edit, and search documents, manage version history, leave inline comments, apply templates, and graduate finished documents into Beacons
 - **Automate workflows with Bolt** — create trigger-condition-action rules, manage executions, browse templates, and orchestrate cross-product automations that compile to MCP tool calls
+- **Track goals & OKRs with Bearing** — create time-boxed periods, define goals with key results, link KRs to Bam tasks for automatic progress, post status updates, and generate at-risk reports
 
 ### Example: AI-Powered Helpdesk Triage
 
@@ -337,7 +339,7 @@ BigBlueBam exposes **170 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Tools Reference
 
-**170 tools** across 17 categories:
+**182 tools** across 18 categories:
 
 | Category | Count | What they cover |
 |----------|------:|-----------------|
@@ -356,6 +358,7 @@ BigBlueBam exposes **170 MCP (Model Context Protocol) tools** that give AI assis
 | **Beacon Knowledge Base** | 29 | CRUD, search, verification, graph, policies, saved queries |
 | **Brief Documents** | 18 | CRUD, collaboration, versions, search, graduation, templates |
 | **Bolt Automation** | 12 | Rule CRUD, execution management, templates, triggers, conditions, actions |
+| **Bearing Goals** | 12 | Periods, goals, key results, progress, links, reports, at-risk detection |
 | **Helpdesk** | 7 | Ticket operations, public/admin settings |
 | **Utility** | 2 | Server info, action confirmation |
 
@@ -655,6 +658,45 @@ AI agents interact with Bolt through **12 dedicated MCP tools**:
 
 ---
 
+## Bearing
+
+### Goals & OKRs -- strategy-to-execution visibility
+
+Bearing connects quarterly objectives to daily task work in Bam, giving leadership real-time visibility into whether the team is on track. Progress updates automatically as tasks complete -- no manual slider dragging.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Time-Boxed Periods** | Quarters, halves, or custom date ranges that scope all goals and reporting |
+| **Automatic Progress from Bam** | Link key results to tasks, epics, or sprints -- progress updates as work completes |
+| **Cross-Project Rollup** | Roll up key results from multiple projects into a single org-level goal |
+| **At-Risk Detection** | Automatic flagging of goals that are behind pace based on time elapsed vs. progress |
+| **Progress Snapshots & Charts** | Point-in-time snapshots with trend charts for leadership reviews |
+| **Status Updates** | Structured status posts on goals with sentiment (on-track, at-risk, behind) |
+| **AI Reporting via MCP** | AI agents can generate period reports, surface at-risk goals, and post status updates programmatically |
+
+### Bearing MCP Tools
+
+AI agents interact with Bearing through **12 dedicated MCP tools**:
+
+| Tool | Description |
+|------|-------------|
+| `bearing_periods` | List/manage time periods |
+| `bearing_period_get` | Get period with summary stats |
+| `bearing_goals` | List goals with filters |
+| `bearing_goal_get` | Get goal with KRs and progress |
+| `bearing_goal_create` | Create a new goal |
+| `bearing_goal_update` | Update goal metadata |
+| `bearing_kr_create` | Create a key result |
+| `bearing_kr_update` | Update KR value or metadata |
+| `bearing_kr_link` | Link KR to Bam entity |
+| `bearing_update_post` | Post status update on a goal |
+| `bearing_report` | Generate period or at-risk report |
+| `bearing_at_risk` | List at-risk/behind goals |
+
+---
+
 ## AI Provider Configuration
 
 BigBlueBam features a hierarchical LLM provider configuration system that powers AI features across the suite — including Bolt's AI-assisted automation authoring, future summarization, and content generation features.
@@ -726,7 +768,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "My Organization"
 ```
 
-Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, **http://localhost/brief/** for Brief, **http://localhost/bolt/** for Bolt, or **http://localhost/helpdesk/** for the helpdesk portal.
+Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, **http://localhost/brief/** for Brief, **http://localhost/bolt/** for Bolt, **http://localhost/bearing/** for Bearing, or **http://localhost/helpdesk/** for the helpdesk portal.
 
 <p align="center">
   <img src="images/01-login.png" alt="Login Page" width="60%" />
@@ -762,7 +804,9 @@ All services are accessed through a single nginx container on port 80:
 | `/brief/ws` | Fastify `:4005` | Brief WebSocket (real-time co-editing) |
 | `/bolt/` | nginx | Bolt workflow automation SPA |
 | `/bolt/api/` | Fastify `:4006` | Bolt REST API |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (170 tools) |
+| `/bearing/` | nginx | Bearing Goals & OKRs SPA |
+| `/bearing/api/` | Fastify `:4007` | Bearing REST API |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (182 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -815,6 +859,8 @@ pnpm test  # 700+ tests across all packages
 │  /brief/ws     → Brief WebSocket :4005         ││
 │  /bolt/        → Bolt SPA (static)             ││
 │  /bolt/api/    → Bolt API :4006                ││
+│  /bearing/     → Bearing SPA (static)          ││
+│  /bearing/api/ → Bearing API :4007             ││
 │  /helpdesk/    → Helpdesk SPA (static)         ││
 │  /helpdesk/api/→ Helpdesk API :4001            ││
 │  /files/       → MinIO :9000                   ││
@@ -824,7 +870,7 @@ pnpm test  # 700+ tests across all packages
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌──────────┐ ┌───────▼──────┐ ┌──────────┐
 │ Bam API   │ │ Banter   │ │ MCP Server│ │ Brief    │ │ Bolt API │ │ LiveKit SFU  │ │ Worker   │
 │ :4000     │ │ API :4002│ │ :3001     │ │ API :4005│ │ :4006    │ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 170 tools │ │ +WS      │ │          │ │ +voice-agent │ │ jobs     │
+│ +WebSocket│ │ +WS      │ │ 182 tools │ │ +WS      │ │          │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └────┬─────┘ └──────────────┘ └────┬─────┘
       │             │             │            │                  │
 ┌─────▼─────────────▼─────────────▼────────────▼───────────────────▼───┐
@@ -854,7 +900,7 @@ pnpm test  # 700+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (170 tools)
+  mcp-server/       → MCP protocol server (182 tools)
   worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
@@ -866,6 +912,8 @@ apps/
   brief/            → Brief React SPA (collaborative editor, templates, version history)
   bolt-api/         → Bolt Fastify REST API (workflow automation, rules, executions)
   bolt/             → Bolt React SPA (visual rule builder, execution log, templates)
+  bearing-api/      → Bearing Fastify REST API (goals, key results, progress, reporting)
+  bearing/          → Bearing React SPA (goal dashboard, timeline, detail views)
   voice-agent/      → AI voice agent (Python/FastAPI, LiveKit Agents SDK)
 packages/
   shared/           → Zod schemas, TypeScript types, constants
@@ -881,8 +929,8 @@ scripts/            → Utility and seed scripts
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 16 |
-| MCP tools | 170 (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt) |
+| Docker services | 18 |
+| MCP tools | 182 (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing) |
 | Test cases | 700+ |
 | API route modules | 46 (23 Bam + 15 Banter + 8 Brief) |
 | Database tables | 51+ (25 Bam + 18 Banter + 11 Brief) |

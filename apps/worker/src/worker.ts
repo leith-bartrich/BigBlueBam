@@ -13,6 +13,9 @@ import { processBanterRetentionJob, type BanterRetentionJobData } from './jobs/b
 import { processHelpdeskTaskCreateJob, type HelpdeskTaskCreateJobData } from './jobs/helpdesk-task-create.job.js';
 import { processBeaconVectorSyncJob, type BeaconVectorSyncJobData } from './jobs/beacon-vector-sync.job.js';
 import { processBeaconExpirySweepJob, type BeaconExpirySweepJobData } from './jobs/beacon-expiry-sweep.job.js';
+import { processBearingSnapshotJob, type BearingSnapshotJobData } from './jobs/bearing-snapshot.job.js';
+import { processBearingRecomputeJob, type BearingRecomputeJobData } from './jobs/bearing-recompute.job.js';
+import { processBearingDigestJob, type BearingDigestJobData } from './jobs/bearing-digest.job.js';
 
 const env = loadEnv();
 
@@ -201,6 +204,65 @@ beaconExpirySweepQueue.upsertJobScheduler(
   { name: 'daily-sweep', data: {} },
 ).catch((err) => logger.error({ err }, 'Failed to register beacon expiry sweep scheduler'));
 
+// Schedule bearing snapshot as a daily repeatable job (midnight UTC)
+const bearingSnapshotQueue = new Queue('bearing-snapshot', { connection: redis });
+bearingSnapshotQueue.upsertJobScheduler(
+  'bearing-snapshot-daily',
+  { pattern: '0 0 * * *' }, // midnight UTC
+  { name: 'daily-snapshot', data: {} },
+).catch((err) => logger.error({ err }, 'Failed to register bearing snapshot scheduler'));
+
+// Bearing snapshot worker (daily KR progress snapshots)
+const bearingSnapshotWorker = new Worker<BearingSnapshotJobData>(
+  'bearing-snapshot',
+  async (job: Job<BearingSnapshotJobData>) => {
+    await processBearingSnapshotJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+
+bearingSnapshotWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bearing-snapshot' }, 'Job completed');
+});
+
+bearingSnapshotWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bearing-snapshot', err }, 'Job failed');
+});
+
+// Bearing recompute worker (recalculates KR progress from Bam data)
+const bearingRecomputeWorker = new Worker<BearingRecomputeJobData>(
+  'bearing-recompute',
+  async (job: Job<BearingRecomputeJobData>) => {
+    await processBearingRecomputeJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+
+bearingRecomputeWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bearing-recompute' }, 'Job completed');
+});
+
+bearingRecomputeWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bearing-recompute', err }, 'Job failed');
+});
+
+// Bearing digest worker (weekly goals summary)
+const bearingDigestWorker = new Worker<BearingDigestJobData>(
+  'bearing-digest',
+  async (job: Job<BearingDigestJobData>) => {
+    await processBearingDigestJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+
+bearingDigestWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bearing-digest' }, 'Job completed');
+});
+
+bearingDigestWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bearing-digest', err }, 'Job failed');
+});
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -222,10 +284,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'analytics'] },
   'All workers started',
 );
 

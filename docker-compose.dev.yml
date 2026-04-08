@@ -49,6 +49,19 @@ services:
     environment:
       NODE_ENV: development
 
+  bearing-api:
+    build:
+      context: .
+      dockerfile: apps/bearing-api/Dockerfile
+      target: dev
+    command: ["npx", "tsx", "watch", "src/server.ts"]
+    volumes:
+      - ./apps/bearing-api/src:/app/apps/bearing-api/src
+    ports:
+      - "4007:4007"
+    environment:
+      NODE_ENV: development
+
   mcp-server:
     build:
       context: .

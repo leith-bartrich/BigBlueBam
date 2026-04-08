@@ -13,6 +13,7 @@ COPY apps/banter/package.json ./apps/banter/
 COPY apps/beacon/package.json ./apps/beacon/
 COPY apps/brief/package.json ./apps/brief/
 COPY apps/bolt/package.json ./apps/bolt/
+COPY apps/bearing/package.json ./apps/bearing/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
@@ -60,13 +61,20 @@ COPY apps/bolt/public ./apps/bolt/public
 COPY apps/bolt/index.html ./apps/bolt/
 COPY apps/bolt/tsconfig.json apps/bolt/tsconfig.node.json apps/bolt/vite.config.ts ./apps/bolt/
 
+# Bearing frontend
+COPY apps/bearing/src ./apps/bearing/src
+COPY apps/bearing/public ./apps/bearing/public
+COPY apps/bearing/index.html ./apps/bearing/
+COPY apps/bearing/tsconfig.json apps/bearing/tsconfig.node.json apps/bearing/vite.config.ts ./apps/bearing/
+
 RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/frontend build \
  && pnpm --filter @bigbluebam/helpdesk build \
  && pnpm --filter @bigbluebam/banter build \
  && pnpm --filter @bigbluebam/beacon build \
  && pnpm --filter @bigbluebam/brief build \
- && pnpm --filter @bigbluebam/bolt build
+ && pnpm --filter @bigbluebam/bolt build \
+ && pnpm --filter @bigbluebam/bearing build
 
 # ── Stage: production ────────────────────────────────────────────
 FROM nginx:alpine AS production
@@ -77,6 +85,7 @@ COPY --from=build /app/apps/banter/dist /usr/share/nginx/html/banter
 COPY --from=build /app/apps/beacon/dist /usr/share/nginx/html/beacon
 COPY --from=build /app/apps/brief/dist /usr/share/nginx/html/brief
 COPY --from=build /app/apps/bolt/dist /usr/share/nginx/html/bolt
+COPY --from=build /app/apps/bearing/dist /usr/share/nginx/html/bearing
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
