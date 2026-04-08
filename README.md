@@ -618,32 +618,49 @@ AI agents interact with Brief through **18 dedicated MCP tools**:
 
 ## Bolt
 
-Bolt is a visual workflow automation engine built into the BigBlueBam suite. Define trigger-condition-action rules that span every product in the platform, compile down to MCP tool calls, and execute with a full auditable log. No code required -- just wire up events, set conditions, and pick actions.
+Bolt is a visual workflow automation engine built into the BigBlueBam suite. Define trigger→condition→action rules that span every product in the platform, compile down to MCP tool calls, and execute with a full auditable log. No code required -- just wire up events, set conditions, and pick actions from a categorized menu.
 
 <p align="center">
-  <img src="images/bolt-editor.png" alt="Bolt Visual Builder" width="100%" />
+  <img src="images/bolt-automations.png" alt="Bolt Automation List" width="100%" />
 </p>
-<p align="center"><em>Visual Builder -- wire triggers, conditions, and actions into automation rules</em></p>
+<p align="center"><em>Automation dashboard -- 12 active rules with trigger badges, enable toggles, and execution history</em></p>
 
 ### Key Features
 
 | Feature | Description |
 |---------|-------------|
-| **Visual Rule Builder** | Drag-and-drop trigger-condition-action editor with live preview and validation |
+| **Visual Rule Builder** | WHEN→IF→THEN editor with color-coded sections, event catalog dropdown, and grouped action picker |
 | **Event-Driven** | 26 events across 6 sources (Bam, Banter, Beacon, Brief, Helpdesk, Schedule) |
 | **Condition Engine** | 13 operators (equals, contains, regex, gt/lt, in, between, isEmpty, etc.) with AND/OR grouping |
-| **MCP-Native Actions** | Every action compiles to one or more MCP tool calls -- same permissions, same audit trail |
+| **MCP-Native Actions** | Every action is an MCP tool call selected from a categorized menu -- same permissions, same audit trail |
 | **Execution Audit Log** | Every run is recorded with trigger context, condition evaluation, action results, and duration |
 | **Pre-Built Templates** | 10 starter templates covering common patterns (helpdesk triage, sprint reminders, stale-task alerts) |
 | **Rate Limiting & Cooldowns** | Per-rule rate limits and cooldown windows prevent runaway automations |
-| **AI-Assisted Authoring** | Describe what you want in plain English; an AI agent drafts the rule for you |
+| **AI-Assisted Authoring** | Describe what you want in plain English; an AI agent drafts the rule for you (requires LLM provider) |
 | **Schedule Triggers (cron)** | Time-based triggers using cron expressions for recurring automations |
 | **12 MCP Tools** | AI agents can create, manage, and inspect automations programmatically |
 
-<p align="center">
-  <img src="images/bolt-templates.png" alt="Bolt Automation Templates" width="100%" />
-</p>
-<p align="center"><em>Pre-built templates -- start from a proven pattern and customize</em></p>
+<table>
+  <tr>
+    <td width="50%"><img src="images/bolt-editor-existing.png" alt="Bolt Visual Builder — editing an existing automation" width="100%" /></td>
+    <td width="50%"><img src="images/bolt-editor-new.png" alt="Bolt Visual Builder — new automation" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Editing "Notify on Critical Task" — WHEN/IF/THEN flow with live event catalog</em></td>
+    <td align="center"><em>New automation — pick a trigger source and event, add conditions, select actions</em></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/bolt-templates.png" alt="Bolt Automation Templates" width="100%" /></td>
+    <td width="50%"><img src="images/bolt-executions.png" alt="Bolt Execution Log" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>10 pre-built templates — start from a proven pattern and customize</em></td>
+    <td align="center"><em>Execution log — every run traced with status, duration, and step detail</em></td>
+  </tr>
+</table>
 
 ### Bolt MCP Tools
 
@@ -651,10 +668,10 @@ AI agents interact with Bolt through **12 dedicated MCP tools**:
 
 | Category | Tools | What they do |
 |----------|-------|-------------|
-| **Rules** | `bolt_create_rule`, `bolt_list_rules`, `bolt_get_rule`, `bolt_update_rule`, `bolt_delete_rule`, `bolt_toggle_rule` | Full rule lifecycle management |
-| **Executions** | `bolt_list_executions`, `bolt_get_execution`, `bolt_retry_execution` | Execution history, inspection, and retry |
-| **Templates** | `bolt_list_templates`, `bolt_create_from_template` | Browse and instantiate pre-built templates |
-| **Schema** | `bolt_get_schema` | Discover available triggers, conditions, and actions |
+| **CRUD** | `bolt_list`, `bolt_get`, `bolt_create`, `bolt_update`, `bolt_delete` | Full automation lifecycle management |
+| **Control** | `bolt_enable`, `bolt_disable`, `bolt_test` | Enable/disable and test-fire automations |
+| **Executions** | `bolt_executions`, `bolt_execution_detail` | Execution history and step-by-step detail |
+| **Discovery** | `bolt_events`, `bolt_actions` | Browse available triggers and MCP tool actions |
 
 ---
 
