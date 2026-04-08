@@ -69,7 +69,7 @@ export function checkSharedPrerequisites() {
     netOk = true;
   } catch {
     // Fall back to a simple DNS check
-    netOk = commandSucceeds('node -e "require(\'node:dns\').resolve(\'registry-1.docker.io\', ()=>{})"');
+    netOk = commandSucceeds('node -e "fetch(\'https://registry-1.docker.io/v2/\').then(()=>process.exit(0)).catch(()=>process.exit(1))"');
   }
   if (netOk) {
     console.log(`  ${check} Network connectivity`);

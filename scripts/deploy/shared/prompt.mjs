@@ -17,6 +17,7 @@ function createRl() {
 export function ask(question, defaultValue) {
   return new Promise((resolve) => {
     const rl = createRl();
+    rl.on('error', () => rl.close());
     const suffix = defaultValue != null ? ` ${dim(`[${defaultValue}]`)}` : '';
     rl.question(`${question}${suffix} `, (answer) => {
       rl.close();
@@ -32,11 +33,12 @@ export function ask(question, defaultValue) {
 export function askPassword(question) {
   return new Promise((resolve) => {
     const rl = createRl();
+    rl.on('error', () => rl.close());
     process.stdout.write(`${question} `);
 
     const stdin = process.stdin;
     const wasRaw = stdin.isRaw;
-    if (stdin.isTTY) stdin.setRawMode(true);
+    try { if (stdin.isTTY) stdin.setRawMode(true); } catch {}
 
     let password = '';
     const onData = (ch) => {
@@ -52,6 +54,7 @@ export function askPassword(question) {
         // Ctrl-C
         if (stdin.isTTY) stdin.setRawMode(wasRaw ?? false);
         stdin.removeListener('data', onData);
+        process.stdout.write('\n');
         rl.close();
         process.exit(130);
       } else if (c === '\u007f' || c === '\b') {
@@ -75,6 +78,7 @@ export function askPassword(question) {
 export function confirm(question, defaultYes = true) {
   return new Promise((resolve) => {
     const rl = createRl();
+    rl.on('error', () => rl.close());
     const hint = defaultYes ? dim('[Y/n]') : dim('[y/N]');
     rl.question(`${question} ${hint} `, (answer) => {
       rl.close();
@@ -93,6 +97,7 @@ export function confirm(question, defaultYes = true) {
 export function select(question, options) {
   return new Promise((resolve) => {
     const rl = createRl();
+    rl.on('error', () => rl.close());
     console.log(`\n${bold(question)}\n`);
     options.forEach((opt, i) => {
       const num = cyan(`  ${i + 1}.`);

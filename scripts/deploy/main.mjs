@@ -150,9 +150,14 @@ async function main() {
     console.log(`${bold('Step 5: Build and launch')}\n`);
 
     if (await confirm('Ready to build and start all services?', true)) {
-      await platform.deploy(envConfig);
-      markPhaseComplete(state, 'deploy');
-      saveState(state);
+      const healthy = await platform.deploy(envConfig);
+      if (healthy) {
+        markPhaseComplete(state, 'deploy');
+        saveState(state);
+      } else {
+        console.log(yellow('\nDeploy started but health checks did not pass. Re-run to retry.\n'));
+        saveState(state);
+      }
     } else {
       console.log(yellow('\nDeployment paused. Re-run this script to continue.\n'));
       return;

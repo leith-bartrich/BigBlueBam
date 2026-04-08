@@ -131,8 +131,8 @@ function writeEnvFile(envConfig) {
     ],
     '# --- Vector DB ---': ['QDRANT_URL', 'QDRANT_API_KEY'],
     '# --- LiveKit ---': ['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'],
-    '# --- Email ---': ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM'],
-    '# --- OAuth ---': ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+    '# --- Email ---': ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'],
+    '# --- OAuth ---': ['OAUTH_GOOGLE_CLIENT_ID', 'OAUTH_GOOGLE_CLIENT_SECRET'],
     '# --- AI ---': ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY'],
   };
 
@@ -158,7 +158,7 @@ function writeEnvFile(envConfig) {
     }
   }
 
-  fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
+  fs.writeFileSync(envPath, lines.join('\n') + '\n', { mode: 0o600, encoding: 'utf8' });
   return envPath;
 }
 
@@ -206,7 +206,7 @@ async function deploy(envConfig) {
   while (Date.now() - start < maxWait) {
     try {
       execSync(
-        `${dc} ${fileFlags} exec -T api node -e "fetch('http://localhost:4000/b3/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"`,
+        `${dc} ${fileFlags} exec -T api node -e "fetch('http://localhost:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"`,
         { stdio: 'pipe', timeout: 10_000 },
       );
       apiReady = true;
@@ -223,7 +223,7 @@ async function deploy(envConfig) {
     console.log(dim('  The API may still be starting. Check logs with: docker compose logs -f api'));
   }
 
-  return true;
+  return apiReady;
 }
 
 /**

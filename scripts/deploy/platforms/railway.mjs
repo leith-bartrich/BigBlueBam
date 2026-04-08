@@ -8,6 +8,13 @@ import { bold, check, cross, dim, green, yellow, cyan, red, warn } from '../shar
 import { ask, confirm } from '../shared/prompt.mjs';
 import { SERVICES, INFRASTRUCTURE } from '../shared/services.mjs';
 
+/**
+ * Escape a string for safe interpolation into a shell command.
+ */
+function shellEscape(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
 const name = 'Railway';
 const description = 'Managed containers on Railway.app (easiest for cloud)';
 
@@ -100,12 +107,12 @@ async function deploy(envConfig) {
   const projectName = await ask('Railway project name:', 'bigbluebam');
   console.log(`\nCreating project ${cyan(projectName)}...`);
   try {
-    await runShell(`railway init --name ${projectName}`);
+    await runShell(`railway init --name ${shellEscape(projectName)}`);
     console.log(`${check} Project created`);
   } catch {
     console.log(yellow('  Project may already exist, trying to link...'));
     try {
-      await runShell(`railway link --project ${projectName}`);
+      await runShell(`railway link --project ${shellEscape(projectName)}`);
       console.log(`${check} Linked to existing project`);
     } catch {
       console.log(yellow('  Could not link. Continuing...'));
@@ -118,7 +125,7 @@ async function deploy(envConfig) {
   for (const [key, val] of Object.entries(envConfig)) {
     if (val != null && val !== '') {
       try {
-        await runShell(`railway variables set ${key}="${val}"`, { silent: true });
+        await runShell(`railway variable set ${key}=${shellEscape(val)}`, { silent: true });
         setCount++;
       } catch {
         console.log(yellow(`  ${warn} could not set ${key}`));
@@ -133,7 +140,7 @@ async function deploy(envConfig) {
   for (const svc of managedServices) {
     process.stdout.write(`  Adding ${svc.description}... `);
     try {
-      await runShell(`railway add --plugin ${svc.name}`, { silent: true });
+      await runShell(`railway add --database ${svc.name}`, { silent: true });
       console.log(check);
     } catch {
       console.log(yellow('already exists'));

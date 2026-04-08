@@ -23,7 +23,7 @@ export function generateSecrets() {
     MINIO_ROOT_PASSWORD: randomHex(24),
     POSTGRES_PASSWORD: randomHex(24),
     REDIS_PASSWORD: randomHex(24),
-    LIVEKIT_API_KEY: 'API' + randomHex(8),
+    LIVEKIT_API_KEY: 'API' + randomHex(16),
     LIVEKIT_API_SECRET: randomHex(32),
   };
 }
@@ -118,7 +118,7 @@ export async function promptOptionalIntegrations() {
     config.SMTP_HOST = await ask('SMTP host:', 'smtp.gmail.com');
     config.SMTP_PORT = await ask('SMTP port:', '587');
     config.SMTP_USER = await ask('SMTP username/email:');
-    config.SMTP_PASSWORD = await askPassword('SMTP password:');
+    config.SMTP_PASS = await askPassword('SMTP password:');
     config.SMTP_FROM = await ask('From address:', config.SMTP_USER || '');
     console.log(`  ${check} SMTP configured`);
   } else {
@@ -128,8 +128,8 @@ export async function promptOptionalIntegrations() {
   // OAuth
   if (await confirm('\nConfigure Google OAuth (SSO login)?', false)) {
     console.log(`\n${bold('Google OAuth Configuration')}\n`);
-    config.GOOGLE_CLIENT_ID = await ask('Client ID:');
-    config.GOOGLE_CLIENT_SECRET = await askPassword('Client secret:');
+    config.OAUTH_GOOGLE_CLIENT_ID = await ask('Client ID:');
+    config.OAUTH_GOOGLE_CLIENT_SECRET = await askPassword('Client secret:');
     console.log(`  ${check} Google OAuth configured`);
   } else {
     console.log(`  ${dim('Skipped OAuth -- users will log in with email/password')}`);
@@ -223,8 +223,8 @@ export function buildEnvConfig(choices) {
 
   // Integrations
   const intKeys = [
-    'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM',
-    'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
+    'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM',
+    'OAUTH_GOOGLE_CLIENT_ID', 'OAUTH_GOOGLE_CLIENT_SECRET',
     'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
   ];
   for (const key of intKeys) {

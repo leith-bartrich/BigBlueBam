@@ -1,13 +1,24 @@
 // Terminal color helpers — zero dependencies, ANSI escape codes only.
 
-export const bold = (s) => `\x1b[1m${s}\x1b[0m`;
-export const green = (s) => `\x1b[32m${s}\x1b[0m`;
-export const red = (s) => `\x1b[31m${s}\x1b[0m`;
-export const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
-export const blue = (s) => `\x1b[34m${s}\x1b[0m`;
-export const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-export const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
-export const magenta = (s) => `\x1b[35m${s}\x1b[0m`;
+const supportsColor = process.env.FORCE_COLOR !== '0' && (
+  process.stdout.isTTY ||
+  process.env.FORCE_COLOR === '1' ||
+  process.env.COLORTERM != null ||
+  (process.env.TERM && process.env.TERM !== 'dumb')
+);
+
+const wrap = supportsColor
+  ? (code, s) => `\x1b[${code}m${s}\x1b[0m`
+  : (_code, s) => s;
+
+export const bold = (s) => wrap('1', s);
+export const green = (s) => wrap('32', s);
+export const red = (s) => wrap('31', s);
+export const yellow = (s) => wrap('33', s);
+export const blue = (s) => wrap('34', s);
+export const dim = (s) => wrap('2', s);
+export const cyan = (s) => wrap('36', s);
+export const magenta = (s) => wrap('35', s);
 
 export const check = green('[ok]');
 export const cross = red('[FAIL]');

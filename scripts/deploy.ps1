@@ -91,5 +91,5 @@ Write-Host ""
 
 # Hand off to Node.js orchestrator
 $deployScript = Join-Path $PSScriptRoot "deploy" "main.mjs"
-& node $deployScript @args
+& node "$deployScript" @args
 exit $LASTEXITCODE

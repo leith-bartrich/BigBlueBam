@@ -5,6 +5,27 @@ import * as path from 'node:path';
 
 const STATE_FILE = path.resolve(process.cwd(), '.deploy-state.json');
 
+const SECRET_KEYS = ['SESSION_SECRET', 'INTERNAL_HELPDESK_SECRET', 'POSTGRES_PASSWORD', 'REDIS_PASSWORD', 'MINIO_ROOT_PASSWORD', 'S3_SECRET_KEY', 'SMTP_PASSWORD', 'SMTP_PASS', 'LIVEKIT_API_SECRET', 'QDRANT_API_KEY', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CLIENT_SECRET', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
+
+/**
+ * Strip secret values from state before persisting to disk.
+ */
+export function sanitizeState(state) {
+  const clean = JSON.parse(JSON.stringify(state));
+  if (clean.envConfig) {
+    for (const key of SECRET_KEYS) {
+      if (clean.envConfig[key]) clean.envConfig[key] = '[REDACTED]';
+    }
+    // Also redact any *_PASSWORD, *_SECRET, *_KEY patterns
+    for (const key of Object.keys(clean.envConfig)) {
+      if (/PASSWORD|SECRET|_KEY$/i.test(key) && clean.envConfig[key] !== '[REDACTED]') {
+        clean.envConfig[key] = '[REDACTED]';
+      }
+    }
+  }
+  return clean;
+}
+
 /**
  * Load saved deployment state. Returns {} if no state file exists.
  */
@@ -18,10 +39,11 @@ export function loadState() {
 }
 
 /**
- * Persist deployment state to disk.
+ * Persist deployment state to disk (secrets are redacted).
  */
 export function saveState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n', 'utf8');
+  const clean = sanitizeState(state);
+  fs.writeFileSync(STATE_FILE, JSON.stringify(clean, null, 2) + '\n', { mode: 0o600, encoding: 'utf8' });
 }
 
 /**
