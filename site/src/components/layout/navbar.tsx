@@ -15,7 +15,7 @@ const navLinks = [
   { label: 'Brief', id: 'brief' },
   { label: 'Bolt', id: 'bolt' },
   { label: 'Bearing', id: 'bearing' },
-  { label: 'Deploy', id: 'architecture' },
+  { label: 'Architecture', id: 'architecture' },
 ];
 
 /**
@@ -141,13 +141,7 @@ export function Navbar() {
           >
             Docs
           </a>
-          <a
-            href="/deploy"
-            className="text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
-          >
-            Deploy
-          </a>
-          <Button href="#cta" size="sm">
+          <Button href="/deploy" size="sm">
             Get Started
           </Button>
         </div>

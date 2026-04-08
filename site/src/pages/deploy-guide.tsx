@@ -291,9 +291,14 @@ export function DeployGuidePage() {
         <section className="mb-16">
           <h2 className="mb-8 text-2xl font-bold text-zinc-900">Step-by-Step Walkthrough</h2>
 
-          <Step n={1} title="Launch the deploy script">
+          <Step n={1} title="Clone the repository and launch the deploy script">
             <p className="text-sm text-zinc-600 leading-relaxed">
-              Open a terminal in the BigBlueBam directory and run the deploy script for your platform.
+              First, clone the BigBlueBam repository. Then run the deploy script for your platform.
+            </p>
+            <CodeBlock title="Clone the repo">{`git clone https://github.com/eoffermann/BigBlueBam.git
+cd BigBlueBam`}</CodeBlock>
+            <p className="text-sm text-zinc-600 leading-relaxed mt-3">
+              Now launch the interactive setup wizard:
             </p>
             <CodeBlock title="Linux / macOS">{`./scripts/deploy.sh`}</CodeBlock>
             <CodeBlock title="Windows (PowerShell)">{`.\\scripts\\deploy.ps1`}</CodeBlock>
@@ -301,6 +306,8 @@ export function DeployGuidePage() {
             <Callout type="info">
               The script checks for Node.js and Docker, installing them if needed.
               On first run it may ask for permission to install dependencies.
+              Docker is only required if you choose the Docker Compose deployment path — Railway
+              deployments run entirely in the cloud.
             </Callout>
           </Step>
 
