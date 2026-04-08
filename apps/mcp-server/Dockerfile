@@ -54,6 +54,11 @@ COPY --from=build /app/deployed/node_modules ./node_modules
 COPY --from=build /app/apps/mcp-server/dist ./dist
 COPY --from=build /app/deployed/package.json ./
 
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+ENV BUILD_DATE=$BUILD_DATE
+
 RUN chown -R bbam:bbam /app
 
 USER bbam

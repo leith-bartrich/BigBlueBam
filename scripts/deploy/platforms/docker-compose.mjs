@@ -167,6 +167,34 @@ async function deploy(envConfig) {
   const envPath = writeEnvFile(envConfig);
   console.log(`${check} ${dim(envPath)}`);
 
+  // Check for updates if this is an existing installation
+  const isUpgrade = fs.existsSync(path.resolve(process.cwd(), '.deploy-state.json'));
+  if (isUpgrade) {
+    console.log('\nChecking for updates...');
+    try {
+      execSync('git fetch origin main', { stdio: 'pipe', timeout: 15000 });
+      const behind = execSync('git rev-list HEAD..origin/main --count', { stdio: 'pipe', encoding: 'utf8' }).trim();
+
+      if (behind !== '0') {
+        console.log(`\n${yellow(`${behind} new commit(s) available on main.`)}\n`);
+        try {
+          const log = execSync('git log HEAD..origin/main --oneline --max-count=10', { stdio: 'pipe', encoding: 'utf8' }).trim();
+          console.log(dim(log));
+          console.log('');
+        } catch {}
+
+        if (await confirm('Pull updates before rebuilding?', true)) {
+          execSync('git pull origin main', { stdio: 'inherit' });
+          console.log(`${check} Code updated.\n`);
+        }
+      } else {
+        console.log(`${check} Already up to date.\n`);
+      }
+    } catch {
+      console.log(dim('  Could not check for updates (no git or no network).\n'));
+    }
+  }
+
   // 2. Build compose args
   const composeFiles = ['-f', 'docker-compose.yml'];
   const sitePath = path.resolve(process.cwd(), 'site');
@@ -186,8 +214,11 @@ async function deploy(envConfig) {
   }
 
   // 4. Build and start
+  const gitCommit = (() => { try { return execSync('git rev-parse HEAD', { stdio: 'pipe', encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
+  const buildDate = new Date().toISOString();
+
   console.log('\nBuilding and starting services...\n');
-  await runShell(`${dc} ${fileFlags} up -d --build`);
+  await runShell(`GIT_COMMIT=${gitCommit} BUILD_DATE=${buildDate} ${dc} ${fileFlags} up -d --build`);
   console.log(`\n${check} All services started`);
 
   // 5. Wait for API to be healthy

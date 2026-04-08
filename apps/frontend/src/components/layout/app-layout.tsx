@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Search, LogOut, ChevronRight, Bell, CheckCheck, MessageCircle, AlertTriangle, X } from 'lucide-react';
+import { Search, LogOut, ChevronRight, Bell, CheckCheck, MessageCircle, AlertTriangle, X, RefreshCw } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './sidebar';
 import { Avatar } from '@/components/common/avatar';
@@ -8,6 +8,7 @@ import { SuperuserContextBanner } from '@/components/superuser-context-banner';
 import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { useAuthStore } from '@/stores/auth.store';
 import { useOrgSummary } from '@/hooks/use-org-summary';
+import { useVersion } from '@/hooks/use-version';
 import { api } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
 
@@ -25,6 +26,34 @@ interface AppLayoutProps {
   breadcrumbs?: { label: string; href?: string }[];
   onNavigate: (path: string) => void;
   onCreateProject: () => void;
+}
+
+function UpdateBanner() {
+  const { data: version } = useVersion();
+  const user = useAuthStore((s) => s.user);
+  const [dismissed, setDismissed] = useState(false);
+
+  if (!user?.is_superuser || !version?.update_available || dismissed) return null;
+
+  return (
+    <div className="bg-primary-600 text-white px-4 py-2 text-sm flex items-center justify-between shrink-0">
+      <div className="flex items-center gap-2">
+        <RefreshCw className="h-4 w-4 animate-spin-slow" />
+        <span>
+          A new version of BigBlueBam is available.{' '}
+          <a href="/deploy" className="underline font-medium">Update guide</a>
+          {' '}or run <code className="bg-primary-700 px-1.5 py-0.5 rounded text-xs">./scripts/deploy.sh</code>
+        </span>
+      </div>
+      <button
+        onClick={() => setDismissed(true)}
+        className="text-primary-200 hover:text-white transition-colors px-2"
+        title="Dismiss until next login"
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
 
 export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavigate, onCreateProject }: AppLayoutProps) {
@@ -96,7 +125,9 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+    <div className="flex flex-col h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+      <UpdateBanner />
+      <div className="flex flex-1 overflow-hidden">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:rounded-md focus:bg-primary-600 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
@@ -331,6 +362,7 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus:outline-none">
           {children}
         </main>
+      </div>
       </div>
     </div>
   );

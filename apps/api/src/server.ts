@@ -48,6 +48,7 @@ import githubIntegrationRoutes from './routes/github-integration.routes.js';
 import publicConfigRoutes from './routes/public-config.routes.js';
 import llmProviderRoutes from './routes/llm-provider.routes.js';
 import systemSettingsRoutes from './routes/system-settings.routes.js';
+import versionRoutes from './routes/version.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -181,6 +182,7 @@ await fastify.register(githubIntegrationRoutes);
 await fastify.register(publicConfigRoutes);
 await fastify.register(llmProviderRoutes);
 await fastify.register(systemSettingsRoutes);
+await fastify.register(versionRoutes);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

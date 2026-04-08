@@ -57,6 +57,11 @@ COPY --from=build /app/deployed/package.json ./
 # Bundle SQL migrations so the `migrate` container (reuses this image) has them
 COPY infra/postgres/migrations ./migrations
 
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+ENV BUILD_DATE=$BUILD_DATE
+
 RUN chown -R bbam:bbam /app
 
 USER bbam

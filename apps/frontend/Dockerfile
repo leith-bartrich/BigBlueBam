@@ -88,6 +88,11 @@ COPY --from=build /app/apps/bolt/dist /usr/share/nginx/html/bolt
 COPY --from=build /app/apps/bearing/dist /usr/share/nginx/html/bearing
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+ENV BUILD_DATE=$BUILD_DATE
+
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
