@@ -32,3 +32,4 @@ export { githubIntegrations, taskGithubRefs } from './github-integrations.js';
 export { platformSettings } from './platform-settings.js';
 export { betaSignupNotifications } from './beta-signup-notifications.js';
 export { llmProviders } from './llm-providers.js';
+export { systemSettings } from './system-settings.js';

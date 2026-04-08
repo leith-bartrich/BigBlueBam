@@ -8,6 +8,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
+    <script>
+      // Check SuperUser root redirect setting before React loads
+      if (location.pathname === '/' || location.pathname === '') {
+        fetch('/b3/api/root-redirect')
+          .then(function(r) { return r.json(); })
+          .then(function(d) { if (d.redirect) location.replace(d.redirect); })
+          .catch(function() {});
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

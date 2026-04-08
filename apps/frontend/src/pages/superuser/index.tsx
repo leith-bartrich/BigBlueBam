@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft, Settings, Mail, Download } from 'lucide-react';
+import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft, Settings, Mail, Download, Globe } from 'lucide-react';
 import { api } from '@/lib/api';
 import { exportCsv, todayStamp } from '@/lib/csv';
 import type { SuperuserOrgListItem, SuperuserOrgListResponse } from '@bigbluebam/shared';
@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { superuserApi } from '@/lib/api/superuser';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
+import { Select } from '@/components/common/select';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface SuperuserPageProps {
@@ -383,7 +384,7 @@ function SortHeader({
 }
 
 // ─── Platform Tab ───────────────────────────────────────────────────────────
-// Singleton settings row — just the public-signup kill switch for now.
+// Platform-wide settings: public-signup toggle + root redirect selector.
 
 interface PlatformSettingsResponse {
   data: {
@@ -392,6 +393,24 @@ interface PlatformSettingsResponse {
     updated_by: string | null;
   };
 }
+
+interface SystemSettingRow {
+  key: string;
+  value: unknown;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+const ROOT_REDIRECT_OPTIONS = [
+  { value: 'site', label: 'Marketing Site (/)' },
+  { value: 'b3', label: 'Bam (/b3/)' },
+  { value: 'banter', label: 'Banter (/banter/)' },
+  { value: 'beacon', label: 'Beacon (/beacon/)' },
+  { value: 'brief', label: 'Brief (/brief/)' },
+  { value: 'bolt', label: 'Bolt (/bolt/)' },
+  { value: 'bearing', label: 'Bearing (/bearing/)' },
+  { value: 'helpdesk', label: 'Helpdesk (/helpdesk/)' },
+];
 
 function PlatformTab() {
   const queryClient = useQueryClient();
@@ -411,6 +430,20 @@ function PlatformTab() {
     },
   });
 
+  // Root redirect setting
+  const { data: redirectData, isLoading: redirectLoading } = useQuery({
+    queryKey: ['system-settings', 'root_redirect'],
+    queryFn: () => api.get<{ data: SystemSettingRow }>('/system-settings/root_redirect'),
+  });
+
+  const updateRedirect = useMutation({
+    mutationFn: (value: string) =>
+      api.put<{ data: SystemSettingRow }>('/system-settings/root_redirect', { value }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-settings', 'root_redirect'] });
+    },
+  });
+
   if (isLoading || !data) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -420,6 +453,7 @@ function PlatformTab() {
   }
 
   const disabled = data.data.public_signup_disabled;
+  const currentRedirect = redirectData?.data?.value as string ?? 'site';
 
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
@@ -471,6 +505,53 @@ function PlatformTab() {
             {toggle.isError && (
               <p className="mt-3 text-sm text-red-600 dark:text-red-400">
                 Failed to update: {(toggle.error as Error).message}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+            <Globe className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              Domain Root Redirect
+            </h3>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              Choose which app loads when users visit the root domain.
+              "Marketing Site" serves the landing page; all other options
+              redirect visitors to the selected app.
+            </p>
+            <div className="mt-4 max-w-xs">
+              {redirectLoading ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-500">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+                </div>
+              ) : (
+                <Select
+                  options={ROOT_REDIRECT_OPTIONS}
+                  value={currentRedirect}
+                  onValueChange={(val) => updateRedirect.mutate(val)}
+                  placeholder="Select redirect target..."
+                />
+              )}
+            </div>
+            {redirectData?.data?.updated_at && (
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Last changed {new Date(redirectData.data.updated_at).toLocaleString()}
+              </p>
+            )}
+            {updateRedirect.isError && (
+              <p className="mt-3 text-sm text-red-600 dark:text-red-400">
+                Failed to update: {(updateRedirect.error as Error).message}
+              </p>
+            )}
+            {updateRedirect.isSuccess && (
+              <p className="mt-2 text-xs text-green-600 dark:text-green-400">
+                Saved. Changes take effect immediately for new visitors.
               </p>
             )}
           </div>
