@@ -55,33 +55,33 @@ BEGIN
 
   -- ── Actions ──
   INSERT INTO bolt_actions (automation_id, sort_order, mcp_tool, parameters, on_error) VALUES
-    -- a1: Notify on Critical Task
-    (a1, 0, 'banter_post_message', '{"channel_name": "engineering", "text": "🚨 Critical task created: **{{ event.task.title }}** by {{ actor.name }}"}', 'stop'),
-    -- a2: Overdue Task Alert
-    (a2, 0, 'banter_send_dm', '{"user_id": "{{ event.task.assignee_id }}", "text": "⏰ Your task **{{ event.task.title }}** is {{ event.days_overdue }} days overdue. Please update or reschedule."}', 'stop'),
-    -- a3: Sprint Complete Report
-    (a3, 0, 'banter_post_message', '{"channel_name": "engineering", "text": "🏁 Sprint completed: **{{ event.sprint.name }}** — {{ event.task_count }} tasks delivered."}', 'stop'),
-    -- a4: Helpdesk Auto-Assign
-    (a4, 0, 'task_update', '{"task_id": "{{ event.task.id }}", "assignee_id": "sarah-billing-lead-id"}', 'stop'),
-    (a4, 1, 'banter_post_message', '{"channel_name": "billing-alerts", "text": "💳 New billing ticket: {{ event.ticket.subject }}"}', 'continue'),
-    -- a5: SLA Breach
-    (a5, 0, 'task_update', '{"task_id": "{{ event.ticket.task_id }}", "priority": "critical"}', 'stop'),
-    (a5, 1, 'banter_send_dm', '{"user_id": "team-lead-id", "text": "🔴 SLA breach on ticket: {{ event.ticket.subject }}"}', 'continue'),
-    -- a6: Beacon Expiry
-    (a6, 0, 'banter_post_message', '{"channel_name": "knowledge", "text": "📚 Beacon expired: **{{ event.beacon.title }}** — last verified {{ event.beacon.last_verified_at }}. Please review."}', 'stop'),
-    -- a7: New Doc Notification
-    (a7, 0, 'banter_post_message', '{"channel_name": "project-updates", "text": "📝 New document: **{{ event.document.title }}** by {{ actor.name }}"}', 'stop'),
-    -- a8: Weekly Status
-    (a8, 0, 'banter_post_message', '{"channel_name": "engineering", "text": "📊 Weekly status update for {{ now }}. Check the project dashboard for details."}', 'stop'),
-    -- a9: Task Moved to Review
-    (a9, 0, 'banter_send_dm', '{"user_id": "{{ event.task.reviewer_id }}", "text": "👀 Task ready for review: **{{ event.task.title }}** — moved to Review by {{ actor.name }}"}', 'stop'),
-    -- a10: Close Ticket
-    (a10, 0, 'helpdesk_update_ticket', '{"ticket_id": "{{ event.task.linked_ticket_id }}", "status": "resolved"}', 'stop'),
-    (a10, 1, 'banter_post_message', '{"channel_name": "support-triage", "text": "✅ Ticket auto-resolved: task **{{ event.task.title }}** completed."}', 'continue'),
-    -- a11: Doc Promoted
-    (a11, 0, 'banter_post_message', '{"channel_name": "knowledge", "text": "🎓 Brief document promoted to Beacon: **{{ event.document.title }}**"}', 'stop'),
-    -- a12: Critical Mention
-    (a12, 0, 'banter_send_dm', '{"user_id": "team-lead-id", "text": "📢 @oncall was mentioned in #{{ event.channel.name }}: {{ event.message.text }}"}', 'stop');
+    -- a1: Notify on Critical Task → post to #engineering
+    (a1, 0, 'banter_send_message', '{"channel_name": "engineering", "message": "🚨 Critical task created: **{{ event.task.title }}** by {{ actor.name }}"}', 'stop'),
+    -- a2: Overdue Task Alert → DM the assignee
+    (a2, 0, 'banter_send_dm', '{"user_id": "{{ event.task.assignee_id }}", "message": "⏰ Your task **{{ event.task.title }}** is {{ event.days_overdue }} days overdue. Please update or reschedule."}', 'stop'),
+    -- a3: Sprint Complete Report → post summary to #engineering
+    (a3, 0, 'banter_send_message', '{"channel_name": "engineering", "message": "🏁 Sprint completed: **{{ event.sprint.name }}** — {{ event.tasks_completed }} tasks done, {{ event.tasks_carried_forward }} carried forward."}', 'stop'),
+    -- a4: Helpdesk Auto-Assign → assign ticket + notify channel
+    (a4, 0, 'helpdesk_assign_ticket', '{"ticket_id": "{{ event.ticket.id }}", "agent_id": "{{ event.ticket.default_agent_id }}"}', 'stop'),
+    (a4, 1, 'banter_send_message', '{"channel_name": "billing-alerts", "message": "💳 New billing ticket: {{ event.ticket.subject }}"}', 'continue'),
+    -- a5: SLA Breach → update priority + DM team lead
+    (a5, 0, 'helpdesk_update_priority', '{"ticket_id": "{{ event.ticket.id }}", "priority": "critical"}', 'stop'),
+    (a5, 1, 'banter_send_dm', '{"user_id": "{{ event.ticket.assigned_agent_id }}", "message": "🔴 SLA breach on ticket: {{ event.ticket.subject }} ({{ event.sla.type }})"}', 'continue'),
+    -- a6: Beacon Expiry → post reminder to #knowledge
+    (a6, 0, 'banter_send_message', '{"channel_name": "knowledge", "message": "📚 Beacon expired: **{{ event.beacon.title }}** — please review and update or archive."}', 'stop'),
+    -- a7: New Doc Notification → post to #project-updates
+    (a7, 0, 'banter_send_message', '{"channel_name": "project-updates", "message": "📝 New document: **{{ event.document.title }}** by {{ actor.name }}"}', 'stop'),
+    -- a8: Weekly Status → post to #engineering
+    (a8, 0, 'banter_send_message', '{"channel_name": "engineering", "message": "📊 Weekly status update for {{ now }}. Check the project dashboard for details."}', 'stop'),
+    -- a9: Task Moved to Review → DM the assignee
+    (a9, 0, 'banter_send_dm', '{"user_id": "{{ event.task.assignee_id }}", "message": "👀 Task **{{ event.task.title }}** moved to Review by {{ actor.name }}. Please review."}', 'stop'),
+    -- a10: Close Ticket → reply to ticket + notify channel
+    (a10, 0, 'helpdesk_reply_ticket', '{"ticket_id": "{{ event.task.linked_ticket_id }}", "message": "This issue has been resolved. The linked task **{{ event.task.title }}** is now complete."}', 'stop'),
+    (a10, 1, 'banter_send_message', '{"channel_name": "support-triage", "message": "✅ Ticket auto-resolved: task **{{ event.task.title }}** completed."}', 'continue'),
+    -- a11: Doc Promoted to Beacon → notify #knowledge
+    (a11, 0, 'banter_send_message', '{"channel_name": "knowledge", "message": "🎓 Brief document promoted to Beacon: **{{ event.document.title }}**"}', 'stop'),
+    -- a12: Critical Mention → DM the mentioned user
+    (a12, 0, 'banter_send_dm', '{"user_id": "{{ event.mentioned_user.id }}", "message": "📢 @oncall was mentioned in #{{ event.channel.name }}: {{ event.message.content }}"}', 'stop');
 
   -- ── Schedules ──
   INSERT INTO bolt_schedules (automation_id, next_run_at, last_run_at) VALUES
@@ -100,12 +100,12 @@ BEGIN
 
   -- ── Execution Steps ──
   INSERT INTO bolt_execution_steps (execution_id, action_id, step_index, mcp_tool, parameters_resolved, status, response, duration_ms) VALUES
-    (e1, (SELECT id FROM bolt_actions WHERE automation_id = a1 AND sort_order = 0), 0, 'banter_post_message', '{"channel_name": "engineering", "text": "🚨 Critical task created: **Fix login timeout** by Eddie Offermann"}', 'success', '{"ok": true, "message_id": "m1"}', 320),
-    (e2, (SELECT id FROM bolt_actions WHERE automation_id = a2 AND sort_order = 0), 0, 'banter_send_dm', '{"user_id": "u3", "text": "⏰ Your task **Update API docs** is 3 days overdue."}', 'success', '{"ok": true}', 450),
-    (e3, (SELECT id FROM bolt_actions WHERE automation_id = a4 AND sort_order = 0), 0, 'task_update', '{"task_id": "t3", "assignee_id": "sarah-billing-lead-id"}', 'success', '{"ok": true}', 340),
-    (e3, (SELECT id FROM bolt_actions WHERE automation_id = a4 AND sort_order = 1), 1, 'banter_post_message', '{"channel_name": "billing-alerts", "text": "💳 New billing ticket: Billing dispute"}', 'success', '{"ok": true}', 340),
-    (e4, (SELECT id FROM bolt_actions WHERE automation_id = a9 AND sort_order = 0), 0, 'banter_send_dm', '{"user_id": null, "text": "👀 Task ready for review: **Design new dashboard**"}', 'failed', '{"error": "user_id is required"}', 150),
-    (e5, (SELECT id FROM bolt_actions WHERE automation_id = a6 AND sort_order = 0), 0, 'banter_post_message', '{"channel_name": "knowledge", "text": "📚 Beacon expired: **Deployment Runbook** — last verified 2026-02-15."}', 'success', '{"ok": true}', 280);
+    (e1, (SELECT id FROM bolt_actions WHERE automation_id = a1 AND sort_order = 0), 0, 'banter_send_message', '{"channel_name": "engineering", "message": "🚨 Critical task created: **Fix login timeout** by Eddie Offermann"}', 'success', '{"ok": true, "message_id": "m1"}', 320),
+    (e2, (SELECT id FROM bolt_actions WHERE automation_id = a2 AND sort_order = 0), 0, 'banter_send_dm', '{"user_id": "u3", "message": "⏰ Your task **Update API docs** is 3 days overdue."}', 'success', '{"ok": true}', 450),
+    (e3, (SELECT id FROM bolt_actions WHERE automation_id = a4 AND sort_order = 0), 0, 'helpdesk_assign_ticket', '{"ticket_id": "tk1", "agent_id": "sarah-billing-lead-id"}', 'success', '{"ok": true}', 340),
+    (e3, (SELECT id FROM bolt_actions WHERE automation_id = a4 AND sort_order = 1), 1, 'banter_send_message', '{"channel_name": "billing-alerts", "message": "💳 New billing ticket: Billing dispute"}', 'success', '{"ok": true}', 340),
+    (e4, (SELECT id FROM bolt_actions WHERE automation_id = a9 AND sort_order = 0), 0, 'banter_send_dm', '{"user_id": null, "message": "👀 Task **Design new dashboard** moved to Review"}', 'failed', '{"error": "user_id is required"}', 150),
+    (e5, (SELECT id FROM bolt_actions WHERE automation_id = a6 AND sort_order = 0), 0, 'banter_send_message', '{"channel_name": "knowledge", "message": "📚 Beacon expired: **Deployment Runbook** — please review."}', 'success', '{"ok": true}', 280);
 
   -- Set error info on failed execution
   UPDATE bolt_executions SET error_message = 'banter_send_dm failed: user_id is required', error_step = 0 WHERE id = e4;
