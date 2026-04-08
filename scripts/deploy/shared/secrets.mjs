@@ -156,6 +156,30 @@ export async function promptOptionalIntegrations() {
 }
 
 /**
+ * Ask the user what the root domain (/) should show.
+ */
+export async function promptRootRedirect() {
+  console.log(`\n${bold('Homepage')}`);
+  console.log(dim('When someone visits your domain root (/), where should they land?\n'));
+
+  const choice = await select('Root page:', [
+    { label: 'Marketing Site — product overview, screenshots, documentation', value: 'site' },
+    { label: 'Bam — project management board (most common for internal teams)', value: 'b3' },
+    { label: 'Helpdesk — customer support portal (for customer-facing deploys)', value: 'helpdesk' },
+    { label: 'Beacon — knowledge base', value: 'beacon' },
+    { label: 'Brief — collaborative documents', value: 'brief' },
+    { label: 'Bolt — workflow automations', value: 'bolt' },
+    { label: 'Bearing — goals & OKR tracking', value: 'bearing' },
+    { label: 'Banter — team messaging', value: 'banter' },
+  ]);
+
+  console.log(`  ${check} Root will show: ${choice === 'site' ? 'Marketing Site' : '/' + choice + '/'}`);
+  console.log(dim('  You can change this later in SuperUser settings.\n'));
+
+  return choice;
+}
+
+/**
  * Build a complete env config object from all collected choices.
  */
 export function buildEnvConfig(choices) {

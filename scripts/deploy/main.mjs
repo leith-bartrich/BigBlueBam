@@ -12,6 +12,7 @@ import {
   promptVectorDbChoice,
   promptLiveKitChoice,
   promptOptionalIntegrations,
+  promptRootRedirect,
   buildEnvConfig,
 } from './shared/secrets.mjs';
 import { createSuperUser } from './shared/admin-setup.mjs';
@@ -121,6 +122,9 @@ async function main() {
     // Optional integrations
     const integrations = await promptOptionalIntegrations();
 
+    // Root redirect choice
+    const rootRedirect = await promptRootRedirect();
+
     // Build complete config
     envConfig = buildEnvConfig({
       secrets,
@@ -133,11 +137,13 @@ async function main() {
 
     // Save to state for resume
     state.envConfig = envConfig;
+    state.rootRedirect = rootRedirect;
     state.choices = {
       domain,
       storage: storage.storageProvider,
       vectorDb: vectorDb.vectorProvider,
       livekit: livekit.livekitProvider,
+      rootRedirect,
     };
     markPhaseComplete(state, 'configuration');
     saveState(state);
@@ -185,6 +191,19 @@ async function main() {
     console.log(`${check} Admin account already created (${dim(state.adminEmail || 'unknown')}).`);
     if (await confirm('Create another admin account?', false)) {
       await createSuperUser(platform);
+    }
+  }
+
+  // --- Set root redirect if configured ---
+  if (state.rootRedirect && state.rootRedirect !== 'site') {
+    try {
+      process.stdout.write(`Setting root redirect to /${state.rootRedirect}/... `);
+      await platform.runCommand('api',
+        `node -e "const p=require('postgres');const s=p(process.env.DATABASE_URL);s\\\`UPDATE system_settings SET value='\"${state.rootRedirect}\"' WHERE key='root_redirect'\\\`.then(()=>s.end())"`
+      );
+      console.log(check);
+    } catch {
+      console.log(dim('[skipped — you can set this in SuperUser settings]'));
     }
   }
 
