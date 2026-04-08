@@ -70,7 +70,6 @@ export function useBeaconSearch(request: SearchRequest) {
   const hasFilters =
     (request.filters.project_ids?.length ?? 0) > 0 ||
     (request.filters.tags?.length ?? 0) > 0 ||
-    (request.filters.status?.length ?? 0) > 0 ||
     !!request.filters.expires_after ||
     !!request.filters.visibility_max;
 
@@ -97,7 +96,6 @@ export function useBeaconSearchCount(request: SearchRequest) {
   const hasFilters =
     (request.filters.project_ids?.length ?? 0) > 0 ||
     (request.filters.tags?.length ?? 0) > 0 ||
-    (request.filters.status?.length ?? 0) > 0 ||
     !!request.filters.expires_after ||
     !!request.filters.visibility_max;
 

@@ -33,11 +33,10 @@ export function BeaconSearchPage({ onNavigate }: BeaconSearchPageProps) {
     searchRequest.query.trim().length > 0 ||
     (searchRequest.filters.project_ids?.length ?? 0) > 0 ||
     (searchRequest.filters.tags?.length ?? 0) > 0 ||
-    (searchRequest.filters.status?.length ?? 0) > 0 ||
     !!searchRequest.filters.expires_after ||
     !!searchRequest.filters.visibility_max;
 
-  const { data: searchResponse, isFetching } = useBeaconSearch(searchRequest);
+  const { data: searchResponse, isFetching, isError, error } = useBeaconSearch(searchRequest);
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 py-6 sm:py-8">
@@ -57,24 +56,35 @@ export function BeaconSearchPage({ onNavigate }: BeaconSearchPageProps) {
 
       {/* Results */}
       <div className="mt-6">
-        <ResultList
-          results={searchResponse?.results ?? []}
-          totalCandidates={searchResponse?.total_candidates ?? 0}
-          retrievalStages={
-            searchResponse?.retrieval_stages ?? {
-              semantic_hits: 0,
-              tag_expansion_hits: 0,
-              link_traversal_hits: 0,
-              fulltext_fallback_hits: 0,
+        {isError ? (
+          <div className="py-16 text-center">
+            <p className="text-red-600 dark:text-red-400 mb-2">
+              Search failed: {(error as Error)?.message ?? 'An unexpected error occurred.'}
+            </p>
+            <p className="text-sm text-zinc-400 dark:text-zinc-500">
+              Try again or adjust your search filters.
+            </p>
+          </div>
+        ) : (
+          <ResultList
+            results={searchResponse?.results ?? []}
+            totalCandidates={searchResponse?.total_candidates ?? 0}
+            retrievalStages={
+              searchResponse?.retrieval_stages ?? {
+                semantic_hits: 0,
+                tag_expansion_hits: 0,
+                link_traversal_hits: 0,
+                fulltext_fallback_hits: 0,
+              }
             }
-          }
-          currentTags={store.tags}
-          isLoading={isFetching}
-          hasActiveQuery={hasActiveQuery}
-          onNavigate={onNavigate}
-          onAddTag={store.addTag}
-          onClearFilters={store.reset}
-        />
+            currentTags={store.tags}
+            isLoading={isFetching}
+            hasActiveQuery={hasActiveQuery}
+            onNavigate={onNavigate}
+            onAddTag={store.addTag}
+            onClearFilters={store.reset}
+          />
+        )}
       </div>
     </div>
   );
