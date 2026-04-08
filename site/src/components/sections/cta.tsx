@@ -15,25 +15,8 @@ export function Cta() {
             Put humans and AI agents on the same team
           </h2>
           <p className="mt-4 text-lg text-primary-200">
-            One command. Your infrastructure. AI-native from day one.
+            Self-hosted. Open source. AI-native from day one.
           </p>
-
-          <div className="mt-8 overflow-hidden rounded-lg border border-primary-700/50 bg-primary-950/80 text-left">
-            <div className="flex items-center gap-2 border-b border-primary-800/50 px-4 py-2">
-              <div className="h-2 w-2 rounded-full bg-red-400/70" />
-              <div className="h-2 w-2 rounded-full bg-yellow-400/70" />
-              <div className="h-2 w-2 rounded-full bg-green-400/70" />
-              <span className="ml-2 text-xs text-primary-400">terminal</span>
-            </div>
-            <pre className="overflow-x-auto p-4 text-sm">
-              <code className="text-primary-200">
-                <span className="text-primary-500">$</span> git clone https://github.com/eoffermann/BigBlueBam{'\n'}
-                <span className="text-primary-500">$</span> cp .env.example .env{'\n'}
-                <span className="text-primary-500">$</span> docker compose up -d{'\n'}
-                <span className="text-emerald-400">{'>'} BigBlueBam is running at http://localhost</span>
-              </code>
-            </pre>
-          </div>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button href="/b3/" variant="white" size="lg">

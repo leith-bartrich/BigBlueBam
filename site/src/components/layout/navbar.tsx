@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { useScrollSpy } from '@/lib/use-scroll-spy';
 import { Button } from '@/components/ui/button';
 
-const navLinks = [
+const navLinks: { label: string; id: string; href?: string }[] = [
   { label: 'Human + AI', id: 'ai-collaboration' },
   { label: 'Bam', id: 'features' },
   { label: 'Views', id: 'views' },
@@ -15,7 +15,7 @@ const navLinks = [
   { label: 'Brief', id: 'brief' },
   { label: 'Bolt', id: 'bolt' },
   { label: 'Bearing', id: 'bearing' },
-  { label: 'Architecture', id: 'architecture' },
+  { label: 'Deploy', id: 'deploy', href: '/deploy' },
 ];
 
 /**
@@ -119,8 +119,8 @@ export function Navbar() {
           {navLinks.map((link) => (
             <a
               key={link.id}
-              href={`#${link.id}`}
-              onClick={(e) => handleNavClick(e, link.id)}
+              href={link.href ?? `#${link.id}`}
+              onClick={link.href ? undefined : (e) => handleNavClick(e, link.id)}
               className={clsx(
                 'rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 activeId === link.id
@@ -162,8 +162,8 @@ export function Navbar() {
           {navLinks.map((link) => (
             <a
               key={link.id}
-              href={`#${link.id}`}
-              onClick={(e) => { handleNavClick(e, link.id); setMobileOpen(false); }}
+              href={link.href ?? `#${link.id}`}
+              onClick={link.href ? () => setMobileOpen(false) : (e) => { handleNavClick(e, link.id); setMobileOpen(false); }}
               className={clsx(
                 'block rounded-md px-3 py-2.5 text-sm font-medium',
                 activeId === link.id
