@@ -1,6 +1,7 @@
 import type { BoltAction, ErrorPolicy } from '@/hooks/use-automations';
-import { X, Plus, GripVertical } from 'lucide-react';
-import { useState } from 'react';
+import { useActionCatalog } from '@/hooks/use-event-catalog';
+import { X, Plus, GripVertical, ChevronDown } from 'lucide-react';
+import { useState, useMemo } from 'react';
 
 interface ActionEditorProps {
   action: BoltAction;
@@ -15,8 +16,27 @@ const errorPolicies: { value: ErrorPolicy; label: string; description: string }[
   { value: 'retry', label: 'Retry', description: 'Retry this step before failing' },
 ];
 
+const sourceLabels: Record<string, string> = {
+  bam: 'Bam', banter: 'Banter', beacon: 'Beacon', brief: 'Brief', helpdesk: 'Helpdesk', system: 'System',
+};
+
 export function ActionEditor({ action, index, onChange, onRemove }: ActionEditorProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const { data: actionsResponse } = useActionCatalog();
+  const availableActions = actionsResponse?.data ?? [];
+
+  // Group actions by source for the dropdown
+  const groupedActions = useMemo(() => {
+    const groups: Record<string, typeof availableActions> = {};
+    for (const a of availableActions) {
+      const src = (a as any).source ?? 'other';
+      if (!groups[src]) groups[src] = [];
+      groups[src].push(a);
+    }
+    return groups;
+  }, [availableActions]);
+
+  const selectedAction = availableActions.find((a) => a.mcp_tool === action.mcp_tool);
 
   const params = Object.entries(action.parameters);
 
@@ -56,13 +76,22 @@ export function ActionEditor({ action, index, onChange, onRemove }: ActionEditor
         <GripVertical className="h-4 w-4 text-zinc-400 cursor-grab shrink-0" />
         <span className="text-xs font-mono text-zinc-400 shrink-0">#{index + 1}</span>
 
-        <input
-          type="text"
-          placeholder="mcp_tool_name"
+        <select
           value={action.mcp_tool}
           onChange={(e) => onChange({ ...action, mcp_tool: e.target.value })}
-          className="flex-1 min-w-0 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-        />
+          className="flex-1 min-w-0 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+        >
+          <option value="">Select an action...</option>
+          {Object.entries(groupedActions).map(([source, actions]) => (
+            <optgroup key={source} label={sourceLabels[source] ?? source}>
+              {actions.map((a) => (
+                <option key={a.mcp_tool} value={a.mcp_tool}>
+                  {a.description}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
 
         <button
           type="button"
@@ -73,6 +102,13 @@ export function ActionEditor({ action, index, onChange, onRemove }: ActionEditor
           <X className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Selected action hint */}
+      {selectedAction && (
+        <div className="px-4 pt-2 text-xs text-green-600 dark:text-green-400">
+          <span className="font-mono">{selectedAction.mcp_tool}</span> — {selectedAction.description}
+        </div>
+      )}
 
       {/* Parameters */}
       <div className="px-4 py-3 space-y-2">

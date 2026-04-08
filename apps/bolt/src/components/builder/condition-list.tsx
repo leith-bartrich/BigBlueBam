@@ -41,7 +41,9 @@ export function ConditionList({ conditions, onChange }: ConditionListProps) {
       {conditions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-6 text-zinc-400">
           <Filter className="h-8 w-8 mb-2 opacity-40" />
-          <p className="text-sm">No conditions — automation will run on every matching trigger.</p>
+          <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Always run</p>
+          <p className="text-xs mt-1">No conditions — actions fire on every matching trigger event.</p>
+          <p className="text-xs mt-0.5">Add a condition below to filter when this automation runs.</p>
         </div>
       ) : (
         <div className="space-y-2">

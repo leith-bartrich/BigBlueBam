@@ -8,7 +8,7 @@ export interface EventDef {
   source: TriggerSource;
   event_type: string;
   description: string;
-  payload_fields: { name: string; type: string; description: string }[];
+  payload_schema: { name: string; type: string; description: string }[];
 }
 
 export interface ActionDef {
@@ -32,7 +32,7 @@ interface ActionCatalogResponse {
 export function useEventCatalog() {
   return useQuery({
     queryKey: ['bolt', 'event-catalog'],
-    queryFn: () => api.get<EventCatalogResponse>('/event-catalog'),
+    queryFn: () => api.get<EventCatalogResponse>('/events'),
     staleTime: 5 * 60_000, // 5 minutes — catalog changes rarely
   });
 }
@@ -50,7 +50,7 @@ export function useEventsBySource(source: TriggerSource | undefined) {
 export function useActionCatalog() {
   return useQuery({
     queryKey: ['bolt', 'action-catalog'],
-    queryFn: () => api.get<ActionCatalogResponse>('/action-catalog'),
+    queryFn: () => api.get<ActionCatalogResponse>('/actions'),
     staleTime: 5 * 60_000,
   });
 }
