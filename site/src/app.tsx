@@ -19,9 +19,14 @@ import { Architecture } from '@/components/sections/architecture';
 import { AiCollaboration } from '@/components/sections/ai-collaboration';
 import { Cta } from '@/components/sections/cta';
 import { DocsPage } from '@/pages/docs';
+import { DeployGuidePage } from '@/pages/deploy-guide';
 
 export function App() {
   const path = window.location.pathname;
+
+  if (path.startsWith('/deploy')) {
+    return <DeployGuidePage />;
+  }
 
   if (path.startsWith('/docs')) {
     return <DocsPage />;

@@ -13,6 +13,7 @@ const productLinks = [
 
 const resourceLinks = [
   { label: 'Documentation', href: '/docs' },
+  { label: 'Deploy Guide', href: '/deploy' },
   { label: 'GitHub', href: '#cta' },
   { label: 'API Reference', href: '#cta' },
 ];

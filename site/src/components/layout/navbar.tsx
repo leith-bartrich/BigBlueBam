@@ -141,6 +141,12 @@ export function Navbar() {
           >
             Docs
           </a>
+          <a
+            href="/deploy"
+            className="text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+          >
+            Deploy
+          </a>
           <Button href="#cta" size="sm">
             Get Started
           </Button>

@@ -2085,6 +2085,17 @@ function DeploymentContent() {
       </div>
 
       <div className="space-y-8">
+        {/* Deploy guide link */}
+        <div className="rounded-lg border-2 border-primary-200 bg-primary-50 p-6">
+          <p className="text-sm text-zinc-700 leading-relaxed">
+            For a step-by-step walkthrough, see the{' '}
+            <a href="/deploy" className="font-bold text-primary-700 underline underline-offset-2 hover:text-primary-800">
+              Deployment Guide
+            </a>
+            . It covers everything from running the deploy script to creating your first admin account.
+          </p>
+        </div>
+
         {/* Prerequisites */}
         <div className="rounded-lg border border-zinc-200 bg-white p-6">
           <h2 className="mb-4 text-xl font-bold text-zinc-900">Prerequisites</h2>
