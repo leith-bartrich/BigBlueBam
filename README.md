@@ -677,40 +677,47 @@ AI agents interact with Bolt through **12 dedicated MCP tools**:
 
 ## Bearing
 
-### Goals & OKRs -- strategy-to-execution visibility
+Bearing is the Goals & OKR tracking module in BigBlueBam. It provides hierarchical time-boxed periods (quarters, halves, or custom ranges), measurable key results linked to objectives, and automatic progress computation from linked Bam tasks and epics. Goals are auto-classified as on_track, at_risk, behind, or achieved based on progress versus timeline position, giving leadership real-time visibility into whether the team is on track -- without requiring manual progress updates.
 
-Bearing connects quarterly objectives to daily task work in Bam, giving leadership real-time visibility into whether the team is on track. Progress updates automatically as tasks complete -- no manual slider dragging.
+<p align="center">
+  <img src="images/bearing-dashboard.png" alt="Goals Dashboard — dark mode" width="100%" />
+</p>
+<p align="center"><em>Goals Dashboard -- summary stats (total, average progress, at risk, achieved) with scope filtering by org, team, or project</em></p>
 
 ### Key Features
 
 | Feature | Description |
 |---------|-------------|
-| **Time-Boxed Periods** | Quarters, halves, or custom date ranges that scope all goals and reporting |
-| **Automatic Progress from Bam** | Link key results to tasks, epics, or sprints -- progress updates as work completes |
-| **Cross-Project Rollup** | Roll up key results from multiple projects into a single org-level goal |
-| **At-Risk Detection** | Automatic flagging of goals that are behind pace based on time elapsed vs. progress |
-| **Progress Snapshots & Charts** | Point-in-time snapshots with trend charts for leadership reviews |
-| **Status Updates** | Structured status posts on goals with sentiment (on-track, at-risk, behind) |
-| **AI Reporting via MCP** | AI agents can generate period reports, surface at-risk goals, and post status updates programmatically |
+| **OKR Framework** | Objectives with measurable key results, progress tracking |
+| **Period Management** | Quarters, halves, or custom periods with lifecycle (planning → active → completed) |
+| **Auto-Progress** | Key results can link to Bam tasks/epics for automatic progress computation |
+| **Status Engine** | Goals auto-classified as on_track, at_risk, behind, achieved based on progress vs timeline |
+| **Dashboard** | Summary stats (total, avg progress, at risk, achieved) with scope filtering (org/team/project) |
+| **Status Updates** | Team members post updates on goal progress with status snapshots |
+| **Watchers** | Subscribe to goals for notifications |
+| **12 MCP Tools** | AI agents can manage periods, goals, key results, and updates programmatically |
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/bearing-goal-detail.png" alt="Goal Detail" width="100%" /></td>
+    <td width="50%"><img src="images/bearing-at-risk.png" alt="At Risk Goals" width="100%" /></td>
+  </tr>
+  <tr>
+    <td>Goal detail — key results with progress bars, status updates, watchers</td>
+    <td>At Risk view — goals behind schedule that need attention</td>
+  </tr>
+</table>
 
 ### Bearing MCP Tools
 
 AI agents interact with Bearing through **12 dedicated MCP tools**:
 
-| Tool | Description |
-|------|-------------|
-| `bearing_periods` | List/manage time periods |
-| `bearing_period_get` | Get period with summary stats |
-| `bearing_goals` | List goals with filters |
-| `bearing_goal_get` | Get goal with KRs and progress |
-| `bearing_goal_create` | Create a new goal |
-| `bearing_goal_update` | Update goal metadata |
-| `bearing_kr_create` | Create a key result |
-| `bearing_kr_update` | Update KR value or metadata |
-| `bearing_kr_link` | Link KR to Bam entity |
-| `bearing_update_post` | Post status update on a goal |
-| `bearing_report` | Generate period or at-risk report |
-| `bearing_at_risk` | List at-risk/behind goals |
+| Category | Tools | What they do |
+|----------|-------|-------------|
+| **Periods** | `bearing_periods`, `bearing_period_get` | List/manage time periods, get period with summary stats |
+| **Goals** | `bearing_goals`, `bearing_goal_get`, `bearing_goal_create`, `bearing_goal_update` | Full goal lifecycle -- list, detail, create, update |
+| **Key Results** | `bearing_kr_create`, `bearing_kr_update`, `bearing_kr_link` | Create and update key results, link KRs to Bam entities |
+| **Updates** | `bearing_update_post`, `bearing_report`, `bearing_at_risk` | Post status updates, generate reports, list at-risk goals |
 
 ---
 
