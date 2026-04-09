@@ -5,6 +5,7 @@ import {
   bearingKeyResults,
   bearingGoalWatchers,
   bearingUpdates,
+  bearingPeriods,
 } from '../db/schema/index.js';
 import { BearingError } from './period.service.js';
 import { computeGoalProgress, computeGoalStatus } from './progress-engine.js';
@@ -15,6 +16,18 @@ import { computeGoalProgress, computeGoalStatus } from './progress-engine.js';
 
 function escapeLike(s: string): string {
   return s.replace(/[%_\\]/g, '\\$&');
+}
+
+async function validatePeriodOrg(periodId: string, orgId: string): Promise<void> {
+  const [period] = await db
+    .select({ id: bearingPeriods.id })
+    .from(bearingPeriods)
+    .where(and(eq(bearingPeriods.id, periodId), eq(bearingPeriods.organization_id, orgId)))
+    .limit(1);
+
+  if (!period) {
+    throw new BearingError('NOT_FOUND', 'Period not found', 404);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +177,8 @@ export async function createGoal(
   userId: string,
   orgId: string,
 ) {
+  await validatePeriodOrg(data.period_id, orgId);
+
   const [goal] = await db
     .insert(bearingGoals)
     .values({
@@ -192,6 +207,10 @@ export async function updateGoal(
 ) {
   const existing = await getGoalById(id, orgId);
   if (!existing) throw new BearingError('NOT_FOUND', 'Goal not found', 404);
+
+  if (data.period_id !== undefined) {
+    await validatePeriodOrg(data.period_id, orgId);
+  }
 
   const updateValues: Record<string, unknown> = {
     updated_at: new Date(),
