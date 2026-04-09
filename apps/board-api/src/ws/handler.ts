@@ -17,7 +17,16 @@ interface ConnectedClient {
   color: string;
   canEdit: boolean;
   isAdminOrOwner: boolean;
+  /** Message count in the current rate-limit window */
+  msgCount: number;
+  /** Timestamp (ms) when the current rate-limit window started */
+  msgWindowStart: number;
 }
+
+/** Max WebSocket messages per client per window */
+const WS_RATE_LIMIT_MAX = 120;
+/** Rate-limit window duration in ms (10 seconds) */
+const WS_RATE_LIMIT_WINDOW_MS = 10_000;
 
 const CURSOR_COLORS = [
   '#FF6B6B', // red
@@ -31,7 +40,7 @@ const CURSOR_COLORS = [
 ];
 
 const clients = new Map<WebSocket, ConnectedClient>();
-const dirtyBoards = new Map<string, SceneData>();
+const dirtyBoards = new Map<string, SceneData & { orgId: string }>();
 const instanceId = nanoid(12);
 
 let persistenceTimer: ReturnType<typeof setInterval> | null = null;
@@ -105,7 +114,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     for (const [boardId, scene] of dirtyBoards) {
       dirtyBoards.delete(boardId);
       try {
-        await saveScene(boardId, scene);
+        await saveScene(boardId, scene.orgId, scene);
       } catch (err) {
         fastify.log.error({ boardId, err }, 'Failed to persist board scene');
         // Re-mark as dirty so next tick retries
@@ -124,7 +133,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     // Flush remaining dirty boards on shutdown
     for (const [boardId, scene] of dirtyBoards) {
       try {
-        await saveScene(boardId, scene);
+        await saveScene(boardId, scene.orgId, scene);
       } catch (err) {
         fastify.log.error({ boardId, err }, 'Failed to persist board scene on shutdown');
       }
@@ -280,6 +289,8 @@ export default async function websocketHandler(fastify: FastifyInstance) {
       color: CURSOR_COLORS[0],
       canEdit: false,
       isAdminOrOwner,
+      msgCount: 0,
+      msgWindowStart: Date.now(),
     };
     clients.set(socket, client);
 
@@ -293,6 +304,18 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     );
 
     socket.on('message', async (raw: Buffer | string) => {
+      // Per-client WebSocket rate limiting
+      const now = Date.now();
+      if (now - client.msgWindowStart > WS_RATE_LIMIT_WINDOW_MS) {
+        client.msgCount = 0;
+        client.msgWindowStart = now;
+      }
+      client.msgCount++;
+      if (client.msgCount > WS_RATE_LIMIT_MAX) {
+        socket.close(4429, 'Rate limit exceeded');
+        return;
+      }
+
       try {
         const msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString());
 
@@ -423,6 +446,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
               elements,
               appState: existing?.appState ?? {},
               files: existing?.files ?? {},
+              orgId: client.orgId,
             });
 
             // Broadcast to all others in room

@@ -6,6 +6,7 @@ import {
   bearingGoalWatchers,
   bearingUpdates,
   bearingPeriods,
+  users,
 } from '../db/schema/index.js';
 import { BearingError } from './period.service.js';
 import { computeGoalProgress, computeGoalStatus } from './progress-engine.js';
@@ -16,6 +17,18 @@ import { computeGoalProgress, computeGoalStatus } from './progress-engine.js';
 
 function escapeLike(s: string): string {
   return s.replace(/[%_\\]/g, '\\$&');
+}
+
+async function validateOwnerInOrg(ownerId: string, orgId: string): Promise<void> {
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, ownerId), eq(users.org_id, orgId), eq(users.is_active, true)))
+    .limit(1);
+
+  if (!user) {
+    throw new BearingError('BAD_REQUEST', 'owner_id must reference an active user in the same organization', 400);
+  }
 }
 
 async function validatePeriodOrg(periodId: string, orgId: string): Promise<void> {
@@ -179,6 +192,10 @@ export async function createGoal(
 ) {
   await validatePeriodOrg(data.period_id, orgId);
 
+  if (data.owner_id) {
+    await validateOwnerInOrg(data.owner_id, orgId);
+  }
+
   const [goal] = await db
     .insert(bearingGoals)
     .values({
@@ -210,6 +227,10 @@ export async function updateGoal(
 
   if (data.period_id !== undefined) {
     await validatePeriodOrg(data.period_id, orgId);
+  }
+
+  if (data.owner_id !== undefined && data.owner_id !== null) {
+    await validateOwnerInOrg(data.owner_id, orgId);
   }
 
   const updateValues: Record<string, unknown> = {

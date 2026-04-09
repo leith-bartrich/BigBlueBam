@@ -120,10 +120,17 @@ function evaluateSingle(operator: ConditionOperator, actual: unknown, expected: 
     case 'matches_regex': {
       try {
         const pattern = toString(expected);
-        // Limit regex pattern length to mitigate ReDoS
-        if (pattern.length > 500) return false;
+        // Strict pattern length limit to mitigate ReDoS
+        if (pattern.length > 100) return false;
+        // Reject patterns with obvious ReDoS constructs (nested quantifiers)
+        if (/(\+|\*|\{)\s*(\+|\*|\?)/.test(pattern) || /\([^)]*(\+|\*)\)[^?]?(\+|\*|\{)/.test(pattern)) {
+          return false;
+        }
         const regex = new RegExp(pattern);
-        return regex.test(toString(actual));
+        // Execute regex with a bounded input length
+        const actualStr = toString(actual);
+        if (actualStr.length > 10_000) return false;
+        return regex.test(actualStr);
       } catch {
         // Invalid regex — treat as not matching
         return false;

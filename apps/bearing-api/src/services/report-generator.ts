@@ -1,4 +1,4 @@
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, or, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bearingPeriods,
@@ -6,6 +6,17 @@ import {
   bearingKeyResults,
 } from '../db/schema/index.js';
 import { BearingError } from './period.service.js';
+
+/** Group key results by goal_id for batch-loaded results */
+function groupKrsByGoal(krs: Array<{ goal_id: string; [key: string]: unknown }>) {
+  const map = new Map<string, typeof krs>();
+  for (const kr of krs) {
+    const list = map.get(kr.goal_id) ?? [];
+    list.push(kr);
+    map.set(kr.goal_id, list);
+  }
+  return map;
+}
 
 // ---------------------------------------------------------------------------
 // Report generation
@@ -51,6 +62,13 @@ export async function generatePeriodReport(periodId: string, orgId: string) {
   markdown += `| At Risk / Behind | ${atRiskGoals} |\n`;
   markdown += `| Average Progress | ${avgProgress.toFixed(1)}% |\n\n`;
 
+  // Batch-load all key results for the goals in a single query
+  const goalIds = goals.map((g) => g.id);
+  const allKrs = goalIds.length > 0
+    ? await db.select().from(bearingKeyResults).where(inArray(bearingKeyResults.goal_id, goalIds))
+    : [];
+  const krsByGoal = groupKrsByGoal(allKrs as any);
+
   // Goals detail
   markdown += `## Goals\n\n`;
   for (const goal of goals) {
@@ -62,11 +80,7 @@ export async function generatePeriodReport(periodId: string, orgId: string) {
       markdown += `- **Description:** ${goal.description}\n`;
     }
 
-    // Get key results for this goal
-    const krs = await db
-      .select()
-      .from(bearingKeyResults)
-      .where(eq(bearingKeyResults.goal_id, goal.id));
+    const krs = (krsByGoal.get(goal.id) ?? []) as any[];
 
     if (krs.length > 0) {
       markdown += `\n**Key Results:**\n\n`;
@@ -110,6 +124,13 @@ export async function generateAtRiskReport(orgId: string) {
   if (goals.length === 0) {
     markdown += `No goals are currently at risk. Great work!\n`;
   } else {
+    // Batch-load all key results for at-risk goals
+    const atRiskGoalIds = goals.map((g) => g.id);
+    const allAtRiskKrs = atRiskGoalIds.length > 0
+      ? await db.select().from(bearingKeyResults).where(inArray(bearingKeyResults.goal_id, atRiskGoalIds))
+      : [];
+    const atRiskKrsByGoal = groupKrsByGoal(allAtRiskKrs as any);
+
     for (const goal of goals) {
       markdown += `### ${goal.title}\n\n`;
       markdown += `- **Status:** ${goal.status}\n`;
@@ -119,10 +140,7 @@ export async function generateAtRiskReport(orgId: string) {
         markdown += `- **Description:** ${goal.description}\n`;
       }
 
-      const krs = await db
-        .select()
-        .from(bearingKeyResults)
-        .where(eq(bearingKeyResults.goal_id, goal.id));
+      const krs = (atRiskKrsByGoal.get(goal.id) ?? []) as any[];
 
       if (krs.length > 0) {
         markdown += `\n**Key Results:**\n\n`;
@@ -161,6 +179,13 @@ export async function generateOwnerReport(userId: string, orgId: string) {
   markdown += `**Generated:** ${new Date().toISOString()}  \n`;
   markdown += `**Total goals:** ${goals.length}  \n\n`;
 
+  // Batch-load all key results and periods for owner goals
+  const ownerGoalIds = goals.map((g) => g.id);
+  const allOwnerKrs = ownerGoalIds.length > 0
+    ? await db.select().from(bearingKeyResults).where(inArray(bearingKeyResults.goal_id, ownerGoalIds))
+    : [];
+  const ownerKrsByGoal = groupKrsByGoal(allOwnerKrs as any);
+
   // Group by period
   const byPeriod = new Map<string, typeof goals>();
   for (const goal of goals) {
@@ -169,12 +194,15 @@ export async function generateOwnerReport(userId: string, orgId: string) {
     byPeriod.set(goal.period_id, periodGoals);
   }
 
+  // Batch-load all referenced periods
+  const periodIds = [...byPeriod.keys()];
+  const allPeriods = periodIds.length > 0
+    ? await db.select().from(bearingPeriods).where(inArray(bearingPeriods.id, periodIds))
+    : [];
+  const periodMap = new Map(allPeriods.map((p) => [p.id, p]));
+
   for (const [periodId, periodGoals] of byPeriod) {
-    const [period] = await db
-      .select()
-      .from(bearingPeriods)
-      .where(eq(bearingPeriods.id, periodId))
-      .limit(1);
+    const period = periodMap.get(periodId);
 
     markdown += `## ${period?.name ?? periodId}\n\n`;
 
@@ -183,10 +211,7 @@ export async function generateOwnerReport(userId: string, orgId: string) {
       markdown += `- **Status:** ${goal.status}\n`;
       markdown += `- **Progress:** ${goal.progress}%\n`;
 
-      const krs = await db
-        .select()
-        .from(bearingKeyResults)
-        .where(eq(bearingKeyResults.goal_id, goal.id));
+      const krs = (ownerKrsByGoal.get(goal.id) ?? []) as any[];
 
       if (krs.length > 0) {
         markdown += `\n**Key Results:**\n\n`;

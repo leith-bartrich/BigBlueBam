@@ -22,7 +22,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   // POST /boards/:id/chat - Send a message
   fastify.post<{ Params: { id: string } }>(
     '/boards/:id/chat',
-    { preHandler: [requireAuth, requireBoardEditAccess()] },
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } }, preHandler: [requireAuth, requireBoardEditAccess()] },
     async (request, reply) => {
       const { body } = sendMessageSchema.parse(request.body);
       const message = await chatService.sendMessage(

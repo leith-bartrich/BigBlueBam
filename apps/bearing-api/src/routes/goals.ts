@@ -164,7 +164,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
     '/goals/:id/updates',
     {
       config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
-      preHandler: [requireAuth, requireGoalAccess(), requireScope('read_write')],
+      preHandler: [requireAuth, requireGoalEditAccess(), requireScope('read_write')],
     },
     async (request, reply) => {
       const data = createUpdateSchema.parse(request.body);

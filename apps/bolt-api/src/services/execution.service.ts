@@ -193,6 +193,36 @@ export async function retryExecution(executionId: string, orgId: string) {
     );
   }
 
+  // Enforce max_executions_per_hour from the parent automation
+  const [automation] = await db
+    .select({
+      max_executions_per_hour: boltAutomations.max_executions_per_hour,
+    })
+    .from(boltAutomations)
+    .where(eq(boltAutomations.id, existing.automation_id))
+    .limit(1);
+
+  if (automation) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [countRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(boltExecutions)
+      .where(
+        and(
+          eq(boltExecutions.automation_id, existing.automation_id),
+          gt(boltExecutions.started_at, oneHourAgo),
+        ),
+      );
+
+    if (countRow && countRow.count >= automation.max_executions_per_hour) {
+      throw new ExecutionError(
+        'RATE_LIMITED',
+        `Automation has reached its limit of ${automation.max_executions_per_hour} executions per hour`,
+        429,
+      );
+    }
+  }
+
   // Create a new execution record marked as running (actual execution is async via worker)
   const [newExecution] = await db
     .insert(boltExecutions)

@@ -12,7 +12,7 @@ export interface SceneData {
  * Save an Excalidraw scene JSON to the boards.yjs_state column as a Buffer.
  * Also bumps boards.updated_at.
  */
-export async function saveScene(boardId: string, sceneJson: SceneData): Promise<void> {
+export async function saveScene(boardId: string, orgId: string, sceneJson: SceneData): Promise<void> {
   const buf = Buffer.from(JSON.stringify(sceneJson), 'utf-8');
   await db
     .update(boards)
@@ -20,7 +20,7 @@ export async function saveScene(boardId: string, sceneJson: SceneData): Promise<
       yjs_state: buf,
       updated_at: new Date(),
     })
-    .where(eq(boards.id, boardId));
+    .where(and(eq(boards.id, boardId), eq(boards.organization_id, orgId)));
 }
 
 /**

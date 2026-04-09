@@ -35,10 +35,12 @@ services:
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -104,8 +106,6 @@ services:
       SMTP_FROM: ${SMTP_FROM:-noreply@bigbluebam.com}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost/b3}
       INTERNAL_HELPDESK_SECRET: ${INTERNAL_HELPDESK_SECRET:?INTERNAL_HELPDESK_SECRET is required}
-    ports:
-      - "${API_PORT:-4000}:4000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 15s
@@ -148,8 +148,6 @@ services:
       BILL_API_URL: http://bill-api:4014/v1
       BLANK_API_URL: http://blank-api:4013/v1
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
-    ports:
-      - "${MCP_PORT:-3001}:3001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 15s
@@ -387,7 +385,7 @@ services:
       - PORT=4005
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
     depends_on:
@@ -423,7 +421,7 @@ services:
       - PORT=4006
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
     depends_on:
@@ -458,7 +456,7 @@ services:
       - PORT=4007
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
     depends_on:
@@ -499,7 +497,7 @@ services:
       - PORT=4008
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
     depends_on:
@@ -534,7 +532,7 @@ services:
       - PORT=4009
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
     depends_on:
@@ -570,7 +568,7 @@ services:
       - PORT=4010
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
       - SMTP_HOST=${SMTP_HOST:-}
@@ -612,7 +610,7 @@ services:
       - PORT=4012
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
@@ -653,7 +651,7 @@ services:
       - PORT=4011
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
       - QUERY_TIMEOUT_MS=${BENCH_QUERY_TIMEOUT_MS:-10000}
@@ -690,7 +688,7 @@ services:
       - PORT=4014
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost}
@@ -727,7 +725,7 @@ services:
       - PORT=4013
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
       - PUBLIC_FORM_RATE_LIMIT=10
