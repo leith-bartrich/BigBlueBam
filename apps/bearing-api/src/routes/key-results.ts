@@ -138,7 +138,7 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params;
       const data = updateKeyResultSchema.parse(request.body);
-      const kr = await krService.updateKeyResult(id, data, request.user!.org_id);
+      const kr = await krService.updateKeyResult(id, data, request.user!.org_id, fastify.redis);
       return reply.send({ data: kr });
     },
   );
@@ -165,7 +165,7 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { value } = setValueSchema.parse(request.body);
-      const kr = await krService.setCurrentValue(request.params.id, value, request.user!.org_id);
+      const kr = await krService.setCurrentValue(request.params.id, value, request.user!.org_id, fastify.redis);
       return reply.send({ data: kr });
     },
   );

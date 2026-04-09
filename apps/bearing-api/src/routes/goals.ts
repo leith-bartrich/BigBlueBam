@@ -101,6 +101,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
       const goal = await goalService.getGoal(
         (request as any).goal.id,
         request.user!.org_id,
+        fastify.redis,
       );
       return reply.send({ data: goal });
     },
@@ -116,6 +117,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         (request as any).goal.id,
         data,
         request.user!.org_id,
+        fastify.redis,
       );
       return reply.send({ data: goal });
     },
@@ -141,6 +143,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         (request as any).goal.id,
         status,
         request.user!.org_id,
+        fastify.redis,
       );
       return reply.send({ data: goal });
     },
