@@ -15,6 +15,7 @@ import { BriefSection } from '@/components/sections/brief-section';
 import { BoltSection } from '@/components/sections/bolt-section';
 import { BearingSection } from '@/components/sections/bearing-section';
 import { BoardSection } from '@/components/sections/board-section';
+import { BondSection } from '@/components/sections/bond-section';
 import { BanterStub } from '@/components/sections/banter-stub';
 import { Architecture } from '@/components/sections/architecture';
 import { AiCollaboration } from '@/components/sections/ai-collaboration';
@@ -54,6 +55,7 @@ export function App() {
         <BoltSection />
         <BearingSection />
         <BoardSection />
+        <BondSection />
         <Architecture />
         <Cta />
       </main>

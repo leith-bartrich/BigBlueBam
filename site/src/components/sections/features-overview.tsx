@@ -76,7 +76,7 @@ const features = [
   {
     icon: Bot,
     title: 'AI-Native MCP',
-    description: 'AI agents operate at full parity via 196 structured tools — same actions, same permissions, full audit trail.',
+    description: 'AI agents operate at full parity via 215 structured tools — same actions, same permissions, full audit trail.',
   },
 ];
 

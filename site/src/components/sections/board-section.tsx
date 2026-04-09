@@ -109,7 +109,7 @@ export function BoardSection() {
             <p className="text-sm font-medium text-zinc-700">
               Served at{' '}
               <code className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs">/board/</code> — a
-              dedicated SPA sharing authentication and the project model with Bam, Beacon, Brief, Bolt, and Bearing.
+              dedicated SPA sharing authentication and the project model with Bam, Beacon, Brief, Bolt, Bearing, and Bond.
             </p>
           </div>
           <Button href="/board/" variant="primary" size="sm">

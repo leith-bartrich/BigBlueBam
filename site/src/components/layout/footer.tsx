@@ -9,6 +9,7 @@ const productLinks = [
   { label: 'Bolt', href: '#bolt' },
   { label: 'Bearing', href: '#bearing' },
   { label: 'Board', href: '#board' },
+  { label: 'Bond', href: '#bond' },
   { label: 'Architecture', href: '#architecture' },
 ];
 

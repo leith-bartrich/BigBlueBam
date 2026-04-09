@@ -16,6 +16,7 @@ const navLinks: { label: string; id: string; href?: string }[] = [
   { label: 'Bolt', id: 'bolt' },
   { label: 'Bearing', id: 'bearing' },
   { label: 'Board', id: 'board' },
+  { label: 'Bond', id: 'bond' },
   { label: 'Deploy', id: 'deploy', href: '/deploy' },
 ];
 

@@ -61,12 +61,12 @@ export function Integrations() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-zinc-900">MCP Server</h3>
-                <Badge variant="blue">196 tools</Badge>
+                <Badge variant="blue">215 tools</Badge>
               </div>
             </div>
             <p className="mb-4 text-sm text-zinc-600">
               A full Model Context Protocol server exposes every action across BigBlueBam, Beacon,
-              Brief, Bolt, Bearing, Board, Banter, and the Helpdesk to AI agents. Manage projects, search knowledge, automate workflows, track goals, collaborate visually, message your
+              Brief, Bolt, Bearing, Board, Bond, Banter, and the Helpdesk to AI agents. Manage projects, search knowledge, automate workflows, track goals, collaborate visually, manage CRM pipelines, message your
               team, triage tickets — all through structured tool calls.
             </p>
             <div className="rounded-lg border border-primary-200 bg-primary-100/50 p-3">

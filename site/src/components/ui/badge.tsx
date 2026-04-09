@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 
-type Variant = 'default' | 'coming-soon' | 'new' | 'blue' | 'green' | 'purple' | 'orange';
+type Variant = 'default' | 'coming-soon' | 'new' | 'blue' | 'green' | 'purple' | 'orange' | 'pink';
 
 interface BadgeProps {
   variant?: Variant;
@@ -16,6 +16,7 @@ const variantStyles: Record<Variant, string> = {
   green: 'bg-emerald-100 text-emerald-800',
   purple: 'bg-purple-100 text-purple-800',
   orange: 'bg-orange-100 text-orange-800',
+  pink: 'bg-pink-100 text-pink-800',
 };
 
 export function Badge({ variant = 'default', children, className }: BadgeProps) {

@@ -147,7 +147,7 @@ export function BearingSection() {
             <p className="text-sm font-medium text-zinc-700">
               Served at{' '}
               <code className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs">/bearing/</code> — a
-              dedicated SPA sharing authentication and the project model with Bam, Beacon, Brief, and Bolt.
+              dedicated SPA sharing authentication and the project model with Bam, Beacon, Brief, Bolt, Board, and Bond.
             </p>
           </div>
           <Button href="/bearing/" variant="primary" size="sm">

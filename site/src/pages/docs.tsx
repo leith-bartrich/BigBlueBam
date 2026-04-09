@@ -494,7 +494,63 @@ const boardTools: ToolProduct = {
   ],
 };
 
-const allProducts: ToolProduct[] = [bamTools, banterTools, beaconTools, briefTools, boltTools, bearingTools, boardTools];
+const bondTools: ToolProduct = {
+  name: 'Bond',
+  icon: <Zap className="h-4 w-4" />,
+  color: 'bg-pink-100 text-pink-700',
+  categories: [
+    {
+      name: 'Contacts',
+      tools: [
+        { name: 'bond_contact_list', description: 'List contacts with optional filters (company, tag, search) and pagination' },
+        { name: 'bond_contact_get', description: 'Get detailed information about a single contact' },
+        { name: 'bond_contact_create', description: 'Create a new contact with name, email, phone, company, and custom fields' },
+        { name: 'bond_contact_update', description: 'Update an existing contact record' },
+      ],
+    },
+    {
+      name: 'Companies',
+      tools: [
+        { name: 'bond_company_list', description: 'List companies with optional filters and pagination' },
+        { name: 'bond_company_get', description: 'Get detailed information about a company including linked contacts' },
+        { name: 'bond_company_create', description: 'Create a new company record' },
+        { name: 'bond_company_update', description: 'Update an existing company record' },
+      ],
+    },
+    {
+      name: 'Deals',
+      tools: [
+        { name: 'bond_deal_list', description: 'List deals with optional pipeline, stage, owner, and value filters' },
+        { name: 'bond_deal_get', description: 'Get detailed information about a deal including linked contacts and activities' },
+        { name: 'bond_deal_create', description: 'Create a new deal with value, stage, expected close date, and linked contacts' },
+        { name: 'bond_deal_update', description: 'Update deal fields (value, stage, probability, owner, etc.)' },
+        { name: 'bond_deal_move', description: 'Move a deal to a different pipeline stage' },
+      ],
+    },
+    {
+      name: 'Activities',
+      tools: [
+        { name: 'bond_activity_log', description: 'Log an activity (call, email, meeting, note, task) against a contact, company, or deal' },
+        { name: 'bond_activity_list', description: 'List activities for a contact, company, or deal with date and type filters' },
+      ],
+    },
+    {
+      name: 'Pipeline & Reports',
+      tools: [
+        { name: 'bond_pipeline_get', description: 'Get pipeline configuration with stages, colors, and ordering' },
+        { name: 'bond_pipeline_report', description: 'Generate pipeline report (conversion rates, avg deal size, stage duration, forecast)' },
+      ],
+    },
+    {
+      name: 'Search',
+      tools: [
+        { name: 'bond_search', description: 'Cross-entity search across contacts, companies, deals, and activities' },
+      ],
+    },
+  ],
+};
+
+const allProducts: ToolProduct[] = [bamTools, banterTools, beaconTools, briefTools, boltTools, bearingTools, boardTools, bondTools];
 
 function getTotalTools(product: ToolProduct): number {
   return product.categories.reduce((sum, cat) => sum + cat.tools.length, 0);
@@ -1281,7 +1337,92 @@ const boardApi: ApiService = {
   ],
 };
 
-const allApis: ApiService[] = [bamApi, banterApi, beaconApi, briefApi, boltApi, bearingApi, boardApi, helpdeskApi];
+const bondApi: ApiService = {
+  name: 'Bond API',
+  baseUrl: '/bond/api/v1',
+  description: 'CRM pipeline management -- contacts, companies, deals, activities, pipeline stages, and reporting.',
+  color: 'bg-pink-100 text-pink-700',
+  groups: [
+    {
+      name: 'Contacts',
+      endpoints: [
+        { method: 'GET', path: '/contacts', description: 'List contacts with filters (company, tag, search, status)' },
+        { method: 'POST', path: '/contacts', description: 'Create a new contact' },
+        { method: 'GET', path: '/contacts/:id', description: 'Get a contact with linked companies, deals, and activities' },
+        { method: 'PATCH', path: '/contacts/:id', description: 'Update contact fields' },
+        { method: 'DELETE', path: '/contacts/:id', description: 'Archive a contact (soft-delete)' },
+        { method: 'POST', path: '/contacts/:id/restore', description: 'Restore an archived contact' },
+        { method: 'POST', path: '/contacts/merge', description: 'Merge duplicate contacts into a primary record' },
+      ],
+    },
+    {
+      name: 'Companies',
+      endpoints: [
+        { method: 'GET', path: '/companies', description: 'List companies with filters and pagination' },
+        { method: 'POST', path: '/companies', description: 'Create a new company' },
+        { method: 'GET', path: '/companies/:id', description: 'Get a company with linked contacts and deals' },
+        { method: 'PATCH', path: '/companies/:id', description: 'Update company fields' },
+        { method: 'DELETE', path: '/companies/:id', description: 'Archive a company' },
+        { method: 'GET', path: '/companies/:id/contacts', description: 'List contacts at a company' },
+      ],
+    },
+    {
+      name: 'Deals',
+      endpoints: [
+        { method: 'GET', path: '/deals', description: 'List deals with pipeline, stage, owner, and value filters' },
+        { method: 'POST', path: '/deals', description: 'Create a new deal' },
+        { method: 'GET', path: '/deals/:id', description: 'Get a deal with contacts, activities, and stage history' },
+        { method: 'PATCH', path: '/deals/:id', description: 'Update deal fields (value, probability, owner, etc.)' },
+        { method: 'DELETE', path: '/deals/:id', description: 'Archive a deal' },
+        { method: 'POST', path: '/deals/:id/move', description: 'Move a deal to a different pipeline stage' },
+        { method: 'POST', path: '/deals/:id/contacts', description: 'Link a contact to a deal' },
+        { method: 'DELETE', path: '/deals/:id/contacts/:contactId', description: 'Unlink a contact from a deal' },
+      ],
+    },
+    {
+      name: 'Activities',
+      endpoints: [
+        { method: 'GET', path: '/activities', description: 'List activities with entity, type, and date filters' },
+        { method: 'POST', path: '/activities', description: 'Log an activity (call, email, meeting, note, task)' },
+        { method: 'GET', path: '/activities/:id', description: 'Get activity details' },
+        { method: 'PATCH', path: '/activities/:id', description: 'Update an activity' },
+        { method: 'DELETE', path: '/activities/:id', description: 'Delete an activity' },
+      ],
+    },
+    {
+      name: 'Pipeline',
+      endpoints: [
+        { method: 'GET', path: '/pipelines', description: 'List pipeline configurations' },
+        { method: 'POST', path: '/pipelines', description: 'Create a pipeline with stages' },
+        { method: 'GET', path: '/pipelines/:id', description: 'Get a pipeline with stage definitions' },
+        { method: 'PATCH', path: '/pipelines/:id', description: 'Update pipeline name or stage ordering' },
+        { method: 'POST', path: '/pipelines/:id/stages', description: 'Add a stage to the pipeline' },
+        { method: 'PATCH', path: '/stages/:id', description: 'Update a pipeline stage' },
+        { method: 'DELETE', path: '/stages/:id', description: 'Remove a pipeline stage' },
+      ],
+    },
+    {
+      name: 'Reports',
+      endpoints: [
+        { method: 'GET', path: '/reports/pipeline', description: 'Pipeline report (conversion, avg deal size, stage duration)' },
+        { method: 'GET', path: '/reports/forecast', description: 'Revenue forecast based on weighted pipeline' },
+        { method: 'GET', path: '/reports/activity', description: 'Activity report by type, user, and date range' },
+        { method: 'GET', path: '/reports/win-loss', description: 'Win/loss analysis with reasons and trends' },
+      ],
+    },
+    {
+      name: 'Search & Tags',
+      endpoints: [
+        { method: 'GET', path: '/search', description: 'Cross-entity search across contacts, companies, deals, and activities' },
+        { method: 'GET', path: '/tags', description: 'List all tags with usage counts' },
+        { method: 'POST', path: '/contacts/:id/tags', description: 'Add tags to a contact' },
+        { method: 'DELETE', path: '/contacts/:id/tags/:tag', description: 'Remove a tag from a contact' },
+      ],
+    },
+  ],
+};
+
+const allApis: ApiService[] = [bamApi, banterApi, beaconApi, briefApi, boltApi, bearingApi, boardApi, bondApi, helpdeskApi];
 
 /* ------------------------------------------------------------------ */
 /*  FAQ Data                                                           */
@@ -1295,11 +1436,11 @@ interface Faq {
 const faqs: Faq[] = [
   {
     question: 'What is BigBlueBam?',
-    answer: 'BigBlueBam is a comprehensive work management platform that combines project planning (Bam), team messaging (Banter), a knowledge base (Beacon), collaborative documents (Brief), workflow automation (Bolt), goals and OKR tracking (Bearing), visual collaboration whiteboards (Board), and a customer support portal (Helpdesk) into a single self-hosted stack. It is designed for small-to-medium teams of 2 to 50 users who want an integrated alternative to juggling Jira, Slack, Confluence, and Zendesk separately.',
+    answer: 'BigBlueBam is a comprehensive work management platform that combines project planning (Bam), team messaging (Banter), a knowledge base (Beacon), collaborative documents (Brief), workflow automation (Bolt), goals and OKR tracking (Bearing), visual collaboration whiteboards (Board), CRM pipeline management (Bond), and a customer support portal (Helpdesk) into a single self-hosted stack. It is designed for small-to-medium teams of 2 to 50 users who want an integrated alternative to juggling Jira, Slack, Confluence, Salesforce, and Zendesk separately.',
   },
   {
     question: 'How many apps are included?',
-    answer: 'BigBlueBam ships with eight integrated applications: Bam (Kanban project management with sprints), Banter (real-time messaging with channels, DMs, threads, and voice/video calls), Beacon (knowledge base with semantic search and a knowledge graph), Brief (collaborative WYSIWYG documents), Bolt (WHEN/IF/THEN workflow automations), Bearing (goals and OKR tracking with automatic progress from linked tasks), Board (infinite-canvas visual collaboration whiteboards with real-time editing and audio conferencing), and Helpdesk (customer support ticket portal). All eight apps share a single authentication system and cross-link to each other seamlessly.',
+    answer: 'BigBlueBam ships with nine integrated applications: Bam (Kanban project management with sprints), Banter (real-time messaging with channels, DMs, threads, and voice/video calls), Beacon (knowledge base with semantic search and a knowledge graph), Brief (collaborative WYSIWYG documents), Bolt (WHEN/IF/THEN workflow automations), Bearing (goals and OKR tracking with automatic progress from linked tasks), Board (infinite-canvas visual collaboration whiteboards with real-time editing and audio conferencing), Bond (CRM with visual deal pipeline, contact/company management, and activity tracking), and Helpdesk (customer support ticket portal). All nine apps share a single authentication system and cross-link to each other seamlessly.',
   },
   {
     question: 'What is the difference between Beacon and Brief?',
@@ -1307,11 +1448,11 @@ const faqs: Faq[] = [
   },
   {
     question: 'How do AI agents work with BigBlueBam?',
-    answer: 'BigBlueBam exposes 196 MCP (Model Context Protocol) tools on a dedicated server endpoint at /mcp/. Any MCP-compatible AI agent -- Claude, GPT, or custom agents -- can connect and manage tasks, post messages, search the knowledge base, write documents, create automations, track goals, and collaborate on visual whiteboards. Destructive actions require a two-step confirmation flow to prevent accidental data loss. The MCP server supports Streamable HTTP, SSE, and stdio transports.',
+    answer: 'BigBlueBam exposes 215 MCP (Model Context Protocol) tools on a dedicated server endpoint at /mcp/. Any MCP-compatible AI agent -- Claude, GPT, or custom agents -- can connect and manage tasks, post messages, search the knowledge base, write documents, create automations, track goals, collaborate on visual whiteboards, and manage the CRM pipeline. Destructive actions require a two-step confirmation flow to prevent accidental data loss. The MCP server supports Streamable HTTP, SSE, and stdio transports.',
   },
   {
     question: 'What is MCP?',
-    answer: 'MCP stands for Model Context Protocol, an open standard for connecting AI models to external tools and data sources. Instead of building custom integrations for each AI provider, BigBlueBam implements MCP once and any compliant agent can use all 196 tools. You can learn more at modelcontextprotocol.io.',
+    answer: 'MCP stands for Model Context Protocol, an open standard for connecting AI models to external tools and data sources. Instead of building custom integrations for each AI provider, BigBlueBam implements MCP once and any compliant agent can use all 215 tools. You can learn more at modelcontextprotocol.io.',
   },
   {
     question: 'Can I use my own LLM?',
@@ -1319,11 +1460,11 @@ const faqs: Faq[] = [
   },
   {
     question: 'Is BigBlueBam open source?',
-    answer: 'BigBlueBam is source-available on GitHub. The full codebase -- frontend, API, all eight apps, Docker Compose stack, Helm chart, and migrations -- is in a single monorepo. You can self-host it on your own infrastructure with no external dependencies beyond the Docker images. Check the repository for the specific license terms.',
+    answer: 'BigBlueBam is source-available on GitHub. The full codebase -- frontend, API, all nine apps, Docker Compose stack, Helm chart, and migrations -- is in a single monorepo. You can self-host it on your own infrastructure with no external dependencies beyond the Docker images. Check the repository for the specific license terms.',
   },
   {
     question: 'How do I deploy BigBlueBam?',
-    answer: 'The quickest way is to clone the repository, copy .env.example to .env, fill in your secrets, and run docker compose up -d. This starts 18 services including PostgreSQL, Redis, MinIO, Qdrant, all eight app APIs, their frontends, the MCP server, and a background worker. Everything is accessible through a single nginx reverse proxy on port 80. For production, a Helm chart is provided at infra/helm/ for Kubernetes deployment.',
+    answer: 'The quickest way is to clone the repository, copy .env.example to .env, fill in your secrets, and run docker compose up -d. This starts 19 services including PostgreSQL, Redis, MinIO, Qdrant, all nine app APIs, their frontends, the MCP server, and a background worker. Everything is accessible through a single nginx reverse proxy on port 80. For production, a Helm chart is provided at infra/helm/ for Kubernetes deployment.',
   },
   {
     question: 'What database does it use?',
@@ -1576,9 +1717,9 @@ function McpToolsContent() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">MCP Tools Reference</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
-          BigBlueBam exposes <strong>{totalToolCount} MCP tools</strong> across seven products, enabling AI agents
+          BigBlueBam exposes <strong>{totalToolCount} MCP tools</strong> across eight products, enabling AI agents
           to manage tasks, communicate in channels, search knowledge bases, author documents, orchestrate
-          automations, track goals, and collaborate on visual whiteboards -- all through the{' '}
+          automations, track goals, collaborate on visual whiteboards, and manage CRM pipelines -- all through the{' '}
           <a
             href="https://modelcontextprotocol.io"
             target="_blank"
@@ -1627,7 +1768,7 @@ function ApiEndpointsContent() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">API Endpoints</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
-          BigBlueBam exposes <strong>{totalEndpoints} REST endpoints</strong> across seven API services, all accessible
+          BigBlueBam exposes <strong>{totalEndpoints} REST endpoints</strong> across eight API services, all accessible
           through a single nginx reverse proxy on port 80. Every endpoint uses JSON request/response bodies, session
           cookie or API key authentication, and cursor-based pagination on list endpoints.
         </p>
@@ -1662,8 +1803,8 @@ function UserGuideContent() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">User Guide</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
-          A practical guide to using BigBlueBam's eight integrated applications. Whether you are managing sprints,
-          messaging your team, building a knowledge base, writing documents, automating workflows, collaborating on whiteboards, or handling
+          A practical guide to using BigBlueBam's nine integrated applications. Whether you are managing sprints,
+          messaging your team, building a knowledge base, writing documents, automating workflows, collaborating on whiteboards, managing your CRM pipeline, or handling
           customer support tickets, this guide covers the essentials.
         </p>
       </div>
@@ -1692,8 +1833,8 @@ function UserGuideContent() {
             <h3 className="mb-3 text-lg font-semibold text-zinc-900">Navigation Overview</h3>
             <p className="mb-3 text-sm text-zinc-600">
               BigBlueBam uses a cross-app navigation system with colored pills at the top of the screen. Each pill
-              represents one of the eight apps: Bam (blue), Banter (violet), Beacon (amber), Brief (emerald), Bolt (rose),
-              Bearing (indigo), Board (cyan), and Helpdesk (sky). Click any pill to switch apps without losing your place. Within each app, a collapsible
+              represents one of the nine apps: Bam (blue), Banter (violet), Beacon (amber), Brief (emerald), Bolt (rose),
+              Bearing (indigo), Board (cyan), Bond (pink), and Helpdesk (sky). Click any pill to switch apps without losing your place. Within each app, a collapsible
               sidebar provides contextual navigation -- projects in Bam, channels in Banter, folders in Brief, and so on.
             </p>
             <p className="text-sm text-zinc-600">
@@ -2024,7 +2165,7 @@ function UserGuideContent() {
               <strong> IF</strong> adds optional conditions that filter when the automation fires -- for example, "if the
               task has the label 'bug'" or "if the message contains '@urgent'." <strong>THEN</strong> defines one or more
               actions to execute -- for example, "post a message in the #releases channel" or "create a Beacon article."
-              Actions are MCP tools, which means automations have access to the full 196-tool catalog.
+              Actions are MCP tools, which means automations have access to the full 215-tool catalog.
             </p>
           </div>
 
@@ -2212,6 +2353,72 @@ function UserGuideContent() {
         </div>
       </div>
 
+      {/* Bond */}
+      <div className="mb-12">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-pink-100 text-pink-700">
+            <Zap className="h-4 w-4" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-900">Bond -- CRM</h2>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Pipeline Board</h3>
+            <p className="text-sm text-zinc-600">
+              Bond organizes sales work around a visual pipeline board. Deals appear as cards on a Kanban-style
+              board where each column represents a pipeline stage (e.g., Prospecting, Qualified, Proposal, Negotiation,
+              Closed Won, Closed Lost). Drag deals between stages to advance them through the pipeline. Each stage
+              shows the weighted pipeline value so you can see your forecast at a glance. Pipelines are fully
+              configurable -- add, rename, reorder, and color-code stages to match your sales process.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Contacts and Companies</h3>
+            <p className="text-sm text-zinc-600">
+              Contacts are people you do business with. Each contact record stores name, email, phone, job title,
+              company association, tags, custom fields, and a complete activity timeline. Companies group contacts
+              into organizations with their own metadata (industry, size, website, address). Bond detects potential
+              duplicates and lets you merge contact records to keep your database clean. Contacts and companies link
+              to deals, so you always know who is involved in each opportunity.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Deals and Activity Tracking</h3>
+            <p className="text-sm text-zinc-600">
+              A deal represents a sales opportunity with a value, expected close date, probability, pipeline stage,
+              owner, and linked contacts. The deal detail page shows the full activity timeline -- calls, emails,
+              meetings, notes, and tasks -- so anyone on the team can pick up context instantly. Log activities
+              against contacts, companies, or deals with a single click. Stage history tracks every pipeline
+              transition with timestamps and the user who made the change.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Cross-Product Integration</h3>
+            <p className="text-sm text-zinc-600">
+              Bond integrates deeply with the rest of the BigBlueBam suite. Link a closed-won deal to a Bam project
+              to kick off onboarding work. Reference Helpdesk tickets on a deal to track support interactions with
+              prospects. Attach Beacon knowledge articles that helped close the deal. When a deal closes, Bolt
+              automations can create the implementation project, notify the team via Banter, and generate a customer
+              knowledge Beacon -- all without manual intervention.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Pipeline Reports</h3>
+            <p className="text-sm text-zinc-600">
+              Bond provides pipeline analytics including conversion rates between stages, average deal size,
+              average stage duration, revenue forecast (weighted by deal probability), and win/loss analysis.
+              Reports can be filtered by date range, pipeline, owner, and company. AI agents can generate and
+              share pipeline reports in Banter channels through 19 dedicated MCP tools.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Banter */}
       <div className="mb-12">
         <div className="mb-6 flex items-center gap-3">
@@ -2265,7 +2472,7 @@ function DeploymentContent() {
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Deployment Guide</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
           Everything you need to deploy, configure, and maintain a BigBlueBam instance. The platform runs
-          as an 18-service Docker Compose stack behind a single nginx reverse proxy.
+          as a 19-service Docker Compose stack behind a single nginx reverse proxy.
         </p>
       </div>
 
@@ -2424,7 +2631,7 @@ function DeploymentContent() {
         <div className="rounded-lg border border-zinc-200 bg-white p-6">
           <h2 className="mb-4 text-xl font-bold text-zinc-900">Services Architecture</h2>
           <p className="mb-4 text-sm text-zinc-600">
-            The Docker Compose stack runs 18 services. Application containers are stateless and scale horizontally.
+            The Docker Compose stack runs 19 services. Application containers are stateless and scale horizontally.
             Data services can be swapped for managed cloud equivalents by changing environment variables.
           </p>
           <div className="overflow-x-auto">
@@ -2445,8 +2652,9 @@ function DeploymentContent() {
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">bolt-api</td><td className="py-2 pr-4">4006</td><td className="py-2">Bolt automation engine API</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">bearing-api</td><td className="py-2 pr-4">4007</td><td className="py-2">Bearing goals and OKR tracking API</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">board-api</td><td className="py-2 pr-4">4008</td><td className="py-2">Board visual collaboration whiteboard API + WebSocket</td></tr>
+                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">bond-api</td><td className="py-2 pr-4">4009</td><td className="py-2">Bond CRM pipeline and contact management API</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">helpdesk-api</td><td className="py-2 pr-4">4001</td><td className="py-2">Helpdesk support ticket API</td></tr>
-                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">mcp-server</td><td className="py-2 pr-4">3001</td><td className="py-2">MCP protocol server (196 tools)</td></tr>
+                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">mcp-server</td><td className="py-2 pr-4">3001</td><td className="py-2">MCP protocol server (215 tools)</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">worker</td><td className="py-2 pr-4">--</td><td className="py-2">BullMQ background jobs (email, notifications, export, sprint-close)</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">migrate</td><td className="py-2 pr-4">--</td><td className="py-2">Runs SQL migrations on startup, then exits</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">postgres</td><td className="py-2 pr-4">5432</td><td className="py-2">PostgreSQL 16 primary database</td></tr>
@@ -2480,7 +2688,7 @@ function DeploymentContent() {
         <div className="rounded-lg border border-zinc-200 bg-white p-6">
           <h2 className="mb-4 text-xl font-bold text-zinc-900">Running Tests</h2>
           <p className="mb-3 text-sm text-zinc-600">
-            BigBlueBam has 850+ tests across all packages, using Vitest as the test runner.
+            BigBlueBam has 900+ tests across all packages, using Vitest as the test runner.
           </p>
           <div className="space-y-2">
             <div className="rounded-md bg-zinc-50 p-3">
@@ -2708,7 +2916,7 @@ interface SidebarSection {
 }
 
 const sidebarSections: SidebarSection[] = [
-  { id: 'mcp-tools', label: 'MCP Tools', sublabel: '196 tools', icon: <Zap className="h-4 w-4" /> },
+  { id: 'mcp-tools', label: 'MCP Tools', sublabel: '215 tools', icon: <Zap className="h-4 w-4" /> },
   { id: 'api-endpoints', label: 'API Endpoints', icon: <Server className="h-4 w-4" /> },
   { id: 'user-guide', label: 'User Guide', icon: <Users className="h-4 w-4" /> },
   { id: 'deployment', label: 'Deployment', icon: <Rocket className="h-4 w-4" /> },

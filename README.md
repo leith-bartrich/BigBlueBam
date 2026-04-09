@@ -21,15 +21,16 @@
   <a href="#bolt">Bolt</a> &bull;
   <a href="#bearing">Bearing</a> &bull;
   <a href="#board">Board</a> &bull;
+  <a href="#bond">Bond</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#documentation">Docs</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/tests-850%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-196-blue" alt="MCP Tools" />
-  <img src="https://img.shields.io/badge/Docker%20services-18-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/tests-900%2B%20passing-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/MCP%20tools-215-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/Docker%20services-19-blueviolet" alt="Docker Services" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -45,7 +46,7 @@ Most project management tools are built for humans talking to humans. BigBlueBam
 
 The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **196 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, collaborative documents, workflow automations, goals & OKRs, and visual collaboration whiteboards.
+This is made possible by **215 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, collaborative documents, workflow automations, goals & OKRs, visual collaboration whiteboards, and CRM pipeline management.
 
 ---
 
@@ -305,7 +306,7 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **196 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, collaborative documents, workflow automations, goals & OKRs, and visual collaboration whiteboards. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **215 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, collaborative documents, workflow automations, goals & OKRs, visual collaboration whiteboards, and CRM pipeline management. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
@@ -320,6 +321,7 @@ BigBlueBam exposes **196 MCP (Model Context Protocol) tools** that give AI assis
 - **Automate workflows with Bolt** — create trigger-condition-action rules, manage executions, browse templates, and orchestrate cross-product automations that compile to MCP tool calls
 - **Track goals & OKRs with Bearing** — create time-boxed periods, define goals with key results, link KRs to Bam tasks for automatic progress, post status updates, and generate at-risk reports
 - **Collaborate visually on Board** — create and manage whiteboard rooms, add and arrange shapes, read canvas content for AI analysis, manage participants, embed cross-product content, and run sticky-to-task pipelines
+- **Manage CRM pipeline with Bond** — create and update contacts, companies, and deals, advance deals through pipeline stages, log activities, search the contact database, and generate pipeline reports
 
 ### Example: AI-Powered Helpdesk Triage
 
@@ -341,7 +343,7 @@ BigBlueBam exposes **196 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Tools Reference
 
-**196 tools** across 19 categories:
+**215 tools** across 20 categories:
 
 | Category | Count | What they cover |
 |----------|------:|-----------------|
@@ -362,6 +364,7 @@ BigBlueBam exposes **196 MCP (Model Context Protocol) tools** that give AI assis
 | **Bolt Automation** | 12 | Rule CRUD, execution management, templates, triggers, conditions, actions |
 | **Bearing Goals** | 12 | Periods, goals, key results, progress, links, reports, at-risk detection |
 | **Board Whiteboard** | 14 | Room CRUD, shapes, assets, canvas reading, participants, embeds, sticky-to-task |
+| **Bond CRM** | 19 | Contacts, companies, deals, pipeline stages, activities, notes, search, reports |
 | **Helpdesk** | 7 | Ticket operations, public/admin settings |
 | **Utility** | 2 | Server info, action confirmation |
 
@@ -787,6 +790,40 @@ AI agents interact with Board through **14 dedicated MCP tools**:
 
 ---
 
+## Bond
+
+Bond is the CRM (Customer Relationship Management) module built into the BigBlueBam suite. It provides a visual deal pipeline board, contact and company management, activity logging, and deep cross-product integration -- so your sales process lives alongside your project board, helpdesk, and knowledge base instead of in a separate tool.
+
+Deals flow through configurable pipeline stages displayed as a Kanban board, making it easy to see the full sales funnel at a glance. Each deal links to a company and one or more contacts, carries a value and expected close date, and tracks every touchpoint through an activity timeline. When a deal closes, a Bolt automation can create the onboarding project in Bam, post the win to a Banter channel, and generate a customer Beacon -- all automatically.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Pipeline Board** | Kanban-style deal board with configurable stages, drag-and-drop, and weighted pipeline value per stage |
+| **Contacts & Companies** | Full contact database with company hierarchy, custom fields, tags, and merge/duplicate detection |
+| **Deal Tracking** | Value, expected close date, probability, owner, linked contacts, and stage history |
+| **Activity Timeline** | Log calls, emails, meetings, notes, and tasks against contacts, companies, or deals |
+| **Cross-Product Links** | Link deals to Bam projects, Helpdesk tickets, Beacon articles, and Brief documents |
+| **Search** | Full-text and semantic search across contacts, companies, deals, and activity notes |
+| **Pipeline Reports** | Conversion rates, average deal size, stage duration, forecast, and win/loss analysis |
+| **19 MCP Tools** | AI agents can manage the full CRM lifecycle programmatically |
+
+### Bond MCP Tools
+
+AI agents interact with Bond through **19 dedicated MCP tools**:
+
+| Category | Tools | What they do |
+|----------|-------|-------------|
+| **Contacts** | `bond_contact_list`, `bond_contact_get`, `bond_contact_create`, `bond_contact_update` | Contact lifecycle management with search and filtering |
+| **Companies** | `bond_company_list`, `bond_company_get`, `bond_company_create`, `bond_company_update` | Company management with hierarchy and linked contacts |
+| **Deals** | `bond_deal_list`, `bond_deal_get`, `bond_deal_create`, `bond_deal_update`, `bond_deal_move` | Deal CRUD and pipeline stage advancement |
+| **Activities** | `bond_activity_log`, `bond_activity_list` | Log and retrieve calls, emails, meetings, notes |
+| **Pipeline** | `bond_pipeline_get`, `bond_pipeline_report` | Pipeline configuration and reporting |
+| **Search** | `bond_search` | Cross-entity search across contacts, companies, deals, and activities |
+
+---
+
 ## AI Provider Configuration
 
 BigBlueBam features a hierarchical LLM provider configuration system that powers AI features across the suite — including Bolt's AI-assisted automation authoring, future summarization, and content generation features.
@@ -865,7 +902,7 @@ docker compose exec api node dist/cli.js create-admin \
   --org "My Organization"
 ```
 
-Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, **http://localhost/brief/** for Brief, **http://localhost/bolt/** for Bolt, **http://localhost/bearing/** for Bearing, **http://localhost/board/** for Board, or **http://localhost/helpdesk/** for the helpdesk portal.
+Open **http://localhost/b3/** to access BigBlueBam, **http://localhost/banter/** for Banter, **http://localhost/beacon/** for Beacon, **http://localhost/brief/** for Brief, **http://localhost/bolt/** for Bolt, **http://localhost/bearing/** for Bearing, **http://localhost/board/** for Board, **http://localhost/bond/** for Bond CRM, or **http://localhost/helpdesk/** for the helpdesk portal.
 
 <p align="center">
   <img src="images/01-login.png" alt="Login Page" width="60%" />
@@ -906,7 +943,9 @@ All services are accessed through a single nginx container on port 80:
 | `/board/` | nginx | Board visual collaboration SPA |
 | `/board/api/` | Fastify `:4008` | Board REST API |
 | `/board/ws` | Fastify `:4008` | Board WebSocket (real-time canvas sync) |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (196 tools) |
+| `/bond/` | nginx | Bond CRM SPA |
+| `/bond/api/` | Fastify `:4009` | Bond REST API |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (215 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -932,7 +971,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Run Tests
 
 ```bash
-pnpm test  # 850+ tests across all packages
+pnpm test  # 900+ tests across all packages
 ```
 
 ---
@@ -964,6 +1003,8 @@ pnpm test  # 850+ tests across all packages
 │  /board/       → Board SPA (static)            ││
 │  /board/api/   → Board API :4008               ││
 │  /board/ws     → Board WebSocket :4008         ││
+│  /bond/        → Bond SPA (static)             ││
+│  /bond/api/    → Bond API :4009                ││
 │  /helpdesk/    → Helpdesk SPA (static)         ││
 │  /helpdesk/api/→ Helpdesk API :4001            ││
 │  /files/       → MinIO :9000                   ││
@@ -973,7 +1014,7 @@ pnpm test  # 850+ tests across all packages
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌──────────┐ ┌───────▼──────┐ ┌──────────┐
 │ Bam API   │ │ Banter   │ │ MCP Server│ │ Brief    │ │ Bolt API │ │ LiveKit SFU  │ │ Worker   │
 │ :4000     │ │ API :4002│ │ :3001     │ │ API :4005│ │ :4006    │ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 196 tools │ │ +WS      │ │          │ │ +voice-agent │ │ jobs     │
+│ +WebSocket│ │ +WS      │ │ 215 tools │ │ +WS      │ │          │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └────┬─────┘ └──────────────┘ └────┬─────┘
       │             │             │            │                  │
 ┌─────▼─────────────▼─────────────▼────────────▼───────────────────▼───┐
@@ -994,7 +1035,7 @@ pnpm test  # 850+ tests across all packages
 | **Database** | PostgreSQL 16, Redis 7, MinIO, Qdrant |
 | **Worker** | BullMQ, Nodemailer |
 | **Build** | Turborepo, pnpm workspaces, tsup, Vite |
-| **Testing** | Vitest (850+ tests) |
+| **Testing** | Vitest (900+ tests) |
 | **Deploy** | Docker Compose, multi-stage Dockerfiles |
 
 ### Monorepo Structure
@@ -1003,7 +1044,7 @@ pnpm test  # 850+ tests across all packages
 apps/
   api/              → Fastify REST API + WebSocket (23 route modules)
   frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (196 tools)
+  mcp-server/       → MCP protocol server (215 tools)
   worker/           → BullMQ background jobs (incl. Banter notifications & retention)
   helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
   helpdesk/         → Helpdesk React SPA (client-facing portal)
@@ -1019,6 +1060,8 @@ apps/
   bearing/          → Bearing React SPA (goal dashboard, timeline, detail views)
   board-api/        → Board Fastify REST API + WebSocket (whiteboard rooms, shapes, assets, conferencing)
   board/            → Board React SPA (infinite canvas, real-time collaboration, audio conferencing)
+  bond-api/         → Bond Fastify REST API (contacts, companies, deals, pipeline, activities)
+  bond/             → Bond React SPA (pipeline board, contact/company detail, deal tracking)
   voice-agent/      → AI voice agent (Python/FastAPI, LiveKit Agents SDK)
 packages/
   shared/           → Zod schemas, TypeScript types, constants
@@ -1034,9 +1077,9 @@ scripts/            → Utility and seed scripts
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 18 |
-| MCP tools | 196 (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board) |
-| Test cases | 850+ |
+| Docker services | 19 |
+| MCP tools | 215 (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond) |
+| Test cases | 900+ |
 | API route modules | 46 (23 Bam + 15 Banter + 8 Brief) |
 | Database tables | 51+ (25 Bam + 18 Banter + 11 Brief) |
 | Frontend components | 47+ (33 Bam + 14 Banter) |
@@ -1060,6 +1103,7 @@ scripts/            → Utility and seed scripts
 | [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
 | [Banter Design](Banter_Design_Document.md) | Team messaging & voice/video design |
 | [Beacon Design](Beacon_Design_Document.md) | Knowledge base platform design |
+| [Bond Design](Bond_Design_Document.md) | CRM pipeline and contact management design |
 
 ---
 

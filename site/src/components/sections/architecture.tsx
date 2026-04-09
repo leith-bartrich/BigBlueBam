@@ -4,7 +4,7 @@ import { AnimatedReveal } from '@/components/ui/animated-reveal';
 import { Badge } from '@/components/ui/badge';
 
 const stack = [
-  { icon: Container, label: 'Docker Compose', description: '18 services, single command to spin up' },
+  { icon: Container, label: 'Docker Compose', description: '19 services, single command to spin up' },
   { icon: Database, label: 'PostgreSQL 16', description: 'RLS, JSONB, partitioned tables' },
   { icon: Server, label: 'Redis 7', description: 'Sessions, cache, PubSub, job queues' },
   { icon: Layers, label: 'MinIO / S3', description: 'Attachment storage, swap for any S3 provider' },
@@ -51,14 +51,14 @@ export function Architecture() {
       <AnimatedReveal delay={0.5}>
         <div className="mt-10 rounded-xl border border-zinc-200 bg-zinc-50 p-6">
           <div className="mb-4 flex flex-wrap justify-center gap-2">
-            <Badge variant="blue">196 MCP Tools</Badge>
-            <Badge variant="blue">850+ Tests</Badge>
-            <Badge variant="blue">18 Docker Services</Badge>
+            <Badge variant="blue">215 MCP Tools</Badge>
+            <Badge variant="blue">900+ Tests</Badge>
+            <Badge variant="blue">19 Docker Services</Badge>
             <Badge variant="blue">MIT License</Badge>
           </div>
           <p className="text-center text-sm text-zinc-600">
-            Application containers (Bam API, Beacon API, Banter API, Brief API, Bolt API, Bearing API, Board API, Helpdesk API, MCP server, worker,
-            voice agent, seven frontends) are stateless. Data services (PostgreSQL, Redis, MinIO,
+            Application containers (Bam API, Beacon API, Banter API, Brief API, Bolt API, Bearing API, Board API, Bond API, Helpdesk API, MCP server, worker,
+            voice agent, eight frontends) are stateless. Data services (PostgreSQL, Redis, MinIO,
             LiveKit) can be swapped for managed cloud equivalents by changing environment variables
             only.
           </p>
