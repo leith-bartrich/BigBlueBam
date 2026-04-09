@@ -26,7 +26,7 @@ const envSchema = z.object({
 
   // LiveKit (for future real-time cursor/presence features)
   LIVEKIT_API_KEY: z.string().default('devkey'),
-  LIVEKIT_API_SECRET: z.string().default('devsecret'),
+  LIVEKIT_API_SECRET: z.string().default('secret'),
   LIVEKIT_URL: z.string().default('ws://localhost:7880'),
 
   // Build metadata
