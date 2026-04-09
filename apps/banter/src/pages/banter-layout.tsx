@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronRight, Search } from 'lucide-react';
-import { Launchpad, LaunchpadTrigger } from '@/components/layout/launchpad';
+import { Launchpad, LaunchpadTrigger } from '@bigbluebam/ui/launchpad';
 import { BanterSidebar } from '@/components/sidebar/banter-sidebar';
 import { ThreadPanel } from '@/components/threads/thread-panel';
 import { OrgSwitcher } from '@/components/layout/org-switcher';

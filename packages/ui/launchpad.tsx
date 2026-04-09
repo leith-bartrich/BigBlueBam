@@ -1,3 +1,12 @@
+/**
+ * Canonical Launchpad component — shared across all BigBlueBam apps.
+ *
+ * Every frontend app imports this file via a Vite alias:
+ *   '@bigbluebam/ui/launchpad' → '<root>/packages/ui/launchpad.tsx'
+ *
+ * To update the Launchpad, edit THIS file — all apps pick it up on rebuild.
+ */
+
 import { useEffect, useRef, useCallback, type FC } from 'react';
 import {
   LayoutDashboard,
@@ -60,10 +69,11 @@ interface LaunchpadTriggerProps {
 export const LaunchpadTrigger: FC<LaunchpadTriggerProps> = ({ onClick }) => (
   <button
     onClick={onClick}
-    className="flex items-center justify-center h-8 w-8 rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-    aria-label="Open launchpad"
+    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+    title="Launchpad — switch between apps"
   >
-    <LayoutGrid className="h-5 w-5" />
+    <LayoutGrid className="h-4 w-4" />
+    <span className="hidden sm:inline">Launchpad</span>
   </button>
 );
 
@@ -116,7 +126,7 @@ export function Launchpad({ isOpen, onClose, currentApp }: LaunchpadProps) {
                 href={app.path}
                 className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-colors ${
                   isCurrent
-                    ? 'bg-primary-50 dark:bg-primary-950/30 ring-2 ring-primary-500'
+                    ? 'bg-primary-50 dark:bg-primary-950/20 ring-2 ring-primary-400/50 dark:ring-primary-500/30'
                     : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
                 }`}
               >

@@ -1,0 +1,10 @@
+{
+  "name": "@bigbluebam/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "lucide-react": ">=0.400.0"
+  }
+}

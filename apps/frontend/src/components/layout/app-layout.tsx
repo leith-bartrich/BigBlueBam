@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Search, LogOut, ChevronRight, Bell, CheckCheck, MessageCircle, AlertTriangle, X, RefreshCw } from 'lucide-react';
-import { Launchpad, LaunchpadTrigger } from '@/components/layout/launchpad';
+import { Launchpad, LaunchpadTrigger } from '@bigbluebam/ui/launchpad';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './sidebar';
 import { Avatar } from '@/components/common/avatar';

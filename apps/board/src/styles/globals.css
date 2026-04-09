@@ -1,5 +1,6 @@
 @import "tailwindcss";
-@import "tldraw/tldraw.css";
+@source "../../../../packages/ui";
+
 
 @custom-variant dark (&:is(.dark *));
 

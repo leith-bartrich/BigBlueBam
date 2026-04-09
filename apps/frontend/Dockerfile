@@ -22,6 +22,7 @@ COPY apps/bench/package.json ./apps/bench/
 COPY apps/bill/package.json ./apps/bill/
 COPY apps/blank/package.json ./apps/blank/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/ui/package.json ./packages/ui/
 
 RUN pnpm install --no-frozen-lockfile
 
@@ -31,6 +32,9 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/tsconfig.json packages/shared/tsup.config.ts ./packages/shared/
+
+# Shared UI components (resolved via Vite aliases)
+COPY packages/ui/ ./packages/ui/
 
 # BBB frontend
 COPY apps/frontend/src ./apps/frontend/src

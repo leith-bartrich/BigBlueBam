@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronRight, Bell, LogOut } from 'lucide-react';
-import { Launchpad, LaunchpadTrigger } from '@/components/layout/launchpad';
+import { Launchpad, LaunchpadTrigger } from '@bigbluebam/ui/launchpad';
 import { BlankSidebar } from '@/components/layout/blank-sidebar';
 import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { Avatar } from '@/components/common/avatar';
