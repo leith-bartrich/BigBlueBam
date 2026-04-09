@@ -142,7 +142,7 @@ export const tasks = pgTable('tasks', {
 });
 
 export const projectMembers = pgTable(
-  'project_members',
+  'project_memberships',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     project_id: uuid('project_id')
