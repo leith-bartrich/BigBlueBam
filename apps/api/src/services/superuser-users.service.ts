@@ -1,6 +1,7 @@
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users } from '../db/schema/users.js';
+import { escapeLike } from '../lib/escape-like.js';
 import { organizations } from '../db/schema/organizations.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
 import { superuserAuditLog } from '../db/schema/superuser-audit-log.js';
@@ -87,8 +88,8 @@ export async function listUsers(params: ListUsersParams): Promise<{
   if (search) {
     conditions.push(
       (or(
-        ilike(users.email, `%${search}%`),
-        ilike(users.display_name, `%${search}%`),
+        ilike(users.email, `%${escapeLike(search)}%`),
+        ilike(users.display_name, `%${escapeLike(search)}%`),
       ) as unknown) as ReturnType<typeof eq>,
     );
   }

@@ -1,10 +1,21 @@
 import type { FastifyInstance } from 'fastify';
+import { createHash } from 'node:crypto';
 import { eq, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { webhooks } from '../db/schema/webhooks.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
+
+/** BAM-028: Hash a webhook secret with SHA-256 before storage. */
+function hashWebhookSecret(secret: string): string {
+  return createHash('sha256').update(secret).digest('hex');
+}
+
+/** Return a masked version of a secret (only for display; never the real value). */
+function maskSecret(hash: string): string {
+  return `${hash.slice(0, 8)}${'*'.repeat(24)}`;
+}
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
@@ -40,13 +51,18 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       });
       const data = schema.parse(request.body);
 
+      // BAM-028: Hash the secret before storing. Return the plaintext
+      // secret exactly once in the creation response so the caller can
+      // save it; subsequent reads only return a masked placeholder.
+      const hashedSecret = hashWebhookSecret(data.secret);
+
       const [webhook] = await db
         .insert(webhooks)
         .values({
           project_id: request.params.id,
           url: data.url,
           events: data.events,
-          secret: data.secret,
+          secret: hashedSecret,
         })
         .returning({
           id: webhooks.id,
@@ -58,7 +74,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
           updated_at: webhooks.updated_at,
         });
 
-      return reply.status(201).send({ data: webhook });
+      return reply.status(201).send({ data: { ...webhook, secret: data.secret } });
     },
   );
 
@@ -77,7 +93,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       const updateValues: Record<string, unknown> = { updated_at: new Date() };
       if (data.url !== undefined) updateValues.url = data.url;
       if (data.events !== undefined) updateValues.events = data.events;
-      if (data.secret !== undefined) updateValues.secret = data.secret;
+      if (data.secret !== undefined) updateValues.secret = hashWebhookSecret(data.secret);
       if (data.is_active !== undefined) updateValues.is_active = data.is_active;
 
       const [webhook] = await db

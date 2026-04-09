@@ -109,13 +109,44 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
     '/sprints/:id/start',
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('sprint')] },
     async (request, reply) => {
-      const [sprint] = await db
-        .select()
-        .from(sprints)
-        .where(eq(sprints.id, request.params.id))
-        .limit(1);
+      // BAM-024: Wrap status check + active-sprint check + update in a
+      // transaction with SELECT ... FOR UPDATE to serialize concurrent starts.
+      const result = await db.transaction(async (tx) => {
+        // Lock the sprint row to prevent concurrent mutations
+        const [sprint] = await tx.execute(
+          sql`SELECT * FROM sprints WHERE id = ${request.params.id} FOR UPDATE`,
+        ) as unknown as [typeof sprints.$inferSelect | undefined];
 
-      if (!sprint) {
+        if (!sprint) {
+          return { error: 'NOT_FOUND' as const };
+        }
+
+        if (sprint.status !== 'planned') {
+          return { error: 'INVALID_STATE' as const };
+        }
+
+        // Check no other active sprint in this project (lock those too)
+        const activeRows = await tx.execute(
+          sql`SELECT id FROM sprints WHERE project_id = ${sprint.project_id} AND status = 'active' FOR UPDATE`,
+        ) as unknown as { id: string }[];
+
+        if (activeRows.length > 0) {
+          return { error: 'ACTIVE_SPRINT_EXISTS' as const };
+        }
+
+        const [updated] = await tx
+          .update(sprints)
+          .set({
+            status: 'active',
+            updated_at: new Date(),
+          })
+          .where(eq(sprints.id, request.params.id))
+          .returning();
+
+        return { data: updated };
+      });
+
+      if (result.error === 'NOT_FOUND') {
         return reply.status(404).send({
           error: {
             code: 'NOT_FOUND',
@@ -126,7 +157,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         });
       }
 
-      if (sprint.status !== 'planned') {
+      if (result.error === 'INVALID_STATE') {
         return reply.status(400).send({
           error: {
             code: 'INVALID_STATE',
@@ -137,19 +168,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Check no other active sprint in this project
-      const [activeSprint] = await db
-        .select()
-        .from(sprints)
-        .where(
-          and(
-            eq(sprints.project_id, sprint.project_id),
-            eq(sprints.status, 'active'),
-          ),
-        )
-        .limit(1);
-
-      if (activeSprint) {
+      if (result.error === 'ACTIVE_SPRINT_EXISTS') {
         return reply.status(400).send({
           error: {
             code: 'ACTIVE_SPRINT_EXISTS',
@@ -160,24 +179,15 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const [updated] = await db
-        .update(sprints)
-        .set({
-          status: 'active',
-          updated_at: new Date(),
-        })
-        .where(eq(sprints.id, request.params.id))
-        .returning();
-
       // Slack outbound notification (fire-and-forget)
-      if (updated) {
-        postToSlack(updated.project_id, {
+      if (result.data) {
+        postToSlack(result.data.project_id, {
           event_type: 'sprint.started',
-          text: `:rocket: Sprint started: *${updated.name}*${updated.goal ? ` — ${updated.goal}` : ''}`,
+          text: `:rocket: Sprint started: *${result.data.name}*${result.data.goal ? ` — ${result.data.goal}` : ''}`,
         }).catch(() => {});
       }
 
-      return reply.send({ data: updated });
+      return reply.send({ data: result.data });
     },
   );
 
@@ -187,35 +197,23 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = completeSprintSchema.parse(request.body);
 
-      const [sprint] = await db
-        .select()
-        .from(sprints)
-        .where(eq(sprints.id, request.params.id))
-        .limit(1);
+      // BAM-023: Wrap the entire status check + carry-forward + velocity calc
+      // in a single transaction with SELECT ... FOR UPDATE to serialize
+      // concurrent completions on the same sprint.
+      const result = await db.transaction(async (tx) => {
+        // Lock the sprint row to prevent concurrent mutations
+        const [sprint] = await tx.execute(
+          sql`SELECT * FROM sprints WHERE id = ${request.params.id} FOR UPDATE`,
+        ) as unknown as [typeof sprints.$inferSelect | undefined];
 
-      if (!sprint) {
-        return reply.status(404).send({
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Sprint not found',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
+        if (!sprint) {
+          return { error: 'NOT_FOUND' as const };
+        }
 
-      if (sprint.status !== 'active') {
-        return reply.status(400).send({
-          error: {
-            code: 'INVALID_STATE',
-            message: 'Sprint can only be completed from active status',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
+        if (sprint.status !== 'active') {
+          return { error: 'INVALID_STATE' as const };
+        }
 
-      await db.transaction(async (tx) => {
         // Process carry-forward tasks
         for (const item of data.carry_forward.tasks) {
           if (item.action === 'carry_forward') {
@@ -294,7 +292,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         );
 
         // Complete the sprint with velocity
-        await tx
+        const [completed] = await tx
           .update(sprints)
           .set({
             status: 'completed',
@@ -303,24 +301,43 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
             notes: data.retrospective_notes ?? null,
             updated_at: new Date(),
           })
-          .where(eq(sprints.id, request.params.id));
+          .where(eq(sprints.id, request.params.id))
+          .returning();
+
+        return { data: completed };
       });
 
-      const [completed] = await db
-        .select()
-        .from(sprints)
-        .where(eq(sprints.id, request.params.id))
-        .limit(1);
+      if (result.error === 'NOT_FOUND') {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Sprint not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (result.error === 'INVALID_STATE') {
+        return reply.status(400).send({
+          error: {
+            code: 'INVALID_STATE',
+            message: 'Sprint can only be completed from active status',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
 
       // Slack outbound notification (fire-and-forget)
-      if (completed) {
-        postToSlack(completed.project_id, {
+      if (result.data) {
+        postToSlack(result.data.project_id, {
           event_type: 'sprint.completed',
-          text: `:checkered_flag: Sprint completed: *${completed.name}* — velocity: ${completed.velocity ?? 0} pts`,
+          text: `:checkered_flag: Sprint completed: *${result.data.name}* — velocity: ${result.data.velocity ?? 0} pts`,
         }).catch(() => {});
       }
 
-      return reply.send({ data: completed });
+      return reply.send({ data: result.data });
     },
   );
 

@@ -7,6 +7,7 @@ import {
   superuserSwitchContextSchema,
 } from '@bigbluebam/shared';
 import { db } from '../db/index.js';
+import { escapeLike } from '../lib/escape-like.js';
 import { organizations } from '../db/schema/organizations.js';
 import { users } from '../db/schema/users.js';
 import { projects } from '../db/schema/projects.js';
@@ -113,8 +114,8 @@ export default async function superuserRoutes(fastify: FastifyInstance) {
         conditions.push(
           // Match either name or slug
           (or(
-            ilike(organizations.name, `%${search}%`),
-            ilike(organizations.slug, `%${search}%`),
+            ilike(organizations.name, `%${escapeLike(search)}%`),
+            ilike(organizations.slug, `%${escapeLike(search)}%`),
           ) as unknown) as ReturnType<typeof eq>,
         );
       }

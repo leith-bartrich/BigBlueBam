@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { eq, sql, desc, ilike, and, isNull, gt } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.js';
+import { escapeLike } from '../lib/escape-like.js';
 import { organizations } from '../db/schema/organizations.js';
 import { users } from '../db/schema/users.js';
 import { superuserAuditLog } from '../db/schema/superuser-audit-log.js';
@@ -80,7 +81,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
         .offset(offset);
 
       if (query.search) {
-        q = q.where(ilike(organizations.name, `%${query.search}%`)) as typeof q;
+        q = q.where(ilike(organizations.name, `%${escapeLike(query.search)}%`)) as typeof q;
       }
 
       const orgs = await q;

@@ -82,7 +82,11 @@ await fastify.register(rateLimit, {
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
 });
 
-await fastify.register(websocket);
+// BAM-026: Limit WebSocket message payload size. Subscribe/unsubscribe
+// messages are tiny JSON; 4 KiB is more than sufficient.
+await fastify.register(websocket, {
+  options: { maxPayload: 4096 },
+});
 
 // BAM-007: Security headers on all responses
 fastify.addHook('onSend', async (_req, reply) => {
@@ -194,6 +198,12 @@ await fastify.register(publicConfigRoutes);
 await fastify.register(llmProviderRoutes);
 await fastify.register(systemSettingsRoutes);
 await fastify.register(versionRoutes);
+
+// BAM-029: TODO — Add a periodic session cleanup job to the worker service.
+// Expired sessions (sessions.expires_at < NOW()) accumulate in the database
+// and should be reaped on a schedule (e.g. every hour via BullMQ repeatable
+// job). This is an operational concern — the auth plugin already rejects
+// expired sessions on each request, but the rows are never deleted.
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

@@ -10,6 +10,7 @@ import { broadcastToProject } from './realtime.service.js';
 import { logActivity } from './activity.service.js';
 import { postToSlack, taskDeepLink } from './slack-notify.service.js';
 import { env } from '../env.js';
+import { escapeLike } from '../lib/escape-like.js';
 
 // Lazy-initialized Redis publisher for cross-service events (e.g. ticket sync
 // broadcasts to the helpdesk frontend). We keep a single connection per process
@@ -429,7 +430,7 @@ export async function listTasks(projectId: string, filters: ListTasksFilters) {
     conditions.push(eq(tasks.priority, filters.priority));
   }
   if (filters.search) {
-    conditions.push(ilike(tasks.title, `%${filters.search}%`));
+    conditions.push(ilike(tasks.title, `%${escapeLike(filters.search)}%`));
   }
   if (filters.labels && filters.labels.length > 0) {
     conditions.push(sql`${tasks.labels} && ARRAY[${sql.join(filters.labels.map(l => sql`${l}::uuid`), sql`,`)}]`);

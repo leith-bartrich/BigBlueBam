@@ -13,6 +13,10 @@ import { buildAuthUser, type AuthUser } from './auth.js';
 
 const REDIS_CHANNEL = 'bigbluebam:events';
 
+// BAM-027: Maximum WebSocket connections per user. When exceeded, the oldest
+// connection is closed to make room.
+const MAX_CONNECTIONS_PER_USER = 20;
+
 interface WsConnection {
   socket: WebSocket;
   user: AuthUser;
@@ -149,8 +153,20 @@ async function websocketPlugin(fastify: FastifyInstance) {
     }
   });
 
+  // BAM-025: Validate the Origin header on WebSocket upgrade requests.
+  // Only origins in the CORS_ORIGIN allowlist are accepted.
+  const allowedOrigins = new Set(env.CORS_ORIGIN.split(',').map((o) => o.trim()));
+
   // WebSocket route
   fastify.get('/ws', { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
+    // BAM-025: Origin validation
+    const origin = request.headers.origin;
+    if (origin && !allowedOrigins.has(origin)) {
+      fastify.log.warn({ origin }, '[ws] Origin not allowed');
+      socket.close(4003, 'Origin not allowed');
+      return;
+    }
+
     // Authenticate
     authenticateRequest(request)
       .then((user) => {
@@ -172,6 +188,17 @@ async function websocketPlugin(fastify: FastifyInstance) {
           connectionsByUserId.set(user.id, userConns);
         }
         userConns.add(conn);
+
+        // BAM-027: Enforce per-user connection limit. When exceeded, close
+        // the oldest connection (first entry in the Set iteration order).
+        if (userConns.size > MAX_CONNECTIONS_PER_USER) {
+          const oldest = userConns.values().next().value;
+          if (oldest && oldest !== conn) {
+            fastify.log.info({ userId: user.id }, '[ws] Per-user connection limit exceeded, closing oldest');
+            oldest.socket.close(4008, 'Too many connections');
+            removeConnection(oldest);
+          }
+        }
 
         // Auto-subscribe to the user's personal room
         addToRoom(conn, `user:${user.id}`);
