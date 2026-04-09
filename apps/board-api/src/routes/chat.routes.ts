@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../plugins/auth.js';
-import { requireBoardAccess } from '../middleware/authorize.js';
+import { requireBoardAccess, requireBoardEditAccess } from '../middleware/authorize.js';
 import * as chatService from '../services/chat.service.js';
 
 const sendMessageSchema = z.object({
@@ -22,7 +22,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   // POST /boards/:id/chat - Send a message
   fastify.post<{ Params: { id: string } }>(
     '/boards/:id/chat',
-    { preHandler: [requireAuth, requireBoardAccess()] },
+    { preHandler: [requireAuth, requireBoardEditAccess()] },
     async (request, reply) => {
       const { body } = sendMessageSchema.parse(request.body);
       const message = await chatService.sendMessage(

@@ -1,4 +1,4 @@
-import { eq, and, or, sql, desc, lt, ilike, isNull, isNotNull } from 'drizzle-orm';
+import { eq, and, or, sql, desc, lt, ilike, isNull, isNotNull, exists } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { db } from '../db/index.js';
 import {
@@ -9,6 +9,7 @@ import {
   boardTemplates,
   users,
   projects,
+  projectMembers,
 } from '../db/schema/index.js';
 
 // ---------------------------------------------------------------------------
@@ -75,11 +76,61 @@ export interface ListBoardFilters {
 }
 
 // ---------------------------------------------------------------------------
+// Visibility filter helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a SQL condition that enforces visibility rules:
+ * - 'organization' boards: visible to all org members (no extra filter needed)
+ * - 'project' boards: visible to creator, collaborators, or project members
+ * - 'private' boards: visible only to creator or collaborators
+ */
+function visibilityFilter(userId: string) {
+  // A board is visible if:
+  //   1. visibility = 'organization', OR
+  //   2. created_by = userId, OR
+  //   3. user is an explicit collaborator, OR
+  //   4. visibility = 'project' AND user is a project member
+  return or(
+    eq(boards.visibility, 'organization'),
+    eq(boards.created_by, userId),
+    exists(
+      db
+        .select({ _: sql`1` })
+        .from(boardCollaborators)
+        .where(
+          and(
+            eq(boardCollaborators.board_id, boards.id),
+            eq(boardCollaborators.user_id, userId),
+          ),
+        ),
+    ),
+    and(
+      eq(boards.visibility, 'project'),
+      exists(
+        db
+          .select({ _: sql`1` })
+          .from(projectMembers)
+          .where(
+            and(
+              eq(projectMembers.project_id, boards.project_id),
+              eq(projectMembers.user_id, userId),
+            ),
+          ),
+      ),
+    ),
+  )!;
+}
+
+// ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
 export async function listBoards(filters: ListBoardFilters) {
   const conditions = [eq(boards.organization_id, filters.orgId)];
+
+  // Enforce visibility rules so users only see boards they have access to
+  conditions.push(visibilityFilter(filters.userId));
 
   if (filters.projectId) conditions.push(eq(boards.project_id, filters.projectId));
   if (filters.visibility) conditions.push(eq(boards.visibility, filters.visibility));
@@ -371,7 +422,7 @@ export async function toggleLock(boardId: string, userId: string, orgId: string)
   return board!;
 }
 
-export async function searchBoards(query: string, orgId: string, _userId: string) {
+export async function searchBoards(query: string, orgId: string, userId: string) {
   const escaped = escapeLike(query);
 
   const rows = await db
@@ -389,6 +440,7 @@ export async function searchBoards(query: string, orgId: string, _userId: string
         eq(boards.organization_id, orgId),
         isNull(boards.archived_at),
         ilike(boardElements.text_content, `%${escaped}%`),
+        visibilityFilter(userId),
       ),
     )
     .orderBy(desc(boards.updated_at))
@@ -430,6 +482,7 @@ export async function getRecent(userId: string, orgId: string) {
       and(
         eq(boards.organization_id, orgId),
         isNull(boards.archived_at),
+        visibilityFilter(userId),
       ),
     )
     .orderBy(desc(boards.updated_at))

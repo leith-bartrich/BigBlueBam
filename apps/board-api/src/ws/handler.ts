@@ -405,6 +405,18 @@ export default async function websocketHandler(fastify: FastifyInstance) {
             const elements = msg.elements;
             if (!Array.isArray(elements)) break;
 
+            // Reject oversized scene updates to prevent DoS
+            if (elements.length > 50000) {
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  data: { code: 'PAYLOAD_TOO_LARGE', message: 'Scene update exceeds maximum element count (50000)' },
+                  timestamp: new Date().toISOString(),
+                }),
+              );
+              break;
+            }
+
             // Mark board as dirty for periodic persistence
             const existing = dirtyBoards.get(client.boardId);
             dirtyBoards.set(client.boardId, {

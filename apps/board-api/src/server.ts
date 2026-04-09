@@ -72,7 +72,11 @@ await fastify.register(rateLimit, {
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
 });
 
-await fastify.register(websocket);
+await fastify.register(websocket, {
+  options: {
+    maxPayload: 5_242_880, // 5 MB
+  },
+});
 
 // Security headers
 fastify.addHook('onSend', async (_req, reply) => {

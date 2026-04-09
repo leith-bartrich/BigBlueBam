@@ -1,6 +1,6 @@
-import { eq, or, isNull, asc } from 'drizzle-orm';
+import { eq, and, or, isNull, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { boardTemplates, boards } from '../db/schema/index.js';
+import { boardTemplates, boards, boardCollaborators, projectMembers } from '../db/schema/index.js';
 
 export class BoardError extends Error {
   code: string;
@@ -43,13 +43,73 @@ export async function createTemplate(data: CreateTemplateInput, userId: string, 
 
   if (data.board_id) {
     const [board] = await db
-      .select({ yjs_state: boards.yjs_state, organization_id: boards.organization_id })
+      .select({
+        yjs_state: boards.yjs_state,
+        organization_id: boards.organization_id,
+        visibility: boards.visibility,
+        created_by: boards.created_by,
+        project_id: boards.project_id,
+      })
       .from(boards)
       .where(eq(boards.id, data.board_id))
       .limit(1);
     if (!board || board.organization_id !== orgId) {
       throw new BoardError('NOT_FOUND', 'Board not found', 404);
     }
+
+    // Enforce visibility: user must have access to the source board
+    if (board.visibility === 'private') {
+      if (board.created_by !== userId) {
+        const [collab] = await db
+          .select({ id: boardCollaborators.id })
+          .from(boardCollaborators)
+          .where(
+            and(
+              eq(boardCollaborators.board_id, data.board_id),
+              eq(boardCollaborators.user_id, userId),
+            ),
+          )
+          .limit(1);
+        if (!collab) {
+          throw new BoardError('NOT_FOUND', 'Board not found', 404);
+        }
+      }
+    } else if (board.visibility === 'project') {
+      if (board.created_by !== userId) {
+        let hasAccess = false;
+        if (board.project_id) {
+          const [membership] = await db
+            .select({ id: projectMembers.id })
+            .from(projectMembers)
+            .where(
+              and(
+                eq(projectMembers.project_id, board.project_id),
+                eq(projectMembers.user_id, userId),
+              ),
+            )
+            .limit(1);
+          if (membership) hasAccess = true;
+        }
+        if (!hasAccess) {
+          const [collab] = await db
+            .select({ id: boardCollaborators.id })
+            .from(boardCollaborators)
+            .where(
+              and(
+                eq(boardCollaborators.board_id, data.board_id),
+                eq(boardCollaborators.user_id, userId),
+              ),
+            )
+            .limit(1);
+          if (collab) hasAccess = true;
+        }
+        if (!hasAccess) {
+          throw new BoardError('NOT_FOUND', 'Board not found', 404);
+        }
+      }
+    }
+    // 'organization' visibility: all org members can access (already verified org match above)
+
     yjsState = board.yjs_state;
   }
 
