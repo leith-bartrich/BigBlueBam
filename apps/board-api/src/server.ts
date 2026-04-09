@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
+import websocket from '@fastify/websocket';
 import { env } from './env.js';
 import { db, connection } from './db/index.js';
 import redisPlugin from './plugins/redis.js';
@@ -71,6 +72,8 @@ await fastify.register(rateLimit, {
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
 });
 
+await fastify.register(websocket);
+
 // Security headers
 fastify.addHook('onSend', async (_req, reply) => {
   reply.header('X-Content-Type-Options', 'nosniff');
@@ -132,6 +135,8 @@ import templateRoutes from './routes/template.routes.js';
 import collaboratorRoutes from './routes/collaborator.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import audioRoutes from './routes/audio.routes.js';
+import sceneRoutes from './routes/scene.routes.js';
+import websocketHandler from './ws/handler.js';
 
 await fastify.register(boardRoutes, { prefix: '/v1' });
 await fastify.register(elementRoutes, { prefix: '/v1' });
@@ -141,6 +146,8 @@ await fastify.register(templateRoutes, { prefix: '/v1' });
 await fastify.register(collaboratorRoutes, { prefix: '/v1' });
 await fastify.register(chatRoutes, { prefix: '/v1' });
 await fastify.register(audioRoutes, { prefix: '/v1' });
+await fastify.register(sceneRoutes, { prefix: '/v1' });
+await fastify.register(websocketHandler);
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
