@@ -1,0 +1,118 @@
+import { useState, type ReactNode } from 'react';
+import { ChevronRight, Bell, LogOut } from 'lucide-react';
+import { Launchpad, LaunchpadTrigger } from '@/components/layout/launchpad';
+import { BookSidebar } from '@/components/layout/book-sidebar';
+import { useAuthStore } from '@/stores/auth.store';
+
+type ActiveRoute = { page: string; id?: string };
+
+interface BookLayoutProps {
+  children: ReactNode;
+  onNavigate: (path: string) => void;
+  activeRoute: ActiveRoute;
+}
+
+type Crumb = { label: string; href?: string };
+
+function breadcrumbsFor(route: ActiveRoute): Crumb[] {
+  switch (route.page) {
+    case 'week':
+      return [{ label: 'Week View' }];
+    case 'day':
+      return [{ label: 'Day View' }];
+    case 'month':
+      return [{ label: 'Month View' }];
+    case 'timeline':
+      return [{ label: 'Timeline' }];
+    case 'event-detail':
+      return [{ label: 'Calendar', href: '/' }, { label: 'Event' }];
+    case 'booking-pages':
+      return [{ label: 'Booking Pages' }];
+    case 'booking-page-edit':
+      return [{ label: 'Booking Pages', href: '/booking-pages' }, { label: 'Edit' }];
+    case 'working-hours':
+      return [{ label: 'Settings' }, { label: 'Working Hours' }];
+    case 'connections':
+      return [{ label: 'Settings' }, { label: 'Connections' }];
+    default:
+      return [];
+  }
+}
+
+export function BookLayout({ children, onNavigate, activeRoute }: BookLayoutProps) {
+  const user = useAuthStore((s) => s.user);
+  const crumbs = breadcrumbsFor(activeRoute);
+  const [launchpadOpen, setLaunchpadOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/b3/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // ignore
+    }
+    window.location.href = '/b3/';
+  };
+
+  return (
+    <div className="flex flex-col h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-[260px] flex-shrink-0 bg-sidebar flex flex-col">
+          <BookSidebar onNavigate={onNavigate} activePage={activeRoute.page} />
+        </aside>
+
+        {/* Main column */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+          {/* Header */}
+          <header className="flex items-center justify-between h-14 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0">
+            <div className="flex items-center gap-4">
+              <nav className="flex items-center border-r border-zinc-200 dark:border-zinc-700 pr-4 mr-2">
+                <LaunchpadTrigger onClick={() => setLaunchpadOpen(true)} />
+              </nav>
+              <div className="flex items-center gap-1 text-sm">
+                {crumbs.map((crumb, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />}
+                    {crumb.href ? (
+                      <button
+                        onClick={() => crumb.href && onNavigate(crumb.href!)}
+                        className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      >
+                        {crumb.label}
+                      </button>
+                    ) : (
+                      <span className="text-zinc-900 dark:text-zinc-100 font-medium">{crumb.label}</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <button
+                className="relative rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                title="Notifications"
+              >
+                <Bell className="h-4.5 w-4.5" />
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          </header>
+
+          {/* Main content */}
+          <main className="flex-1 overflow-auto bg-white dark:bg-zinc-900">
+            {children}
+          </main>
+        </div>
+      </div>
+      <Launchpad isOpen={launchpadOpen} onClose={() => setLaunchpadOpen(false)} currentApp="book" />
+    </div>
+  );
+}

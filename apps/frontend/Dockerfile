@@ -17,6 +17,8 @@ COPY apps/bearing/package.json ./apps/bearing/
 COPY apps/board/package.json ./apps/board/
 COPY apps/bond/package.json ./apps/bond/
 COPY apps/blast/package.json ./apps/blast/
+COPY apps/book/package.json ./apps/book/
+COPY apps/bench/package.json ./apps/bench/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
@@ -88,6 +90,18 @@ COPY apps/blast/public ./apps/blast/public
 COPY apps/blast/index.html ./apps/blast/
 COPY apps/blast/tsconfig.json apps/blast/tsconfig.node.json apps/blast/vite.config.ts ./apps/blast/
 
+# Book frontend
+COPY apps/book/src ./apps/book/src
+COPY apps/book/public ./apps/book/public
+COPY apps/book/index.html ./apps/book/
+COPY apps/book/tsconfig.json apps/book/tsconfig.node.json apps/book/vite.config.ts ./apps/book/
+
+# Bench frontend
+COPY apps/bench/src ./apps/bench/src
+COPY apps/bench/public ./apps/bench/public
+COPY apps/bench/index.html ./apps/bench/
+COPY apps/bench/tsconfig.json apps/bench/tsconfig.node.json apps/bench/vite.config.ts ./apps/bench/
+
 RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/frontend build \
  && pnpm --filter @bigbluebam/helpdesk build \
@@ -98,7 +112,9 @@ RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/bearing build \
  && pnpm --filter @bigbluebam/board build \
  && pnpm --filter @bigbluebam/bond build \
- && pnpm --filter @bigbluebam/blast build
+ && pnpm --filter @bigbluebam/blast build \
+ && pnpm --filter @bigbluebam/book build \
+ && pnpm --filter @bigbluebam/bench build
 
 # ── Stage: production ────────────────────────────────────────────
 FROM nginx:alpine AS production
@@ -113,6 +129,8 @@ COPY --from=build /app/apps/bearing/dist /usr/share/nginx/html/bearing
 COPY --from=build /app/apps/board/dist /usr/share/nginx/html/board
 COPY --from=build /app/apps/bond/dist /usr/share/nginx/html/bond
 COPY --from=build /app/apps/blast/dist /usr/share/nginx/html/blast
+COPY --from=build /app/apps/book/dist /usr/share/nginx/html/book
+COPY --from=build /app/apps/bench/dist /usr/share/nginx/html/bench
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 ARG GIT_COMMIT=unknown
