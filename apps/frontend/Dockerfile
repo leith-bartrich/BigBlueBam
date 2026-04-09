@@ -19,6 +19,8 @@ COPY apps/bond/package.json ./apps/bond/
 COPY apps/blast/package.json ./apps/blast/
 COPY apps/book/package.json ./apps/book/
 COPY apps/bench/package.json ./apps/bench/
+COPY apps/bill/package.json ./apps/bill/
+COPY apps/blank/package.json ./apps/blank/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
@@ -102,6 +104,18 @@ COPY apps/bench/public ./apps/bench/public
 COPY apps/bench/index.html ./apps/bench/
 COPY apps/bench/tsconfig.json apps/bench/tsconfig.node.json apps/bench/vite.config.ts ./apps/bench/
 
+# Bill frontend
+COPY apps/bill/src ./apps/bill/src
+COPY apps/bill/public ./apps/bill/public
+COPY apps/bill/index.html ./apps/bill/
+COPY apps/bill/tsconfig.json apps/bill/tsconfig.node.json apps/bill/vite.config.ts ./apps/bill/
+
+# Blank frontend
+COPY apps/blank/src ./apps/blank/src
+COPY apps/blank/public ./apps/blank/public
+COPY apps/blank/index.html ./apps/blank/
+COPY apps/blank/tsconfig.json apps/blank/tsconfig.node.json apps/blank/vite.config.ts ./apps/blank/
+
 RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/frontend build \
  && pnpm --filter @bigbluebam/helpdesk build \
@@ -114,7 +128,9 @@ RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/bond build \
  && pnpm --filter @bigbluebam/blast build \
  && pnpm --filter @bigbluebam/book build \
- && pnpm --filter @bigbluebam/bench build
+ && pnpm --filter @bigbluebam/bench build \
+ && pnpm --filter @bigbluebam/bill build \
+ && pnpm --filter @bigbluebam/blank build
 
 # ── Stage: production ────────────────────────────────────────────
 FROM nginx:alpine AS production
@@ -131,6 +147,8 @@ COPY --from=build /app/apps/bond/dist /usr/share/nginx/html/bond
 COPY --from=build /app/apps/blast/dist /usr/share/nginx/html/blast
 COPY --from=build /app/apps/book/dist /usr/share/nginx/html/book
 COPY --from=build /app/apps/bench/dist /usr/share/nginx/html/bench
+COPY --from=build /app/apps/bill/dist /usr/share/nginx/html/bill
+COPY --from=build /app/apps/blank/dist /usr/share/nginx/html/blank
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 ARG GIT_COMMIT=unknown

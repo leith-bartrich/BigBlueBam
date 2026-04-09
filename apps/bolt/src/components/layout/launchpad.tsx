@@ -15,6 +15,8 @@ import {
   Bot,
   X,
   LayoutGrid,
+  ClipboardList,
+  DollarSign,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,6 +39,8 @@ const APPS: AppDef[] = [
   { id: 'board', name: 'Board', description: 'Whiteboards', icon: PenTool, color: '#6366f1', path: '/board/' },
   { id: 'bond', name: 'Bond', description: 'CRM', icon: Handshake, color: '#e11d48', path: '/bond/' },
   { id: 'blast', name: 'Blast', description: 'Email Campaigns', icon: Mail, color: '#dc2626', path: '/blast/' },
+  { id: 'bill', name: 'Bill', description: 'Invoicing & Billing', icon: DollarSign, color: '#16a34a', path: '/bill/' },
+  { id: 'blank', name: 'Blank', description: 'Forms & Surveys', icon: ClipboardList, color: '#7c3aed', path: '/blank/' },
   { id: 'book', name: 'Book', description: 'Scheduling & Calendar', icon: Calendar, color: '#2563eb', path: '/book/' },
     { id: 'bench', name: 'Bench', description: 'Analytics', icon: BarChart3, color: '#2563eb', path: '/bench/' },
   { id: 'helpdesk', name: 'Helpdesk', description: 'Customer Support', icon: Headset, color: '#be123c', path: '/helpdesk/' },

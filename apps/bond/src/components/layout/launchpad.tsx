@@ -15,6 +15,8 @@ import {
   Mail,
   BarChart3,
   Calendar,
+  ClipboardList,
+  DollarSign,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -33,6 +35,8 @@ const APPS: AppDef[] = [
   { id: 'beacon', name: 'Beacon', description: 'Knowledge Base', icon: BookOpen, color: '#059669', path: '/beacon/' },
   { id: 'bond', name: 'Bond', description: 'CRM', icon: Handshake, color: '#0891b2', path: '/bond/' },
   { id: 'blast', name: 'Blast', description: 'Email Campaigns', icon: Mail, color: '#dc2626', path: '/blast/' },
+  { id: 'bill', name: 'Bill', description: 'Invoicing & Billing', icon: DollarSign, color: '#16a34a', path: '/bill/' },
+  { id: 'blank', name: 'Blank', description: 'Forms & Surveys', icon: ClipboardList, color: '#7c3aed', path: '/blank/' },
   { id: 'book', name: 'Book', description: 'Scheduling & Calendar', icon: Calendar, color: '#2563eb', path: '/book/' },
     { id: 'bench', name: 'Bench', description: 'Analytics', icon: BarChart3, color: '#2563eb', path: '/bench/' },
   { id: 'brief', name: 'Brief', description: 'Documents', icon: FileText, color: '#d97706', path: '/brief/' },
