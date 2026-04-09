@@ -16,6 +16,8 @@ import { processBeaconExpirySweepJob, type BeaconExpirySweepJobData } from './jo
 import { processBearingSnapshotJob, type BearingSnapshotJobData } from './jobs/bearing-snapshot.job.js';
 import { processBearingRecomputeJob, type BearingRecomputeJobData } from './jobs/bearing-recompute.job.js';
 import { processBearingDigestJob, type BearingDigestJobData } from './jobs/bearing-digest.job.js';
+import { processBoltExecuteJob, type BoltExecuteJobData } from './jobs/bolt-execute.job.js';
+import { processBlastSendJob, type BlastSendJobData } from './jobs/blast-send.job.js';
 
 const env = loadEnv();
 
@@ -263,6 +265,40 @@ bearingDigestWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'bearing-digest', err }, 'Job failed');
 });
 
+// Bolt execution worker (runs automation action sequences via MCP tool calls)
+const boltExecuteWorker = new Worker<BoltExecuteJobData>(
+  'bolt:execute',
+  async (job: Job<BoltExecuteJobData>) => {
+    await processBoltExecuteJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+
+boltExecuteWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bolt:execute' }, 'Job completed');
+});
+
+boltExecuteWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bolt:execute', err }, 'Job failed');
+});
+
+// Blast send worker (processes campaign email delivery)
+const blastSendWorker = new Worker<BlastSendJobData>(
+  'blast:send',
+  async (job: Job<BlastSendJobData>) => {
+    await processBlastSendJob(job, env, logger);
+  },
+  { ...connection, concurrency: 1 }, // serialize campaign sends to respect SMTP rate limits
+);
+
+blastSendWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'blast:send' }, 'Job completed');
+});
+
+blastSendWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'blast:send', err }, 'Job failed');
+});
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -284,10 +320,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, boltExecuteWorker, blastSendWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt:execute', 'blast:send', 'analytics'] },
   'All workers started',
 );
 

@@ -126,12 +126,14 @@ import executionRoutes from './routes/execution.routes.js';
 import eventRoutes from './routes/event.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import aiAssistRoutes from './routes/ai-assist.routes.js';
+import eventIngestionRoutes from './routes/event-ingestion.routes.js';
 
 await fastify.register(automationRoutes, { prefix: '/v1' });
 await fastify.register(executionRoutes, { prefix: '/v1' });
 await fastify.register(eventRoutes, { prefix: '/v1' });
 await fastify.register(templateRoutes, { prefix: '/v1' });
 await fastify.register(aiAssistRoutes, { prefix: '/v1' });
+await fastify.register(eventIngestionRoutes, { prefix: '/v1' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
