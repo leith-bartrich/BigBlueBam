@@ -96,7 +96,7 @@ export function TimelinePage({ onNavigate }: TimelinePageProps) {
               return (
                 <div key={event.id} className="relative h-8 px-1">
                   <button
-                    onClick={() => onNavigate(`/events/${event.id}`)}
+                    onClick={() => onNavigate(`/events/${event.id}/edit`)}
                     className="absolute h-7 rounded-md px-2 text-xs text-white font-medium flex items-center truncate hover:opacity-90 shadow-sm"
                     style={{
                       left: `${left}%`,

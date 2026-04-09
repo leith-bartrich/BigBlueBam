@@ -1,6 +1,6 @@
 import { useEvent, useDeleteEvent } from '@/hooks/use-events';
 import { formatDateTime, eventStatusColor, visibilityLabel } from '@/lib/utils';
-import { Calendar, Clock, MapPin, Link2, Users, ArrowLeft, Trash2 } from 'lucide-react';
+import { Calendar, Clock, MapPin, Link2, Users, ArrowLeft, Trash2, Pencil } from 'lucide-react';
 
 interface EventDetailPageProps {
   eventId: string;
@@ -64,13 +64,22 @@ export function EventDetailPage({ eventId, onNavigate }: EventDetailPageProps) {
             </span>
           </div>
         </div>
-        <button
-          onClick={handleDelete}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
-        >
-          <Trash2 className="h-4 w-4" />
-          Cancel
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onNavigate(`/events/${eventId}/edit`)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors"
+          >
+            <Pencil className="h-4 w-4" />
+            Edit
+          </button>
+          <button
+            onClick={handleDelete}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            Cancel
+          </button>
+        </div>
       </div>
 
       {/* Details card */}

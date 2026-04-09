@@ -117,7 +117,7 @@ export function CalendarWeekPage({ onNavigate }: CalendarWeekPageProps) {
                     return (
                       <button
                         key={event.id}
-                        onClick={() => onNavigate(`/events/${event.id}`)}
+                        onClick={() => onNavigate(`/events/${event.id}/edit`)}
                         className="absolute left-0.5 right-0.5 rounded px-1 py-0.5 text-[10px] leading-tight text-white overflow-hidden cursor-pointer hover:opacity-90"
                         style={{
                           top: `${top}px`,

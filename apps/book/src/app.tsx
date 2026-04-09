@@ -6,6 +6,7 @@ import { CalendarDayPage } from '@/pages/calendar-day';
 import { CalendarMonthPage } from '@/pages/calendar-month';
 import { TimelinePage } from '@/pages/timeline';
 import { EventDetailPage } from '@/pages/event-detail';
+import { EventFormPage } from '@/pages/event-form';
 import { BookingPageListPage } from '@/pages/booking-page-list';
 import { BookingPageEditorPage } from '@/pages/booking-page-editor';
 import { WorkingHoursPage } from '@/pages/working-hours';
@@ -18,6 +19,8 @@ type Route =
   | { page: 'month'; month?: string }
   | { page: 'timeline' }
   | { page: 'event-detail'; id: string }
+  | { page: 'event-new' }
+  | { page: 'event-edit'; id: string }
   | { page: 'booking-pages' }
   | { page: 'booking-page-edit'; id: string }
   | { page: 'working-hours' }
@@ -47,6 +50,11 @@ function parseRoute(path: string): Route {
 
   const monthMatch = p.match(/^\/month(?:\/(\d{4}-\d{2}))?$/);
   if (monthMatch) return { page: 'month', month: monthMatch[1] };
+
+  if (p === '/events/new') return { page: 'event-new' };
+
+  const eventEditMatch = p.match(/^\/events\/([^/]+)\/edit$/);
+  if (eventEditMatch) return { page: 'event-edit', id: eventEditMatch[1]! };
 
   const eventMatch = p.match(/^\/events\/([^/]+)$/);
   if (eventMatch) return { page: 'event-detail', id: eventMatch[1]! };
@@ -129,6 +137,10 @@ export function App() {
         return <TimelinePage onNavigate={navigate} />;
       case 'event-detail':
         return <EventDetailPage eventId={route.id} onNavigate={navigate} />;
+      case 'event-new':
+        return <EventFormPage onNavigate={navigate} />;
+      case 'event-edit':
+        return <EventFormPage eventId={route.id} onNavigate={navigate} />;
       case 'booking-pages':
         return <BookingPageListPage onNavigate={navigate} />;
       case 'booking-page-edit':

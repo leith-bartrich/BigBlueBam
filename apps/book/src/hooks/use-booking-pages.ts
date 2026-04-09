@@ -33,6 +33,14 @@ interface BookingPageResponse {
   data: BookingPage;
 }
 
+export function useBookingPage(id: string | undefined) {
+  return useQuery({
+    queryKey: ['book', 'booking-pages', 'detail', id],
+    queryFn: () => api.get<BookingPageResponse>(`/v1/booking-pages/${id}`),
+    enabled: !!id,
+  });
+}
+
 export function useBookingPages() {
   return useQuery({
     queryKey: ['book', 'booking-pages'],
