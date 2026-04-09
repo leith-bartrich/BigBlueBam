@@ -31,6 +31,14 @@ export function BoardSection() {
         </div>
       </AnimatedReveal>
 
+      {/* Hero screenshot */}
+      <AnimatedReveal delay={0.1} withScale>
+        <FloatingFrame src="/screenshots/board-list.png" alt="Board whiteboard grid" />
+        <p className="mt-3 text-center text-sm text-zinc-500">
+          8 active whiteboards — retrospectives, brainstorms, architecture diagrams, and design sprints
+        </p>
+      </AnimatedReveal>
+
       {/* Feature highlights */}
       <AnimatedReveal delay={0.2}>
         <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">

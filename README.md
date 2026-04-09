@@ -726,21 +726,41 @@ AI agents interact with Bearing through **12 dedicated MCP tools**:
 
 ## Board
 
-Board is an infinite-canvas visual collaboration whiteboard built into the BigBlueBam suite. It provides real-time multi-user editing with CRDT-based conflict resolution, built-in audio conferencing via LiveKit, a side chat panel, a sticky-to-task pipeline that converts whiteboard stickies into Bam tasks, and AI canvas analysis through 14 dedicated MCP tools.
+Board is an infinite-canvas visual collaboration whiteboard built into the BigBlueBam suite. Think of it as Miro meets your project board — teams brainstorm on sticky notes, sketch architecture diagrams, run retrospectives, and then promote the outcomes directly into Bam tasks without leaving the canvas. Built-in voice chat means your distributed team can talk while they draw, and a persistent side chat captures the conversation for anyone who joins later.
+
+<p align="center">
+  <img src="images/board-list.png" alt="Board whiteboard grid" width="100%" />
+</p>
+<p align="center"><em>Board grid — 8 active whiteboards with icons, project badges, and collaboration indicators</em></p>
+
+### How Teams Use Board
+
+**Sprint Retrospectives:** The team opens a "Start / Stop / Continue" template. Three color-coded frames appear. Everyone drops sticky notes simultaneously — green for what went well, red for what didn't. At the end, the facilitator multi-selects the action items and clicks "Create Tasks" to push them straight into the next sprint.
+
+**Architecture Workshops:** A tech lead opens the Architecture Diagram template with pre-positioned frames for Frontend, Backend, Database, and External Services. The team sketches out a new system design with shapes and connectors. The final board embeds live Bam task cards for each workstream and gets linked to the Brief design spec.
+
+**Brainstorming Sessions:** Product and engineering gather around a 65" touchscreen (or their laptops from home). The canvas starts blank. Someone types the topic in a frame. Ideas flow as sticky notes — the AI reads the board through MCP, identifies clusters, and proposes a task breakdown. Everyone's talking through the built-in audio while watching cursors move in real-time.
+
+**Remote Design Sprints:** Over five days, the team cycles through Understand, Sketch, Decide, Prototype, Test — each with its own frame on the board. Sticky notes accumulate, diagrams form, and the chat panel captures design rationale. At the end of the sprint, the board becomes the living record of how decisions were made.
 
 ### Key Features
 
 | Feature | Description |
 |---------|-------------|
-| **Infinite Canvas** | tldraw-based zoomable canvas with shapes, sticky notes, freehand drawing, images, and text |
-| **Real-Time Collaboration** | Multi-user CRDT sync with live cursors and presence indicators |
-| **Built-in Audio** | LiveKit-powered voice conferencing within each whiteboard room |
-| **Side Chat** | Persistent chat panel per room for text conversation alongside the canvas |
-| **Sticky-to-Task Pipeline** | Convert sticky notes into Bam tasks with one click -- title, description, and color carry over |
-| **Cross-Product Embeds** | Embed Bam tasks, Beacon articles, Brief documents, and Bearing goals directly on the canvas |
-| **Templates** | 10 built-in whiteboard templates (retrospective, brainstorm, user story map, kanban, etc.) |
-| **Multitouch Support** | Pinch-to-zoom and two-finger pan on touch devices |
-| **AI Canvas Reading** | 14 MCP tools let AI agents read canvas content, add shapes, analyze layouts, and suggest improvements |
+| **Infinite Canvas** | tldraw-based zoomable canvas with shapes, sticky notes, freehand drawing, images, frames, and text |
+| **Real-Time Collaboration** | Multi-user CRDT sync — every collaborator sees live cursors, selections, and edits in real-time |
+| **Built-in Audio** | LiveKit-powered voice conferencing within each board — auto-join, mute/unmute, speaker indicators |
+| **Side Chat** | Persistent chat panel for text conversation alongside the canvas — history loads for late joiners |
+| **Sticky-to-Task Pipeline** | Multi-select sticky notes → Create Tasks → pushed to Bam with titles, descriptions, and backlinks |
+| **Cross-Product Embeds** | Embed live Bam task cards, Beacon articles, Brief documents, and Bearing goals on the canvas |
+| **10 Templates** | Start/Stop/Continue, 4Ls Retro, Sailboat, Brainstorm, Affinity Map, User Story Map, Architecture, Flowchart, SWOT, Blank |
+| **Multitouch** | Pinch-to-zoom and two-finger pan on touch devices, including large touchscreens |
+| **AI Canvas Reading** | 14 MCP tools let agents read canvas content, add stickies, promote to tasks, and summarize themes |
+
+<p align="center">
+  <img src="images/board-templates.png" alt="Board template gallery" width="100%" />
+</p>
+<p align="center"><em>10 built-in templates — retrospective formats, brainstorming, architecture diagrams, and more</em></p>
 
 ### Board MCP Tools
 
@@ -748,11 +768,11 @@ AI agents interact with Board through **14 dedicated MCP tools**:
 
 | Category | Tools | What they do |
 |----------|-------|-------------|
-| **Rooms** | `board_list`, `board_get`, `board_create`, `board_update`, `board_delete` | Full room lifecycle management |
-| **Shapes** | `board_shapes`, `board_shape_add`, `board_shape_update`, `board_shape_remove` | Read and manipulate canvas shapes |
-| **Canvas** | `board_canvas_read`, `board_canvas_snapshot` | AI-readable canvas state and visual snapshots |
-| **Assets** | `board_asset_upload` | Upload images and files to the canvas |
-| **Pipeline** | `board_sticky_to_task`, `board_embed` | Convert stickies to Bam tasks, embed cross-product content |
+| **CRUD** | `board_list`, `board_get`, `board_create`, `board_update`, `board_archive` | Full board lifecycle management |
+| **Reading** | `board_read_elements`, `board_read_stickies`, `board_read_frames` | Structured canvas content for AI analysis |
+| **Writing** | `board_add_sticky`, `board_add_text` | Programmatically add content to the canvas |
+| **Actions** | `board_promote_to_tasks`, `board_export` | Convert stickies to Bam tasks, export as SVG/PNG |
+| **Discovery** | `board_summarize`, `board_search` | Summarize themes, search across all boards |
 
 ---
 
