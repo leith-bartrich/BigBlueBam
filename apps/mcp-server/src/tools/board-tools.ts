@@ -172,6 +172,15 @@ export function registerBoardTools(server: McpServer, api: ApiClient, boardApiUr
 
   // ===== ELEMENT CREATION (2) =====
 
+  const stickyColorMap: Record<string, string> = {
+    yellow: '#FFEB3B',
+    green: '#4CAF50',
+    blue: '#2196F3',
+    red: '#F44336',
+    purple: '#9C27B0',
+    orange: '#FF9800',
+  };
+
   server.tool(
     'board_add_sticky',
     'Add a sticky note to a board.',
@@ -182,8 +191,9 @@ export function registerBoardTools(server: McpServer, api: ApiClient, boardApiUr
       y: z.number().optional().describe('Y position on the canvas'),
       color: z.enum(['yellow', 'green', 'blue', 'red', 'purple', 'orange']).optional().describe('Sticky note color (default yellow)'),
     },
-    async ({ board_id, ...body }) => {
-      const result = await client.request('POST', `/boards/${board_id}/elements/sticky`, body);
+    async ({ board_id, color, ...body }) => {
+      const payload = { ...body, color: color ? stickyColorMap[color] ?? '#FFEB3B' : undefined };
+      const result = await client.request('POST', `/boards/${board_id}/elements/sticky`, payload);
       return result.ok ? ok(result.data) : err('adding sticky', result.data);
     },
   );
@@ -228,7 +238,7 @@ export function registerBoardTools(server: McpServer, api: ApiClient, boardApiUr
       format: z.enum(['svg', 'png']).describe('Export format'),
     },
     async ({ id, format }) => {
-      const result = await client.request('GET', `/boards/${id}/export/${format}`);
+      const result = await client.request('POST', `/boards/${id}/export`, { format });
       return result.ok ? ok(result.data) : err('exporting board', result.data);
     },
   );

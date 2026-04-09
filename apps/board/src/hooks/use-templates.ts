@@ -5,15 +5,17 @@ import { api } from '@/lib/api';
 // Types
 // ---------------------------------------------------------------------------
 
-export type TemplateCategory = 'retro' | 'brainstorm' | 'architecture' | 'planning' | 'general';
+export type TemplateCategory = 'retro' | 'brainstorm' | 'architecture' | 'planning' | 'strategy' | 'general';
 
 export interface BoardTemplate {
   id: string;
   name: string;
   description: string;
   category: TemplateCategory;
+  icon: string | null;
   thumbnail_url: string | null;
-  element_count: number;
+  element_count?: number;
+  sort_order: number;
   created_at: string;
 }
 

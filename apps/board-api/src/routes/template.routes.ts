@@ -14,6 +14,11 @@ const createTemplateSchema = z.object({
   board_id: z.string().uuid().optional(),
 });
 
+const instantiateSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  project_id: z.string().uuid().optional(),
+});
+
 const updateTemplateSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(2000).nullable().optional(),
@@ -88,6 +93,27 @@ export default async function templateRoutes(fastify: FastifyInstance) {
       if (!validateUuid(id, request, reply)) return;
       await templateService.deleteTemplate(id, request.user!.org_id);
       return reply.status(204).send();
+    },
+  );
+
+  // POST /templates/:id/instantiate - Create a new board from a template
+  fastify.post<{ Params: { id: string } }>(
+    '/templates/:id/instantiate',
+    {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+      preHandler: [requireAuth, requireScope('read_write')],
+    },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (!validateUuid(id, request, reply)) return;
+      const body = instantiateSchema.parse(request.body ?? {});
+      const board = await templateService.instantiateTemplate(
+        id,
+        body,
+        request.user!.id,
+        request.user!.org_id,
+      );
+      return reply.status(201).send({ data: { id: board.id, name: board.name } });
     },
   );
 }

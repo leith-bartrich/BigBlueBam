@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { LayoutGrid, FileText, Presentation, Kanban, Network, ArrowLeft } from 'lucide-react';
+import { LayoutGrid, Loader2, ArrowLeft } from 'lucide-react';
 import { useCreateBoard } from '@/hooks/use-boards';
+import { useTemplates } from '@/hooks/use-templates';
 import { useProjectStore } from '@/stores/project.store';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
@@ -10,49 +11,13 @@ interface BoardNewPageProps {
   onNavigate: (path: string) => void;
 }
 
-const TEMPLATES = [
-  {
-    id: 'blank',
-    name: 'Blank Board',
-    description: 'Start with an empty canvas',
-    icon: LayoutGrid,
-    color: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
-  },
-  {
-    id: 'brainstorm',
-    name: 'Brainstorm',
-    description: 'Sticky notes and frames for ideation',
-    icon: FileText,
-    color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  },
-  {
-    id: 'presentation',
-    name: 'Presentation',
-    description: 'Slide-like frames for walkthroughs',
-    icon: Presentation,
-    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  },
-  {
-    id: 'kanban',
-    name: 'Kanban Board',
-    description: 'Visual task tracking with columns',
-    icon: Kanban,
-    color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  },
-  {
-    id: 'mindmap',
-    name: 'Mind Map',
-    description: 'Radial diagram for concept mapping',
-    icon: Network,
-    color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  },
-];
-
 export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
-  const [selectedTemplate, setSelectedTemplate] = useState('blank');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const createBoard = useCreateBoard();
+  const { data: templateData, isLoading: templatesLoading } = useTemplates();
+  const templates = templateData?.data ?? [];
 
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +28,7 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
       {
         name: boardName,
         project_id: activeProjectId ?? undefined,
-        // template_id is for future DB-backed templates; the local presets just set a name hint
+        template_id: selectedTemplateId ?? undefined,
       },
       {
         onSuccess: (res) => {
@@ -105,32 +70,58 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
       {/* Template selector */}
       <div className="mb-8">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Choose a template</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {TEMPLATES.map((template) => {
-            const Icon = template.icon;
-            const isSelected = selectedTemplate === template.id;
-            return (
-              <button
-                key={template.id}
-                onClick={() => setSelectedTemplate(template.id)}
-                className={cn(
-                  'flex items-start gap-3 rounded-xl border p-4 text-left transition-all',
-                  isSelected
-                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500/30'
-                    : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-600',
-                )}
-              >
-                <div className={cn('flex items-center justify-center h-10 w-10 rounded-lg shrink-0', template.color)}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{template.name}</p>
-                  <p className="text-xs text-zinc-500 mt-0.5">{template.description}</p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+
+        {templatesLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-primary-500" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* Blank board option (always first) */}
+            <button
+              onClick={() => setSelectedTemplateId(null)}
+              className={cn(
+                'flex items-start gap-3 rounded-xl border p-4 text-left transition-all',
+                selectedTemplateId === null
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500/30'
+                  : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-600',
+              )}
+            >
+              <div className="flex items-center justify-center h-10 w-10 rounded-lg shrink-0 bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                <LayoutGrid className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Blank Board</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Start with an empty canvas</p>
+              </div>
+            </button>
+
+            {/* DB-backed templates */}
+            {templates.map((template) => {
+              const isSelected = selectedTemplateId === template.id;
+              return (
+                <button
+                  key={template.id}
+                  onClick={() => setSelectedTemplateId(template.id)}
+                  className={cn(
+                    'flex items-start gap-3 rounded-xl border p-4 text-left transition-all',
+                    isSelected
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500/30'
+                      : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-600',
+                  )}
+                >
+                  <div className="flex items-center justify-center h-10 w-10 rounded-lg shrink-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-lg">
+                    {template.icon || <LayoutGrid className="h-5 w-5" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{template.name}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{template.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Error */}
