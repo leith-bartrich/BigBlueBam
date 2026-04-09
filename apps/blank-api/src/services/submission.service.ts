@@ -1,7 +1,7 @@
 import { eq, and, desc, sql, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { blankSubmissions, blankForms, blankFormFields } from '../db/schema/index.js';
-import { notFound, badRequest } from '../lib/utils.js';
+import { notFound, badRequest, conflict } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,6 +91,36 @@ export async function createSubmission(formId: string, orgId: string, input: Sub
     .limit(1);
 
   if (!form) throw notFound('Form not found');
+
+  // Enforce one_per_email: reject if a submission with this email already exists
+  if (form.one_per_email && input.submitted_by_email) {
+    const [existing] = await db
+      .select({ id: blankSubmissions.id })
+      .from(blankSubmissions)
+      .where(
+        and(
+          eq(blankSubmissions.form_id, formId),
+          eq(blankSubmissions.submitted_by_email, input.submitted_by_email),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      throw conflict('You have already submitted a response to this form');
+    }
+  }
+
+  // Enforce max_responses: reject if the form has reached its limit
+  if (form.max_responses !== null && form.max_responses > 0) {
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(blankSubmissions)
+      .where(eq(blankSubmissions.form_id, formId));
+
+    if ((countResult?.count ?? 0) >= form.max_responses) {
+      throw badRequest('This form has reached its maximum number of responses');
+    }
+  }
 
   // Load field definitions and validate response_data against them
   const fields = await db

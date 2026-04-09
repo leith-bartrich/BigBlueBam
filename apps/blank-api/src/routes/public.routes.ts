@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as formService from '../services/form.service.js';
 import * as submissionService from '../services/submission.service.js';
+import { renderFormHtml } from '../lib/form-renderer.js';
 
 // ---------------------------------------------------------------------------
 // Public form endpoints (no auth required)
@@ -14,6 +15,23 @@ const submitSchema = z.object({
 });
 
 export default async function publicRoutes(fastify: FastifyInstance) {
+  // GET /forms/:slug — Render public form as HTML page
+  fastify.get<{ Params: { slug: string } }>(
+    '/forms/:slug',
+    async (request, reply) => {
+      const form = await formService.getFormBySlug(request.params.slug);
+
+      if (!form.accept_responses) {
+        return reply
+          .type('text/html')
+          .send(renderClosedFormHtml(form.name, form.theme_color ?? '#3b82f6'));
+      }
+
+      const html = renderFormHtml(form);
+      return reply.type('text/html').send(html);
+    },
+  );
+
   // GET /forms/:slug/definition — Get form field definitions
   fastify.get<{ Params: { slug: string } }>(
     '/forms/:slug/definition',
@@ -120,4 +138,42 @@ export default async function publicRoutes(fastify: FastifyInstance) {
       });
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Minimal closed-form page
+// ---------------------------------------------------------------------------
+
+function renderClosedFormHtml(formName: string, themeColor: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(formName)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f9fafb; color: #374151; }
+  .card { background: #fff; border-radius: 12px; padding: 48px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.1); max-width: 480px; }
+  h1 { font-size: 1.25rem; margin: 0 0 12px; }
+  p { color: #6b7280; margin: 0; }
+  .bar { width: 48px; height: 4px; border-radius: 2px; background: ${escapeHtml(themeColor)}; margin: 0 auto 24px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="bar"></div>
+  <h1>${escapeHtml(formName)}</h1>
+  <p>This form is no longer accepting responses.</p>
+</div>
+</body>
+</html>`;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
