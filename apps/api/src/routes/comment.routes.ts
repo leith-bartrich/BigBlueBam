@@ -18,7 +18,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
     '/tasks/:id/comments',
     { preHandler: [requireAuth, requireProjectAccessForEntity('task')] },
     async (request, reply) => {
-      const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
+      const limit = Math.min(request.query.limit ? parseInt(request.query.limit, 10) : 50, 200);
       const conditions = [eq(comments.task_id, request.params.id)];
 
       if (request.query.cursor) {

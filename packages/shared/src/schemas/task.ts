@@ -29,7 +29,7 @@ export const moveTaskSchema = z.object({
 });
 
 export const bulkUpdateSchema = z.object({
-  task_ids: z.array(uuidSchema),
+  task_ids: z.array(uuidSchema).max(100),
   operation: z.enum(['update', 'move', 'delete']),
   fields: z.record(z.unknown()).optional(),
 });

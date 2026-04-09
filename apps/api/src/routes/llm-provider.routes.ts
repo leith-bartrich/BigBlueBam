@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole } from '../plugins/auth.js';
 import * as llmService from '../services/llm-provider.service.js';
+import { validateExternalUrl } from '../lib/url-validator.js';
 
 const createSchema = z.object({
   scope: z.enum(['system', 'organization', 'project']),
@@ -112,6 +113,21 @@ export default async function llmProviderRoutes(fastify: FastifyInstance) {
         }
       }
 
+      // SSRF protection: validate api_endpoint if provided (BAM-021)
+      if (body.api_endpoint) {
+        const urlCheck = validateExternalUrl(body.api_endpoint);
+        if (!urlCheck.safe) {
+          return reply.status(400).send({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: `Invalid api_endpoint: ${urlCheck.reason}`,
+              details: [{ field: 'api_endpoint', issue: urlCheck.reason }],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       // openai_compatible requires an endpoint
       if (body.provider_type === 'openai_compatible' && !body.api_endpoint) {
         return reply.status(400).send({
@@ -196,6 +212,21 @@ export default async function llmProviderRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('admin')] },
     async (request, reply) => {
       const body = updateSchema.parse(request.body);
+
+      // SSRF protection: validate api_endpoint if provided (BAM-021)
+      if (body.api_endpoint) {
+        const urlCheck = validateExternalUrl(body.api_endpoint);
+        if (!urlCheck.safe) {
+          return reply.status(400).send({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: `Invalid api_endpoint: ${urlCheck.reason}`,
+              details: [{ field: 'api_endpoint', issue: urlCheck.reason }],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       const updated = await llmService.updateProvider(
         request.params.id,

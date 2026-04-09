@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { slackIntegrations } from '../db/schema/slack-integrations.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireProjectRole } from '../middleware/authorize.js';
+import { validateExternalUrl } from '../lib/url-validator.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Slack integration CRUD (per-project, admin-gated)
@@ -53,6 +54,19 @@ export default async function slackIntegrationRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = upsertSchema.parse(request.body);
       const userId = request.user!.id;
+
+      // SSRF protection: reject private/internal URLs (BAM-020)
+      const urlCheck = validateExternalUrl(data.webhook_url);
+      if (!urlCheck.safe) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Invalid webhook URL: ${urlCheck.reason}`,
+            details: [{ field: 'webhook_url', issue: urlCheck.reason }],
+            request_id: request.id,
+          },
+        });
+      }
 
       const [existing] = await db
         .select()
@@ -121,6 +135,19 @@ export default async function slackIntegrationRoutes(fastify: FastifyInstance) {
             code: 'NOT_FOUND',
             message: 'No Slack integration configured for this project',
             details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      // SSRF protection: re-validate stored URL before making request (BAM-020)
+      const urlCheck = validateExternalUrl(row.webhook_url);
+      if (!urlCheck.safe) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Stored webhook URL is unsafe: ${urlCheck.reason}`,
+            details: [{ field: 'webhook_url', issue: urlCheck.reason }],
             request_id: request.id,
           },
         });

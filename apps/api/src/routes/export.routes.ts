@@ -9,7 +9,7 @@ import { requireProjectAccess } from '../middleware/authorize.js';
 export default async function exportRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/export',
-    { preHandler: [requireAuth, requireProjectAccess()] },
+    { preHandler: [requireAuth, requireProjectAccess()], config: { rateLimit: { max: 3, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const schema = z.object({
         format: z.enum(['json', 'csv']),
@@ -25,7 +25,8 @@ export default async function exportRoutes(fastify: FastifyInstance) {
       const projectTasks = await db
         .select()
         .from(tasks)
-        .where(and(...conditions));
+        .where(and(...conditions))
+        .limit(50000);
 
       if (data.format === 'json') {
         return reply.send({

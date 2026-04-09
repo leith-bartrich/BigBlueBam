@@ -164,7 +164,7 @@ export default async function importRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectRole('admin', 'member')] },
     async (request, reply) => {
       const bodySchema = z.object({
-        rows: z.array(z.record(z.string())),
+        rows: z.array(z.record(z.string())).max(5000),
         mapping: z.record(z.string()),
       });
 
@@ -289,8 +289,8 @@ export default async function importRoutes(fastify: FastifyInstance) {
               })).optional().default([]),
             })).optional().default([]),
             idMembers: z.array(z.string()).optional().default([]),
-          })),
-        })),
+          })).max(100),
+        })).max(5000),
       });
 
       const { lists } = bodySchema.parse(request.body);
@@ -393,7 +393,7 @@ export default async function importRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectRole('admin', 'member')] },
     async (request, reply) => {
       const bodySchema = z.object({
-        rows: z.array(z.record(z.string())),
+        rows: z.array(z.record(z.string())).max(5000),
       });
 
       const { rows } = bodySchema.parse(request.body);
@@ -499,8 +499,8 @@ export default async function importRoutes(fastify: FastifyInstance) {
           comments: z.array(z.object({
             body: z.string(),
             user: z.object({ login: z.string() }).optional(),
-          })).optional().default([]),
-        })),
+          })).max(100).optional().default([]),
+        })).max(5000),
       });
 
       const { issues } = bodySchema.parse(request.body);

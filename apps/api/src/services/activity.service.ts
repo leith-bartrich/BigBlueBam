@@ -41,7 +41,7 @@ export interface ActivityFilters {
 }
 
 export async function getProjectActivity(projectId: string, filters: ActivityFilters) {
-  const limit = filters.limit ?? 50;
+  const limit = Math.min(filters.limit ?? 50, 200);
   const conditions = [eq(activityLog.project_id, projectId)];
 
   if (filters.cursor) {

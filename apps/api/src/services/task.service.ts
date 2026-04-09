@@ -435,7 +435,7 @@ export async function listTasks(projectId: string, filters: ListTasksFilters) {
     conditions.push(sql`${tasks.labels} && ARRAY[${sql.join(filters.labels.map(l => sql`${l}::uuid`), sql`,`)}]`);
   }
 
-  const limit = filters.limit ?? 50;
+  const limit = Math.min(filters.limit ?? 50, 200);
 
   if (filters.cursor) {
     conditions.push(gt(tasks.created_at, new Date(filters.cursor)));
