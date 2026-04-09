@@ -33,6 +33,10 @@ const envSchema = z.object({
   // Tracking base URL (public-facing URL for tracking pixels and click redirects)
   TRACKING_BASE_URL: z.string().default('http://localhost'),
 
+  // Webhook authentication secret — if set, inbound webhook requests must
+  // include a matching X-Webhook-Secret header. Optional for backward compat.
+  BLAST_WEBHOOK_SECRET: z.string().min(16).optional(),
+
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
 });

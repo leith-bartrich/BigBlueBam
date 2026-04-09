@@ -69,7 +69,7 @@ export async function processClick(
     .where(eq(blastSendLog.tracking_token, token))
     .limit(1);
 
-  if (!sendLog) return { redirect_url: url };
+  if (!sendLog) return { redirect_url: url, valid: false as const };
 
   // Record click event
   await db.insert(blastEngagementEvents).values({
@@ -90,7 +90,7 @@ export async function processClick(
     })
     .where(eq(blastCampaigns.id, sendLog.campaign_id));
 
-  return { redirect_url: url };
+  return { redirect_url: url, valid: true as const };
 }
 
 // ---------------------------------------------------------------------------

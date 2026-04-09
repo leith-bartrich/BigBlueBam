@@ -108,7 +108,10 @@ export default async function templateRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         mergeData,
       );
-      return reply.send({ data: result });
+      return reply
+        .header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src *")
+        .header('X-Content-Type-Options', 'nosniff')
+        .send({ data: result });
     },
   );
 
