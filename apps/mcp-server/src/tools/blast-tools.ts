@@ -269,9 +269,11 @@ export function registerBlastTools(server: McpServer, api: ApiClient, blastApiUr
       email: z.string().email().describe('Email address to check'),
     },
     async ({ email }) => {
-      const result = await client.request('GET', `/analytics/overview`);
-      // In a real implementation, we'd have a dedicated endpoint
-      return ok({ email, note: 'Check the blast_unsubscribes table for this email' });
+      const result = await client.request(
+        'GET',
+        `/analytics/unsubscribe-check?email=${encodeURIComponent(email)}`,
+      );
+      return result.ok ? ok(result.data) : err('checking unsubscribe status', result.data);
     },
   );
 }

@@ -7,6 +7,10 @@ const trendQuerySchema = z.object({
   period: z.enum(['daily', 'weekly', 'monthly']).optional(),
 });
 
+const unsubCheckQuerySchema = z.object({
+  email: z.string().email(),
+});
+
 export default async function analyticsRoutes(fastify: FastifyInstance) {
   // GET /analytics/overview
   fastify.get(
@@ -27,6 +31,20 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
       const result = await analyticsService.getEngagementTrend(
         request.user!.org_id,
         query.period,
+      );
+      return reply.send({ data: result });
+    },
+  );
+
+  // GET /analytics/unsubscribe-check?email=...
+  fastify.get(
+    '/analytics/unsubscribe-check',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { email } = unsubCheckQuerySchema.parse(request.query);
+      const result = await analyticsService.checkUnsubscribed(
+        request.user!.org_id,
+        email,
       );
       return reply.send({ data: result });
     },
