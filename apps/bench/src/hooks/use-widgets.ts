@@ -1,10 +1,33 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
+interface Widget {
+  id: string;
+  dashboard_id: string;
+  name: string;
+  widget_type: string;
+  data_source: string;
+  entity: string;
+  query_config: Record<string, unknown>;
+  viz_config: Record<string, unknown>;
+  kpi_config: Record<string, unknown> | null;
+  cache_ttl_seconds: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface WidgetQueryResult {
   rows: Record<string, unknown>[];
   sql: string;
   duration_ms: number;
+}
+
+export function useWidget(widgetId: string | undefined) {
+  return useQuery({
+    queryKey: ['bench', 'widget', widgetId],
+    queryFn: () => api.get<{ data: Widget }>(`/v1/widgets/${widgetId}`),
+    enabled: !!widgetId,
+  });
 }
 
 export function useWidgetQuery(widgetId: string | undefined) {

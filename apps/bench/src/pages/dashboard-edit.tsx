@@ -98,7 +98,7 @@ export function DashboardEditPage({ dashboardId, onNavigate }: DashboardEditPage
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Widgets</h2>
         <button
-          onClick={() => onNavigate('/widgets/new')}
+          onClick={() => onNavigate(`/dashboards/${dashboardId}/widgets/new`)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
