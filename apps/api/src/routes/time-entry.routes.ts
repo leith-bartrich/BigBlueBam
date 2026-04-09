@@ -5,11 +5,12 @@ import { db } from '../db/index.js';
 import { timeEntries } from '../db/schema/time-entries.js';
 import { tasks } from '../db/schema/tasks.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 export default async function timeEntryRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/time-entries',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const schema = z.object({
         minutes: z.number().int().positive(),
@@ -44,7 +45,7 @@ export default async function timeEntryRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>(
     '/tasks/:id/time-entries',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const result = await db
         .select()

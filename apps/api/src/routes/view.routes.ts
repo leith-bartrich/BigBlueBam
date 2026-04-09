@@ -4,13 +4,13 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { savedViews } from '../db/schema/saved-views.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 export default async function viewRoutes(fastify: FastifyInstance) {
   // ── GET /projects/:id/views ───────────────────────────────────────────
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/views',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const userId = request.user!.id;
       const projectId = request.params.id;
@@ -71,7 +71,7 @@ export default async function viewRoutes(fastify: FastifyInstance) {
   // ── PATCH /views/:id ──────────────────────────────────────────────────
   fastify.patch<{ Params: { id: string } }>(
     '/views/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('saved_view')] },
     async (request, reply) => {
       const bodySchema = z.object({
         name: z.string().min(1).max(255).optional(),
@@ -137,7 +137,7 @@ export default async function viewRoutes(fastify: FastifyInstance) {
   // ── DELETE /views/:id ─────────────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>(
     '/views/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('saved_view')] },
     async (request, reply) => {
       const [existing] = await db
         .select()

@@ -7,6 +7,7 @@ import { phases } from '../db/schema/phases.js';
 import { users } from '../db/schema/users.js';
 import { timeEntries } from '../db/schema/time-entries.js';
 import { requireAuth } from '../plugins/auth.js';
+import { requireProjectAccess } from '../middleware/authorize.js';
 import {
   buildBurndown,
   buildVelocity,
@@ -20,7 +21,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
     Querystring: { limit?: string; count?: string };
   }>(
     '/projects/:id/reports/velocity',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const raw = request.query.limit ?? request.query.count;
       const limit = raw ? Math.max(1, Math.min(50, parseInt(raw, 10) || 10)) : 10;
@@ -35,7 +36,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
     Querystring: { sprint_id?: string };
   }>(
     '/projects/:id/reports/burndown',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       let sprintId = request.query.sprint_id;
       if (!sprintId) {
@@ -89,7 +90,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
     Querystring: { sprint_id?: string; days?: string };
   }>(
     '/projects/:id/reports/cfd',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const days = request.query.days
         ? Math.max(1, Math.min(180, parseInt(request.query.days, 10) || 30))
@@ -116,7 +117,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
   // Cycle time report
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/reports/cycle-time',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       // Get completed tasks with created_at and completed_at
       const completedTasks = await db
@@ -191,7 +192,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
   // ── Overdue tasks report ──────────────────────────────────────────────
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/reports/overdue',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const today = new Date().toISOString().split('T')[0]!;
 
@@ -241,7 +242,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
   // ── Workload report ───────────────────────────────────────────────────
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/reports/workload',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const projectTasks = await db
         .select({
@@ -297,7 +298,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
     Querystring: { from?: string; to?: string };
   }>(
     '/projects/:id/reports/time-tracking',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const conditions = [
         sql`${timeEntries.task_id} IN (SELECT id FROM tasks WHERE project_id = ${request.params.id})`,
@@ -367,7 +368,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
   // ── Status distribution report ────────────────────────────────────────
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/reports/status-distribution',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const projectId = request.params.id;
 

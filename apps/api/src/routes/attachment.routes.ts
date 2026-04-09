@@ -5,11 +5,12 @@ import { db } from '../db/index.js';
 import { attachments } from '../db/schema/attachments.js';
 import { tasks } from '../db/schema/tasks.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 export default async function attachmentRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/attachments',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const schema = z.object({
         filename: z.string().max(500),
@@ -48,7 +49,7 @@ export default async function attachmentRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>(
     '/tasks/:id/attachments',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const result = await db
         .select()
@@ -62,7 +63,7 @@ export default async function attachmentRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/attachments/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('attachment')] },
     async (request, reply) => {
       const [existing] = await db
         .select()

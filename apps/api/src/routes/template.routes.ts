@@ -7,7 +7,7 @@ import { tasks } from '../db/schema/tasks.js';
 import { phases } from '../db/schema/phases.js';
 import { projects } from '../db/schema/projects.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 async function generateHumanId(projectId: string): Promise<string> {
   const [updated] = await db
@@ -38,7 +38,7 @@ export default async function templateRoutes(fastify: FastifyInstance) {
   // ── GET /projects/:id/task-templates ──────────────────────────────────
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/task-templates',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const result = await db
         .select()
@@ -224,7 +224,7 @@ export default async function templateRoutes(fastify: FastifyInstance) {
   // ── DELETE /task-templates/:id ────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>(
     '/task-templates/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task_template')] },
     async (request, reply) => {
       const [deleted] = await db
         .delete(taskTemplates)

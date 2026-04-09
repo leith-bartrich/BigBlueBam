@@ -4,11 +4,12 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { tasks } from '../db/schema/tasks.js';
 import { requireAuth } from '../plugins/auth.js';
+import { requireProjectAccess } from '../middleware/authorize.js';
 
 export default async function exportRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>(
     '/projects/:id/export',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const schema = z.object({
         format: z.enum(['json', 'csv']),

@@ -4,12 +4,12 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { webhooks } from '../db/schema/webhooks.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/webhooks',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const result = await db
         .select({
@@ -56,7 +56,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/webhooks/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('webhook')] },
     async (request, reply) => {
       const schema = z.object({
         url: z.string().url().optional(),
@@ -95,7 +95,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/webhooks/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('webhook')] },
     async (request, reply) => {
       const [deleted] = await db
         .delete(webhooks)

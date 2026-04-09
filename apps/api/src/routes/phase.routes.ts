@@ -5,12 +5,12 @@ import { db } from '../db/index.js';
 import { phases } from '../db/schema/phases.js';
 import { tasks } from '../db/schema/tasks.js';
 import { requireAuth } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 export default async function phaseRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/phases',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const projectPhases = await db
         .select()
@@ -55,7 +55,7 @@ export default async function phaseRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/phases/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('phase')] },
     async (request, reply) => {
       const data = updatePhaseSchema.parse(request.body);
 
@@ -92,7 +92,7 @@ export default async function phaseRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string }; Querystring: { migrate_to?: string } }>(
     '/phases/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('phase')] },
     async (request, reply) => {
       const migrateTo = request.query.migrate_to;
 

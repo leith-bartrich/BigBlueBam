@@ -7,6 +7,7 @@ import { commentReactions } from '../db/schema/comment-reactions.js';
 import { tasks } from '../db/schema/tasks.js';
 import { users } from '../db/schema/users.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
+import { requireProjectAccessForEntity } from '../middleware/authorize.js';
 import * as projectService from '../services/project.service.js';
 
 export default async function commentRoutes(fastify: FastifyInstance) {
@@ -15,7 +16,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
     Querystring: { cursor?: string; limit?: string };
   }>(
     '/tasks/:id/comments',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
       const conditions = [eq(comments.task_id, request.params.id)];
@@ -109,7 +110,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/comments',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const data = createCommentSchema.parse(request.body);
 
@@ -172,7 +173,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/comments/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('comment')] },
     async (request, reply) => {
       const data = updateCommentSchema.parse(request.body);
 
@@ -220,7 +221,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/comments/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('comment')] },
     async (request, reply) => {
       const [existing] = await db
         .select()

@@ -8,7 +8,7 @@ import { db } from '../db/index.js';
 import { tasks } from '../db/schema/tasks.js';
 import { projects } from '../db/schema/projects.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 export default async function taskRoutes(fastify: FastifyInstance) {
   fastify.get<{
@@ -26,7 +26,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
     };
   }>(
     '/projects/:id/tasks',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const query = request.query;
       const result = await taskService.listTasks(request.params.id, {
@@ -47,7 +47,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string }; Querystring: { sprint_id?: string } }>(
     '/projects/:id/board',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const project = await projectService.getProject(request.params.id);
       if (!project) {
@@ -150,9 +150,36 @@ export default async function taskRoutes(fastify: FastifyInstance) {
           },
         });
       }
-      // Membership gate is handled in the caller's project-scoped navigation;
-      // here we only expose id + project_id + human_id + title so the client
-      // can redirect. No privileged fields.
+
+      // Verify user has access to this task's project (org + membership)
+      if (!request.user!.is_superuser) {
+        const project = await projectService.getProject(task.project_id);
+        if (!project || project.org_id !== request.user!.org_id) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Task not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        const membership = await projectService.getProjectMembership(
+          task.project_id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Task not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       return reply.send({
         data: {
           id: task.id,
@@ -166,7 +193,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>(
     '/tasks/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const task = await taskService.getTask(request.params.id);
       if (!task) {
@@ -203,7 +230,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/tasks/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const data = updateTaskSchema.parse(request.body);
       const task = await taskService.updateTask(request.params.id, data, request.user!.id, request.impersonator?.id ?? null, request.viaSuperuserContext);
@@ -225,7 +252,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/move',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const data = moveTaskSchema.parse(request.body);
       const task = await taskService.moveTask(request.params.id, data, request.user!.id, request.impersonator?.id ?? null, request.viaSuperuserContext);
@@ -247,7 +274,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/tasks/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const task = await taskService.deleteTask(request.params.id, request.user!.id, request.impersonator?.id ?? null, request.viaSuperuserContext);
       if (!task) {
@@ -270,6 +297,41 @@ export default async function taskRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
     async (request, reply) => {
       const data = bulkUpdateSchema.parse(request.body);
+
+      // Verify user has project access for every task in the bulk operation
+      if (!request.user!.is_superuser && data.task_ids.length > 0) {
+        const bulkTasks = await db
+          .select({ id: tasks.id, project_id: tasks.project_id })
+          .from(tasks)
+          .where(sql`${tasks.id} = ANY(${data.task_ids})`);
+
+        const uniqueProjectIds = [...new Set(bulkTasks.map((t) => t.project_id))];
+        for (const pid of uniqueProjectIds) {
+          const project = await projectService.getProject(pid);
+          if (!project || project.org_id !== request.user!.org_id) {
+            return reply.status(404).send({
+              error: {
+                code: 'NOT_FOUND',
+                message: 'One or more tasks not found',
+                details: [],
+                request_id: request.id,
+              },
+            });
+          }
+          const membership = await projectService.getProjectMembership(pid, request.user!.id);
+          if (!membership) {
+            return reply.status(404).send({
+              error: {
+                code: 'NOT_FOUND',
+                message: 'One or more tasks not found',
+                details: [],
+                request_id: request.id,
+              },
+            });
+          }
+        }
+      }
+
       const results = await taskService.bulkOperations(data, request.user!.id);
       return reply.send({ data: results });
     },
@@ -278,7 +340,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
   // ── POST /tasks/:id/duplicate ─────────────────────────────────────────
   fastify.post<{ Params: { id: string } }>(
     '/tasks/:id/duplicate',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       const bodySchema = z.object({
         include_subtasks: z.boolean().optional().default(false),

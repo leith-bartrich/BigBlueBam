@@ -6,6 +6,7 @@ import { projects } from '../db/schema/projects.js';
 import { apiKeys } from '../db/schema/api-keys.js';
 import { users } from '../db/schema/users.js';
 import { requireAuth } from '../plugins/auth.js';
+import { requireProjectAccess } from '../middleware/authorize.js';
 import argon2 from 'argon2';
 
 function escapeIcal(text: string): string {
@@ -74,7 +75,7 @@ export default async function icalRoutes(fastify: FastifyInstance) {
   // ── GET /projects/:id/calendar.ics ────────────────────────────────────
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/calendar.ics',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const projectId = request.params.id;
 

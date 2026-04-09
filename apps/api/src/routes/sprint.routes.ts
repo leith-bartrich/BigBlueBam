@@ -7,13 +7,13 @@ import { tasks } from '../db/schema/tasks.js';
 import { taskStates } from '../db/schema/task-states.js';
 import { sprintTasks } from '../db/schema/sprint-tasks.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 import { postToSlack } from '../services/slack-notify.service.js';
 
 export default async function sprintRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/sprints',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const projectSprints = await db
         .select()
@@ -49,7 +49,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>(
     '/sprints/:id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('sprint')] },
     async (request, reply) => {
       const [sprint] = await db
         .select()
@@ -74,7 +74,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/sprints/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('sprint')] },
     async (request, reply) => {
       const data = updateSprintSchema.parse(request.body);
 
@@ -107,7 +107,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/sprints/:id/start',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('sprint')] },
     async (request, reply) => {
       const [sprint] = await db
         .select()
@@ -183,7 +183,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/sprints/:id/complete',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('sprint')] },
     async (request, reply) => {
       const data = completeSprintSchema.parse(request.body);
 
@@ -326,7 +326,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Params: { id: string } }>(
     '/sprints/:id/cancel',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('sprint')] },
     async (request, reply) => {
       const [sprint] = await db
         .select()
@@ -389,7 +389,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>(
     '/sprints/:id/report',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('sprint')] },
     async (request, reply) => {
       const [sprint] = await db
         .select()

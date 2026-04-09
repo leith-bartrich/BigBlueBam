@@ -4,12 +4,12 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { customFieldDefinitions } from '../db/schema/custom-fields.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 
 export default async function customFieldRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/custom-fields',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccess()] },
     async (request, reply) => {
       const result = await db
         .select()
@@ -54,7 +54,7 @@ export default async function customFieldRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/custom-fields/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('custom_field')] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().max(255).optional(),
@@ -97,7 +97,7 @@ export default async function customFieldRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/custom-fields/:id',
-    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write'), requireProjectAccessForEntity('custom_field')] },
     async (request, reply) => {
       const [deleted] = await db
         .delete(customFieldDefinitions)
