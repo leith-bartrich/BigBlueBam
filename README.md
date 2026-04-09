@@ -757,6 +757,17 @@ Board is an infinite-canvas visual collaboration whiteboard built into the BigBl
 | **Multitouch** | Pinch-to-zoom and two-finger pan on touch devices, including large touchscreens |
 | **AI Canvas Reading** | 14 MCP tools let agents read canvas content, add stickies, promote to tasks, and summarize themes |
 
+<table>
+  <tr>
+    <td width="50%"><img src="images/board-canvas-retro.png" alt="Board canvas — sprint retrospective with smiley" width="100%" /></td>
+    <td width="50%"><img src="images/board-canvas-brainstorm.png" alt="Board canvas — feature brainstorm" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Sprint retro — sticky notes, freehand smiley face, and text on the canvas</em></td>
+    <td align="center"><em>Feature brainstorm — sticky notes with ideas on the infinite canvas</em></td>
+  </tr>
+</table>
+
 <p align="center">
   <img src="images/board-templates.png" alt="Board template gallery" width="100%" />
 </p>

@@ -40,6 +40,22 @@ export function BoardSection() {
         </p>
       </AnimatedReveal>
 
+      {/* Canvas screenshots */}
+      <div className="mt-10 grid gap-8 lg:grid-cols-2">
+        <AnimatedReveal delay={0.15} withScale>
+          <FloatingFrame src="/screenshots/board-canvas-retro.png" alt="Sprint retrospective with sticky notes and smiley face" />
+          <p className="mt-3 text-center text-sm text-zinc-500">
+            Sprint retro — sticky notes, freehand sketches, and text on the infinite canvas
+          </p>
+        </AnimatedReveal>
+        <AnimatedReveal delay={0.2} withScale>
+          <FloatingFrame src="/screenshots/board-canvas-brainstorm.png" alt="Feature brainstorm with sticky notes" />
+          <p className="mt-3 text-center text-sm text-zinc-500">
+            Feature brainstorm — sticky note ideas, color-coded and spatially organized
+          </p>
+        </AnimatedReveal>
+      </div>
+
       {/* Feature highlights */}
       <AnimatedReveal delay={0.2}>
         <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
