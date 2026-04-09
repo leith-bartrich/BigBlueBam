@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   BearingPeriodType,
   BearingPeriodStatus,
-} from '@bigbluebam/shared';
+} from '@bigbluebam/shared/schemas/bearing';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole } from '../middleware/authorize.js';
 import * as periodService from '../services/period.service.js';
