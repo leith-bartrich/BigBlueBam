@@ -104,7 +104,7 @@ export async function createDocument(
     const [tmpl] = await db
       .select()
       .from(briefTemplates)
-      .where(eq(briefTemplates.id, data.template_id))
+      .where(and(eq(briefTemplates.id, data.template_id), eq(briefTemplates.org_id, orgId)))
       .limit(1);
     if (tmpl) {
       templateContent = tmpl.html_preview;

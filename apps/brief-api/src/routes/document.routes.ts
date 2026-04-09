@@ -17,7 +17,18 @@ const updateDocumentSchema = z.object({
   title: z.string().min(1).max(512).optional(),
   folder_id: z.string().uuid().nullable().optional(),
   icon: z.string().max(100).nullable().optional(),
-  cover_image_url: z.string().max(2000).nullable().optional(),
+  cover_image_url: z.string().max(2000).nullable().optional().refine(
+    (val) => {
+      if (val === null || val === undefined) return true;
+      try {
+        const url = new URL(val);
+        return url.protocol === 'https:' || url.protocol === 'http:';
+      } catch {
+        return false;
+      }
+    },
+    { message: 'cover_image_url must be an http or https URL' },
+  ),
   status: z.enum(['draft', 'in_review', 'approved', 'archived']).optional(),
   visibility: z.enum(['private', 'project', 'organization']).optional(),
   pinned: z.boolean().optional(),

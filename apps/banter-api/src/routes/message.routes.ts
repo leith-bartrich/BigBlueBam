@@ -440,10 +440,18 @@ export default async function messageRoutes(fastify: FastifyInstance) {
       const body = updateMessageSchema.parse(request.body);
 
       const [existing] = await db
-        .select()
+        .select({ message: banterMessages })
         .from(banterMessages)
-        .where(and(eq(banterMessages.id, id), eq(banterMessages.is_deleted, false)))
-        .limit(1);
+        .innerJoin(banterChannels, eq(banterChannels.id, banterMessages.channel_id))
+        .where(
+          and(
+            eq(banterMessages.id, id),
+            eq(banterMessages.is_deleted, false),
+            eq(banterChannels.org_id, user.org_id),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows.map((r) => r.message));
 
       if (!existing) {
         return reply.status(404).send({
@@ -500,10 +508,18 @@ export default async function messageRoutes(fastify: FastifyInstance) {
       const user = request.user!;
 
       const [existing] = await db
-        .select()
+        .select({ message: banterMessages })
         .from(banterMessages)
-        .where(and(eq(banterMessages.id, id), eq(banterMessages.is_deleted, false)))
-        .limit(1);
+        .innerJoin(banterChannels, eq(banterChannels.id, banterMessages.channel_id))
+        .where(
+          and(
+            eq(banterMessages.id, id),
+            eq(banterMessages.is_deleted, false),
+            eq(banterChannels.org_id, user.org_id),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows.map((r) => r.message));
 
       if (!existing) {
         return reply.status(404).send({

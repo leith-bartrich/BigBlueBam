@@ -233,10 +233,19 @@ async function fetchNodes(
 ): Promise<GraphNode[]> {
   if (nodeIds.length === 0) return [];
 
-  // Visibility filter: exclude Private beacons not owned by the requesting user
+  // Visibility filter: exclude Private beacons not owned by the requesting user,
+  // and exclude Project-visibility beacons the user is not a member of.
   const visFilter = userId
-    ? sql`AND (be.visibility <> 'Private' OR be.owned_by = ${userId} OR be.created_by = ${userId})`
-    : sql`AND be.visibility <> 'Private'`;
+    ? sql`AND (
+        be.visibility = 'Organization'
+        OR (be.visibility = 'Private' AND (be.owned_by = ${userId} OR be.created_by = ${userId}))
+        OR (be.visibility = 'Project' AND (
+          be.owned_by = ${userId}
+          OR be.created_by = ${userId}
+          OR be.project_id IN (SELECT pm.project_id FROM project_memberships pm WHERE pm.user_id = ${userId})
+        ))
+      )`
+    : sql`AND be.visibility = 'Organization'`;
 
   const rows: any[] = await db.execute(sql`
     SELECT
@@ -301,8 +310,16 @@ export async function getHubs(
       : sql``;
 
   const visFilter = userId
-    ? sql`AND (be.visibility <> 'Private' OR be.owned_by = ${userId} OR be.created_by = ${userId})`
-    : sql`AND be.visibility <> 'Private'`;
+    ? sql`AND (
+        be.visibility = 'Organization'
+        OR (be.visibility = 'Private' AND (be.owned_by = ${userId} OR be.created_by = ${userId}))
+        OR (be.visibility = 'Project' AND (
+          be.owned_by = ${userId}
+          OR be.created_by = ${userId}
+          OR be.project_id IN (SELECT pm.project_id FROM project_memberships pm WHERE pm.user_id = ${userId})
+        ))
+      )`
+    : sql`AND be.visibility = 'Organization'`;
 
   const rows: any[] = await db.execute(sql`
     SELECT
@@ -391,8 +408,16 @@ export async function getRecent(
       : sql``;
 
   const visFilter = userId
-    ? sql`AND (be.visibility <> 'Private' OR be.owned_by = ${userId} OR be.created_by = ${userId})`
-    : sql`AND be.visibility <> 'Private'`;
+    ? sql`AND (
+        be.visibility = 'Organization'
+        OR (be.visibility = 'Private' AND (be.owned_by = ${userId} OR be.created_by = ${userId}))
+        OR (be.visibility = 'Project' AND (
+          be.owned_by = ${userId}
+          OR be.created_by = ${userId}
+          OR be.project_id IN (SELECT pm.project_id FROM project_memberships pm WHERE pm.user_id = ${userId})
+        ))
+      )`
+    : sql`AND be.visibility = 'Organization'`;
 
   const rows: any[] = await db.execute(sql`
     SELECT

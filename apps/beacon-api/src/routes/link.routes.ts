@@ -13,7 +13,7 @@ export default async function linkRoutes(fastify: FastifyInstance) {
   // POST /beacons/:id/links — Create a link (Member+ can create)
   fastify.post<{ Params: { id: string } }>(
     '/beacons/:id/links',
-    { preHandler: [requireAuth, requireMinOrgRole('member'), requireScope('read_write')] },
+    { preHandler: [requireAuth, requireMinOrgRole('member'), requireBeaconEditAccess(), requireScope('read_write')] },
     async (request, reply) => {
       const { target_id, link_type } = createLinkSchema.parse(request.body);
       const link = await linkService.createLink(

@@ -92,6 +92,13 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     };
     clients.set(socket, client);
 
+    // ── Per-connection message rate limiting ──
+    // Allow up to 100 messages per 10-second window. If exceeded, close with 4029.
+    let rateLimitCount = 0;
+    let rateLimitWindowStart = Date.now();
+    const RATE_LIMIT_WINDOW_MS = 10_000;
+    const RATE_LIMIT_MAX = 100;
+
     // Send connected confirmation
     socket.send(
       JSON.stringify({
@@ -103,6 +110,18 @@ export default async function websocketHandler(fastify: FastifyInstance) {
 
     socket.on('message', async (raw: Buffer | string) => {
       try {
+        // Rate limit check
+        const now = Date.now();
+        if (now - rateLimitWindowStart > RATE_LIMIT_WINDOW_MS) {
+          rateLimitCount = 0;
+          rateLimitWindowStart = now;
+        }
+        rateLimitCount++;
+        if (rateLimitCount > RATE_LIMIT_MAX) {
+          socket.close(4029, 'Rate limit exceeded');
+          return;
+        }
+
         const msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString());
 
         switch (msg.type) {

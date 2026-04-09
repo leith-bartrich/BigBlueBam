@@ -177,7 +177,10 @@ export async function toggleResolve(commentId: string, userId: string, orgId: st
   return comment!;
 }
 
-export async function addReaction(commentId: string, userId: string, emoji: string) {
+export async function addReaction(commentId: string, userId: string, emoji: string, orgId: string) {
+  // Verify the comment belongs to a document in the user's org
+  await verifyCommentOrg(commentId, orgId);
+
   const [reaction] = await db
     .insert(briefCommentReactions)
     .values({
@@ -197,7 +200,10 @@ export async function addReaction(commentId: string, userId: string, emoji: stri
   return reaction ?? null;
 }
 
-export async function removeReaction(commentId: string, userId: string, emoji: string) {
+export async function removeReaction(commentId: string, userId: string, emoji: string, orgId: string) {
+  // Verify the comment belongs to a document in the user's org
+  await verifyCommentOrg(commentId, orgId);
+
   const [deleted] = await db
     .delete(briefCommentReactions)
     .where(

@@ -114,6 +114,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
         request.params.commentId,
         request.user!.id,
         emoji,
+        request.user!.org_id,
       );
       if (!reaction) {
         return reply.status(409).send({
@@ -138,6 +139,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
         request.params.commentId,
         request.user!.id,
         request.params.emoji,
+        request.user!.org_id,
       );
       if (!deleted) {
         return reply.status(404).send({

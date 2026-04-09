@@ -812,7 +812,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // GET /v1/channels/:id/members — list members
   fastify.get(
     '/v1/channels/:id/members',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireChannelMember] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
 

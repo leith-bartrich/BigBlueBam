@@ -80,7 +80,9 @@ await fastify.register(rateLimit, {
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
 });
 
-await fastify.register(websocket);
+await fastify.register(websocket, {
+  options: { maxPayload: 8192 },
+});
 
 // Redis plugin
 await fastify.register(redisPlugin);
