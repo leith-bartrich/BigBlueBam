@@ -138,6 +138,7 @@ services:
       BEARING_API_URL: http://bearing-api:4007/v1
       BOARD_API_URL: http://board-api:4008/v1
       BOND_API_URL: http://bond-api:4009/v1
+      BLAST_API_URL: http://blast-api:4010/v1
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
     ports:
       - "${MCP_PORT:-3001}:3001"
@@ -207,6 +208,8 @@ services:
       board-api:
         condition: service_healthy
       bond-api:
+        condition: service_healthy
+      blast-api:
         condition: service_healthy
       site:
         condition: service_healthy
@@ -529,6 +532,49 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:4009/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  blast-api:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/blast-api/Dockerfile
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bigbluebam}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - SESSION_SECRET=${SESSION_SECRET}
+      - BBB_API_INTERNAL_URL=http://api:4000
+      - BOND_API_INTERNAL_URL=http://bond-api:4009
+      - NODE_ENV=production
+      - PORT=4010
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - CORS_ORIGIN=*
+      - RATE_LIMIT_MAX=100
+      - RATE_LIMIT_WINDOW_MS=60000
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-}
+      - TRACKING_BASE_URL=${PUBLIC_URL:-http://localhost}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4010/health"]
       interval: 10s
       timeout: 5s
       retries: 3

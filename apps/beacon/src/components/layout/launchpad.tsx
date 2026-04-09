@@ -9,6 +9,7 @@ import {
   PenTool,
   Headset,
   Handshake,
+  Mail,
   Bot,
   X,
   LayoutGrid,
@@ -33,6 +34,7 @@ const APPS: AppDef[] = [
   { id: 'bearing', name: 'Bearing', description: 'Goals & OKRs', icon: Target, color: '#0891b2', path: '/bearing/' },
   { id: 'board', name: 'Board', description: 'Whiteboards', icon: PenTool, color: '#6366f1', path: '/board/' },
   { id: 'bond', name: 'Bond', description: 'CRM', icon: Handshake, color: '#e11d48', path: '/bond/' },
+  { id: 'blast', name: 'Blast', description: 'Email Campaigns', icon: Mail, color: '#dc2626', path: '/blast/' },
   { id: 'helpdesk', name: 'Helpdesk', description: 'Customer Support', icon: Headset, color: '#be123c', path: '/helpdesk/' },
   { id: 'mcp', name: 'MCP Server', description: 'AI Tools (182)', icon: Bot, color: '#64748b', path: '/mcp/' },
 ];

@@ -1,0 +1,407 @@
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import {
+  blastCampaigns,
+  blastSendLog,
+  blastEngagementEvents,
+  blastUnsubscribes,
+  bondContacts,
+  blastSegments,
+} from '../db/schema/index.js';
+import { notFound, badRequest, forbidden } from '../lib/utils.js';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface CampaignFilters {
+  organization_id: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CreateCampaignInput {
+  name: string;
+  template_id?: string;
+  subject: string;
+  html_body: string;
+  plain_text_body?: string;
+  segment_id?: string;
+  from_name?: string;
+  from_email?: string;
+  reply_to_email?: string;
+}
+
+export interface UpdateCampaignInput extends Partial<CreateCampaignInput> {}
+
+// ---------------------------------------------------------------------------
+// List campaigns
+// ---------------------------------------------------------------------------
+
+export async function listCampaigns(filters: CampaignFilters) {
+  const conditions = [eq(blastCampaigns.organization_id, filters.organization_id)];
+
+  if (filters.status) {
+    conditions.push(eq(blastCampaigns.status, filters.status));
+  }
+
+  const limit = Math.min(filters.limit ?? 50, 100);
+  const offset = filters.offset ?? 0;
+
+  const [rows, countResult] = await Promise.all([
+    db
+      .select()
+      .from(blastCampaigns)
+      .where(and(...conditions))
+      .orderBy(desc(blastCampaigns.created_at))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(blastCampaigns)
+      .where(and(...conditions)),
+  ]);
+
+  return {
+    data: rows,
+    total: countResult[0]?.count ?? 0,
+    limit,
+    offset,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Get campaign
+// ---------------------------------------------------------------------------
+
+export async function getCampaign(id: string, orgId: string) {
+  const [campaign] = await db
+    .select()
+    .from(blastCampaigns)
+    .where(and(eq(blastCampaigns.id, id), eq(blastCampaigns.organization_id, orgId)))
+    .limit(1);
+
+  if (!campaign) throw notFound('Campaign not found');
+  return campaign;
+}
+
+// ---------------------------------------------------------------------------
+// Create campaign
+// ---------------------------------------------------------------------------
+
+export async function createCampaign(
+  input: CreateCampaignInput,
+  orgId: string,
+  userId: string,
+) {
+  const [campaign] = await db
+    .insert(blastCampaigns)
+    .values({
+      organization_id: orgId,
+      name: input.name,
+      template_id: input.template_id,
+      subject: input.subject,
+      html_body: input.html_body,
+      plain_text_body: input.plain_text_body,
+      segment_id: input.segment_id,
+      from_name: input.from_name,
+      from_email: input.from_email,
+      reply_to_email: input.reply_to_email,
+      status: 'draft',
+      created_by: userId,
+    })
+    .returning();
+
+  return campaign!;
+}
+
+// ---------------------------------------------------------------------------
+// Update campaign (only draft/scheduled)
+// ---------------------------------------------------------------------------
+
+export async function updateCampaign(
+  id: string,
+  orgId: string,
+  input: UpdateCampaignInput,
+) {
+  const existing = await getCampaign(id, orgId);
+  if (existing.status !== 'draft' && existing.status !== 'scheduled') {
+    throw badRequest('Can only update campaigns in draft or scheduled status');
+  }
+
+  const [updated] = await db
+    .update(blastCampaigns)
+    .set({
+      ...input,
+      updated_at: new Date(),
+    })
+    .where(and(eq(blastCampaigns.id, id), eq(blastCampaigns.organization_id, orgId)))
+    .returning();
+
+  if (!updated) throw notFound('Campaign not found');
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Delete campaign (only draft)
+// ---------------------------------------------------------------------------
+
+export async function deleteCampaign(id: string, orgId: string) {
+  const existing = await getCampaign(id, orgId);
+  if (existing.status !== 'draft') {
+    throw badRequest('Can only delete campaigns in draft status');
+  }
+
+  const [deleted] = await db
+    .delete(blastCampaigns)
+    .where(and(eq(blastCampaigns.id, id), eq(blastCampaigns.organization_id, orgId)))
+    .returning({ id: blastCampaigns.id });
+
+  if (!deleted) throw notFound('Campaign not found');
+  return deleted;
+}
+
+// ---------------------------------------------------------------------------
+// Send campaign immediately
+// ---------------------------------------------------------------------------
+
+export async function sendCampaign(id: string, orgId: string) {
+  const campaign = await getCampaign(id, orgId);
+  if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
+    throw badRequest('Can only send campaigns in draft or scheduled status');
+  }
+
+  // Get segment contacts for recipient count
+  let recipientCount = 0;
+  if (campaign.segment_id) {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(bondContacts)
+      .where(eq(bondContacts.organization_id, orgId));
+    recipientCount = result?.count ?? 0;
+  }
+
+  // Check unsubscribes — real implementation would exclude them
+  const [unsubCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(blastUnsubscribes)
+    .where(eq(blastUnsubscribes.organization_id, orgId));
+
+  const effectiveRecipients = Math.max(0, recipientCount - (unsubCount?.count ?? 0));
+
+  // Transition to sending
+  const [updated] = await db
+    .update(blastCampaigns)
+    .set({
+      status: 'sending',
+      sent_at: new Date(),
+      recipient_count: effectiveRecipients,
+      updated_at: new Date(),
+    })
+    .where(eq(blastCampaigns.id, id))
+    .returning();
+
+  // In production, this would enqueue BullMQ jobs per recipient batch.
+  // For now, mark as sent immediately.
+  await db
+    .update(blastCampaigns)
+    .set({
+      status: 'sent',
+      completed_at: new Date(),
+      total_sent: effectiveRecipients,
+      total_delivered: effectiveRecipients,
+      updated_at: new Date(),
+    })
+    .where(eq(blastCampaigns.id, id));
+
+  return { ...updated!, recipient_count: effectiveRecipients };
+}
+
+// ---------------------------------------------------------------------------
+// Schedule campaign
+// ---------------------------------------------------------------------------
+
+export async function scheduleCampaign(id: string, orgId: string, scheduledAt: string) {
+  const campaign = await getCampaign(id, orgId);
+  if (campaign.status !== 'draft') {
+    throw badRequest('Can only schedule campaigns in draft status');
+  }
+
+  const date = new Date(scheduledAt);
+  if (date <= new Date()) {
+    throw badRequest('Scheduled time must be in the future');
+  }
+
+  const [updated] = await db
+    .update(blastCampaigns)
+    .set({
+      status: 'scheduled',
+      scheduled_at: date,
+      updated_at: new Date(),
+    })
+    .where(eq(blastCampaigns.id, id))
+    .returning();
+
+  return updated!;
+}
+
+// ---------------------------------------------------------------------------
+// Pause campaign
+// ---------------------------------------------------------------------------
+
+export async function pauseCampaign(id: string, orgId: string) {
+  const campaign = await getCampaign(id, orgId);
+  if (campaign.status !== 'sending') {
+    throw badRequest('Can only pause campaigns that are currently sending');
+  }
+
+  const [updated] = await db
+    .update(blastCampaigns)
+    .set({ status: 'paused', updated_at: new Date() })
+    .where(eq(blastCampaigns.id, id))
+    .returning();
+
+  return updated!;
+}
+
+// ---------------------------------------------------------------------------
+// Cancel campaign
+// ---------------------------------------------------------------------------
+
+export async function cancelCampaign(id: string, orgId: string) {
+  const campaign = await getCampaign(id, orgId);
+  if (campaign.status !== 'scheduled' && campaign.status !== 'sending' && campaign.status !== 'paused') {
+    throw badRequest('Can only cancel campaigns that are scheduled, sending, or paused');
+  }
+
+  const [updated] = await db
+    .update(blastCampaigns)
+    .set({ status: 'cancelled', updated_at: new Date() })
+    .where(eq(blastCampaigns.id, id))
+    .returning();
+
+  return updated!;
+}
+
+// ---------------------------------------------------------------------------
+// Get campaign analytics
+// ---------------------------------------------------------------------------
+
+export async function getCampaignAnalytics(id: string, orgId: string) {
+  const campaign = await getCampaign(id, orgId);
+
+  // Get event breakdown
+  const events = await db
+    .select({
+      event_type: blastEngagementEvents.event_type,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(blastEngagementEvents)
+    .where(eq(blastEngagementEvents.campaign_id, id))
+    .groupBy(blastEngagementEvents.event_type);
+
+  const eventMap: Record<string, number> = {};
+  for (const e of events) {
+    eventMap[e.event_type] = e.count;
+  }
+
+  // Click URL breakdown
+  const clickUrls = await db
+    .select({
+      url: blastEngagementEvents.clicked_url,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(blastEngagementEvents)
+    .where(
+      and(
+        eq(blastEngagementEvents.campaign_id, id),
+        eq(blastEngagementEvents.event_type, 'click'),
+      ),
+    )
+    .groupBy(blastEngagementEvents.clicked_url)
+    .orderBy(desc(sql`count(*)`))
+    .limit(20);
+
+  // Delivery status breakdown
+  const deliveryStatus = await db
+    .select({
+      status: blastSendLog.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(blastSendLog)
+    .where(eq(blastSendLog.campaign_id, id))
+    .groupBy(blastSendLog.status);
+
+  const deliveryMap: Record<string, number> = {};
+  for (const d of deliveryStatus) {
+    deliveryMap[d.status] = d.count;
+  }
+
+  const totalSent = campaign.total_sent ?? 0;
+  const openRate = totalSent > 0 ? ((campaign.total_opened ?? 0) / totalSent) * 100 : 0;
+  const clickRate = totalSent > 0 ? ((campaign.total_clicked ?? 0) / totalSent) * 100 : 0;
+  const bounceRate = totalSent > 0 ? ((campaign.total_bounced ?? 0) / totalSent) * 100 : 0;
+  const unsubRate = totalSent > 0 ? ((campaign.total_unsubscribed ?? 0) / totalSent) * 100 : 0;
+
+  return {
+    campaign_id: id,
+    total_sent: totalSent,
+    total_delivered: campaign.total_delivered ?? 0,
+    total_opened: campaign.total_opened ?? 0,
+    total_clicked: campaign.total_clicked ?? 0,
+    total_bounced: campaign.total_bounced ?? 0,
+    total_unsubscribed: campaign.total_unsubscribed ?? 0,
+    total_complained: campaign.total_complained ?? 0,
+    open_rate: Math.round(openRate * 100) / 100,
+    click_rate: Math.round(clickRate * 100) / 100,
+    bounce_rate: Math.round(bounceRate * 100) / 100,
+    unsubscribe_rate: Math.round(unsubRate * 100) / 100,
+    event_breakdown: eventMap,
+    click_urls: clickUrls,
+    delivery_breakdown: deliveryMap,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Get campaign recipients
+// ---------------------------------------------------------------------------
+
+export async function getCampaignRecipients(
+  id: string,
+  orgId: string,
+  limit = 50,
+  offset = 0,
+) {
+  // Verify campaign belongs to org
+  await getCampaign(id, orgId);
+
+  const rows = await db
+    .select({
+      id: blastSendLog.id,
+      contact_id: blastSendLog.contact_id,
+      to_email: blastSendLog.to_email,
+      status: blastSendLog.status,
+      sent_at: blastSendLog.sent_at,
+      delivered_at: blastSendLog.delivered_at,
+      bounced_at: blastSendLog.bounced_at,
+      bounce_type: blastSendLog.bounce_type,
+    })
+    .from(blastSendLog)
+    .where(eq(blastSendLog.campaign_id, id))
+    .orderBy(desc(blastSendLog.created_at))
+    .limit(Math.min(limit, 100))
+    .offset(offset);
+
+  const [countResult] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(blastSendLog)
+    .where(eq(blastSendLog.campaign_id, id));
+
+  return {
+    data: rows,
+    total: countResult?.count ?? 0,
+    limit,
+    offset,
+  };
+}

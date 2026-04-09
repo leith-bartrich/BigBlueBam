@@ -28,7 +28,7 @@ apps/
   frontend/     — React SPA served by nginx at /b3/ (port 80) — ~55 source files, 8 pages, command palette, keyboard shortcuts
   banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
   banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (BETA)
-  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 215 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond), 10+ resources, 8 prompts, 19 tool modules
+  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 229 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond + 14 Blast), 10+ resources, 8 prompts, 20 tool modules
   worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
@@ -44,6 +44,8 @@ apps/
   board/        — Board React SPA served by nginx at /board/ — infinite canvas, real-time collaboration, audio conferencing
   bond-api/     — Bond Fastify REST API (internal :4009, proxied at /bond/api/) — contacts, companies, deals, pipeline, activities, notes
   bond/         — Bond React SPA served by nginx at /bond/ — pipeline board, contact/company detail, deal tracking
+  blast-api/    — Blast Fastify REST API (internal :4010, proxied at /blast/api/) — 7 route files, 7 schema tables, email campaigns, templates, segments, tracking, analytics
+  blast/        — Blast React SPA served by nginx at /blast/ — campaign manager, template editor, segment builder, analytics dashboard
   voice-agent/  — AI voice agent (Python/FastAPI, internal :4003) — LiveKit Agents SDK, STT/TTS pipeline (placeholder)
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
@@ -77,6 +79,10 @@ The entire stack runs via `docker compose up`. All services are accessed through
 - `http://DOMAIN/board/ws` proxies Board WebSocket connections
 - `http://DOMAIN/bond/` serves the Bond CRM SPA
 - `http://DOMAIN/bond/api/` proxies to the Bond API
+- `http://DOMAIN/blast/` serves the Blast Email Campaigns SPA
+- `http://DOMAIN/blast/api/` proxies to the Blast API
+- `http://DOMAIN/t/` proxies Blast tracking endpoints (open pixel, click redirect)
+- `http://DOMAIN/unsub/` proxies Blast unsubscribe endpoint
 - `http://DOMAIN/helpdesk/` serves the Helpdesk portal SPA
 - `http://DOMAIN/helpdesk/api/` proxies to the Helpdesk API
 - `http://DOMAIN/files/` serves uploaded files from MinIO
