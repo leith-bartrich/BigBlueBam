@@ -34,7 +34,7 @@ export default async function messageRoutes(fastify: FastifyInstance) {
   // GET /v1/channels/:id/messages — cursor-based pagination
   fastify.get(
     '/v1/channels/:id/messages',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireChannelMember] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const user = request.user!;

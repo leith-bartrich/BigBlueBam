@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import Redis from 'ioredis';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { sessions, users } from '../db/schema/index.js';
+import { sessions, users, banterChannelMemberships, banterChannels } from '../db/schema/index.js';
 import { env } from '../env.js';
 
 interface ConnectedClient {
@@ -109,6 +109,54 @@ export default async function websocketHandler(fastify: FastifyInstance) {
           case 'subscribe': {
             const room = msg.room as string;
             if (room && room.startsWith('banter:channel:')) {
+              const channelId = room.replace('banter:channel:', '');
+
+              // Verify channel exists and belongs to the user's org
+              const [channel] = await db
+                .select({ id: banterChannels.id })
+                .from(banterChannels)
+                .where(
+                  and(
+                    eq(banterChannels.id, channelId),
+                    eq(banterChannels.org_id, client.orgId),
+                  ),
+                )
+                .limit(1);
+
+              if (!channel) {
+                socket.send(
+                  JSON.stringify({
+                    type: 'error',
+                    data: { code: 'FORBIDDEN', message: 'Channel not found or access denied', room },
+                    timestamp: new Date().toISOString(),
+                  }),
+                );
+                break;
+              }
+
+              // Verify user is a member of the channel
+              const [membership] = await db
+                .select({ id: banterChannelMemberships.id })
+                .from(banterChannelMemberships)
+                .where(
+                  and(
+                    eq(banterChannelMemberships.channel_id, channelId),
+                    eq(banterChannelMemberships.user_id, client.userId),
+                  ),
+                )
+                .limit(1);
+
+              if (!membership) {
+                socket.send(
+                  JSON.stringify({
+                    type: 'error',
+                    data: { code: 'FORBIDDEN', message: 'Not a member of this channel', room },
+                    timestamp: new Date().toISOString(),
+                  }),
+                );
+                break;
+              }
+
               client.rooms.add(room);
               socket.send(
                 JSON.stringify({
