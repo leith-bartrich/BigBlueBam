@@ -11,6 +11,17 @@ import { logActivity } from './activity.service.js';
 import { postToSlack, taskDeepLink } from './slack-notify.service.js';
 import { env } from '../env.js';
 import { escapeLike } from '../lib/escape-like.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
+
+/** Look up org_id for a project (used for Bolt event publishing). */
+async function getProjectOrgId(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ org_id: projects.org_id })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row?.org_id ?? null;
+}
 
 // Lazy-initialized Redis publisher for cross-service events (e.g. ticket sync
 // broadcasts to the helpdesk frontend). We keep a single connection per process
@@ -110,6 +121,11 @@ export async function createTask(
     text: `:new: Task created: *<${taskDeepLink(projectId, task!.id)}|${task!.human_id}>* — ${task!.title}`,
   }).catch(() => {});
 
+  // Bolt workflow event (fire-and-forget)
+  getProjectOrgId(projectId).then((orgId) => {
+    if (orgId) publishBoltEvent('task.created', 'bam', { task }, orgId);
+  }).catch(() => {});
+
   return task!;
 }
 
@@ -189,6 +205,11 @@ export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?
     if (actorId) {
       logActivity(task.project_id, actorId, 'task.updated', taskId, { changed_fields: changedFields }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
     }
+
+    // Bolt workflow event (fire-and-forget)
+    getProjectOrgId(task.project_id).then((orgId) => {
+      if (orgId) publishBoltEvent('task.updated', 'bam', { task, changed_fields: changedFields }, orgId);
+    }).catch(() => {});
   }
 
   return task ?? null;
@@ -226,6 +247,11 @@ export async function deleteTask(taskId: string, actorId?: string, impersonatorI
     if (actorId) {
       logActivity(deleted.project_id, actorId, 'task.deleted', null, { task_id: taskId, title: deleted.title }, impersonatorId ?? null, viaSuperuserContext).catch(() => {});
     }
+
+    // Bolt workflow event (fire-and-forget)
+    getProjectOrgId(deleted.project_id).then((orgId) => {
+      if (orgId) publishBoltEvent('task.deleted', 'bam', { task_id: taskId, task: deleted }, orgId);
+    }).catch(() => {});
   }
 
   return deleted ?? null;
@@ -394,6 +420,15 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
         text: `:white_check_mark: Task completed: *<${taskDeepLink(task.project_id, task.id)}|${task.human_id}>* — ${task.title}`,
       }).catch(() => {});
     }
+
+    // Bolt workflow event (fire-and-forget)
+    getProjectOrgId(task.project_id).then((orgId) => {
+      if (orgId) publishBoltEvent('task.moved', 'bam', {
+        task,
+        from_phase_id: existingTask?.phase_id ?? null,
+        to_phase_id: data.phase_id,
+      }, orgId);
+    }).catch(() => {});
   }
 
   return task ?? null;

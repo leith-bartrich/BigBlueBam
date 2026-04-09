@@ -19,6 +19,7 @@ import {
   threadDeepLink,
 } from '../lib/notify.js';
 import { sanitizeContent } from '../lib/sanitize.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const createMessageSchema = z.object({
   content: z.string().min(1).max(40000),
@@ -346,6 +347,13 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         }
       })();
 
+      // Bolt workflow event (fire-and-forget)
+      publishBoltEvent('message.posted', 'banter', {
+        message,
+        channel_id: id,
+        author_id: user.id,
+      }, user.org_id).catch(() => {});
+
       return reply.status(201).send({ data: message });
     },
   );
@@ -494,6 +502,13 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         data: { message: updated },
         timestamp: new Date().toISOString(),
       });
+
+      // Bolt workflow event (fire-and-forget)
+      publishBoltEvent('message.edited', 'banter', {
+        message: updated,
+        channel_id: existing.channel_id,
+        author_id: user.id,
+      }, user.org_id).catch(() => {});
 
       return reply.send({ data: updated });
     },

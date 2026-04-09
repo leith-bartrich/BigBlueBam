@@ -9,6 +9,7 @@ import { users } from '../db/schema/users.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectAccessForEntity } from '../middleware/authorize.js';
 import * as projectService from '../services/project.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 export default async function commentRoutes(fastify: FastifyInstance) {
   fastify.get<{
@@ -166,6 +167,13 @@ export default async function commentRoutes(fastify: FastifyInstance) {
           updated_at: new Date(),
         })
         .where(eq(tasks.id, request.params.id));
+
+      // Bolt workflow event (fire-and-forget)
+      publishBoltEvent('comment.created', 'bam', {
+        comment,
+        task_id: request.params.id,
+        project_id: task.project_id,
+      }, request.user!.org_id).catch(() => {});
 
       return reply.status(201).send({ data: comment });
     },
