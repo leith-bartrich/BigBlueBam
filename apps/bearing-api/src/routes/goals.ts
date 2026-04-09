@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   BearingGoalScope,
   BearingGoalStatus,
-} from '@bigbluebam/shared/schemas/bearing';
+} from '@bigbluebam/shared';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import {
   requireMinOrgRole,
