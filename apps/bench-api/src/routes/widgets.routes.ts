@@ -85,7 +85,7 @@ export default async function widgetRoutes(fastify: FastifyInstance) {
     '/widgets/:id',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const widget = await widgetService.getWidget(request.params.id);
+      const widget = await widgetService.getWidget(request.params.id, request.user!.org_id);
       return reply.send({ data: widget });
     },
   );
@@ -96,7 +96,7 @@ export default async function widgetRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const body = updateWidgetSchema.parse(request.body);
-      const widget = await widgetService.updateWidget(request.params.id, body);
+      const widget = await widgetService.updateWidget(request.params.id, body, request.user!.org_id);
       return reply.send({ data: widget });
     },
   );
@@ -106,7 +106,7 @@ export default async function widgetRoutes(fastify: FastifyInstance) {
     '/widgets/:id',
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
-      await widgetService.deleteWidget(request.params.id);
+      await widgetService.deleteWidget(request.params.id, request.user!.org_id);
       return reply.send({ data: { deleted: true } });
     },
   );

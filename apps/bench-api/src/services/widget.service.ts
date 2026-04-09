@@ -76,22 +76,30 @@ export async function createWidget(
 // Get widget
 // ---------------------------------------------------------------------------
 
-export async function getWidget(id: string) {
-  const [widget] = await db
-    .select()
+export async function getWidget(id: string, orgId?: string) {
+  const query = db
+    .select({ widget: benchWidgets })
     .from(benchWidgets)
-    .where(eq(benchWidgets.id, id))
+    .innerJoin(benchDashboards, eq(benchWidgets.dashboard_id, benchDashboards.id))
+    .where(
+      orgId
+        ? and(eq(benchWidgets.id, id), eq(benchDashboards.organization_id, orgId))
+        : eq(benchWidgets.id, id),
+    )
     .limit(1);
 
-  if (!widget) throw notFound('Widget not found');
-  return widget;
+  const [row] = await query;
+  if (!row) throw notFound('Widget not found');
+  return row.widget;
 }
 
 // ---------------------------------------------------------------------------
 // Update widget
 // ---------------------------------------------------------------------------
 
-export async function updateWidget(id: string, input: UpdateWidgetInput) {
+export async function updateWidget(id: string, input: UpdateWidgetInput, orgId?: string) {
+  // Verify widget belongs to caller's org before updating
+  if (orgId) await getWidget(id, orgId);
   if (input.data_source && input.entity) {
     const source = getDataSource(input.data_source, input.entity);
     if (!source) throw badRequest(`Unknown data source: ${input.data_source}.${input.entity}`);
@@ -121,7 +129,9 @@ export async function updateWidget(id: string, input: UpdateWidgetInput) {
 // Delete widget
 // ---------------------------------------------------------------------------
 
-export async function deleteWidget(id: string) {
+export async function deleteWidget(id: string, orgId?: string) {
+  // Verify widget belongs to caller's org before deleting
+  if (orgId) await getWidget(id, orgId);
   const [deleted] = await db
     .delete(benchWidgets)
     .where(eq(benchWidgets.id, id))
