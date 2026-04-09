@@ -31,7 +31,7 @@ export default async function submissionRoutes(fastify: FastifyInstance) {
     '/submissions/:id',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const submission = await submissionService.getSubmission(request.params.id);
+      const submission = await submissionService.getSubmission(request.params.id, request.user!.org_id);
       return reply.send({ data: submission });
     },
   );
@@ -41,7 +41,7 @@ export default async function submissionRoutes(fastify: FastifyInstance) {
     '/submissions/:id',
     { preHandler: [requireAuth, requireMinRole('admin')] },
     async (request, reply) => {
-      await submissionService.deleteSubmission(request.params.id);
+      await submissionService.deleteSubmission(request.params.id, request.user!.org_id);
       return reply.send({ data: { deleted: true } });
     },
   );

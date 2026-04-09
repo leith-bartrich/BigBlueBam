@@ -73,7 +73,7 @@ describe('Submission Service', () => {
       mockSelect.mockReturnValue(chainable([sub]));
 
       const { getSubmission } = await import('../src/services/submission.service.js');
-      const result = await getSubmission(SUB_ID);
+      const result = await getSubmission(SUB_ID, ORG_ID);
 
       expect(result.id).toBe(SUB_ID);
       expect((result.response_data as Record<string, unknown>).name).toBe('Alice');
@@ -83,7 +83,7 @@ describe('Submission Service', () => {
       mockSelect.mockReturnValue(chainable([]));
 
       const { getSubmission } = await import('../src/services/submission.service.js');
-      await expect(getSubmission('nonexistent')).rejects.toThrow('Submission not found');
+      await expect(getSubmission('nonexistent', ORG_ID)).rejects.toThrow('Submission not found');
     });
   });
 
@@ -114,7 +114,7 @@ describe('Submission Service', () => {
       mockDelete.mockReturnValue(chainable([{ id: SUB_ID }]));
 
       const { deleteSubmission } = await import('../src/services/submission.service.js');
-      const result = await deleteSubmission(SUB_ID);
+      const result = await deleteSubmission(SUB_ID, ORG_ID);
 
       expect(result.id).toBe(SUB_ID);
     });

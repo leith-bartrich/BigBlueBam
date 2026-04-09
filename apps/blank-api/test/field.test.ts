@@ -45,6 +45,7 @@ function chainable(result: unknown[]) {
   obj.limit = vi.fn().mockResolvedValue(result);
   obj.returning = vi.fn().mockResolvedValue(result);
   obj.from = vi.fn().mockReturnValue(obj);
+  obj.innerJoin = vi.fn().mockReturnValue(obj);
   obj.where = vi.fn().mockReturnValue(obj);
   obj.orderBy = vi.fn().mockReturnValue(obj);
   obj.set = vi.fn().mockReturnValue(obj);
@@ -108,30 +109,35 @@ describe('Field Service', () => {
 
   describe('updateField', () => {
     it('updates a field', async () => {
+      // First call: select for org verification; second call would be for other selects
+      mockSelect.mockReturnValueOnce(chainable([{ id: FIELD_ID }]));
       const updated = { id: FIELD_ID, label: 'Updated Label' };
       const updateChain = chainable([updated]);
       mockUpdate.mockReturnValue(updateChain);
 
       const { updateField } = await import('../src/services/field.service.js');
-      const result = await updateField(FIELD_ID, { label: 'Updated Label' });
+      const result = await updateField(FIELD_ID, ORG_ID, { label: 'Updated Label' });
 
       expect(result.label).toBe('Updated Label');
     });
 
     it('throws not found for missing field', async () => {
-      mockUpdate.mockReturnValue(chainable([]));
+      // Org verification select returns empty — field not in org
+      mockSelect.mockReturnValueOnce(chainable([]));
 
       const { updateField } = await import('../src/services/field.service.js');
-      await expect(updateField('nonexistent', { label: 'X' })).rejects.toThrow('Field not found');
+      await expect(updateField('nonexistent', ORG_ID, { label: 'X' })).rejects.toThrow('Field not found');
     });
   });
 
   describe('deleteField', () => {
     it('deletes a field', async () => {
+      // Org verification select
+      mockSelect.mockReturnValueOnce(chainable([{ id: FIELD_ID }]));
       mockDelete.mockReturnValue(chainable([{ id: FIELD_ID }]));
 
       const { deleteField } = await import('../src/services/field.service.js');
-      const result = await deleteField(FIELD_ID);
+      const result = await deleteField(FIELD_ID, ORG_ID);
 
       expect(result.id).toBe(FIELD_ID);
     });

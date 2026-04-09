@@ -60,6 +60,12 @@ export interface UpdateFieldInput {
 // ---------------------------------------------------------------------------
 
 export async function addField(formId: string, orgId: string, input: CreateFieldInput) {
+  // Validate field_key is a safe identifier (prevents SQL injection in analytics queries)
+  const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  if (!SAFE_IDENTIFIER.test(input.field_key)) {
+    throw badRequest('field_key must start with a letter or underscore and contain only alphanumeric characters and underscores');
+  }
+
   // Verify form belongs to org
   const [form] = await db
     .select({ id: blankForms.id })
@@ -111,7 +117,25 @@ export async function addField(formId: string, orgId: string, input: CreateField
 // Update field
 // ---------------------------------------------------------------------------
 
-export async function updateField(fieldId: string, input: UpdateFieldInput) {
+export async function updateField(fieldId: string, orgId: string, input: UpdateFieldInput) {
+  // Validate field_key if being updated
+  if (input.field_key !== undefined) {
+    const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+    if (!SAFE_IDENTIFIER.test(input.field_key)) {
+      throw badRequest('field_key must start with a letter or underscore and contain only alphanumeric characters and underscores');
+    }
+  }
+
+  // Verify the field's form belongs to the caller's org
+  const [field] = await db
+    .select({ id: blankFormFields.id })
+    .from(blankFormFields)
+    .innerJoin(blankForms, eq(blankFormFields.form_id, blankForms.id))
+    .where(and(eq(blankFormFields.id, fieldId), eq(blankForms.organization_id, orgId)))
+    .limit(1);
+
+  if (!field) throw notFound('Field not found');
+
   const updateData: Record<string, unknown> = { updated_at: new Date() };
   for (const [key, value] of Object.entries(input)) {
     if (value !== undefined) updateData[key] = value;
@@ -123,22 +147,30 @@ export async function updateField(fieldId: string, input: UpdateFieldInput) {
     .where(eq(blankFormFields.id, fieldId))
     .returning();
 
-  if (!updated) throw notFound('Field not found');
-  return updated;
+  return updated!;
 }
 
 // ---------------------------------------------------------------------------
 // Delete field
 // ---------------------------------------------------------------------------
 
-export async function deleteField(fieldId: string) {
+export async function deleteField(fieldId: string, orgId: string) {
+  // Verify the field's form belongs to the caller's org
+  const [field] = await db
+    .select({ id: blankFormFields.id })
+    .from(blankFormFields)
+    .innerJoin(blankForms, eq(blankFormFields.form_id, blankForms.id))
+    .where(and(eq(blankFormFields.id, fieldId), eq(blankForms.organization_id, orgId)))
+    .limit(1);
+
+  if (!field) throw notFound('Field not found');
+
   const [deleted] = await db
     .delete(blankFormFields)
     .where(eq(blankFormFields.id, fieldId))
     .returning({ id: blankFormFields.id });
 
-  if (!deleted) throw notFound('Field not found');
-  return deleted;
+  return deleted!;
 }
 
 // ---------------------------------------------------------------------------

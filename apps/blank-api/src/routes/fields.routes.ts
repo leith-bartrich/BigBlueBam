@@ -18,7 +18,7 @@ const FIELD_TYPES = [
 ] as const;
 
 const createFieldSchema = z.object({
-  field_key: z.string().min(1).max(60),
+  field_key: z.string().min(1).max(60).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'field_key must be a safe identifier (letters, digits, underscores; must start with letter or underscore)'),
   label: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
   placeholder: z.string().max(255).optional(),
@@ -43,7 +43,7 @@ const createFieldSchema = z.object({
 });
 
 const updateFieldSchema = z.object({
-  field_key: z.string().min(1).max(60).optional(),
+  field_key: z.string().min(1).max(60).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'field_key must be a safe identifier (letters, digits, underscores; must start with letter or underscore)').optional(),
   label: z.string().min(1).max(500).optional(),
   description: z.string().max(2000).nullable().optional(),
   placeholder: z.string().max(255).nullable().optional(),
@@ -91,7 +91,7 @@ export default async function fieldRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const body = updateFieldSchema.parse(request.body);
-      const field = await fieldService.updateField(request.params.id, body);
+      const field = await fieldService.updateField(request.params.id, request.user!.org_id, body);
       return reply.send({ data: field });
     },
   );
@@ -101,7 +101,7 @@ export default async function fieldRoutes(fastify: FastifyInstance) {
     '/fields/:id',
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
-      await fieldService.deleteField(request.params.id);
+      await fieldService.deleteField(request.params.id, request.user!.org_id);
       return reply.send({ data: { deleted: true } });
     },
   );

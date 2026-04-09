@@ -53,11 +53,11 @@ export async function listSubmissions(formId: string, orgId: string, params: {
 // Get submission
 // ---------------------------------------------------------------------------
 
-export async function getSubmission(id: string) {
+export async function getSubmission(id: string, orgId: string) {
   const [submission] = await db
     .select()
     .from(blankSubmissions)
-    .where(eq(blankSubmissions.id, id))
+    .where(and(eq(blankSubmissions.id, id), eq(blankSubmissions.organization_id, orgId)))
     .limit(1);
 
   if (!submission) throw notFound('Submission not found');
@@ -68,10 +68,10 @@ export async function getSubmission(id: string) {
 // Delete submission
 // ---------------------------------------------------------------------------
 
-export async function deleteSubmission(id: string) {
+export async function deleteSubmission(id: string, orgId: string) {
   const [deleted] = await db
     .delete(blankSubmissions)
-    .where(eq(blankSubmissions.id, id))
+    .where(and(eq(blankSubmissions.id, id), eq(blankSubmissions.organization_id, orgId)))
     .returning({ id: blankSubmissions.id });
 
   if (!deleted) throw notFound('Submission not found');
@@ -199,10 +199,14 @@ export async function getFormAnalytics(formId: string, orgId: string) {
   `);
 
   // Per-field analytics
+  const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
   const fieldAnalytics: Record<string, unknown> = {};
 
   for (const field of fields) {
     if (['section_header', 'paragraph', 'hidden'].includes(field.field_type)) continue;
+
+    // Defense-in-depth: skip fields with unsafe keys to prevent SQL injection via sql.raw()
+    if (!SAFE_IDENTIFIER.test(field.field_key)) continue;
 
     if (['single_select', 'multi_select', 'dropdown'].includes(field.field_type)) {
       // Count per option
