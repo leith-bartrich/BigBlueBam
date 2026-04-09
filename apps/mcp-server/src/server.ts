@@ -26,6 +26,8 @@ import { registerBoltTools } from './tools/bolt-tools.js';
 import { registerBearingTools } from './tools/bearing-tools.js';
 import { registerBondTools } from './tools/bond-tools.js';
 import { registerBlastTools } from './tools/blast-tools.js';
+import { registerBookTools } from './tools/book-tools.js';
+import { registerBenchTools } from './tools/bench-tools.js';
 import { registerMeTools } from './tools/me-tools.js';
 import { registerPlatformTools } from './tools/platform-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
@@ -100,6 +102,8 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
   registerBearingTools(server, apiClient, env.BEARING_API_URL);
   registerBondTools(server, apiClient, env.BOND_API_URL);
   registerBlastTools(server, apiClient, env.BLAST_API_URL);
+  registerBookTools(server, apiClient, env.BOOK_API_URL);
+  registerBenchTools(server, apiClient, env.BENCH_API_URL);
   registerMeTools(server, apiClient);
   registerPlatformTools(server, apiClient);
 

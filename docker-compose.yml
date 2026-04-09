@@ -139,6 +139,8 @@ services:
       BOARD_API_URL: http://board-api:4008/v1
       BOND_API_URL: http://bond-api:4009/v1
       BLAST_API_URL: http://blast-api:4010/v1
+      BOOK_API_URL: http://book-api:4012/v1
+      BENCH_API_URL: http://bench-api:4011/v1
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
     ports:
       - "${MCP_PORT:-3001}:3001"
@@ -210,6 +212,10 @@ services:
       bond-api:
         condition: service_healthy
       blast-api:
+        condition: service_healthy
+      book-api:
+        condition: service_healthy
+      bench-api:
         condition: service_healthy
       site:
         condition: service_healthy
@@ -575,6 +581,84 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:4010/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  book-api:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/book-api/Dockerfile
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bigbluebam}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - SESSION_SECRET=${SESSION_SECRET}
+      - BBB_API_INTERNAL_URL=http://api:4000
+      - NODE_ENV=production
+      - PORT=4012
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - CORS_ORIGIN=*
+      - RATE_LIMIT_MAX=100
+      - RATE_LIMIT_WINDOW_MS=60000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET:-}
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4012/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  bench-api:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/bench-api/Dockerfile
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bigbluebam}
+      - DATABASE_READ_URL=${DATABASE_READ_URL:-}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - SESSION_SECRET=${SESSION_SECRET}
+      - BBB_API_INTERNAL_URL=http://api:4000
+      - NODE_ENV=production
+      - PORT=4011
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - CORS_ORIGIN=*
+      - RATE_LIMIT_MAX=100
+      - RATE_LIMIT_WINDOW_MS=60000
+      - QUERY_TIMEOUT_MS=${BENCH_QUERY_TIMEOUT_MS:-10000}
+      - CACHE_TTL_SECONDS=${BENCH_CACHE_TTL:-60}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4011/health"]
       interval: 10s
       timeout: 5s
       retries: 3

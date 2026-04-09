@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   Handshake,
   Mail,
+  BarChart3,
   Calendar,
   type LucideIcon,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ const APPS: AppDef[] = [
   { id: 'beacon', name: 'Beacon', description: 'Knowledge Base', icon: BookOpen, color: '#059669', path: '/beacon/' },
   { id: 'bond', name: 'Bond', description: 'CRM', icon: Handshake, color: '#0891b2', path: '/bond/' },
   { id: 'blast', name: 'Blast', description: 'Email Campaigns', icon: Mail, color: '#dc2626', path: '/blast/' },
+    { id: 'bench', name: 'Bench', description: 'Analytics', icon: BarChart3, color: '#2563eb', path: '/bench/' },
   { id: 'book', name: 'Book', description: 'Scheduling & Calendar', icon: Calendar, color: '#2563eb', path: '/book/' },
   { id: 'brief', name: 'Brief', description: 'Documents', icon: FileText, color: '#d97706', path: '/brief/' },
   { id: 'bolt', name: 'Bolt', description: 'Automations', icon: Zap, color: '#dc2626', path: '/bolt/' },

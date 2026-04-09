@@ -28,7 +28,7 @@ apps/
   frontend/     — React SPA served by nginx at /b3/ (port 80) — ~55 source files, 8 pages, command palette, keyboard shortcuts
   banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
   banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (BETA)
-  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 229 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond + 14 Blast), 10+ resources, 8 prompts, 20 tool modules
+  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 238 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond + 14 Blast + 9 Bench), 10+ resources, 8 prompts, 21 tool modules
   worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
@@ -46,6 +46,8 @@ apps/
   bond/         — Bond React SPA served by nginx at /bond/ — pipeline board, contact/company detail, deal tracking
   blast-api/    — Blast Fastify REST API (internal :4010, proxied at /blast/api/) — 7 route files, 7 schema tables, email campaigns, templates, segments, tracking, analytics
   blast/        — Blast React SPA served by nginx at /blast/ — campaign manager, template editor, segment builder, analytics dashboard
+  bench-api/    — Bench Fastify REST API (internal :4011, proxied at /bench/api/) — 4 route files, 5 schema tables, dashboards, widgets, query execution, scheduled reports, materialized views
+  bench/        — Bench React SPA served by nginx at /bench/ — dashboard list, canvas editor, widget wizard, ad-hoc explorer, reports, settings
   voice-agent/  — AI voice agent (Python/FastAPI, internal :4003) — LiveKit Agents SDK, STT/TTS pipeline (placeholder)
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
@@ -83,12 +85,14 @@ The entire stack runs via `docker compose up`. All services are accessed through
 - `http://DOMAIN/blast/api/` proxies to the Blast API
 - `http://DOMAIN/t/` proxies Blast tracking endpoints (open pixel, click redirect)
 - `http://DOMAIN/unsub/` proxies Blast unsubscribe endpoint
+- `http://DOMAIN/bench/` serves the Bench Analytics SPA
+- `http://DOMAIN/bench/api/` proxies to the Bench API
 - `http://DOMAIN/helpdesk/` serves the Helpdesk portal SPA
 - `http://DOMAIN/helpdesk/api/` proxies to the Helpdesk API
 - `http://DOMAIN/files/` serves uploaded files from MinIO
 - `http://DOMAIN/mcp/` proxies to the MCP server
 
-Application containers (api, banter-api, beacon-api, brief-api, bolt-api, bearing-api, board-api, bond-api, mcp-server, worker, helpdesk-api, frontend, voice-agent) are stateless and scale horizontally. Data services (postgres, redis, minio, qdrant) can be swapped for managed cloud equivalents by changing environment variables only.
+Application containers (api, banter-api, beacon-api, brief-api, bolt-api, bearing-api, board-api, bond-api, blast-api, bench-api, mcp-server, worker, helpdesk-api, frontend, voice-agent) are stateless and scale horizontally. Data services (postgres, redis, minio, qdrant) can be swapped for managed cloud equivalents by changing environment variables only.
 
 ## IMPORTANT: Preserving Test Data
 
