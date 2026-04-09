@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as eventService from '../services/event.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const createEventSchema = z.object({
   calendar_id: z.string().uuid(),
@@ -92,6 +93,14 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         request.user!.id,
       );
+      publishBoltEvent('event.created', 'book', {
+        id: event.id,
+        title: event.title,
+        start_at: event.start_at,
+        end_at: event.end_at,
+        status: event.status,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: event });
     },
   );
@@ -120,6 +129,14 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         body,
       );
+      publishBoltEvent('event.updated', 'book', {
+        id: event.id,
+        title: event.title,
+        start_at: event.start_at,
+        end_at: event.end_at,
+        status: event.status,
+        updated_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: event });
     },
   );

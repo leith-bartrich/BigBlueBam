@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { billPayments, billInvoices } from '../db/schema/index.js';
 import { notFound, badRequest } from '../lib/utils.js';
 import { recalculateInvoiceTotals } from './invoice.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,6 +74,12 @@ export async function recordPayment(
       .update(billInvoices)
       .set({ status: 'paid', paid_at: new Date(), updated_at: new Date() })
       .where(eq(billInvoices.id, invoiceId));
+    publishBoltEvent('invoice.paid', 'bill', {
+      id: invoiceId,
+      invoice_number: updated.invoice_number,
+      total: updated.total,
+      amount_paid: updated.amount_paid,
+    }, orgId);
   } else if (updated && updated.amount_paid > 0) {
     await db
       .update(billInvoices)

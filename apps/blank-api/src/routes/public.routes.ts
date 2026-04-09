@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as formService from '../services/form.service.js';
 import * as submissionService from '../services/submission.service.js';
 import { renderFormHtml } from '../lib/form-renderer.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 // ---------------------------------------------------------------------------
 // Public form endpoints (no auth required)
@@ -127,6 +128,12 @@ export default async function publicRoutes(fastify: FastifyInstance) {
           user_agent: request.headers['user-agent'] ?? undefined,
         },
       );
+      publishBoltEvent('submission.created', 'blank', {
+        id: submission.id,
+        form_id: form.id,
+        form_name: form.name,
+        form_slug: form.slug,
+      }, form.organization_id);
 
       return reply.status(201).send({
         data: {

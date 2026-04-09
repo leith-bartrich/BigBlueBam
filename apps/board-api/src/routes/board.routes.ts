@@ -7,6 +7,7 @@ import {
   requireBoardEditAccess,
 } from '../middleware/authorize.js';
 import * as boardService from '../services/board.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const BACKGROUNDS = ['dots', 'grid', 'lines', 'plain'] as const;
 const VISIBILITIES = ['private', 'project', 'organization'] as const;
@@ -83,6 +84,12 @@ export default async function boardRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
+      publishBoltEvent('board.created', 'board', {
+        id: board.id,
+        name: board.name,
+        visibility: board.visibility,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: board });
     },
   );
@@ -169,6 +176,12 @@ export default async function boardRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
+      publishBoltEvent('board.updated', 'board', {
+        id: board.id,
+        name: board.name,
+        visibility: board.visibility,
+        updated_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: board });
     },
   );

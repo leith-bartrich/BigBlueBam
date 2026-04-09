@@ -4,6 +4,7 @@ import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as invoiceService from '../services/invoice.service.js';
 import * as lineItemService from '../services/line-item.service.js';
 import * as pdfService from '../services/pdf.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const createInvoiceSchema = z.object({
   client_id: z.string().uuid(),
@@ -70,6 +71,13 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = createInvoiceSchema.parse(request.body);
       const invoice = await invoiceService.createInvoice(body, request.user!.org_id, request.user!.id);
+      publishBoltEvent('invoice.created', 'bill', {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        client_id: invoice.client_id,
+        status: invoice.status,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: invoice });
     },
   );
@@ -148,6 +156,12 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
       const invoice = await invoiceService.finalizeInvoice(request.params.id, request.user!.org_id);
+      publishBoltEvent('invoice.finalized', 'bill', {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        status: invoice.status,
+        finalized_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: invoice });
     },
   );

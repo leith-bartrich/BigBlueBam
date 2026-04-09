@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as formService from '../services/form.service.js';
 import { env } from '../env.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -168,6 +169,13 @@ export default async function formRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('admin')] },
     async (request, reply) => {
       const form = await formService.publishForm(request.params.id, request.user!.org_id);
+      publishBoltEvent('form.published', 'blank', {
+        id: form.id,
+        name: form.name,
+        slug: form.slug,
+        form_type: form.form_type,
+        published_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: form });
     },
   );

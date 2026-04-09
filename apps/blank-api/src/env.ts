@@ -21,6 +21,8 @@ const envSchema = z.object({
   // Internal service URLs
   MCP_INTERNAL_URL: z.string().default('http://mcp-server:3001'),
   BBB_API_INTERNAL_URL: z.string().default('http://api:4000'),
+  BOLT_API_INTERNAL_URL: z.string().default('http://bolt-api:4006'),
+  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
