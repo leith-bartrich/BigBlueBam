@@ -227,7 +227,7 @@ BEGIN
     -- Partnership pipeline deals
     (d13, v_org, p_partner, s_outreach,  'Acme Technology Partnership',      'Co-marketing + integration',         0,       'USD', '2026-09-01', 10,   NULL, NULL, NULL,           v_u1, co1,  NOW() - INTERVAL '5 days',  NOW() - INTERVAL '2 days', v_u1, NOW() - INTERVAL '7 days'),
     (d14, v_org, p_partner, s_terms,     'Stark Dynamics OEM Deal',          'White-label OEM agreement',         35000000, 'USD', '2026-07-01', 55,   NULL, NULL, NULL,           v_u1, co4,  NOW() - INTERVAL '8 days',  NOW() - INTERVAL '1 day',  v_u1, NOW() - INTERVAL '30 days'),
-    (d15, v_org, p_partner, s_partner_won,'Pied Piper Integration',          'Marketplace integration live',       0,       'USD', '2026-02-15', 100,  NOW() - INTERVAL '52 days', 'Mutual customer demand', NULL, v_u2, co9, NOW() - INTERVAL '52 days', NOW() - INTERVAL '52 days', v_u2, NOW() - INTERVAL '90 days'));
+    (d15, v_org, p_partner, s_partner_won,'Pied Piper Integration',          'Marketplace integration live',       0,       'USD', '2026-02-15', 100,  NOW() - INTERVAL '52 days', 'Mutual customer demand', NULL, v_u2, co9, NOW() - INTERVAL '52 days', NOW() - INTERVAL '52 days', v_u2, NOW() - INTERVAL '90 days');
 
   -- ── Link deals to contacts ──
   INSERT INTO bond_deal_contacts (deal_id, contact_id, role) VALUES
