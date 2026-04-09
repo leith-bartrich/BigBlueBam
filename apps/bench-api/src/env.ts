@@ -6,7 +6,7 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
 
   DATABASE_URL: z.string().url(),
-  DATABASE_READ_URL: z.string().url().optional(),
+  DATABASE_READ_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
   SESSION_SECRET: z.string().min(32),

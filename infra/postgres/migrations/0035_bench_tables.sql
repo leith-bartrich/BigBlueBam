@@ -117,9 +117,9 @@ DO $$ BEGIN
     SELECT
         t.project_id,
         date_trunc(''day'', t.updated_at) AS day,
-        COUNT(*) FILTER (WHERE t.state = ''done'') AS completed,
-        COUNT(*) FILTER (WHERE t.state != ''done'') AS in_progress,
-        COALESCE(SUM(t.story_points) FILTER (WHERE t.state = ''done''), 0) AS points_completed
+        COUNT(*) AS total_tasks,
+        COUNT(*) FILTER (WHERE t.state_id IS NOT NULL) AS with_state,
+        COALESCE(SUM(t.story_points), 0) AS total_points
     FROM tasks t
     GROUP BY t.project_id, date_trunc(''day'', t.updated_at)
   ';
