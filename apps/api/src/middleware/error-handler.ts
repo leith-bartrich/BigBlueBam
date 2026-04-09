@@ -67,11 +67,23 @@ export function errorHandler(error: FastifyError, request: FastifyRequest, reply
   // `details` so it's visible in UIs and logs. In production we redact the
   // stack trace (only name + message + code) to avoid leaking internals.
   const isProd = process.env.NODE_ENV === 'production';
+
+  if (isProd) {
+    return reply.status(500).send({
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'An unexpected error occurred',
+        details: [],
+        request_id: requestId,
+      },
+    });
+  }
+
   const cause = {
     name: error.name ?? 'Error',
     message: error.message ?? String(error),
     code: (error as FastifyError & { code?: string }).code,
-    ...(isProd ? {} : { stack: error.stack }),
+    stack: error.stack,
   };
 
   return reply.status(500).send({

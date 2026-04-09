@@ -48,7 +48,15 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
           events: data.events,
           secret: data.secret,
         })
-        .returning();
+        .returning({
+          id: webhooks.id,
+          project_id: webhooks.project_id,
+          url: webhooks.url,
+          events: webhooks.events,
+          is_active: webhooks.is_active,
+          created_at: webhooks.created_at,
+          updated_at: webhooks.updated_at,
+        });
 
       return reply.status(201).send({ data: webhook });
     },
@@ -76,7 +84,15 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
         .update(webhooks)
         .set(updateValues)
         .where(eq(webhooks.id, request.params.id))
-        .returning();
+        .returning({
+          id: webhooks.id,
+          project_id: webhooks.project_id,
+          url: webhooks.url,
+          events: webhooks.events,
+          is_active: webhooks.is_active,
+          created_at: webhooks.created_at,
+          updated_at: webhooks.updated_at,
+        });
 
       if (!webhook) {
         return reply.status(404).send({

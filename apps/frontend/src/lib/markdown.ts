@@ -96,16 +96,12 @@ export function markdownToHtml(md: string): string {
   return html;
 }
 
+import DOMPurify from 'dompurify';
+
 /**
  * Sanitize HTML string — strip dangerous tags/attributes.
- * This is a lightweight sanitizer for our own markdown output.
+ * Uses DOMPurify for robust, spec-compliant sanitization.
  */
 export function sanitizeHtml(html: string): string {
-  // Remove script tags and their content
-  let clean = html.replace(/<script[\s\S]*?<\/script>/gi, '');
-  // Remove on* event handlers
-  clean = clean.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
-  // Remove javascript: URLs
-  clean = clean.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
-  return clean;
+  return DOMPurify.sanitize(html);
 }

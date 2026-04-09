@@ -857,8 +857,8 @@ export default async function orgRoutes(fastify: FastifyInstance) {
           data: {
             user_id: user.id,
             email: user.email,
-            password,
             generated: data.password === undefined,
+            message: 'Password has been reset. The user will need to change it on next login.',
           },
         });
       } catch (err) {
