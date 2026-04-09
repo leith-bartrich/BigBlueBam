@@ -1,5 +1,6 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ChevronRight, Search, Bell, LogOut } from 'lucide-react';
+import { Launchpad, LaunchpadTrigger } from '@/components/layout/launchpad';
 import { BeaconSidebar } from '@/components/layout/beacon-sidebar';
 import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { Avatar } from '@/components/common/avatar';
@@ -54,6 +55,7 @@ export function BeaconLayout({ children, onNavigate, activeRoute }: BeaconLayout
   const user = useAuthStore((s) => s.user);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeProjectName = useProjectName(activeProjectId);
+  const [launchpadOpen, setLaunchpadOpen] = useState(false);
 
   const crumbs = breadcrumbsFor(activeRoute);
 
@@ -79,65 +81,9 @@ export function BeaconLayout({ children, onNavigate, activeRoute }: BeaconLayout
           {/* Header */}
           <header className="flex items-center justify-between h-14 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0">
             <div className="flex items-center gap-4">
-              {/* Cross-app pills */}
-              <nav className="flex items-center gap-1 border-r border-zinc-200 dark:border-zinc-700 pr-4 mr-2">
-                <button
-                  onClick={() => { window.location.href = '/b3/'; }}
-                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                  title="BigBlueBam"
-                >
-                  Bam
-                </button>
-                <button
-                  onClick={() => { window.location.href = '/banter/'; }}
-                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                  title="Banter"
-                >
-                  Banter
-                </button>
-                <button
-                  onClick={() => onNavigate('/')}
-                  className="relative px-2 py-1 text-xs font-medium rounded-md bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-                  title="Beacon"
-                >
-                  Beacon
-                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary-500" />
-                </button>
-                <button
-                  onClick={() => { window.location.href = '/brief/'; }}
-                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                  title="Brief"
-                >
-                  Brief
-                </button>
-                <button
-                  onClick={() => { window.location.href = '/bolt/'; }}
-                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                  title="Bolt"
-                >
-                  Bolt
-                </button>
-                <button
-                  onClick={() => { window.location.href = '/bearing/'; }}
-                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                  title="Bearing"
-                >
-                  Bearing
-                </button>
-                <button
-                  onClick={() => { window.location.href = '/board/'; }}
-                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                  title="Board"
-                >
-                  Board
-                </button>
-                <button
-                  onClick={() => { window.location.href = '/helpdesk/'; }}
-                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                  title="Helpdesk"
-                >
-                  Helpdesk
-                </button>
+              {/* Launchpad app switcher */}
+              <nav className="flex items-center border-r border-zinc-200 dark:border-zinc-700 pr-4 mr-2">
+                <LaunchpadTrigger onClick={() => setLaunchpadOpen(true)} />
               </nav>
 
               {/* Breadcrumbs */}
@@ -214,6 +160,7 @@ export function BeaconLayout({ children, onNavigate, activeRoute }: BeaconLayout
           </main>
         </div>
       </div>
+      <Launchpad isOpen={launchpadOpen} onClose={() => setLaunchpadOpen(false)} currentApp="beacon" />
     </div>
   );
 }
