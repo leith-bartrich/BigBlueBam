@@ -19,6 +19,7 @@ import { sql } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
+  org_id: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   email: varchar('email', { length: 320 }).notNull(),
   display_name: varchar('display_name', { length: 100 }).notNull(),
   is_active: boolean('is_active').default(true).notNull(),

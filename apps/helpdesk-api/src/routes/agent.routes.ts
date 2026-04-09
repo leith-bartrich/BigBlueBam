@@ -213,76 +213,126 @@ async function resolveAgentDisplayName(agentUserId: string | null): Promise<stri
   }
 }
 
+/**
+ * Resolve the org_id for the agent user associated with the authenticated
+ * agent API key. The agent key's bbb_user_id is set on request.agentUserId
+ * by requireAgentAuth. Returns null if the user cannot be found.
+ */
+async function resolveAgentOrgId(agentUserId: string | null): Promise<string | null> {
+  if (!agentUserId) return null;
+  try {
+    const [row] = await db
+      .select({ org_id: users.org_id })
+      .from(users)
+      .where(eq(users.id, agentUserId))
+      .limit(1);
+    return (row?.org_id as string) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Determine the effective org_id for an agent request. Prefers the session
+ * cookie's org (if present), then falls back to the agent key user's org.
+ * Returns null only if neither source yields an org.
+ */
+async function resolveRequestOrgId(
+  sessionCookie: string | undefined,
+  agentUserId: string | null,
+): Promise<string | null> {
+  const identity = await resolveSessionIdentity(sessionCookie);
+  if (identity?.orgId) return identity.orgId;
+  return resolveAgentOrgId(agentUserId);
+}
+
+/**
+ * Verify that a ticket belongs to the given org by joining through its
+ * project. Returns false if the ticket has no project_id or the project
+ * belongs to a different org.
+ */
+async function ticketBelongsToOrg(ticketId: string, orgId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ org_id: projects.org_id })
+    .from(tickets)
+    .innerJoin(projects, eq(projects.id, tickets.project_id))
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+  return row?.org_id === orgId;
+}
+
 export default async function agentRoutes(fastify: FastifyInstance) {
   fastify.decorateRequest('agentUserId', null);
 
 
   // GET /tickets — list tickets visible to the caller (HB-6: org-scoped).
   //
-  // Scoping model:
-  //  - If the request carries a valid Bam session cookie, we scope tickets to
-  //    the session user's org by joining tickets.project_id → projects.org_id.
-  //    Tickets with no project_id (unlinked) are excluded from the scoped view.
-  //  - If there is no session (X-Agent-Key only), we fall back to the current
-  //    shared-key trust model and return all tickets. This is a KNOWN LIMITATION
-  //    of the shared-key deployment: the X-Agent-Key is org-wide/global and
-  //    helpdesk_users have no org_id column yet, so there is no reliable way
-  //    to derive an org boundary from the key alone. Operators deploying the
-  //    shared key to multi-tenant installs should either (a) run one helpdesk
-  //    per org, or (b) always access via a Bam session.
+  // Scoping model: the caller's org is resolved from (1) a valid Bam session
+  // cookie or (2) the agent API key's bbb_user_id → users.org_id. If neither
+  // yields an org, the request is rejected with 403 to prevent cross-org
+  // data leaks. Tickets with no project_id (unlinked) are excluded from the
+  // scoped view since they cannot be attributed to an org.
   fastify.get('/tickets', { preHandler: [requireAgentAuth] }, async (request, reply) => {
     const query = request.query as { status?: string; project_id?: string };
-    const identity = await resolveSessionIdentity(request.cookies?.session);
-    const scopeOrgId = identity?.orgId ?? null;
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
 
     const conditions = [] as any[];
     if (query.status) conditions.push(eq(tickets.status, query.status));
     if (query.project_id) conditions.push(eq(tickets.project_id, query.project_id));
 
-    let rows;
-    if (scopeOrgId) {
-      // Org-scoped: join through projects to filter by org.
-      conditions.push(eq(projects.org_id, scopeOrgId));
-      rows = await db
-        .select({
-          id: tickets.id,
-          ticket_number: tickets.ticket_number,
-          helpdesk_user_id: tickets.helpdesk_user_id,
-          task_id: tickets.task_id,
-          project_id: tickets.project_id,
-          subject: tickets.subject,
-          description: tickets.description,
-          status: tickets.status,
-          priority: tickets.priority,
-          category: tickets.category,
-          created_at: tickets.created_at,
-          updated_at: tickets.updated_at,
-          resolved_at: tickets.resolved_at,
-          closed_at: tickets.closed_at,
-        })
-        .from(tickets)
-        .innerJoin(projects, eq(projects.id, tickets.project_id))
-        .where(conditions.length === 1 ? conditions[0] : and(...conditions))
-        .orderBy(desc(tickets.updated_at));
-    } else {
-      // No session — shared-key trust model, return all tickets (see comment above).
-      const whereClause =
-        conditions.length === 0
-          ? undefined
-          : conditions.length === 1
-            ? conditions[0]
-            : and(...conditions);
-      rows = whereClause
-        ? await db.select().from(tickets).where(whereClause).orderBy(desc(tickets.updated_at))
-        : await db.select().from(tickets).orderBy(desc(tickets.updated_at));
-    }
+    // Always org-scoped: join through projects to filter by org.
+    conditions.push(eq(projects.org_id, scopeOrgId));
+    const rows = await db
+      .select({
+        id: tickets.id,
+        ticket_number: tickets.ticket_number,
+        helpdesk_user_id: tickets.helpdesk_user_id,
+        task_id: tickets.task_id,
+        project_id: tickets.project_id,
+        subject: tickets.subject,
+        description: tickets.description,
+        status: tickets.status,
+        priority: tickets.priority,
+        category: tickets.category,
+        created_at: tickets.created_at,
+        updated_at: tickets.updated_at,
+        resolved_at: tickets.resolved_at,
+        closed_at: tickets.closed_at,
+      })
+      .from(tickets)
+      .innerJoin(projects, eq(projects.id, tickets.project_id))
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .orderBy(desc(tickets.updated_at));
 
     return reply.send({ data: rows });
   });
 
-  // GET /tickets/:id — full ticket detail including internal messages
+  // GET /tickets/:id — full ticket detail including internal messages (org-scoped)
   fastify.get('/tickets/:id', { preHandler: [requireAgentAuth] }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
 
     const [ticket] = await db
       .select()
@@ -291,6 +341,18 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       .limit(1);
 
     if (!ticket) {
+      return reply.status(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Ticket not found',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Verify ticket belongs to the agent's org via its project
+    if (!(await ticketBelongsToOrg(id, scopeOrgId))) {
       return reply.status(404).send({
         error: {
           code: 'NOT_FOUND',
@@ -316,13 +378,25 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // POST /tickets/:id/messages — agent posts a message
+  // POST /tickets/:id/messages — agent posts a message (org-scoped)
   fastify.post('/tickets/:id/messages', {
     preHandler: [requireAgentAuth],
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = agentMessageSchema.parse(request.body);
+
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
 
     // Verify ticket exists
     const [ticket] = await db
@@ -332,6 +406,18 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       .limit(1);
 
     if (!ticket) {
+      return reply.status(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Ticket not found',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Verify ticket belongs to the agent's org
+    if (!(await ticketBelongsToOrg(id, scopeOrgId))) {
       return reply.status(404).send({
         error: {
           code: 'NOT_FOUND',
@@ -487,13 +573,36 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.status(201).send({ data: message });
   });
 
-  // PATCH /tickets/:id — update ticket status, priority, category
+  // PATCH /tickets/:id — update ticket status, priority, category (org-scoped)
   fastify.patch('/tickets/:id', {
     preHandler: [requireAgentAuth],
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateTicketSchema.parse(request.body);
+
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    if (!(await ticketBelongsToOrg(id, scopeOrgId))) {
+      return reply.status(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Ticket not found',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
 
     const [existing] = await db
       .select({
@@ -621,12 +730,35 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send({ data: updated });
   });
 
-  // POST /tickets/:id/close — close a ticket
+  // POST /tickets/:id/close — close a ticket (org-scoped)
   fastify.post('/tickets/:id/close', {
     preHandler: [requireAgentAuth],
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    if (!(await ticketBelongsToOrg(id, scopeOrgId))) {
+      return reply.status(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Ticket not found',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
 
     const [ticket] = await db
       .select({ id: tickets.id, status: tickets.status, task_id: tickets.task_id })
@@ -701,16 +833,48 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   //   - primary is not closed (400 PRIMARY_CLOSED)
   //   - source is not already merged (409 ALREADY_MERGED) — avoids double-move
   //
-  // Note: cross-org enforcement is out of scope for this endpoint. The
-  // existing agent auth model (HB-14 / HB-28) is key-level; there is no
-  // per-ticket org gate on agent routes today. If the caller has the key,
-  // they can merge. This matches the behavior of /tickets/:id/close.
+  // Cross-org enforcement: both source and primary tickets must belong to
+  // the agent's org, preventing cross-org data leaks during merge.
   fastify.post('/tickets/:id/merge', {
     preHandler: [requireAgentAuth],
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = z.object({ primary_ticket_id: z.string().uuid() }).parse(request.body ?? {});
+
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    if (!(await ticketBelongsToOrg(id, scopeOrgId))) {
+      return reply.status(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Source ticket not found',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    if (!(await ticketBelongsToOrg(body.primary_ticket_id, scopeOrgId))) {
+      return reply.status(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Primary ticket not found',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
 
     if (body.primary_ticket_id === id) {
       return reply.status(400).send({
