@@ -40,12 +40,7 @@ export const updateBriefDocumentSchema = z.object({
     .refine(
       (val) => {
         if (val === null || val === undefined) return true;
-        try {
-          const url = new URL(val);
-          return url.protocol === 'https:' || url.protocol === 'http:';
-        } catch {
-          return false;
-        }
+        return /^https?:\/\/.+/.test(val);
       },
       { message: 'cover_image_url must be an http or https URL' },
     ),
