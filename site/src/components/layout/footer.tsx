@@ -1,16 +1,16 @@
 const productLinks = [
-  { label: 'Bam', href: '#features' },
-  { label: 'Views', href: '#views' },
-  { label: 'Sprints', href: '#sprints' },
-  { label: 'Banter', href: '#banter' },
-  { label: 'Helpdesk', href: '#helpdesk' },
-  { label: 'Beacon', href: '#beacon' },
-  { label: 'Brief', href: '#brief' },
-  { label: 'Bolt', href: '#bolt' },
-  { label: 'Bearing', href: '#bearing' },
-  { label: 'Board', href: '#board' },
-  { label: 'Bond', href: '#bond' },
-  { label: 'Architecture', href: '#architecture' },
+  { label: 'Bam', href: '/work#features' },
+  { label: 'Banter', href: '/communicate#banter' },
+  { label: 'Helpdesk', href: '/communicate#helpdesk' },
+  { label: 'Beacon', href: '/communicate#beacon' },
+  { label: 'Brief', href: '/communicate#brief' },
+  { label: 'Bolt', href: '/operations#bolt' },
+  { label: 'Bearing', href: '/work#bearing' },
+  { label: 'Board', href: '/work#board' },
+  { label: 'Bond', href: '/sales#bond' },
+  { label: 'Blast', href: '/sales#blast' },
+  { label: 'Bench', href: '/operations#bench' },
+  { label: 'Architecture', href: '/#architecture' },
 ];
 
 const resourceLinks = [

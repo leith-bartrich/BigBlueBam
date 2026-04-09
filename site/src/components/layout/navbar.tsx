@@ -1,95 +1,36 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Menu, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Menu, X, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
-import { useScrollSpy } from '@/lib/use-scroll-spy';
 import { Button } from '@/components/ui/button';
 
-const navLinks: { label: string; id: string; href?: string }[] = [
-  { label: 'Human + AI', id: 'ai-collaboration' },
-  { label: 'Bam', id: 'features' },
-  { label: 'Views', id: 'views' },
-  { label: 'Sprints', id: 'sprints' },
-  { label: 'Banter', id: 'banter' },
-  { label: 'Helpdesk', id: 'helpdesk' },
-  { label: 'Beacon', id: 'beacon' },
-  { label: 'Brief', id: 'brief' },
-  { label: 'Bolt', id: 'bolt' },
-  { label: 'Bearing', id: 'bearing' },
-  { label: 'Board', id: 'board' },
-  { label: 'Bond', id: 'bond' },
-  { label: 'Deploy', id: 'deploy', href: '/deploy' },
+const categoryLinks = [
+  { label: 'Work Management', href: '/work' },
+  { label: 'Communication & Knowledge', href: '/communicate' },
+  { label: 'Sales & Marketing', href: '/sales' },
+  { label: 'Operations & Automation', href: '/operations' },
 ];
 
-/**
- * Scroll to a section, continuously correcting for layout shifts.
- *
- * The page uses AnimatedReveal (opacity-0 → visible on scroll) and
- * lazy images that change document height as the user scrolls down.
- * A single scrollTo will land short because the target moves after
- * the scroll starts. Instead, we poll with rAF: on each frame we
- * check whether the element is within tolerance of the viewport
- * target. If not, we nudge window.scrollBy the delta. This produces
- * a single smooth motion that self-corrects rather than visible
- * re-jumps.
- */
-function scrollToSection(id: string) {
-  const el = document.getElementById(id);
-  if (!el) return;
-
-  const NAV_H = 64;       // fixed navbar height
-  const TOLERANCE = 2;     // px — close enough
-  const TIMEOUT = 3000;    // give up after 3s
-
-  const start = performance.now();
-  let raf = 0;
-
-  // Kick off the initial smooth scroll
-  const targetTop = el.getBoundingClientRect().top + window.scrollY - NAV_H;
-  window.scrollTo({ top: targetTop, behavior: 'smooth' });
-
-  const check = () => {
-    const rect = el.getBoundingClientRect();
-    const offset = rect.top - NAV_H;
-
-    if (Math.abs(offset) <= TOLERANCE) {
-      // We've arrived
-      return;
-    }
-
-    if (performance.now() - start > TIMEOUT) {
-      // Safety bail — just jump to final position
-      window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - NAV_H });
-      return;
-    }
-
-    // Nudge by the remaining error. Using scrollBy avoids fighting
-    // the browser's ongoing smooth scroll — it just adjusts the
-    // destination as the page reflows underneath.
-    window.scrollBy({ top: offset, behavior: 'auto' });
-
-    raf = requestAnimationFrame(check);
-  };
-
-  // Start checking after a short delay so the initial smooth scroll
-  // has begun and we don't immediately override it with a jump.
-  setTimeout(() => { raf = requestAnimationFrame(check); }, 120);
-
-  // Clean up if the user scrolls manually (e.g. grabs the scrollbar)
-  const abort = () => { cancelAnimationFrame(raf); window.removeEventListener('wheel', abort); window.removeEventListener('touchstart', abort); };
-  window.addEventListener('wheel', abort, { once: true, passive: true });
-  window.addEventListener('touchstart', abort, { once: true, passive: true });
+function isHomepage() {
+  const p = window.location.pathname;
+  return p === '/' || p === '/index.html';
 }
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const sectionIds = useMemo(() => navLinks.map((l) => l.id), []);
-  const activeId = useScrollSpy(sectionIds);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const handleNavClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
-    e.preventDefault();
-    scrollToSection(id);
-    window.history.replaceState(null, '', `#${id}`);
+  const currentPath = window.location.pathname;
+
+  const openDropdown = useCallback(() => {
+    clearTimeout(closeTimer.current);
+    setDropdownOpen(true);
+  }, []);
+
+  const closeDropdown = useCallback(() => {
+    closeTimer.current = setTimeout(() => setDropdownOpen(false), 150);
   }, []);
 
   useEffect(() => {
@@ -97,6 +38,22 @@ export function Navbar() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const isActive = (href: string) => currentPath.startsWith(href);
+  const isProductActive = categoryLinks.some((l) => isActive(l.href));
+
+  const aiHref = isHomepage() ? '#ai-collaboration' : '/#ai-collaboration';
 
   return (
     <header
@@ -109,7 +66,7 @@ export function Navbar() {
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         {/* Logo */}
-        <a href="#" className="flex items-center gap-2.5">
+        <a href="/" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white">
             B
           </div>
@@ -118,31 +75,92 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-1 md:flex">
-          {navLinks.map((link) => (
-            <a
-              key={link.id}
-              href={link.href ?? `#${link.id}`}
-              onClick={link.href ? undefined : (e) => handleNavClick(e, link.id)}
+          {/* Products dropdown */}
+          <div
+            ref={dropdownRef}
+            className="relative"
+            onMouseEnter={openDropdown}
+            onMouseLeave={closeDropdown}
+          >
+            <button
+              type="button"
+              onClick={() => setDropdownOpen((v) => !v)}
               className={clsx(
-                'rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                activeId === link.id
+                'inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                isProductActive
                   ? 'bg-primary-50 text-primary-700'
                   : 'text-zinc-600 hover:text-zinc-900',
               )}
             >
-              {link.label}
-            </a>
-          ))}
+              Products
+              <ChevronDown
+                className={clsx(
+                  'h-3.5 w-3.5 transition-transform duration-200',
+                  dropdownOpen && 'rotate-180',
+                )}
+              />
+            </button>
+
+            {dropdownOpen && (
+              <div className="absolute left-0 top-full mt-1 w-64 rounded-xl border border-zinc-200 bg-white py-2 shadow-lg">
+                {categoryLinks.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    className={clsx(
+                      'block px-4 py-2.5 text-sm font-medium transition-colors',
+                      isActive(link.href)
+                        ? 'bg-primary-50 text-primary-700'
+                        : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900',
+                    )}
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Human + AI */}
+          <a
+            href={aiHref}
+            className={clsx(
+              'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'text-zinc-600 hover:text-zinc-900',
+            )}
+          >
+            Human + AI
+          </a>
+
+          {/* Deploy */}
+          <a
+            href="/deploy"
+            className={clsx(
+              'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              isActive('/deploy')
+                ? 'bg-primary-50 text-primary-700'
+                : 'text-zinc-600 hover:text-zinc-900',
+            )}
+          >
+            Deploy
+          </a>
+
+          {/* Docs */}
+          <a
+            href="/docs"
+            className={clsx(
+              'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              isActive('/docs')
+                ? 'bg-primary-50 text-primary-700'
+                : 'text-zinc-600 hover:text-zinc-900',
+            )}
+          >
+            Docs
+          </a>
         </nav>
 
         {/* Desktop CTA */}
         <div className="hidden items-center gap-3 md:flex">
-          <a
-            href="/docs"
-            className="text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
-          >
-            Docs
-          </a>
           <Button href="/deploy" size="sm">
             Get Started
           </Button>
@@ -161,14 +179,18 @@ export function Navbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="border-t border-zinc-200 bg-white px-4 pb-4 md:hidden">
-          {navLinks.map((link) => (
+          {/* Category pages */}
+          <p className="mt-3 mb-1 px-3 text-xs font-semibold tracking-wider text-zinc-400 uppercase">
+            Products
+          </p>
+          {categoryLinks.map((link) => (
             <a
-              key={link.id}
-              href={link.href ?? `#${link.id}`}
-              onClick={link.href ? () => setMobileOpen(false) : (e) => { handleNavClick(e, link.id); setMobileOpen(false); }}
+              key={link.href}
+              href={link.href}
+              onClick={() => setMobileOpen(false)}
               className={clsx(
                 'block rounded-md px-3 py-2.5 text-sm font-medium',
-                activeId === link.id
+                isActive(link.href)
                   ? 'bg-primary-50 text-primary-700'
                   : 'text-zinc-600 hover:bg-zinc-50',
               )}
@@ -176,8 +198,44 @@ export function Navbar() {
               {link.label}
             </a>
           ))}
+
+          {/* Other links */}
+          <div className="mt-2 border-t border-zinc-100 pt-2">
+            <a
+              href={aiHref}
+              onClick={() => setMobileOpen(false)}
+              className="block rounded-md px-3 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+            >
+              Human + AI
+            </a>
+            <a
+              href="/deploy"
+              onClick={() => setMobileOpen(false)}
+              className={clsx(
+                'block rounded-md px-3 py-2.5 text-sm font-medium',
+                isActive('/deploy')
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-zinc-600 hover:bg-zinc-50',
+              )}
+            >
+              Deploy
+            </a>
+            <a
+              href="/docs"
+              onClick={() => setMobileOpen(false)}
+              className={clsx(
+                'block rounded-md px-3 py-2.5 text-sm font-medium',
+                isActive('/docs')
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-zinc-600 hover:bg-zinc-50',
+              )}
+            >
+              Docs
+            </a>
+          </div>
+
           <div className="mt-3 border-t border-zinc-100 pt-3">
-            <Button href="#cta" size="sm" className="w-full">
+            <Button href="/deploy" size="sm" className="w-full">
               Get Started
             </Button>
           </div>

@@ -1,37 +1,82 @@
+import { lazy, Suspense } from 'react';
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 import { Hero } from '@/components/sections/hero';
-import { FeaturesOverview } from '@/components/sections/features-overview';
-import { KanbanShowcase } from '@/components/sections/kanban-showcase';
-import { ViewsShowcase } from '@/components/sections/views-showcase';
-import { SprintSection } from '@/components/sections/sprint-section';
-import { Collaboration } from '@/components/sections/collaboration';
-import { UserManagement } from '@/components/sections/user-management';
-import { PowerFeatures } from '@/components/sections/power-features';
-import { Integrations } from '@/components/sections/integrations';
-import { HelpdeskSection } from '@/components/sections/helpdesk-section';
-import { BeaconSection } from '@/components/sections/beacon-section';
-import { BriefSection } from '@/components/sections/brief-section';
-import { BoltSection } from '@/components/sections/bolt-section';
-import { BearingSection } from '@/components/sections/bearing-section';
-import { BoardSection } from '@/components/sections/board-section';
-import { BondSection } from '@/components/sections/bond-section';
-import { BanterStub } from '@/components/sections/banter-stub';
-import { Architecture } from '@/components/sections/architecture';
 import { AiCollaboration } from '@/components/sections/ai-collaboration';
+import { ProductGrid } from '@/components/sections/product-grid';
+import { Architecture } from '@/components/sections/architecture';
 import { Cta } from '@/components/sections/cta';
-import { DocsPage } from '@/pages/docs';
-import { DeployGuidePage } from '@/pages/deploy-guide';
+
+const WorkPage = lazy(() => import('@/pages/work').then((m) => ({ default: m.WorkPage })));
+const CommunicatePage = lazy(() => import('@/pages/communicate').then((m) => ({ default: m.CommunicatePage })));
+const SalesPage = lazy(() => import('@/pages/sales').then((m) => ({ default: m.SalesPage })));
+const OperationsPage = lazy(() => import('@/pages/operations').then((m) => ({ default: m.OperationsPage })));
+const DeployGuidePage = lazy(() => import('@/pages/deploy-guide').then((m) => ({ default: m.DeployGuidePage })));
+const DocsPage = lazy(() => import('@/pages/docs').then((m) => ({ default: m.DocsPage })));
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 export function App() {
   const path = window.location.pathname;
 
+  if (path.startsWith('/work')) {
+    return (
+      <PageShell>
+        <WorkPage />
+      </PageShell>
+    );
+  }
+
+  if (path.startsWith('/communicate')) {
+    return (
+      <PageShell>
+        <CommunicatePage />
+      </PageShell>
+    );
+  }
+
+  if (path.startsWith('/sales')) {
+    return (
+      <PageShell>
+        <SalesPage />
+      </PageShell>
+    );
+  }
+
+  if (path.startsWith('/operations')) {
+    return (
+      <PageShell>
+        <OperationsPage />
+      </PageShell>
+    );
+  }
+
   if (path.startsWith('/deploy')) {
-    return <DeployGuidePage />;
+    return (
+      <PageShell>
+        <DeployGuidePage />
+      </PageShell>
+    );
   }
 
   if (path.startsWith('/docs')) {
-    return <DocsPage />;
+    return (
+      <PageShell>
+        <DocsPage />
+      </PageShell>
+    );
   }
 
   return (
@@ -40,22 +85,7 @@ export function App() {
       <main>
         <Hero />
         <AiCollaboration />
-        <FeaturesOverview />
-        <KanbanShowcase />
-        <ViewsShowcase />
-        <SprintSection />
-        <Collaboration />
-        <UserManagement />
-        <PowerFeatures />
-        <Integrations />
-        <BanterStub />
-        <HelpdeskSection />
-        <BeaconSection />
-        <BriefSection />
-        <BoltSection />
-        <BearingSection />
-        <BoardSection />
-        <BondSection />
+        <ProductGrid />
         <Architecture />
         <Cta />
       </main>
