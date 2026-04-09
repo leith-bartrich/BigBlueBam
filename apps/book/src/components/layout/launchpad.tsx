@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   Handshake,
   Mail,
+  Calendar,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ const APPS: AppDef[] = [
   { id: 'beacon', name: 'Beacon', description: 'Knowledge Base', icon: BookOpen, color: '#059669', path: '/beacon/' },
   { id: 'bond', name: 'Bond', description: 'CRM', icon: Handshake, color: '#0891b2', path: '/bond/' },
   { id: 'blast', name: 'Blast', description: 'Email Campaigns', icon: Mail, color: '#dc2626', path: '/blast/' },
+  { id: 'book', name: 'Book', description: 'Scheduling & Calendar', icon: Calendar, color: '#2563eb', path: '/book/' },
   { id: 'brief', name: 'Brief', description: 'Documents', icon: FileText, color: '#d97706', path: '/brief/' },
   { id: 'bolt', name: 'Bolt', description: 'Automations', icon: Zap, color: '#dc2626', path: '/bolt/' },
   { id: 'bearing', name: 'Bearing', description: 'Goals & OKRs', icon: Target, color: '#0d9488', path: '/bearing/' },
@@ -38,10 +40,6 @@ const APPS: AppDef[] = [
   { id: 'helpdesk', name: 'Helpdesk', description: 'Customer Support', icon: Headset, color: '#be123c', path: '/helpdesk/' },
   { id: 'mcp', name: 'MCP Server', description: 'AI Tools', icon: Bot, color: '#64748b', path: '/mcp/' },
 ];
-
-/* ------------------------------------------------------------------ */
-/*  Launchpad trigger button                                          */
-/* ------------------------------------------------------------------ */
 
 export { LayoutGrid };
 
@@ -58,10 +56,6 @@ export function LaunchpadTrigger({ onClick }: { onClick: () => void }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Launchpad overlay                                                  */
-/* ------------------------------------------------------------------ */
-
 interface LaunchpadProps {
   isOpen: boolean;
   onClose: () => void;
@@ -72,7 +66,6 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
   const overlayRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -86,7 +79,6 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
-  // Focus first tile when opened
   useEffect(() => {
     if (isOpen && gridRef.current) {
       const first = gridRef.current.querySelector<HTMLAnchorElement>('a');
@@ -109,14 +101,9 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
       aria-modal="true"
       aria-label="Launchpad — switch between apps"
     >
-      <div
-        className="relative w-full max-w-2xl mx-4 rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900 animate-scale-in"
-      >
-        {/* Header */}
+      <div className="relative w-full max-w-2xl mx-4 rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900 animate-scale-in">
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-            BigBlueBam Launchpad
-          </h2>
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">BigBlueBam Launchpad</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
@@ -125,13 +112,7 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
             <X className="h-5 w-5" />
           </button>
         </div>
-
-        {/* Grid */}
-        <div
-          ref={gridRef}
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-6"
-          role="grid"
-        >
+        <div ref={gridRef} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-6" role="grid">
           {APPS.map((app) => {
             const Icon = app.icon;
             const isCurrent = currentApp === app.id;
@@ -143,17 +124,13 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
                   group relative flex flex-col items-center gap-2 rounded-xl border px-4 py-5 text-center
                   transition-all duration-150 outline-none
                   focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500
-                  ${
-                    isCurrent
-                      ? 'border-primary-300 bg-primary-50/60 shadow-sm ring-2 ring-primary-200 dark:border-primary-700 dark:bg-primary-950/40 dark:ring-primary-800'
-                      : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-white hover:shadow-md hover:scale-[1.03] dark:border-zinc-700 dark:bg-zinc-800/70 dark:hover:border-zinc-500 dark:hover:bg-zinc-700/80'
-                  }
+                  ${isCurrent
+                    ? 'border-primary-300 bg-primary-50/60 shadow-sm ring-2 ring-primary-200 dark:border-primary-700 dark:bg-primary-950/40 dark:ring-primary-800'
+                    : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-white hover:shadow-md hover:scale-[1.03] dark:border-zinc-700 dark:bg-zinc-800/70 dark:hover:border-zinc-500 dark:hover:bg-zinc-700/80'}
                 `}
                 style={{ borderLeftColor: app.color, borderLeftWidth: '3px' }}
               >
-                {isCurrent && (
-                  <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary-500 animate-pulse" />
-                )}
+                {isCurrent && <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary-500 animate-pulse" />}
                 <div
                   className="flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
                   style={{ backgroundColor: `${app.color}15`, color: app.color }}
@@ -169,8 +146,6 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
           })}
         </div>
       </div>
-
-      {/* Inline keyframe animations */}
       <style>{`
         @keyframes lp-fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes lp-scale-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }

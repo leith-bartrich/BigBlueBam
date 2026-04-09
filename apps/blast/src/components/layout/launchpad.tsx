@@ -124,7 +124,7 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
                   focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500
                   ${isCurrent
                     ? 'border-primary-300 bg-primary-50/60 shadow-sm ring-2 ring-primary-200 dark:border-primary-700 dark:bg-primary-950/40 dark:ring-primary-800'
-                    : 'border-zinc-150 bg-zinc-50 hover:border-zinc-300 hover:bg-white hover:shadow-md hover:scale-[1.03] dark:border-zinc-800 dark:bg-zinc-850 dark:hover:border-zinc-600 dark:hover:bg-zinc-800'}
+                    : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-white hover:shadow-md hover:scale-[1.03] dark:border-zinc-700 dark:bg-zinc-800/70 dark:hover:border-zinc-500 dark:hover:bg-zinc-700/80'}
                 `}
                 style={{ borderLeftColor: app.color, borderLeftWidth: '3px' }}
               >
