@@ -1,11 +1,13 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import Redis from 'ioredis';
 import { db } from '../db/index.js';
 import { sessions } from '../db/schema/sessions.js';
 import { users } from '../db/schema/users.js';
+import { projectMemberships } from '../db/schema/project-memberships.js';
+import { projects } from '../db/schema/projects.js';
 import { env } from '../env.js';
 import { buildAuthUser, type AuthUser } from './auth.js';
 
@@ -183,7 +185,7 @@ async function websocketPlugin(fastify: FastifyInstance) {
         }));
 
         // Handle incoming messages
-        socket.on('message', (raw: Buffer | string) => {
+        socket.on('message', async (raw: Buffer | string) => {
           try {
             const msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8')) as {
               type: string;
@@ -191,11 +193,55 @@ async function websocketPlugin(fastify: FastifyInstance) {
             };
 
             if (msg.type === 'subscribe' && msg.room) {
-              // Basic validation: only allow project: and user: rooms
-              if (msg.room.startsWith('project:') || msg.room.startsWith('user:')) {
-                addToRoom(conn, msg.room);
-                socket.send(JSON.stringify({ type: 'subscribed', room: msg.room }));
-                fastify.log.debug({ userId: user.id, room: msg.room }, '[ws] Room subscribed');
+              if (msg.room.startsWith('project:')) {
+                // Authorize: verify user is a member of the project and project belongs to their org
+                const projectId = msg.room.slice('project:'.length);
+                let canSubscribe = false;
+
+                if (conn.user.is_superuser) {
+                  canSubscribe = true;
+                } else {
+                  // Verify project exists and belongs to user's org
+                  const [project] = await db
+                    .select({ org_id: projects.org_id })
+                    .from(projects)
+                    .where(eq(projects.id, projectId))
+                    .limit(1);
+
+                  if (project && project.org_id === conn.user.active_org_id) {
+                    // Verify user is a member of this project
+                    const [membership] = await db
+                      .select({ id: projectMemberships.id })
+                      .from(projectMemberships)
+                      .where(
+                        and(
+                          eq(projectMemberships.project_id, projectId),
+                          eq(projectMemberships.user_id, conn.user.id),
+                        ),
+                      )
+                      .limit(1);
+                    canSubscribe = !!membership;
+                  }
+                }
+
+                if (canSubscribe) {
+                  addToRoom(conn, msg.room);
+                  socket.send(JSON.stringify({ type: 'subscribed', room: msg.room }));
+                  fastify.log.debug({ userId: user.id, room: msg.room }, '[ws] Room subscribed');
+                } else {
+                  socket.send(JSON.stringify({ type: 'error', message: 'Forbidden', room: msg.room }));
+                  fastify.log.warn({ userId: user.id, room: msg.room }, '[ws] Room subscription denied');
+                }
+              } else if (msg.room.startsWith('user:')) {
+                // Users can only subscribe to their own user room
+                if (msg.room === `user:${conn.user.id}`) {
+                  addToRoom(conn, msg.room);
+                  socket.send(JSON.stringify({ type: 'subscribed', room: msg.room }));
+                  fastify.log.debug({ userId: user.id, room: msg.room }, '[ws] Room subscribed');
+                } else {
+                  socket.send(JSON.stringify({ type: 'error', message: 'Forbidden', room: msg.room }));
+                  fastify.log.warn({ userId: user.id, room: msg.room }, '[ws] Room subscription denied');
+                }
               }
             } else if (msg.type === 'unsubscribe' && msg.room) {
               removeFromRoom(conn, msg.room);

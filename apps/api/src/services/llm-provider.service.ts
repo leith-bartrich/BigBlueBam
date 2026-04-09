@@ -3,6 +3,7 @@ import { eq, and, or, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { llmProviders } from '../db/schema/llm-providers.js';
 import type { LlmProvider, NewLlmProvider } from '../db/schema/llm-providers.js';
+import { env } from '../env.js';
 
 // ---------------------------------------------------------------------------
 // Encryption helpers
@@ -10,9 +11,28 @@ import type { LlmProvider, NewLlmProvider } from '../db/schema/llm-providers.js'
 
 const ALGORITHM = 'aes-256-gcm';
 
+// Legacy static salt — kept for backward-compatible decryption of values
+// encrypted before the deployment-specific salt was introduced.
+const LEGACY_SALT = 'llm-provider-salt';
+
+// Deployment-specific salt derived from SESSION_SECRET so different
+// deployments produce different derived keys.
+const CURRENT_SALT = crypto
+  .createHash('sha256')
+  .update(env.SESSION_SECRET + ':llm-provider-salt')
+  .digest()
+  .subarray(0, 16);
+
+function deriveKey(salt: string | Buffer): Buffer {
+  return crypto.scryptSync(env.SESSION_SECRET, salt, 32);
+}
+
 function getEncryptionKey(): Buffer {
-  const secret = process.env.SESSION_SECRET || 'default-dev-secret-change-me';
-  return crypto.scryptSync(secret, 'llm-provider-salt', 32);
+  return deriveKey(CURRENT_SALT);
+}
+
+function getLegacyEncryptionKey(): Buffer {
+  return deriveKey(LEGACY_SALT);
 }
 
 export function encryptApiKey(plaintext: string): Buffer {
@@ -26,11 +46,20 @@ export function encryptApiKey(plaintext: string): Buffer {
 }
 
 export function decryptApiKey(data: Buffer): string {
-  const key = getEncryptionKey();
   const iv = data.subarray(0, 16);
   const tag = data.subarray(16, 32);
   const encrypted = data.subarray(32);
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+
+  // Try the current deployment-specific key first
+  try {
+    const decipher = crypto.createDecipheriv(ALGORITHM, getEncryptionKey(), iv);
+    decipher.setAuthTag(tag);
+    return decipher.update(encrypted) + decipher.final('utf8');
+  } catch {
+    // Fall back to the legacy static-salt key for pre-migration values
+  }
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, getLegacyEncryptionKey(), iv);
   decipher.setAuthTag(tag);
   return decipher.update(encrypted) + decipher.final('utf8');
 }
