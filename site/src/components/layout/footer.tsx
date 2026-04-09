@@ -8,6 +8,7 @@ const productLinks = [
   { label: 'Brief', href: '#brief' },
   { label: 'Bolt', href: '#bolt' },
   { label: 'Bearing', href: '#bearing' },
+  { label: 'Board', href: '#board' },
   { label: 'Architecture', href: '#architecture' },
 ];
 

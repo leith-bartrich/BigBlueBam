@@ -49,6 +49,7 @@ const capabilities = [
   'Brief document collaboration & graduation',
   'Bolt workflow automations',
   'Bearing goals & OKR tracking',
+  'Board visual collaboration & canvas analysis',
   'Helpdesk ticket operations',
   'Platform administration',
 ];
@@ -120,8 +121,8 @@ export function AiCollaboration() {
             <div>
               <h3 className="text-xl font-bold text-zinc-900">Full parity through MCP</h3>
               <p className="mt-3 text-zinc-600">
-                The built-in Model Context Protocol server exposes 182 structured tools that mirror
-                every UI action across BigBlueBam, Beacon, Brief, Bolt, Bearing, Banter, and the Helpdesk. AI agents authenticate
+                The built-in Model Context Protocol server exposes 196 structured tools that mirror
+                every UI action across BigBlueBam, Beacon, Brief, Bolt, Bearing, Board, Banter, and the Helpdesk. AI agents authenticate
                 with scoped API keys, operate under the same role-based permissions as humans, and
                 leave the same audit trail in the activity log.
               </p>
@@ -136,7 +137,7 @@ export function AiCollaboration() {
             </div>
             <div>
               <h3 className="mb-4 text-sm font-semibold text-zinc-500 uppercase tracking-wider">
-                182 tools across 11 areas
+                196 tools across 12 areas
               </h3>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {capabilities.map((cap) => (

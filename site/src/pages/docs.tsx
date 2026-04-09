@@ -452,7 +452,49 @@ const bearingTools: ToolProduct = {
   ],
 };
 
-const allProducts: ToolProduct[] = [bamTools, banterTools, beaconTools, briefTools, boltTools, bearingTools];
+const boardTools: ToolProduct = {
+  name: 'Board',
+  icon: <Zap className="h-4 w-4" />,
+  color: 'bg-cyan-100 text-cyan-700',
+  categories: [
+    {
+      name: 'Rooms',
+      tools: [
+        { name: 'board_list', description: 'List whiteboard rooms with optional filters and pagination' },
+        { name: 'board_get', description: 'Get a single whiteboard room by ID with participant info' },
+        { name: 'board_create', description: 'Create a new whiteboard room in a project' },
+        { name: 'board_update', description: 'Update room name, description, or settings' },
+        { name: 'board_delete', description: 'Delete a whiteboard room (destructive - requires confirmation)' },
+      ],
+    },
+    {
+      name: 'Shapes',
+      tools: [
+        { name: 'board_shapes', description: 'List all shapes on a whiteboard canvas' },
+        { name: 'board_shape_add', description: 'Add a shape (sticky, rectangle, text, arrow, etc.) to the canvas' },
+        { name: 'board_shape_update', description: 'Update shape properties (position, size, color, text)' },
+        { name: 'board_shape_remove', description: 'Remove a shape from the canvas' },
+      ],
+    },
+    {
+      name: 'Canvas',
+      tools: [
+        { name: 'board_canvas_read', description: 'Get the full canvas state in an AI-readable structured format' },
+        { name: 'board_canvas_snapshot', description: 'Generate a visual snapshot of the current canvas' },
+      ],
+    },
+    {
+      name: 'Assets & Pipeline',
+      tools: [
+        { name: 'board_asset_upload', description: 'Upload an image or file to the whiteboard canvas' },
+        { name: 'board_sticky_to_task', description: 'Convert a sticky note into a Bam task with metadata carry-over' },
+        { name: 'board_embed', description: 'Embed a cross-product item (task, beacon, brief, goal) on the canvas' },
+      ],
+    },
+  ],
+};
+
+const allProducts: ToolProduct[] = [bamTools, banterTools, beaconTools, briefTools, boltTools, bearingTools, boardTools];
 
 function getTotalTools(product: ToolProduct): number {
   return product.categories.reduce((sum, cat) => sum + cat.tools.length, 0);
@@ -1161,7 +1203,85 @@ const bearingApi: ApiService = {
   ],
 };
 
-const allApis: ApiService[] = [bamApi, banterApi, beaconApi, briefApi, boltApi, bearingApi, helpdeskApi];
+const boardApi: ApiService = {
+  name: 'Board API',
+  baseUrl: '/board/api/v1',
+  description: 'Visual collaboration whiteboard -- rooms, shapes, real-time canvas sync, audio conferencing, and cross-product embeds.',
+  color: 'bg-cyan-100 text-cyan-700',
+  groups: [
+    {
+      name: 'Rooms',
+      endpoints: [
+        { method: 'GET', path: '/rooms', description: 'List whiteboard rooms with optional project and status filters' },
+        { method: 'POST', path: '/rooms', description: 'Create a new whiteboard room' },
+        { method: 'GET', path: '/rooms/:id', description: 'Get room details including participant list' },
+        { method: 'PATCH', path: '/rooms/:id', description: 'Update room name, description, or settings' },
+        { method: 'DELETE', path: '/rooms/:id', description: 'Delete a whiteboard room' },
+        { method: 'POST', path: '/rooms/:id/duplicate', description: 'Duplicate a whiteboard room with all shapes' },
+      ],
+    },
+    {
+      name: 'Shapes',
+      endpoints: [
+        { method: 'GET', path: '/rooms/:id/shapes', description: 'List all shapes on the canvas' },
+        { method: 'POST', path: '/rooms/:id/shapes', description: 'Add a shape to the canvas' },
+        { method: 'PATCH', path: '/shapes/:id', description: 'Update shape properties' },
+        { method: 'DELETE', path: '/shapes/:id', description: 'Remove a shape from the canvas' },
+        { method: 'POST', path: '/rooms/:id/shapes/bulk', description: 'Bulk add, update, or delete shapes' },
+      ],
+    },
+    {
+      name: 'Canvas',
+      endpoints: [
+        { method: 'GET', path: '/rooms/:id/canvas', description: 'Get full canvas state as structured JSON' },
+        { method: 'GET', path: '/rooms/:id/snapshot', description: 'Generate a PNG snapshot of the canvas' },
+      ],
+    },
+    {
+      name: 'Assets',
+      endpoints: [
+        { method: 'POST', path: '/rooms/:id/assets', description: 'Upload an image or file to the canvas' },
+        { method: 'GET', path: '/rooms/:id/assets', description: 'List uploaded assets for a room' },
+        { method: 'DELETE', path: '/assets/:id', description: 'Delete an uploaded asset' },
+      ],
+    },
+    {
+      name: 'Participants',
+      endpoints: [
+        { method: 'GET', path: '/rooms/:id/participants', description: 'List active participants and their cursors' },
+        { method: 'POST', path: '/rooms/:id/join', description: 'Join a whiteboard room' },
+        { method: 'POST', path: '/rooms/:id/leave', description: 'Leave a whiteboard room' },
+      ],
+    },
+    {
+      name: 'Chat',
+      endpoints: [
+        { method: 'GET', path: '/rooms/:id/chat', description: 'List side-chat messages for a room' },
+        { method: 'POST', path: '/rooms/:id/chat', description: 'Post a message in the room side-chat' },
+      ],
+    },
+    {
+      name: 'Templates & Pipeline',
+      endpoints: [
+        { method: 'GET', path: '/templates', description: 'List whiteboard templates' },
+        { method: 'POST', path: '/templates/:id/create', description: 'Create a room from a template' },
+        { method: 'POST', path: '/shapes/:id/to-task', description: 'Convert a sticky note into a Bam task' },
+        { method: 'POST', path: '/rooms/:id/embeds', description: 'Embed a cross-product item on the canvas' },
+      ],
+    },
+    {
+      name: 'Audio',
+      endpoints: [
+        { method: 'POST', path: '/rooms/:id/audio/start', description: 'Start audio conferencing in a room' },
+        { method: 'POST', path: '/rooms/:id/audio/join', description: 'Join the audio session' },
+        { method: 'POST', path: '/rooms/:id/audio/leave', description: 'Leave the audio session' },
+        { method: 'POST', path: '/rooms/:id/audio/end', description: 'End the audio session for all participants' },
+      ],
+    },
+  ],
+};
+
+const allApis: ApiService[] = [bamApi, banterApi, beaconApi, briefApi, boltApi, bearingApi, boardApi, helpdeskApi];
 
 /* ------------------------------------------------------------------ */
 /*  FAQ Data                                                           */
@@ -1175,11 +1295,11 @@ interface Faq {
 const faqs: Faq[] = [
   {
     question: 'What is BigBlueBam?',
-    answer: 'BigBlueBam is a comprehensive work management platform that combines project planning (Bam), team messaging (Banter), a knowledge base (Beacon), collaborative documents (Brief), workflow automation (Bolt), goals and OKR tracking (Bearing), and a customer support portal (Helpdesk) into a single self-hosted stack. It is designed for small-to-medium teams of 2 to 50 users who want an integrated alternative to juggling Jira, Slack, Confluence, and Zendesk separately.',
+    answer: 'BigBlueBam is a comprehensive work management platform that combines project planning (Bam), team messaging (Banter), a knowledge base (Beacon), collaborative documents (Brief), workflow automation (Bolt), goals and OKR tracking (Bearing), visual collaboration whiteboards (Board), and a customer support portal (Helpdesk) into a single self-hosted stack. It is designed for small-to-medium teams of 2 to 50 users who want an integrated alternative to juggling Jira, Slack, Confluence, and Zendesk separately.',
   },
   {
     question: 'How many apps are included?',
-    answer: 'BigBlueBam ships with seven integrated applications: Bam (Kanban project management with sprints), Banter (real-time messaging with channels, DMs, threads, and voice/video calls), Beacon (knowledge base with semantic search and a knowledge graph), Brief (collaborative WYSIWYG documents), Bolt (WHEN/IF/THEN workflow automations), Bearing (goals and OKR tracking with automatic progress from linked tasks), and Helpdesk (customer support ticket portal). All seven apps share a single authentication system and cross-link to each other seamlessly.',
+    answer: 'BigBlueBam ships with eight integrated applications: Bam (Kanban project management with sprints), Banter (real-time messaging with channels, DMs, threads, and voice/video calls), Beacon (knowledge base with semantic search and a knowledge graph), Brief (collaborative WYSIWYG documents), Bolt (WHEN/IF/THEN workflow automations), Bearing (goals and OKR tracking with automatic progress from linked tasks), Board (infinite-canvas visual collaboration whiteboards with real-time editing and audio conferencing), and Helpdesk (customer support ticket portal). All eight apps share a single authentication system and cross-link to each other seamlessly.',
   },
   {
     question: 'What is the difference between Beacon and Brief?',
@@ -1187,11 +1307,11 @@ const faqs: Faq[] = [
   },
   {
     question: 'How do AI agents work with BigBlueBam?',
-    answer: 'BigBlueBam exposes 182 MCP (Model Context Protocol) tools on a dedicated server endpoint at /mcp/. Any MCP-compatible AI agent -- Claude, GPT, or custom agents -- can connect and manage tasks, post messages, search the knowledge base, write documents, create automations, and track goals. Destructive actions require a two-step confirmation flow to prevent accidental data loss. The MCP server supports Streamable HTTP, SSE, and stdio transports.',
+    answer: 'BigBlueBam exposes 196 MCP (Model Context Protocol) tools on a dedicated server endpoint at /mcp/. Any MCP-compatible AI agent -- Claude, GPT, or custom agents -- can connect and manage tasks, post messages, search the knowledge base, write documents, create automations, track goals, and collaborate on visual whiteboards. Destructive actions require a two-step confirmation flow to prevent accidental data loss. The MCP server supports Streamable HTTP, SSE, and stdio transports.',
   },
   {
     question: 'What is MCP?',
-    answer: 'MCP stands for Model Context Protocol, an open standard for connecting AI models to external tools and data sources. Instead of building custom integrations for each AI provider, BigBlueBam implements MCP once and any compliant agent can use all 182 tools. You can learn more at modelcontextprotocol.io.',
+    answer: 'MCP stands for Model Context Protocol, an open standard for connecting AI models to external tools and data sources. Instead of building custom integrations for each AI provider, BigBlueBam implements MCP once and any compliant agent can use all 196 tools. You can learn more at modelcontextprotocol.io.',
   },
   {
     question: 'Can I use my own LLM?',
@@ -1199,11 +1319,11 @@ const faqs: Faq[] = [
   },
   {
     question: 'Is BigBlueBam open source?',
-    answer: 'BigBlueBam is source-available on GitHub. The full codebase -- frontend, API, all six apps, Docker Compose stack, Helm chart, and migrations -- is in a single monorepo. You can self-host it on your own infrastructure with no external dependencies beyond the Docker images. Check the repository for the specific license terms.',
+    answer: 'BigBlueBam is source-available on GitHub. The full codebase -- frontend, API, all eight apps, Docker Compose stack, Helm chart, and migrations -- is in a single monorepo. You can self-host it on your own infrastructure with no external dependencies beyond the Docker images. Check the repository for the specific license terms.',
   },
   {
     question: 'How do I deploy BigBlueBam?',
-    answer: 'The quickest way is to clone the repository, copy .env.example to .env, fill in your secrets, and run docker compose up -d. This starts 18 services including PostgreSQL, Redis, MinIO, Qdrant, all seven app APIs, their frontends, the MCP server, and a background worker. Everything is accessible through a single nginx reverse proxy on port 80. For production, a Helm chart is provided at infra/helm/ for Kubernetes deployment.',
+    answer: 'The quickest way is to clone the repository, copy .env.example to .env, fill in your secrets, and run docker compose up -d. This starts 18 services including PostgreSQL, Redis, MinIO, Qdrant, all eight app APIs, their frontends, the MCP server, and a background worker. Everything is accessible through a single nginx reverse proxy on port 80. For production, a Helm chart is provided at infra/helm/ for Kubernetes deployment.',
   },
   {
     question: 'What database does it use?',
@@ -1456,9 +1576,9 @@ function McpToolsContent() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">MCP Tools Reference</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
-          BigBlueBam exposes <strong>{totalToolCount} MCP tools</strong> across six products, enabling AI agents
+          BigBlueBam exposes <strong>{totalToolCount} MCP tools</strong> across seven products, enabling AI agents
           to manage tasks, communicate in channels, search knowledge bases, author documents, orchestrate
-          automations, and track goals -- all through the{' '}
+          automations, track goals, and collaborate on visual whiteboards -- all through the{' '}
           <a
             href="https://modelcontextprotocol.io"
             target="_blank"
@@ -1507,7 +1627,7 @@ function ApiEndpointsContent() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">API Endpoints</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
-          BigBlueBam exposes <strong>{totalEndpoints} REST endpoints</strong> across six API services, all accessible
+          BigBlueBam exposes <strong>{totalEndpoints} REST endpoints</strong> across seven API services, all accessible
           through a single nginx reverse proxy on port 80. Every endpoint uses JSON request/response bodies, session
           cookie or API key authentication, and cursor-based pagination on list endpoints.
         </p>
@@ -1542,8 +1662,8 @@ function UserGuideContent() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">User Guide</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
-          A practical guide to using BigBlueBam's six integrated applications. Whether you are managing sprints,
-          messaging your team, building a knowledge base, writing documents, automating workflows, or handling
+          A practical guide to using BigBlueBam's eight integrated applications. Whether you are managing sprints,
+          messaging your team, building a knowledge base, writing documents, automating workflows, collaborating on whiteboards, or handling
           customer support tickets, this guide covers the essentials.
         </p>
       </div>
@@ -1572,8 +1692,8 @@ function UserGuideContent() {
             <h3 className="mb-3 text-lg font-semibold text-zinc-900">Navigation Overview</h3>
             <p className="mb-3 text-sm text-zinc-600">
               BigBlueBam uses a cross-app navigation system with colored pills at the top of the screen. Each pill
-              represents one of the six apps: Bam (blue), Banter (violet), Beacon (amber), Brief (emerald), Bolt (rose),
-              and Helpdesk (sky). Click any pill to switch apps without losing your place. Within each app, a collapsible
+              represents one of the eight apps: Bam (blue), Banter (violet), Beacon (amber), Brief (emerald), Bolt (rose),
+              Bearing (indigo), Board (cyan), and Helpdesk (sky). Click any pill to switch apps without losing your place. Within each app, a collapsible
               sidebar provides contextual navigation -- projects in Bam, channels in Banter, folders in Brief, and so on.
             </p>
             <p className="text-sm text-zinc-600">
@@ -1904,7 +2024,7 @@ function UserGuideContent() {
               <strong> IF</strong> adds optional conditions that filter when the automation fires -- for example, "if the
               task has the label 'bug'" or "if the message contains '@urgent'." <strong>THEN</strong> defines one or more
               actions to execute -- for example, "post a message in the #releases channel" or "create a Beacon article."
-              Actions are MCP tools, which means automations have access to the full 182-tool catalog.
+              Actions are MCP tools, which means automations have access to the full 196-tool catalog.
             </p>
           </div>
 
@@ -2022,6 +2142,71 @@ function UserGuideContent() {
               rates), at-risk reports (all goals currently flagged as at-risk or behind across the organization), and
               owner reports (all goals owned by a specific user). Reports can be generated via the UI or through
               12 MCP tools that let AI agents produce and share reports in Banter channels.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Board */}
+      <div className="mb-12">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-700">
+            <Zap className="h-4 w-4" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-900">Board -- Visual Collaboration</h2>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Whiteboard Rooms</h3>
+            <p className="text-sm text-zinc-600">
+              Board organizes canvases into rooms, each scoped to a project. Create a room from the Board home page,
+              give it a name and optional description, and start collaborating. Rooms can be created from scratch or
+              from one of 10 built-in templates (retrospective, brainstorm, user story map, kanban, etc.). Each room
+              has its own infinite canvas, side chat, and optional audio conferencing session.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Infinite Canvas</h3>
+            <p className="text-sm text-zinc-600">
+              The canvas is built on tldraw and supports shapes, sticky notes, freehand drawing, text blocks, arrows,
+              images, and embeds. Zoom in and out with scroll or pinch-to-zoom on touch devices. Pan with middle-click
+              drag or two-finger swipe. The canvas is truly infinite -- there are no boundaries. Shapes can be grouped,
+              aligned, distributed, and locked.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Real-Time Collaboration and Audio</h3>
+            <p className="text-sm text-zinc-600">
+              Multiple users can edit the same canvas simultaneously with CRDT-based conflict resolution. Each
+              participant sees live cursors and presence indicators showing who is on the board. Built-in audio
+              conferencing via LiveKit lets participants talk while collaborating -- no need to open a separate call
+              in Banter. The side chat panel provides persistent text messaging per room for sharing links, notes,
+              and decisions alongside the canvas.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Sticky-to-Task Pipeline</h3>
+            <p className="text-sm text-zinc-600">
+              During brainstorming sessions, ideas captured as sticky notes can be converted into tracked Bam tasks
+              with a single click. The sticky note title becomes the task title, the body becomes the description,
+              and the color maps to a priority or label. You can also embed existing Bam tasks, Beacon articles,
+              Brief documents, and Bearing goals directly onto the canvas as interactive cards that link back to the
+              source item.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">AI Canvas Analysis</h3>
+            <p className="text-sm text-zinc-600">
+              Board exposes 14 MCP tools that let AI agents interact with whiteboards programmatically. Agents can
+              read the full canvas state as structured data, add and arrange shapes, generate snapshots, upload
+              assets, convert stickies to tasks, and embed cross-product content. This enables workflows like
+              "analyze this retrospective board and summarize the themes" or "create a task for each action item
+              sticky."
             </p>
           </div>
         </div>
@@ -2259,8 +2444,9 @@ function DeploymentContent() {
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">brief-api</td><td className="py-2 pr-4">4005</td><td className="py-2">Brief collaborative documents API</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">bolt-api</td><td className="py-2 pr-4">4006</td><td className="py-2">Bolt automation engine API</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">bearing-api</td><td className="py-2 pr-4">4007</td><td className="py-2">Bearing goals and OKR tracking API</td></tr>
+                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">board-api</td><td className="py-2 pr-4">4008</td><td className="py-2">Board visual collaboration whiteboard API + WebSocket</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">helpdesk-api</td><td className="py-2 pr-4">4001</td><td className="py-2">Helpdesk support ticket API</td></tr>
-                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">mcp-server</td><td className="py-2 pr-4">3001</td><td className="py-2">MCP protocol server (182 tools)</td></tr>
+                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">mcp-server</td><td className="py-2 pr-4">3001</td><td className="py-2">MCP protocol server (196 tools)</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">worker</td><td className="py-2 pr-4">--</td><td className="py-2">BullMQ background jobs (email, notifications, export, sprint-close)</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">migrate</td><td className="py-2 pr-4">--</td><td className="py-2">Runs SQL migrations on startup, then exits</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">postgres</td><td className="py-2 pr-4">5432</td><td className="py-2">PostgreSQL 16 primary database</td></tr>
@@ -2294,7 +2480,7 @@ function DeploymentContent() {
         <div className="rounded-lg border border-zinc-200 bg-white p-6">
           <h2 className="mb-4 text-xl font-bold text-zinc-900">Running Tests</h2>
           <p className="mb-3 text-sm text-zinc-600">
-            BigBlueBam has 700+ tests across all packages, using Vitest as the test runner.
+            BigBlueBam has 850+ tests across all packages, using Vitest as the test runner.
           </p>
           <div className="space-y-2">
             <div className="rounded-md bg-zinc-50 p-3">
@@ -2522,7 +2708,7 @@ interface SidebarSection {
 }
 
 const sidebarSections: SidebarSection[] = [
-  { id: 'mcp-tools', label: 'MCP Tools', sublabel: '182 tools', icon: <Zap className="h-4 w-4" /> },
+  { id: 'mcp-tools', label: 'MCP Tools', sublabel: '196 tools', icon: <Zap className="h-4 w-4" /> },
   { id: 'api-endpoints', label: 'API Endpoints', icon: <Server className="h-4 w-4" /> },
   { id: 'user-guide', label: 'User Guide', icon: <Users className="h-4 w-4" /> },
   { id: 'deployment', label: 'Deployment', icon: <Rocket className="h-4 w-4" /> },

@@ -28,7 +28,7 @@ apps/
   frontend/     — React SPA served by nginx at /b3/ (port 80) — ~55 source files, 8 pages, command palette, keyboard shortcuts
   banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
   banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (BETA)
-  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 182 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing), 10+ resources, 8 prompts, 17 tool modules
+  mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 196 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board), 10+ resources, 8 prompts, 18 tool modules
   worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
@@ -40,6 +40,8 @@ apps/
   bolt/         — Bolt React SPA served by nginx at /bolt/ — visual rule builder, execution log, templates
   bearing-api/  — Bearing Fastify API (internal :4007, proxied at /bearing/api/) — goals, key results, progress, reporting
   bearing/      — Bearing React SPA served by nginx at /bearing/ — goal dashboard, timeline, detail views
+  board-api/    — Board Fastify REST API + WebSocket (internal :4008, proxied at /board/api/) — whiteboard rooms, shapes, assets, conferencing
+  board/        — Board React SPA served by nginx at /board/ — infinite canvas, real-time collaboration, audio conferencing
   voice-agent/  — AI voice agent (Python/FastAPI, internal :4003) — LiveKit Agents SDK, STT/TTS pipeline (placeholder)
 packages/
   shared/       — Shared Zod schemas, types, constants (@bigbluebam/shared)
@@ -68,12 +70,15 @@ The entire stack runs via `docker compose up`. All services are accessed through
 - `http://DOMAIN/bolt/api/` proxies to the Bolt API
 - `http://DOMAIN/bearing/` serves the Bearing Goals & OKRs SPA
 - `http://DOMAIN/bearing/api/` proxies to the Bearing API
+- `http://DOMAIN/board/` serves the Board visual collaboration SPA
+- `http://DOMAIN/board/api/` proxies to the Board API
+- `http://DOMAIN/board/ws` proxies Board WebSocket connections
 - `http://DOMAIN/helpdesk/` serves the Helpdesk portal SPA
 - `http://DOMAIN/helpdesk/api/` proxies to the Helpdesk API
 - `http://DOMAIN/files/` serves uploaded files from MinIO
 - `http://DOMAIN/mcp/` proxies to the MCP server
 
-Application containers (api, banter-api, beacon-api, brief-api, bolt-api, bearing-api, mcp-server, worker, helpdesk-api, frontend, voice-agent) are stateless and scale horizontally. Data services (postgres, redis, minio, qdrant) can be swapped for managed cloud equivalents by changing environment variables only.
+Application containers (api, banter-api, beacon-api, brief-api, bolt-api, bearing-api, board-api, mcp-server, worker, helpdesk-api, frontend, voice-agent) are stateless and scale horizontally. Data services (postgres, redis, minio, qdrant) can be swapped for managed cloud equivalents by changing environment variables only.
 
 ## IMPORTANT: Preserving Test Data
 
@@ -90,7 +95,7 @@ The test database contains seeded projects, users, tickets, and conversations th
 
 **Single source of truth:** `infra/postgres/migrations/NNNN_*.sql` — append-only, idempotent numbered migration files. `0000_init.sql` is the canonical baseline; subsequent files layer schema evolution on top. There is no `init.sql` — the postgres container boots with an empty DB and the `migrate` service creates everything.
 
-The `migrate` service (reuses the api image, runs `node dist/migrate.js`) is a `service_completed_successfully` dependency of every DB-using service — api, helpdesk-api, banter-api, beacon-api, brief-api, bolt-api, bearing-api, worker. It runs automatically on every `docker compose up`, tracks applied migrations in the `schema_migrations` table with SHA-256 checksums, and is a no-op once the DB is current.
+The `migrate` service (reuses the api image, runs `node dist/migrate.js`) is a `service_completed_successfully` dependency of every DB-using service — api, helpdesk-api, banter-api, beacon-api, brief-api, bolt-api, bearing-api, board-api, worker. It runs automatically on every `docker compose up`, tracks applied migrations in the `schema_migrations` table with SHA-256 checksums, and is a no-op once the DB is current.
 
 **When you change the schema:**
 
