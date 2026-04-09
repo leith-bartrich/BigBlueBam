@@ -56,6 +56,14 @@
   }
 }
 
+/* Move Excalidraw's Library button to bottom-right, next to the Help icon */
+.excalidraw .sidebar-trigger {
+  position: fixed !important;
+  bottom: 12px !important;
+  right: 50px !important;
+  z-index: 5 !important;
+}
+
 html {
   scroll-behavior: smooth;
 }

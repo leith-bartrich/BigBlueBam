@@ -4,7 +4,6 @@ import {
   Share2,
   Lock,
   Unlock,
-  Download,
   History,
   MessageCircle,
   MoreHorizontal,
@@ -12,7 +11,6 @@ import {
   FileDown,
 } from 'lucide-react';
 import { useBoard, useUpdateBoard, useToggleLock } from '@/hooks/use-boards';
-import { Avatar } from '@/components/common/avatar';
 import { Button } from '@/components/common/button';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { cn } from '@/lib/utils';
@@ -56,8 +54,8 @@ export function BoardToolbar({ boardId, onNavigate, onToggleChat, chatOpen }: Bo
 
   return (
     <div className="absolute top-0 left-0 right-0 z-[200] flex items-center justify-between h-12 px-3 pointer-events-none">
-      {/* Left group */}
-      <div className="flex items-center gap-2 pointer-events-auto">
+      {/* Left group — offset right to avoid Excalidraw's menu button */}
+      <div className="flex items-center gap-2 pointer-events-auto ml-12">
         <button
           onClick={() => onNavigate('/')}
           className="flex items-center justify-center h-8 w-8 rounded-lg bg-white/90 dark:bg-zinc-800/90 backdrop-blur shadow-sm border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
@@ -96,9 +94,6 @@ export function BoardToolbar({ boardId, onNavigate, onToggleChat, chatOpen }: Bo
 
       {/* Right group */}
       <div className="flex items-center gap-2 pointer-events-auto">
-        {/* Presence avatars (inline placeholder) */}
-        <PresenceAvatars />
-
         <AudioControls boardId={boardId} />
 
         <button
@@ -166,37 +161,3 @@ export function BoardToolbar({ boardId, onNavigate, onToggleChat, chatOpen }: Bo
   );
 }
 
-// ---------------------------------------------------------------------------
-// Inline presence avatars for the toolbar
-// ---------------------------------------------------------------------------
-
-function PresenceAvatars() {
-  // Placeholder — in production this would come from WebSocket presence data
-  const collaborators = [
-    { id: '1', name: 'You', color: '#3b82f6' },
-  ];
-
-  const MAX_SHOWN = 6;
-  const shown = collaborators.slice(0, MAX_SHOWN);
-  const overflow = collaborators.length - MAX_SHOWN;
-
-  return (
-    <div className="flex items-center -space-x-1.5">
-      {shown.map((c) => (
-        <div key={c.id} title={c.name}>
-          <Avatar
-            name={c.name}
-            size="sm"
-            borderColor={c.color}
-            className="ring-2 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900"
-          />
-        </div>
-      ))}
-      {overflow > 0 && (
-        <div className="flex items-center justify-center h-6 w-6 rounded-full bg-zinc-200 dark:bg-zinc-700 text-[10px] font-medium text-zinc-600 dark:text-zinc-300 ring-2 ring-white dark:ring-zinc-900">
-          +{overflow}
-        </div>
-      )}
-    </div>
-  );
-}

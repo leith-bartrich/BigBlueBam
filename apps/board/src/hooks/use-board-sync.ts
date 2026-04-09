@@ -128,7 +128,9 @@ export function useBoardSync(
             const api = getAPI();
             if (!api) break;
 
-            collaboratorsRef.current.set(d.userId, {
+            // Create a NEW Map so Excalidraw detects the change
+            const next = new Map(collaboratorsRef.current);
+            next.set(d.userId, {
               pointer: {
                 x: d.pointer.x,
                 y: d.pointer.y,
@@ -139,10 +141,11 @@ export function useBoardSync(
               color: { background: d.color ?? '#3b82f6', stroke: d.color ?? '#3b82f6' },
               isCurrentUser: false,
             });
+            collaboratorsRef.current = next;
 
             // Push updated collaborators to Excalidraw
             api.updateScene({
-              collaborators: collaboratorsRef.current,
+              collaborators: next,
             });
             break;
           }
@@ -150,10 +153,12 @@ export function useBoardSync(
           case 'user_left': {
             const leftId = msg.data?.id;
             if (leftId) {
-              collaboratorsRef.current.delete(leftId);
+              const next = new Map(collaboratorsRef.current);
+              next.delete(leftId);
+              collaboratorsRef.current = next;
               const api = getAPI();
               if (api) {
-                api.updateScene({ collaborators: collaboratorsRef.current });
+                api.updateScene({ collaborators: next });
               }
             }
             break;
@@ -239,10 +244,16 @@ export function useBoardSync(
   );
 
   // ── Send pointer updates (for laser + cursor) ─────────────────────
+  const lastPointerSentRef = useRef(0);
   const sendPointer = useCallback(
     (payload: { pointer: { x: number; y: number }; button: 'up' | 'down'; pointersMap?: Map<number, any> }) => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN || !joinedRef.current) return;
+
+      // Throttle: max 20 updates/sec
+      const now = Date.now();
+      if (now - lastPointerSentRef.current < 50) return;
+      lastPointerSentRef.current = now;
 
       // Determine active tool from Excalidraw's app state
       const api = getAPI();

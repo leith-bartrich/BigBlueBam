@@ -131,6 +131,7 @@ export function BoardCanvasPage({ boardId, onNavigate }: BoardCanvasPageProps) {
             onChange={handleChange}
             onPointerUpdate={sendPointer}
             theme={isDark ? 'dark' : 'light'}
+            validateEmbeddable
           />
         </div>
 
