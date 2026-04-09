@@ -4,7 +4,7 @@ import {
   BearingMetricType,
   BearingDirection,
   BearingProgressMode,
-} from '@bigbluebam/shared/schemas/bearing';
+} from '@bigbluebam/shared';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole, requireGoalAccess } from '../middleware/authorize.js';
 import * as krService from '../services/key-result.service.js';
