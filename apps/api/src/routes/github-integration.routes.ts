@@ -6,7 +6,7 @@ import { githubIntegrations, taskGithubRefs } from '../db/schema/github-integrat
 import { tasks } from '../db/schema/tasks.js';
 import { phases } from '../db/schema/phases.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
-import { requireProjectRole } from '../middleware/authorize.js';
+import { requireProjectRole, requireProjectAccessForEntity } from '../middleware/authorize.js';
 import { generateWebhookSecret } from '../services/github-integration.service.js';
 
 /**
@@ -203,7 +203,7 @@ export default async function githubIntegrationRoutes(fastify: FastifyInstance) 
 
   fastify.get<{ Params: { id: string } }>(
     '/tasks/:id/github-refs',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireProjectAccessForEntity('task')] },
     async (request, reply) => {
       // Gate on the task's project membership — a user who can read a
       // task's details should be able to see its linked commits/PRs.

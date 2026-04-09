@@ -203,7 +203,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
           }
           case 'typing.start': {
             const channelId = msg.channel_id as string;
-            if (channelId) {
+            if (channelId && client.rooms.has(`banter:channel:${channelId}`)) {
               const room = `banter:channel:${channelId}`;
               const payload = JSON.stringify({
                 type: 'typing.start',
@@ -223,7 +223,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
           }
           case 'typing.stop': {
             const channelId = msg.channel_id as string;
-            if (channelId) {
+            if (channelId && client.rooms.has(`banter:channel:${channelId}`)) {
               const room = `banter:channel:${channelId}`;
               const payload = JSON.stringify({
                 type: 'typing.stop',

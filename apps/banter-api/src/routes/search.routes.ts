@@ -8,6 +8,7 @@ import {
   banterChannelMemberships,
 } from '../db/schema/index.js';
 import { requireAuth } from '../plugins/auth.js';
+import { escapeLike } from '../lib/escape-like.js';
 
 const searchMessagesSchema = z.object({
   q: z.string().min(1).max(500),
@@ -157,7 +158,7 @@ export default async function searchRoutes(fastify: FastifyInstance) {
       const user = request.user!;
       const params = searchChannelsSchema.parse(request.query);
 
-      const searchPattern = `%${params.q}%`;
+      const searchPattern = `%${escapeLike(params.q)}%`;
 
       // SuperUsers see all channels; otherwise hide private channels the user isn't a member of.
       const visibilityCondition = user.is_superuser

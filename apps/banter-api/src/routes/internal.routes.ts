@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { timingSafeEqual } from 'node:crypto';
 import { env } from '../env.js';
 import { postActivityFeedMessage } from '../services/activity-feed.js';
 import { writeTranscriptSegment } from '../services/transcription.js';
@@ -32,7 +33,12 @@ async function requireInternalSecret(
 
   const providedSecret = request.headers['x-internal-secret'] as string | undefined;
 
-  if (!providedSecret || providedSecret !== configuredSecret) {
+  const secretsMatch =
+    providedSecret &&
+    providedSecret.length === configuredSecret.length &&
+    timingSafeEqual(Buffer.from(providedSecret), Buffer.from(configuredSecret));
+
+  if (!secretsMatch) {
     return reply.status(401).send({
       error: {
         code: 'UNAUTHORIZED',

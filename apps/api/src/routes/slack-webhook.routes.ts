@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { slackIntegrations } from '../db/schema/slack-integrations.js';
 import { tasks } from '../db/schema/tasks.js';
@@ -96,6 +96,7 @@ export default async function slackWebhookRoutes(fastify: FastifyInstance) {
         assignee_id: tasks.assignee_id,
         phase_id: tasks.phase_id,
         state_id: tasks.state_id,
+        project_id: tasks.project_id,
       })
       .from(tasks)
       .where(eq(tasks.human_id, ref))
@@ -103,6 +104,25 @@ export default async function slackWebhookRoutes(fastify: FastifyInstance) {
 
     if (!task) {
       return reply.send(ephemeral(`Task ${ref} not found.`));
+    }
+
+    // Verify the task belongs to a project with a matching slack integration.
+    // Without this check, a Slack workspace associated with project A could
+    // query tasks from an unrelated project B by guessing human_ids.
+    if (body.token) {
+      const [integration] = await db
+        .select({ id: slackIntegrations.id })
+        .from(slackIntegrations)
+        .where(
+          and(
+            eq(slackIntegrations.project_id, task.project_id),
+            eq(slackIntegrations.slash_command_token, body.token),
+          ),
+        )
+        .limit(1);
+      if (!integration) {
+        return reply.send(ephemeral(`Task ${ref} not found.`));
+      }
     }
 
     // Enrich with phase/state/assignee display values. Each lookup is

@@ -18,6 +18,7 @@ async function getOrgMaxFileSizeBytes(orgId: string): Promise<number> {
   return mb * 1024 * 1024;
 }
 
+const BLOCKED_MIME_TYPES = ['image/svg+xml'];
 const ALLOWED_MIME_PREFIXES = ['image/', 'audio/', 'video/'];
 const ALLOWED_MIME_EXACT = [
   'application/pdf',
@@ -34,6 +35,7 @@ const ALLOWED_MIME_EXACT = [
 ];
 
 function isAllowedMimeType(mimeType: string): boolean {
+  if (BLOCKED_MIME_TYPES.includes(mimeType)) return false;
   if (ALLOWED_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix))) return true;
   if (ALLOWED_MIME_EXACT.includes(mimeType)) return true;
   return false;
