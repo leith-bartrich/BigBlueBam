@@ -116,7 +116,7 @@ export default async function widgetRoutes(fastify: FastifyInstance) {
     '/widgets/:id/query',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const result = await widgetService.executeWidgetQuery(request.params.id);
+      const result = await widgetService.executeWidgetQuery(request.params.id, request.user!.org_id);
       return reply.send({ data: result });
     },
   );
@@ -127,7 +127,7 @@ export default async function widgetRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       // Invalidate cache, then re-execute
-      const result = await widgetService.executeWidgetQuery(request.params.id);
+      const result = await widgetService.executeWidgetQuery(request.params.id, request.user!.org_id);
       return reply.send({ data: result });
     },
   );

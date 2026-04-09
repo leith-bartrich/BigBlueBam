@@ -135,11 +135,12 @@ export async function deleteWidget(id: string) {
 // Execute widget query
 // ---------------------------------------------------------------------------
 
-export async function executeWidgetQuery(id: string) {
+export async function executeWidgetQuery(id: string, orgId: string) {
   const widget = await getWidget(id);
   return queryService.executeQuery(
     widget.data_source,
     widget.entity,
     widget.query_config as QueryConfig,
+    orgId,
   );
 }

@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { readDb } from '../db/index.js';
+import { readConnection } from '../db/index.js';
 import { env } from '../env.js';
 import { getDataSource } from '../lib/data-source-registry.js';
 import { badRequest } from '../lib/utils.js';
@@ -47,10 +46,13 @@ export interface QueryConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Query builder
+// Validation helpers
 // ---------------------------------------------------------------------------
 
 const ALLOWED_IDENTS = /^[a-z_][a-z0-9_]*$/;
+
+/** Strict ISO 8601 date/datetime pattern — rejects anything that isn't a plain date or timestamp. */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/;
 
 function validateIdent(name: string): string {
   if (!ALLOWED_IDENTS.test(name)) {
@@ -59,33 +61,62 @@ function validateIdent(name: string): string {
   return name;
 }
 
-function buildFilterSql(f: QueryFilter): string {
+function validateDateString(value: string): string {
+  if (!ISO_DATE_RE.test(value)) {
+    throw badRequest(`Invalid date value: ${value}`);
+  }
+  // Also verify it parses to a real date
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    throw badRequest(`Invalid date value: ${value}`);
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
+// Parameterized query builder
+// ---------------------------------------------------------------------------
+
+/** Accumulates positional parameters ($1, $2, ...) alongside the SQL string. */
+interface ParameterizedQuery {
+  text: string;
+  params: unknown[];
+}
+
+function addParam(pq: ParameterizedQuery, value: unknown): string {
+  pq.params.push(value);
+  return `$${pq.params.length}`;
+}
+
+function buildFilterClause(f: QueryFilter, pq: ParameterizedQuery): string {
   const field = validateIdent(f.field);
   switch (f.op) {
-    case 'eq': return `${field} = '${String(f.value).replace(/'/g, "''")}'`;
-    case 'neq': return `${field} != '${String(f.value).replace(/'/g, "''")}'`;
-    case 'gt': return `${field} > '${String(f.value).replace(/'/g, "''")}'`;
-    case 'gte': return `${field} >= '${String(f.value).replace(/'/g, "''")}'`;
-    case 'lt': return `${field} < '${String(f.value).replace(/'/g, "''")}'`;
-    case 'lte': return `${field} <= '${String(f.value).replace(/'/g, "''")}'`;
+    case 'eq': return `${field} = ${addParam(pq, String(f.value))}`;
+    case 'neq': return `${field} != ${addParam(pq, String(f.value))}`;
+    case 'gt': return `${field} > ${addParam(pq, String(f.value))}`;
+    case 'gte': return `${field} >= ${addParam(pq, String(f.value))}`;
+    case 'lt': return `${field} < ${addParam(pq, String(f.value))}`;
+    case 'lte': return `${field} <= ${addParam(pq, String(f.value))}`;
     case 'is_null': return `${field} IS NULL`;
     case 'is_not_null': return `${field} IS NOT NULL`;
     case 'in': {
       if (!Array.isArray(f.value)) throw badRequest('IN filter requires an array value');
-      const vals = (f.value as string[]).map((v) => `'${String(v).replace(/'/g, "''")}'`).join(',');
-      return `${field} IN (${vals})`;
+      const placeholders = (f.value as unknown[]).map((v) => addParam(pq, String(v)));
+      return `${field} IN (${placeholders.join(', ')})`;
     }
     case 'between': {
       if (!Array.isArray(f.value) || f.value.length !== 2) throw badRequest('BETWEEN requires [start, end]');
-      return `${field} BETWEEN '${String(f.value[0]).replace(/'/g, "''")}' AND '${String(f.value[1]).replace(/'/g, "''")}'`;
+      return `${field} BETWEEN ${addParam(pq, String(f.value[0]))} AND ${addParam(pq, String(f.value[1]))}`;
     }
-    case 'like': return `${field} ILIKE '%${String(f.value).replace(/'/g, "''").replace(/[%_]/g, '\\$&')}%'`;
+    case 'like': return `${field} ILIKE ${addParam(pq, `%${String(f.value).replace(/[%_\\]/g, '\\$&')}%`)}`;
     default: throw badRequest(`Unknown filter operator: ${f.op}`);
   }
 }
 
 function resolveDateRange(dr: DateRange): { start: string; end: string } | null {
-  if (dr.start && dr.end) return { start: dr.start, end: dr.end };
+  if (dr.start && dr.end) {
+    return { start: validateDateString(dr.start), end: validateDateString(dr.end) };
+  }
   if (!dr.preset) return null;
 
   const now = new Date();
@@ -120,15 +151,23 @@ function resolveDateRange(dr: DateRange): { start: string; end: string } | null 
   return { start: start.toISOString(), end: now.toISOString() };
 }
 
+/**
+ * Build a parameterized analytical query.
+ *
+ * @param orgId - The authenticated user's organization ID, always injected as
+ *   a WHERE filter to enforce tenant isolation.
+ */
 export function buildQuery(
   product: string,
   entity: string,
   config: QueryConfig,
-): string {
+  orgId: string,
+): ParameterizedQuery {
   const source = getDataSource(product, entity);
   if (!source) throw badRequest(`Unknown data source: ${product}.${entity}`);
 
   const table = validateIdent(source.baseTable);
+  const pq: ParameterizedQuery = { text: '', params: [] };
 
   // Build SELECT columns
   const selectParts: string[] = [];
@@ -162,11 +201,12 @@ export function buildQuery(
 
   if (selectParts.length === 0) throw badRequest('Query must have at least one measure');
 
-  // Build WHERE
-  const whereParts: string[] = [];
+  // Build WHERE — always starts with org_id tenant isolation
+  const whereParts: string[] = [`organization_id = ${addParam(pq, orgId)}`];
+
   if (config.filters) {
     for (const f of config.filters) {
-      whereParts.push(buildFilterSql(f));
+      whereParts.push(buildFilterClause(f, pq));
     }
   }
 
@@ -175,8 +215,8 @@ export function buildQuery(
     const range = resolveDateRange(config.date_range);
     if (range) {
       const tf = validateIdent(config.time_dimension.field);
-      whereParts.push(`${tf} >= '${range.start}'`);
-      whereParts.push(`${tf} <= '${range.end}'`);
+      whereParts.push(`${tf} >= ${addParam(pq, range.start)}`);
+      whereParts.push(`${tf} <= ${addParam(pq, range.end)}`);
     }
   }
 
@@ -206,30 +246,34 @@ export function buildQuery(
 
   // Assemble query
   let q = `SELECT ${selectParts.join(', ')} FROM ${table}`;
-  if (whereParts.length > 0) q += ` WHERE ${whereParts.join(' AND ')}`;
+  q += ` WHERE ${whereParts.join(' AND ')}`;
   if (groupByParts.length > 0) q += ` GROUP BY ${groupByParts.join(', ')}`;
   if (orderBy) q += ` ${orderBy}`;
   q += ` LIMIT ${limit}`;
 
-  return q;
+  pq.text = q;
+  return pq;
 }
 
 export async function executeQuery(
   product: string,
   entity: string,
   config: QueryConfig,
+  orgId: string,
 ): Promise<{ rows: Record<string, unknown>[]; sql: string; duration_ms: number }> {
-  const queryStr = buildQuery(product, entity, config);
+  const pq = buildQuery(product, entity, config, orgId);
   const start = Date.now();
 
   try {
-    const result = await readDb.execute(
-      sql.raw(`SET LOCAL statement_timeout = '${env.QUERY_TIMEOUT_MS}ms'; ${queryStr}`),
-    );
+    // Run inside a transaction so SET LOCAL is scoped and automatically reset
+    const result = await readConnection.begin(async (tx) => {
+      await tx.unsafe(`SET LOCAL statement_timeout = '${Number(env.QUERY_TIMEOUT_MS)}ms'`);
+      return tx.unsafe(pq.text, pq.params);
+    });
     const duration_ms = Date.now() - start;
     return {
       rows: Array.isArray(result) ? (result as Record<string, unknown>[]) : [],
-      sql: queryStr,
+      sql: pq.text,
       duration_ms,
     };
   } catch (err: any) {

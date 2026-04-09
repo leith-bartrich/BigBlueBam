@@ -88,6 +88,7 @@ export default async function dataSourceRoutes(fastify: FastifyInstance) {
         body.data_source,
         body.entity,
         body.query_config,
+        request.user!.org_id,
       );
       return reply.send({ data: result });
     },
