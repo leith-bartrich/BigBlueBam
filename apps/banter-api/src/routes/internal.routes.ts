@@ -1,5 +1,6 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { env } from '../env.js';
 import { postActivityFeedMessage } from '../services/activity-feed.js';
 import { writeTranscriptSegment } from '../services/transcription.js';
 
@@ -12,13 +13,46 @@ const feedMessageSchema = z.object({
 });
 
 /**
+ * Middleware that verifies X-Internal-Secret header against INTERNAL_SERVICE_SECRET.
+ * If the secret is not configured, logs a warning but allows the request (graceful degradation).
+ */
+async function requireInternalSecret(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const configuredSecret = env.INTERNAL_SERVICE_SECRET;
+
+  if (!configuredSecret) {
+    request.log.warn(
+      'INTERNAL_SERVICE_SECRET is not configured — internal routes are unprotected. ' +
+      'Set INTERNAL_SERVICE_SECRET env var (min 32 chars) to secure service-to-service calls.',
+    );
+    return;
+  }
+
+  const providedSecret = request.headers['x-internal-secret'] as string | undefined;
+
+  if (!providedSecret || providedSecret !== configuredSecret) {
+    return reply.status(401).send({
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Invalid or missing X-Internal-Secret header',
+        details: [],
+        request_id: request.id,
+      },
+    });
+  }
+}
+
+/**
  * Internal API routes — called by other services (Bam API, worker) within the Docker network.
- * These endpoints don't require user auth since they're called service-to-service.
+ * These endpoints require a shared service secret via X-Internal-Secret header.
  */
 export default async function internalRoutes(fastify: FastifyInstance) {
   // POST /v1/internal/feed — post an activity feed message to a channel
   fastify.post(
     '/v1/internal/feed',
+    { preHandler: [requireInternalSecret] },
     async (request, reply) => {
       const body = feedMessageSchema.parse(request.body);
 
@@ -37,6 +71,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
   // POST /v1/internal/share — share a Bam entity to a Banter channel
   fastify.post(
     '/v1/internal/share',
+    { preHandler: [requireInternalSecret] },
     async (request, reply) => {
       const body = z
         .object({
@@ -71,6 +106,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
   // POST /v1/internal/transcript — receive a transcript segment from the voice agent
   fastify.post(
     '/v1/internal/transcript',
+    { preHandler: [requireInternalSecret] },
     async (request, reply) => {
       const body = z
         .object({

@@ -35,6 +35,9 @@ const envSchema = z.object({
   BBB_API_INTERNAL_URL: z.string().default('http://api:4000'),
   VOICE_AGENT_URL: z.string().default('http://voice-agent:4003'),
 
+  // Internal service-to-service authentication
+  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
+
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
 });

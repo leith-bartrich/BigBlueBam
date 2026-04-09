@@ -12,6 +12,7 @@ import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 import { extractMentions } from '../services/notification-queue.js';
 import { emitNotification, threadDeepLink } from '../lib/notify.js';
+import { sanitizeContent } from '../lib/sanitize.js';
 
 const createReplySchema = z.object({
   content: z.string().min(1).max(40000),
@@ -200,7 +201,8 @@ export default async function threadRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const contentPlain = body.content.replace(/<[^>]*>/g, '').slice(0, 500);
+      const sanitizedReplyContent = sanitizeContent(body.content);
+      const contentPlain = sanitizedReplyContent.replace(/<[^>]*>/g, '').slice(0, 500);
 
       const [message] = await db
         .insert(banterMessages)
@@ -208,7 +210,7 @@ export default async function threadRoutes(fastify: FastifyInstance) {
           channel_id: parent.channel_id,
           author_id: user.id,
           thread_parent_id: id,
-          content: body.content,
+          content: sanitizedReplyContent,
           content_plain: contentPlain,
           content_format: body.content_format,
         })

@@ -112,15 +112,43 @@ async function verifyLiveKitSignature(
   return false;
 }
 
+/**
+ * Check whether any org has a LiveKit API secret configured.
+ * Used to decide whether to enforce signature verification.
+ */
+async function hasAnyLiveKitSecret(): Promise<boolean> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(banterSettings)
+    .where(sql`${banterSettings.livekit_api_secret} IS NOT NULL AND ${banterSettings.livekit_api_secret} != ''`);
+  return (rows[0]?.count ?? 0) > 0;
+}
+
 export default async function webhookRoutes(fastify: FastifyInstance) {
   // POST /v1/webhooks/livekit — receives LiveKit room events
   fastify.post('/v1/webhooks/livekit', async (request, reply) => {
-    // Verify webhook signature (graceful degradation: warn but still process on failure)
+    // Verify webhook signature
     const authHeader = request.headers.authorization;
     const signatureValid = await verifyLiveKitSignature(authHeader, request.body, fastify.log);
     if (!signatureValid) {
+      // Check if any LiveKit API secret is configured — if so, reject unverified webhooks.
+      // Only allow unverified webhooks when no secret is configured (dev mode).
+      const hasConfiguredSecret = await hasAnyLiveKitSecret();
+      if (hasConfiguredSecret) {
+        fastify.log.error(
+          'LiveKit webhook: signature verification failed with a configured API secret — rejecting',
+        );
+        return reply.status(401).send({
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'LiveKit webhook signature verification failed',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
       fastify.log.warn(
-        'LiveKit webhook: proceeding without verified signature (graceful degradation)',
+        'LiveKit webhook: no API secret configured — proceeding without signature verification (dev mode)',
       );
     }
 

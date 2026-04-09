@@ -18,6 +18,7 @@ import {
   dmDeepLink,
   threadDeepLink,
 } from '../lib/notify.js';
+import { sanitizeContent } from '../lib/sanitize.js';
 
 const createMessageSchema = z.object({
   content: z.string().min(1).max(40000),
@@ -150,12 +151,8 @@ export default async function messageRoutes(fastify: FastifyInstance) {
       const user = request.user!;
       const body = createMessageSchema.parse(request.body);
 
-      // Sanitize content: strip dangerous HTML (script tags, event handlers, javascript: URLs)
-      let sanitizedContent = body.content;
-      sanitizedContent = sanitizedContent.replace(/<script[\s\S]*?<\/script>/gi, '');
-      sanitizedContent = sanitizedContent.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
-      sanitizedContent = sanitizedContent.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
-      sanitizedContent = sanitizedContent.replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src="#"');
+      // Sanitize content with DOMPurify (allowlisted tags/attributes only)
+      const sanitizedContent = sanitizeContent(body.content);
 
       // Strip HTML tags for plain text
       const contentPlain = sanitizedContent.replace(/<[^>]*>/g, '').slice(0, 500);
@@ -470,12 +467,13 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const contentPlain = body.content.replace(/<[^>]*>/g, '').slice(0, 500);
+      const sanitizedEditContent = sanitizeContent(body.content);
+      const contentPlain = sanitizedEditContent.replace(/<[^>]*>/g, '').slice(0, 500);
 
       const [updated] = await db
         .update(banterMessages)
         .set({
-          content: body.content,
+          content: sanitizedEditContent,
           content_plain: contentPlain,
           is_edited: true,
           edited_at: new Date(),

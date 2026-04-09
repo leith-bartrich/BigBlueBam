@@ -61,6 +61,47 @@ const reorderGroupsSchema = z.object({
   ),
 });
 
+// ── Helpers ─────────────────────────────────────────────────────
+
+/**
+ * Mask a secret string, showing only the last 4 characters.
+ * Returns null for null/empty values.
+ */
+function maskSecret(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (value.length <= 4) return '****';
+  return '*'.repeat(value.length - 4) + value.slice(-4);
+}
+
+/**
+ * Deep-clone settings and mask sensitive fields so they are never
+ * returned in full to the client, even for admins.
+ */
+function maskSensitiveFields<T extends Record<string, unknown>>(settings: T): T {
+  const masked = { ...settings };
+
+  // Mask top-level secret fields
+  if ('livekit_api_secret' in masked && typeof masked.livekit_api_secret === 'string') {
+    (masked as Record<string, unknown>).livekit_api_secret = maskSecret(masked.livekit_api_secret as string);
+  }
+
+  // Mask api_key inside provider config objects
+  for (const field of ['stt_provider_config', 'tts_provider_config', 'ai_voice_agent_llm_config'] as const) {
+    if (field in masked && masked[field] && typeof masked[field] === 'object') {
+      const config = { ...(masked[field] as Record<string, unknown>) };
+      if ('api_key' in config && typeof config.api_key === 'string') {
+        config.api_key = maskSecret(config.api_key);
+      }
+      if ('api_secret' in config && typeof config.api_secret === 'string') {
+        config.api_secret = maskSecret(config.api_secret);
+      }
+      (masked as Record<string, unknown>)[field] = config;
+    }
+  }
+
+  return masked;
+}
+
 // ── Routes ───────────────────────────────────────────────────────
 
 export default async function adminRoutes(fastify: FastifyInstance) {
@@ -69,7 +110,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   // GET /v1/admin/settings
   fastify.get(
     '/v1/admin/settings',
-    { preHandler: [requireAuth] },
+    { preHandler: adminPreHandler },
     async (request, reply) => {
       const user = request.user!;
 
@@ -85,10 +126,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .insert(banterSettings)
           .values({ org_id: user.org_id })
           .returning();
-        return reply.send({ data: created });
+        return reply.send({ data: maskSensitiveFields(created) });
       }
 
-      return reply.send({ data: settings });
+      return reply.send({ data: maskSensitiveFields(settings) });
     },
   );
 
