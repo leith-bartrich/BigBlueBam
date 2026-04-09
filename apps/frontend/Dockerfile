@@ -14,6 +14,7 @@ COPY apps/beacon/package.json ./apps/beacon/
 COPY apps/brief/package.json ./apps/brief/
 COPY apps/bolt/package.json ./apps/bolt/
 COPY apps/bearing/package.json ./apps/bearing/
+COPY apps/board/package.json ./apps/board/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
@@ -67,6 +68,12 @@ COPY apps/bearing/public ./apps/bearing/public
 COPY apps/bearing/index.html ./apps/bearing/
 COPY apps/bearing/tsconfig.json apps/bearing/tsconfig.node.json apps/bearing/vite.config.ts ./apps/bearing/
 
+# Board frontend
+COPY apps/board/src ./apps/board/src
+COPY apps/board/public ./apps/board/public
+COPY apps/board/index.html ./apps/board/
+COPY apps/board/tsconfig.json apps/board/tsconfig.node.json apps/board/vite.config.ts ./apps/board/
+
 RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/frontend build \
  && pnpm --filter @bigbluebam/helpdesk build \
@@ -74,7 +81,8 @@ RUN pnpm --filter @bigbluebam/shared build \
  && pnpm --filter @bigbluebam/beacon build \
  && pnpm --filter @bigbluebam/brief build \
  && pnpm --filter @bigbluebam/bolt build \
- && pnpm --filter @bigbluebam/bearing build
+ && pnpm --filter @bigbluebam/bearing build \
+ && pnpm --filter @bigbluebam/board build
 
 # ── Stage: production ────────────────────────────────────────────
 FROM nginx:alpine AS production
@@ -86,6 +94,7 @@ COPY --from=build /app/apps/beacon/dist /usr/share/nginx/html/beacon
 COPY --from=build /app/apps/brief/dist /usr/share/nginx/html/brief
 COPY --from=build /app/apps/bolt/dist /usr/share/nginx/html/bolt
 COPY --from=build /app/apps/bearing/dist /usr/share/nginx/html/bearing
+COPY --from=build /app/apps/board/dist /usr/share/nginx/html/board
 COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 ARG GIT_COMMIT=unknown

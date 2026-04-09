@@ -170,6 +170,7 @@ export async function promptRootRedirect() {
     { label: 'Brief — collaborative documents', value: 'brief' },
     { label: 'Bolt — workflow automations', value: 'bolt' },
     { label: 'Bearing — goals & OKR tracking', value: 'bearing' },
+    { label: 'Board — visual collaboration', value: 'board' },
     { label: 'Banter — team messaging', value: 'banter' },
   ]);
 

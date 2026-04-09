@@ -125,6 +125,13 @@ export function BeaconLayout({ children, onNavigate, activeRoute }: BeaconLayout
                   Bearing
                 </button>
                 <button
+                  onClick={() => { window.location.href = '/board/'; }}
+                  className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
+                  title="Board"
+                >
+                  Board
+                </button>
+                <button
                   onClick={() => { window.location.href = '/helpdesk/'; }}
                   className="px-2 py-1 text-xs font-medium rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
                   title="Helpdesk"

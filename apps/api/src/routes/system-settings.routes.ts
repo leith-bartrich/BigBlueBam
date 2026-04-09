@@ -16,6 +16,7 @@ const ROOT_REDIRECT_VALUES = [
   'brief',
   'bolt',
   'bearing',
+  'board',
   'helpdesk',
 ] as const;
 
@@ -30,6 +31,7 @@ const REDIRECT_MAP: Record<RootRedirectValue, string | null> = {
   brief: '/brief/',
   bolt: '/bolt/',
   bearing: '/bearing/',
+  board: '/board/',
   helpdesk: '/helpdesk/',
 };
 

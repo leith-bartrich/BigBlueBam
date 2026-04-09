@@ -81,7 +81,7 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
 
   // Register all tools
   registerProjectTools(server, apiClient);
-  registerBoardTools(server, apiClient);
+  registerBoardTools(server, apiClient, env.BOARD_API_URL);
   registerTaskTools(server, apiClient);
   registerSprintTools(server, apiClient);
   registerCommentTools(server, apiClient);
