@@ -7,6 +7,22 @@ import * as krService from '../services/key-result.service.js';
 const METRIC_TYPES = ['percentage', 'number', 'currency', 'boolean'] as const;
 const DIRECTIONS = ['increase', 'decrease'] as const;
 const PROGRESS_MODES = ['manual', 'linked'] as const;
+const LINKED_TARGET_TYPES = ['task', 'tasks', 'epic', 'sprint'] as const;
+
+/** Strict schema for linked_query — only known fields allowed. */
+const linkedQuerySchema = z
+  .object({
+    target_type: z.enum(LINKED_TARGET_TYPES),
+    project_id: z.string().uuid().optional(),
+    phase_id: z.string().uuid().optional(),
+    sprint_id: z.string().uuid().optional(),
+    label: z.string().max(100).optional(),
+    assignee_id: z.string().uuid().optional(),
+    status: z.string().max(50).optional(),
+  })
+  .strict()
+  .nullable()
+  .optional();
 
 const createKeyResultSchema = z.object({
   title: z.string().min(1).max(500),
@@ -18,7 +34,7 @@ const createKeyResultSchema = z.object({
   unit: z.string().max(50).nullable().optional(),
   direction: z.enum(DIRECTIONS).optional(),
   progress_mode: z.enum(PROGRESS_MODES).optional(),
-  linked_query: z.record(z.unknown()).nullable().optional(),
+  linked_query: linkedQuerySchema,
   owner_id: z.string().uuid().nullable().optional(),
   sort_order: z.number().int().min(0).max(1000).optional(),
 });
@@ -33,7 +49,7 @@ const updateKeyResultSchema = z.object({
   unit: z.string().max(50).nullable().optional(),
   direction: z.enum(DIRECTIONS).optional(),
   progress_mode: z.enum(PROGRESS_MODES).optional(),
-  linked_query: z.record(z.unknown()).nullable().optional(),
+  linked_query: linkedQuerySchema,
   owner_id: z.string().uuid().nullable().optional(),
   sort_order: z.number().int().min(0).max(1000).optional(),
 });

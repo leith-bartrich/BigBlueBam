@@ -206,6 +206,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
   );
 
   // DELETE /goals/:id/watchers/:userId — Remove watcher
+  // Users can remove themselves. Goal owner or org admin/owner can remove others.
   fastify.delete<{ Params: { id: string; userId: string } }>(
     '/goals/:id/watchers/:userId',
     { preHandler: [requireAuth, requireGoalAccess(), requireScope('read_write')] },
@@ -221,9 +222,31 @@ export default async function goalRoutes(fastify: FastifyInstance) {
           },
         });
       }
+
+      const targetUserId = request.params.userId;
+      const callerId = request.user!.id;
+      const callerRole = request.user!.role;
+      const goal = (request as any).goal;
+
+      // Allow: removing yourself, or goal owner removing others, or org admin/owner
+      const isSelf = callerId === targetUserId;
+      const isGoalOwner = goal.owner_id === callerId;
+      const isOrgAdminOrOwner = callerRole === 'admin' || callerRole === 'owner';
+
+      if (!isSelf && !isGoalOwner && !isOrgAdminOrOwner) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'You can only remove yourself as a watcher unless you are the goal owner or an org admin',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
       await goalService.removeWatcher(
-        (request as any).goal.id,
-        request.params.userId,
+        goal.id,
+        targetUserId,
         request.user!.org_id,
       );
       return reply.status(204).send();

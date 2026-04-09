@@ -8,6 +8,7 @@ import {
 } from '../db/schema/index.js';
 import { evaluateConditions } from './condition-engine.js';
 import { getAvailableActions } from './event-catalog.js';
+import { validateExternalUrl } from '../lib/url-validator.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,6 +88,21 @@ export async function validateActionParameters(
   const warnings: string[] = [];
 
   for (const action of actions) {
+    // BOLT-004: Block SSRF via send_webhook action
+    if (action.mcp_tool === 'send_webhook' && action.parameters) {
+      const url = action.parameters.url;
+      if (typeof url === 'string') {
+        const urlCheck = validateExternalUrl(url);
+        if (!urlCheck.safe) {
+          const msg = `Action "send_webhook" URL is not allowed: ${urlCheck.reason}`;
+          if (mode === 'strict') {
+            throw new BoltError('SSRF_BLOCKED', msg, 400);
+          }
+          warnings.push(msg);
+        }
+      }
+    }
+
     if (!action.parameters) continue;
 
     for (const [key, value] of Object.entries(action.parameters)) {
@@ -116,6 +132,62 @@ export async function validateActionParameters(
   }
 
   return { valid: warnings.length === 0, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Recursion / loop detection (BOLT-005)
+// ---------------------------------------------------------------------------
+
+/** Default max chain depth for automation execution. */
+export const DEFAULT_MAX_CHAIN_DEPTH = 5;
+
+/**
+ * Mapping from MCP tool names to the event(s) they would produce.
+ * Used to detect self-triggering automations at creation/update time.
+ */
+const TOOL_TO_PRODUCED_EVENTS: Record<string, string[]> = {
+  bam_create_task: ['task.created'],
+  bam_update_task: ['task.updated'],
+  bam_assign_task: ['task.assigned', 'task.updated'],
+  bam_move_task: ['task.moved', 'task.updated'],
+  bam_add_comment: ['task.commented'],
+  bam_add_label: ['task.updated'],
+  bam_set_due_date: ['task.updated'],
+  banter_send_message: ['message.posted'],
+  banter_create_channel: ['channel.created'],
+  beacon_create_entry: ['beacon.published'],
+  beacon_update_entry: ['beacon.verified'],
+  brief_create_document: ['document.created'],
+  brief_update_status: ['document.status_changed'],
+  helpdesk_create_ticket: ['ticket.created'],
+  helpdesk_reply_ticket: ['ticket.replied'],
+  helpdesk_assign_ticket: ['ticket.status_changed'],
+  helpdesk_update_priority: ['ticket.status_changed'],
+};
+
+/**
+ * Detect if an automation's trigger_event matches any event produced by its own actions.
+ * Returns a list of warning messages (empty if no recursion risk detected).
+ */
+export function detectSelfTrigger(
+  triggerEvent: string,
+  actions: { mcp_tool: string }[],
+): string[] {
+  const warnings: string[] = [];
+
+  for (const action of actions) {
+    const producedEvents = TOOL_TO_PRODUCED_EVENTS[action.mcp_tool];
+    if (!producedEvents) continue;
+
+    if (producedEvents.includes(triggerEvent)) {
+      warnings.push(
+        `Potential infinite loop: trigger "${triggerEvent}" can be re-fired by action "${action.mcp_tool}". ` +
+          `Execution will be capped at max_chain_depth to prevent runaway chains.`,
+      );
+    }
+  }
+
+  return warnings;
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +367,9 @@ export async function createAutomation(
   // Validate that entity references in action parameters belong to the org
   await validateActionParameters(data.actions, orgId, 'strict');
 
+  // BOLT-005: Detect self-triggering / recursive automations
+  const loopWarnings = detectSelfTrigger(data.trigger_event, data.actions);
+
   return await db.transaction(async (tx) => {
     const [automation] = await tx
       .insert(boltAutomations)
@@ -311,6 +386,7 @@ export async function createAutomation(
         cron_timezone: data.cron_timezone ?? 'UTC',
         max_executions_per_hour: data.max_executions_per_hour ?? 100,
         cooldown_seconds: data.cooldown_seconds ?? 0,
+        max_chain_depth: DEFAULT_MAX_CHAIN_DEPTH,
         created_by: userId,
         updated_by: userId,
       })
@@ -365,6 +441,7 @@ export async function createAutomation(
       ...automation!,
       conditions: insertedConditions,
       actions: insertedActions,
+      ...(loopWarnings.length > 0 ? { _warnings: loopWarnings } : {}),
     };
   });
 }
@@ -392,6 +469,13 @@ export async function updateAutomation(
       );
     }
   }
+
+  // BOLT-005: Detect self-triggering on updates
+  const effectiveTriggerEvent = data.trigger_event ?? existing.trigger_event;
+  const effectiveActions = data.actions ?? [];
+  const loopWarnings = effectiveActions.length > 0
+    ? detectSelfTrigger(effectiveTriggerEvent, effectiveActions)
+    : [];
 
   return await db.transaction(async (tx) => {
     const updateValues: Record<string, unknown> = {
@@ -497,6 +581,7 @@ export async function updateAutomation(
       ...automation!,
       conditions: insertedConditions,
       actions: insertedActions,
+      ...(loopWarnings.length > 0 ? { _warnings: loopWarnings } : {}),
     };
   });
 }

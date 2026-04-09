@@ -1,4 +1,4 @@
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bearingKeyResults,
@@ -270,6 +270,9 @@ export async function addLink(krId: string, data: AddLinkInput, orgId: string) {
   const kr = await getKeyResultWithOrgCheck(krId, orgId);
   if (!kr) throw new BearingError('NOT_FOUND', 'Key result not found', 404);
 
+  // Validate that the link target belongs to the caller's org
+  await validateLinkTargetOrg(data.target_type, data.target_id, orgId);
+
   const [link] = await db
     .insert(bearingKrLinks)
     .values({
@@ -282,6 +285,70 @@ export async function addLink(krId: string, data: AddLinkInput, orgId: string) {
     .returning();
 
   return link!;
+}
+
+/**
+ * Validate that a link target entity belongs to the caller's organization.
+ * For tasks/epics/sprints, checks via the project's org_id.
+ * For goals, checks bearing_goals.organization_id directly.
+ * For projects, checks projects.org_id directly.
+ */
+async function validateLinkTargetOrg(
+  targetType: string,
+  targetId: string,
+  orgId: string,
+): Promise<void> {
+  let rows: any[];
+
+  switch (targetType) {
+    case 'task':
+    case 'epic':
+      // tasks -> projects.org_id
+      rows = await db.execute(sql`
+        SELECT t.id FROM tasks t
+        JOIN projects p ON p.id = t.project_id
+        WHERE t.id = ${targetId} AND p.org_id = ${orgId}
+        LIMIT 1
+      `);
+      break;
+
+    case 'sprint':
+      // sprints -> projects.org_id
+      rows = await db.execute(sql`
+        SELECT s.id FROM sprints s
+        JOIN projects p ON p.id = s.project_id
+        WHERE s.id = ${targetId} AND p.org_id = ${orgId}
+        LIMIT 1
+      `);
+      break;
+
+    case 'project':
+      rows = await db.execute(sql`
+        SELECT id FROM projects
+        WHERE id = ${targetId} AND org_id = ${orgId}
+        LIMIT 1
+      `);
+      break;
+
+    case 'goal':
+      rows = await db.execute(sql`
+        SELECT id FROM bearing_goals
+        WHERE id = ${targetId} AND organization_id = ${orgId}
+        LIMIT 1
+      `);
+      break;
+
+    default:
+      throw new BearingError('BAD_REQUEST', `Unsupported target_type: ${targetType}`, 400);
+  }
+
+  if (!rows || rows.length === 0) {
+    throw new BearingError(
+      'NOT_FOUND',
+      `Target ${targetType} not found or does not belong to your organization`,
+      404,
+    );
+  }
 }
 
 export async function removeLink(linkId: string, orgId: string) {

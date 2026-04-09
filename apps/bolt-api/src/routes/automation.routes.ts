@@ -26,10 +26,45 @@ const conditionSchema = z.object({
   logic_group: z.enum(LOGIC_GROUPS).optional().default('and'),
 });
 
+const MAX_PARAM_DEPTH = 3;
+const MAX_PARAM_SIZE_BYTES = 50 * 1024; // 50 KB
+
+/** Compute maximum nesting depth of an object/array value. */
+function jsonDepth(value: unknown, current = 0): number {
+  if (current > MAX_PARAM_DEPTH) return current; // short-circuit
+  if (value !== null && typeof value === 'object') {
+    const entries = Array.isArray(value) ? value : Object.values(value as Record<string, unknown>);
+    let max = current + 1;
+    for (const child of entries) {
+      max = Math.max(max, jsonDepth(child, current + 1));
+      if (max > MAX_PARAM_DEPTH) return max; // short-circuit
+    }
+    return max;
+  }
+  return current;
+}
+
 const actionSchema = z.object({
   sort_order: z.number().int().min(0).max(100),
   mcp_tool: z.string().min(1).max(100),
-  parameters: z.record(z.unknown()).optional(),
+  parameters: z
+    .record(z.unknown())
+    .optional()
+    .refine(
+      (params) => {
+        if (!params) return true;
+        return jsonDepth(params) <= MAX_PARAM_DEPTH;
+      },
+      { message: `Action parameters must not exceed ${MAX_PARAM_DEPTH} levels of nesting` },
+    )
+    .refine(
+      (params) => {
+        if (!params) return true;
+        const size = new TextEncoder().encode(JSON.stringify(params)).length;
+        return size <= MAX_PARAM_SIZE_BYTES;
+      },
+      { message: `Serialized action parameters must not exceed ${MAX_PARAM_SIZE_BYTES / 1024}KB` },
+    ),
   on_error: z.enum(ON_ERROR_MODES).optional().default('stop'),
   retry_count: z.number().int().min(0).max(10).optional().default(0),
   retry_delay_ms: z.number().int().min(100).max(300000).optional().default(1000),

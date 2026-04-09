@@ -51,6 +51,7 @@ export function computeKrProgress(kr: {
 export async function computeLinkedProgress(kr: {
   id: string;
   linked_query: unknown;
+  organization_id: string;
 }): Promise<number> {
   if (!kr.linked_query) return 0;
 
@@ -58,15 +59,18 @@ export async function computeLinkedProgress(kr: {
   const targetType = query.target_type as string | undefined;
 
   if (targetType === 'task' || targetType === 'tasks') {
-    // Query tasks linked to this KR via bearing_kr_links
+    // Query tasks linked to this KR via bearing_kr_links, scoped to the org
+    // via the task's project to prevent cross-org data leakage.
     const result: any[] = await db.execute(sql`
       SELECT
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE t.status = 'done')::int AS completed
       FROM bearing_kr_links l
       JOIN tasks t ON t.id = l.target_id
+      JOIN projects p ON p.id = t.project_id
       WHERE l.key_result_id = ${kr.id}
         AND l.target_type = 'task'
+        AND p.org_id = ${kr.organization_id}
     `);
 
     const row = result[0];
