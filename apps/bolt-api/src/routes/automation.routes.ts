@@ -7,6 +7,7 @@ import {
   requireAutomationEditAccess,
 } from '../middleware/authorize.js';
 import * as automationService from '../services/automation.service.js';
+import { validateActionTools, validateActionParameters } from '../services/automation.service.js';
 
 const TRIGGER_SOURCES = ['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule'] as const;
 const CONDITION_OPERATORS = [
@@ -114,6 +115,17 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const data = createAutomationSchema.parse(request.body);
+
+      // Validate MCP tool names against allowlist
+      validateActionTools(data.actions as automationService.ActionInput[]);
+
+      // Validate entity references in action parameters belong to the user's org
+      await validateActionParameters(
+        data.actions as automationService.ActionInput[],
+        request.user!.org_id,
+        'strict',
+      );
+
       const automation = await automationService.createAutomation(
         data as automationService.CreateAutomationInput,
         request.user!.id,
@@ -152,6 +164,25 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireAutomationEditAccess(), requireScope('read_write')] },
     async (request, reply) => {
       const data = updateAutomationSchema.parse(request.body);
+
+      // Validate MCP tool names against allowlist (if actions provided)
+      if (data.actions && data.actions.length > 0) {
+        validateActionTools(data.actions as automationService.ActionInput[]);
+
+        // Lenient mode for updates: warn but allow (don't break existing automations)
+        const paramResult = await validateActionParameters(
+          data.actions as automationService.ActionInput[],
+          request.user!.org_id,
+          'lenient',
+        );
+        if (!paramResult.valid) {
+          request.log.warn(
+            { warnings: paramResult.warnings, automationId: (request as any).automation.id },
+            'Automation update has cross-org parameter warnings',
+          );
+        }
+      }
+
       const automation = await automationService.updateAutomation(
         (request as any).automation.id,
         data as automationService.UpdateAutomationInput,

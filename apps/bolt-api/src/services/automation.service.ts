@@ -7,6 +7,7 @@ import {
   boltSchedules,
 } from '../db/schema/index.js';
 import { evaluateConditions } from './condition-engine.js';
+import { getAvailableActions } from './event-catalog.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,6 +32,90 @@ export class BoltError extends Error {
     this.code = code;
     this.statusCode = statusCode;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Validation: MCP tool allowlist
+// ---------------------------------------------------------------------------
+
+const allowedToolsCache = new Set(getAvailableActions().map((a) => a.tool));
+
+/**
+ * Validate that every action references a tool on the allowlist.
+ * Throws BoltError(400) if any tool is not permitted.
+ */
+export function validateActionTools(actions: ActionInput[]): void {
+  const invalid = actions
+    .map((a) => a.mcp_tool)
+    .filter((tool) => !allowedToolsCache.has(tool));
+
+  if (invalid.length > 0) {
+    throw new BoltError(
+      'INVALID_MCP_TOOL',
+      `The following action tools are not allowed: ${invalid.join(', ')}. ` +
+        `Allowed tools: ${[...allowedToolsCache].join(', ')}`,
+      400,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Validation: Org-scoped action parameters
+// ---------------------------------------------------------------------------
+
+/** UUID v4 pattern for quick structural check. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Parameter keys that reference cross-app entities we can verify. */
+const ORG_SCOPED_ENTITY_KEYS: Record<string, { table: string; orgColumn: string }> = {
+  project_id: { table: 'projects', orgColumn: 'org_id' },
+  user_id: { table: 'users', orgColumn: 'org_id' },
+  assignee_id: { table: 'users', orgColumn: 'org_id' },
+};
+
+/**
+ * Validate that entity-reference parameters in actions belong to the given org.
+ * For `strict` mode (new automations), throws on violation.
+ * For `lenient` mode (updates to existing automations), logs a warning and
+ * returns a flag so the caller can annotate the response.
+ */
+export async function validateActionParameters(
+  actions: ActionInput[],
+  orgId: string,
+  mode: 'strict' | 'lenient' = 'strict',
+): Promise<{ valid: boolean; warnings: string[] }> {
+  const warnings: string[] = [];
+
+  for (const action of actions) {
+    if (!action.parameters) continue;
+
+    for (const [key, value] of Object.entries(action.parameters)) {
+      const entityDef = ORG_SCOPED_ENTITY_KEYS[key];
+      if (!entityDef) continue;
+      if (typeof value !== 'string' || !UUID_RE.test(value)) continue;
+
+      // Query the referenced table to verify org ownership.
+      // Table/column names come from our own hardcoded constant, so sql.raw() is safe.
+      const rows: any[] = await db.execute(
+        sql`SELECT id FROM ${sql.raw(entityDef.table)}
+            WHERE id = ${value} AND ${sql.raw(entityDef.orgColumn)} = ${orgId}
+            LIMIT 1`,
+      );
+
+      if (rows.length === 0) {
+        const msg =
+          `Action "${action.mcp_tool}" references ${key}="${value}" ` +
+          `which does not belong to your organization or does not exist.`;
+
+        if (mode === 'strict') {
+          throw new BoltError('CROSS_ORG_REFERENCE', msg, 400);
+        }
+        warnings.push(msg);
+      }
+    }
+  }
+
+  return { valid: warnings.length === 0, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +289,12 @@ export async function createAutomation(
   userId: string,
   orgId: string,
 ) {
+  // Defense-in-depth: validate tool allowlist at service layer
+  validateActionTools(data.actions);
+
+  // Validate that entity references in action parameters belong to the org
+  await validateActionParameters(data.actions, orgId, 'strict');
+
   return await db.transaction(async (tx) => {
     const [automation] = await tx
       .insert(boltAutomations)
@@ -286,6 +377,21 @@ export async function updateAutomation(
 ) {
   const existing = await getAutomationById(id, orgId);
   if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
+
+  // Defense-in-depth: validate tool allowlist at service layer (updates)
+  if (data.actions && data.actions.length > 0) {
+    validateActionTools(data.actions);
+
+    // Lenient mode for existing automations: warn but allow
+    const paramResult = await validateActionParameters(data.actions, orgId, 'lenient');
+    if (!paramResult.valid) {
+      // Log warnings for existing automations that reference cross-org resources
+      console.warn(
+        `[bolt] Automation ${id} update has cross-org parameter warnings:`,
+        paramResult.warnings,
+      );
+    }
+  }
 
   return await db.transaction(async (tx) => {
     const updateValues: Record<string, unknown> = {
