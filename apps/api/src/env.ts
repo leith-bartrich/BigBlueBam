@@ -33,7 +33,10 @@ const envSchema = z.object({
   S3_REGION: z.string().default('us-east-1'),
 
   COOKIE_DOMAIN: z.string().optional(),
-  COOKIE_SECURE: z.coerce.boolean().default(false),
+  COOKIE_SECURE: z.preprocess(
+    (val) => (val === '' || val === undefined ? undefined : val),
+    z.coerce.boolean().optional(),
+  ),
 
   // SMTP / email (P1-30). Optional — if SMTP_HOST is unset, outbound emails
   // are logged by the worker instead of delivered. The API enqueues jobs to
@@ -51,9 +54,13 @@ const envSchema = z.object({
   // /internal/helpdesk/* surface. Must be at least 32 chars. Both apps
   // must receive the same value.
   INTERNAL_HELPDESK_SECRET: z.string().min(32),
-});
+}).transform((data) => ({
+  ...data,
+  // BAM-010: Default COOKIE_SECURE to true in production when not explicitly set
+  COOKIE_SECURE: data.COOKIE_SECURE ?? data.NODE_ENV === 'production',
+}));
 
-export type Env = z.infer<typeof envSchema>;
+export type Env = z.output<typeof envSchema>;
 
 function loadEnv(): Env {
   const result = envSchema.safeParse(process.env);

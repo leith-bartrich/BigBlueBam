@@ -53,6 +53,7 @@ import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
 const fastify = Fastify({
+  trustProxy: true, // BAM-009: API runs behind nginx which sets X-Forwarded-For
   logger: {
     level: env.LOG_LEVEL,
     transport:
@@ -83,20 +84,30 @@ await fastify.register(rateLimit, {
 
 await fastify.register(websocket);
 
-await fastify.register(swagger, {
-  openapi: {
-    info: {
-      title: 'BigBlueBam API',
-      version: '0.1.0',
-      description: 'Project management API',
-    },
-    servers: [{ url: `http://localhost:${env.PORT}` }],
-  },
+// BAM-007: Security headers on all responses
+fastify.addHook('onSend', async (_req, reply) => {
+  reply.header('X-Content-Type-Options', 'nosniff');
+  reply.header('X-Frame-Options', 'DENY');
+  reply.header('Cache-Control', 'no-store');
 });
 
-await fastify.register(swaggerUi, {
-  routePrefix: '/docs',
-});
+// BAM-008: Only expose Swagger UI outside production
+if (env.NODE_ENV !== 'production') {
+  await fastify.register(swagger, {
+    openapi: {
+      info: {
+        title: 'BigBlueBam API',
+        version: '0.1.0',
+        description: 'Project management API',
+      },
+      servers: [{ url: `http://localhost:${env.PORT}` }],
+    },
+  });
+
+  await fastify.register(swaggerUi, {
+    routePrefix: '/docs',
+  });
+}
 
 // Redis plugin
 await fastify.register(redisPlugin);

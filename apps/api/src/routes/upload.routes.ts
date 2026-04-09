@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
+import { fileTypeFromBuffer } from 'file-type';
 import { env } from '../env.js';
 import { uploadFile, getFileStream, deleteFile } from '../services/upload.service.js';
 import { requireAuth, requireMinRole } from '../plugins/auth.js';
@@ -17,7 +18,11 @@ const ALLOWED_MIME_EXACT = [
   'text/plain',
 ];
 
+// BAM-006: SVG can contain embedded scripts — always block it.
+const BLOCKED_MIME_TYPES = ['image/svg+xml'];
+
 function isAllowedMimeType(mimeType: string): boolean {
+  if (BLOCKED_MIME_TYPES.includes(mimeType)) return false;
   if (ALLOWED_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix))) return true;
   if (ALLOWED_MIME_EXACT.includes(mimeType)) return true;
   return false;
@@ -63,6 +68,22 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
       const buffer = await file.toBuffer();
 
+      // BAM-006: Magic-byte MIME validation — verify actual file content
+      // matches claimed type. text/plain has no magic bytes so skip detection.
+      if (contentType !== 'text/plain') {
+        const detected = await fileTypeFromBuffer(buffer);
+        if (!detected || !isAllowedMimeType(detected.mime)) {
+          return reply.status(400).send({
+            error: {
+              code: 'BAD_REQUEST',
+              message: `File content does not match an allowed type (detected: ${detected?.mime ?? 'unknown'})`,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
       if (buffer.length > MAX_FILE_SIZE) {
         return reply.status(400).send({
           error: {
@@ -95,10 +116,10 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // GET /files/*  — proxy file downloads from MinIO
+  // GET /files/*  — proxy file downloads from MinIO (BAM-005: require auth)
   fastify.get(
     '/files/*',
-    {},
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const key = (request.params as Record<string, string>)['*'];
 
