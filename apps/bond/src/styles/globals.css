@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-primary-50: #ecfeff;
+  --color-primary-100: #cffafe;
+  --color-primary-200: #a5f3fc;
+  --color-primary-300: #67e8f9;
+  --color-primary-400: #22d3ee;
+  --color-primary-500: #06b6d4;
+  --color-primary-600: #0891b2;
+  --color-primary-700: #0e7490;
+  --color-primary-800: #155e75;
+  --color-primary-900: #164e63;
+
+  --color-sidebar: #18181b;
+  --color-sidebar-hover: #27272a;
+  --color-sidebar-active: #0891b2;
+
+  --color-deal-won: #16a34a;
+  --color-deal-lost: #dc2626;
+  --color-deal-rotting: #f97316;
+
+  --animate-slide-in-right: slide-in-right 0.25s ease-out;
+  --animate-slide-out-right: slide-out-right 0.2s ease-in;
+  --animate-fade-in: fade-in 0.15s ease-out;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Scrollbar styling */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #a1a1aa;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
+/* Rotting deal card glow */
+.deal-rotting {
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.4), 0 0 8px rgba(249, 115, 22, 0.2);
+}
+
+.deal-rotting-severe {
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.4), 0 0 8px rgba(220, 38, 38, 0.2);
+}
