@@ -126,8 +126,7 @@ export default async function widgetRoutes(fastify: FastifyInstance) {
     '/widgets/:id/refresh',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      // Invalidate cache, then re-execute
-      const result = await widgetService.executeWidgetQuery(request.params.id, request.user!.org_id);
+      const result = await widgetService.refreshWidgetQuery(request.params.id, request.user!.org_id);
       return reply.send({ data: result });
     },
   );

@@ -5,6 +5,17 @@ import { notFound, badRequest } from '../lib/utils.js';
 import { getDataSource } from '../lib/data-source-registry.js';
 import * as queryService from './query.service.js';
 import type { QueryConfig } from './query.service.js';
+import type { CacheService } from './cache.service.js';
+
+// ---------------------------------------------------------------------------
+// Cache singleton — set once from server.ts after Redis is ready
+// ---------------------------------------------------------------------------
+
+let cacheService: CacheService | null = null;
+
+export function setCacheService(svc: CacheService): void {
+  cacheService = svc;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -122,6 +133,12 @@ export async function updateWidget(id: string, input: UpdateWidgetInput, orgId?:
     .returning();
 
   if (!updated) throw notFound('Widget not found');
+
+  // Invalidate cached query result when widget config changes
+  if (cacheService) {
+    await cacheService.invalidate(id);
+  }
+
   return updated;
 }
 
@@ -142,15 +159,56 @@ export async function deleteWidget(id: string, orgId?: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Execute widget query
+// Execute widget query (with Redis cache)
 // ---------------------------------------------------------------------------
 
 export async function executeWidgetQuery(id: string, orgId: string) {
   const widget = await getWidget(id);
-  return queryService.executeQuery(
+
+  // Check cache first
+  if (cacheService) {
+    const cached = await cacheService.get(id);
+    if (cached) {
+      return { ...(cached as Record<string, unknown>), cached: true };
+    }
+  }
+
+  const result = await queryService.executeQuery(
     widget.data_source,
     widget.entity,
     widget.query_config as QueryConfig,
     orgId,
   );
+
+  // Store in cache using the widget's configured TTL
+  if (cacheService) {
+    const ttl = widget.cache_ttl_seconds ?? undefined;
+    await cacheService.set(id, result, ttl);
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Force-refresh widget query (invalidate cache, then re-execute)
+// ---------------------------------------------------------------------------
+
+export async function refreshWidgetQuery(id: string, orgId: string) {
+  if (cacheService) {
+    await cacheService.invalidate(id);
+  }
+  // Re-execute without cache
+  const widget = await getWidget(id);
+  const result = await queryService.executeQuery(
+    widget.data_source,
+    widget.entity,
+    widget.query_config as QueryConfig,
+    orgId,
+  );
+  // Re-populate cache
+  if (cacheService) {
+    const ttl = widget.cache_ttl_seconds ?? undefined;
+    await cacheService.set(id, result, ttl);
+  }
+  return result;
 }

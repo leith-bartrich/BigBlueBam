@@ -88,6 +88,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         request.user!.id,
         body,
+        request.user!.role,
       );
       return reply.send({ data: dashboard });
     },
@@ -98,7 +99,12 @@ export default async function dashboardRoutes(fastify: FastifyInstance) {
     '/dashboards/:id',
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
-      await dashboardService.deleteDashboard(request.params.id, request.user!.org_id);
+      await dashboardService.deleteDashboard(
+        request.params.id,
+        request.user!.org_id,
+        request.user!.id,
+        request.user!.role,
+      );
       return reply.send({ data: { deleted: true } });
     },
   );

@@ -167,6 +167,68 @@ const DATA_SOURCES: BenchDataSource[] = [
     ],
   },
 
+  // ── Beacon (Knowledge Base) ────────────────────────────────────
+  {
+    product: 'beacon',
+    entity: 'articles',
+    label: 'Knowledge Base Articles',
+    description: 'Beacon knowledge base entries with status, visibility, and verification tracking',
+    baseTable: 'beacon_entries',
+    measures: [
+      { field: 'id', label: 'Article Count', aggregations: ['count'], type: 'integer' },
+      { field: 'version', label: 'Version', aggregations: ['avg', 'max'], type: 'integer' },
+      { field: 'verification_count', label: 'Verification Count', aggregations: ['sum', 'avg', 'max'], type: 'integer' },
+    ],
+    dimensions: [
+      { field: 'status', label: 'Status', type: 'categorical' },
+      { field: 'visibility', label: 'Visibility', type: 'categorical' },
+      { field: 'project_id', label: 'Project', type: 'categorical' },
+      { field: 'owned_by', label: 'Owner', type: 'categorical' },
+      { field: 'created_by', label: 'Author', type: 'categorical' },
+      { field: 'created_at', label: 'Created', type: 'temporal' },
+      { field: 'updated_at', label: 'Updated', type: 'temporal' },
+      { field: 'expires_at', label: 'Expires', type: 'temporal' },
+    ],
+    filters: [
+      { field: 'status', label: 'Status', operators: ['eq', 'neq', 'in'], type: 'enum', enumValues: ['Draft', 'Active', 'Under Review', 'Retired'] },
+      { field: 'visibility', label: 'Visibility', operators: ['eq', 'neq', 'in'], type: 'enum', enumValues: ['Public', 'Organization', 'Project', 'Private'] },
+      { field: 'project_id', label: 'Project', operators: ['eq', 'in', 'is_null', 'is_not_null'], type: 'string' },
+      { field: 'created_at', label: 'Created', operators: ['gte', 'lte', 'between'], type: 'date' },
+      { field: 'expires_at', label: 'Expires', operators: ['gte', 'lte', 'between'], type: 'date' },
+    ],
+  },
+
+  // ── Bearing (Goals & OKRs) ────────────────────────────────────
+  {
+    product: 'bearing',
+    entity: 'goals',
+    label: 'Goals',
+    description: 'Bearing OKR goals with status, progress, and period tracking',
+    baseTable: 'bearing_goals',
+    measures: [
+      { field: 'id', label: 'Goal Count', aggregations: ['count'], type: 'integer' },
+      { field: 'progress', label: 'Progress', aggregations: ['avg', 'min', 'max'], type: 'numeric' },
+    ],
+    dimensions: [
+      { field: 'status', label: 'Status', type: 'categorical' },
+      { field: 'scope', label: 'Scope', type: 'categorical' },
+      { field: 'period_id', label: 'Period', type: 'categorical' },
+      { field: 'project_id', label: 'Project', type: 'categorical' },
+      { field: 'team_name', label: 'Team', type: 'categorical' },
+      { field: 'owner_id', label: 'Owner', type: 'categorical' },
+      { field: 'created_at', label: 'Created', type: 'temporal' },
+      { field: 'updated_at', label: 'Updated', type: 'temporal' },
+    ],
+    filters: [
+      { field: 'status', label: 'Status', operators: ['eq', 'neq', 'in'], type: 'enum', enumValues: ['draft', 'active', 'at_risk', 'behind', 'on_track', 'completed', 'cancelled'] },
+      { field: 'scope', label: 'Scope', operators: ['eq', 'in'], type: 'enum', enumValues: ['organization', 'team', 'project', 'individual'] },
+      { field: 'period_id', label: 'Period', operators: ['eq', 'in'], type: 'string' },
+      { field: 'project_id', label: 'Project', operators: ['eq', 'in', 'is_null', 'is_not_null'], type: 'string' },
+      { field: 'created_at', label: 'Created', operators: ['gte', 'lte', 'between'], type: 'date' },
+      { field: 'progress', label: 'Progress', operators: ['gte', 'lte', 'between'], type: 'number' },
+    ],
+  },
+
   // ── Materialized views (cross-product) ────────────────────────
   {
     product: 'bench',

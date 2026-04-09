@@ -2,6 +2,28 @@ import { eq, and, sql, asc, desc, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { benchDashboards, benchWidgets } from '../db/schema/index.js';
 import { notFound, badRequest, forbidden } from '../lib/utils.js';
+import type { CacheService } from '../services/cache.service.js';
+
+// ---------------------------------------------------------------------------
+// Cache singleton — set once from server.ts after Redis is ready
+// ---------------------------------------------------------------------------
+
+let cacheService: CacheService | null = null;
+
+export function setDashboardCacheService(svc: CacheService): void {
+  cacheService = svc;
+}
+
+async function invalidateWidgetsForDashboard(dashboardId: string): Promise<void> {
+  if (!cacheService) return;
+  const widgets = await db
+    .select({ id: benchWidgets.id })
+    .from(benchWidgets)
+    .where(eq(benchWidgets.dashboard_id, dashboardId));
+  for (const w of widgets) {
+    await cacheService.invalidate(w.id);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,7 +161,21 @@ export async function updateDashboard(
   orgId: string,
   userId: string,
   input: UpdateDashboardInput,
+  userRole?: string,
 ) {
+  // Ownership check: members can only edit their own dashboards
+  if (userRole && userRole === 'member') {
+    const [existing] = await db
+      .select({ created_by: benchDashboards.created_by })
+      .from(benchDashboards)
+      .where(and(eq(benchDashboards.id, id), eq(benchDashboards.organization_id, orgId)))
+      .limit(1);
+    if (!existing) throw notFound('Dashboard not found');
+    if (existing.created_by !== userId) {
+      throw forbidden('Members can only edit dashboards they created');
+    }
+  }
+
   if (input.is_default) {
     await db
       .update(benchDashboards)
@@ -166,6 +202,10 @@ export async function updateDashboard(
     .returning();
 
   if (!updated) throw notFound('Dashboard not found');
+
+  // Invalidate cached query results for all widgets on this dashboard
+  await invalidateWidgetsForDashboard(id);
+
   return getDashboard(id, orgId);
 }
 
@@ -173,7 +213,22 @@ export async function updateDashboard(
 // Delete dashboard
 // ---------------------------------------------------------------------------
 
-export async function deleteDashboard(id: string, orgId: string) {
+export async function deleteDashboard(id: string, orgId: string, userId?: string, userRole?: string) {
+  // Ownership check: members can only delete their own dashboards
+  if (userRole && userRole === 'member' && userId) {
+    const [existing] = await db
+      .select({ created_by: benchDashboards.created_by })
+      .from(benchDashboards)
+      .where(and(eq(benchDashboards.id, id), eq(benchDashboards.organization_id, orgId)))
+      .limit(1);
+    if (!existing) throw notFound('Dashboard not found');
+    if (existing.created_by !== userId) {
+      throw forbidden('Members can only delete dashboards they created');
+    }
+  }
+
+  // Invalidate cached query results before deletion removes widget rows
+  await invalidateWidgetsForDashboard(id);
   const [deleted] = await db
     .delete(benchDashboards)
     .where(and(eq(benchDashboards.id, id), eq(benchDashboards.organization_id, orgId)))
