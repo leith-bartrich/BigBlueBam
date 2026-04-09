@@ -52,7 +52,12 @@ export function useCreatePeriod() {
       type: BearingPeriod['type'];
       start_date: string;
       end_date: string;
-    }) => api.post<SingleResponse>('/periods', data),
+    }) => api.post<SingleResponse>('/periods', {
+      name: data.name,
+      period_type: data.type,
+      starts_at: data.start_date,
+      ends_at: data.end_date,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['periods'] });
     },
@@ -64,7 +69,12 @@ export function useUpdatePeriod() {
 
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string } & Partial<Pick<BearingPeriod, 'name' | 'type' | 'start_date' | 'end_date'>>) =>
-      api.patch<SingleResponse>(`/periods/${id}`, data),
+      api.patch<SingleResponse>(`/periods/${id}`, {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.type !== undefined && { period_type: data.type }),
+        ...(data.start_date !== undefined && { starts_at: data.start_date }),
+        ...(data.end_date !== undefined && { ends_at: data.end_date }),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['periods'] });
     },

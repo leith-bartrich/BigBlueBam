@@ -114,6 +114,16 @@ export default async function boardRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /boards/stats — Org-level board statistics
+  fastify.get(
+    '/boards/stats',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const stats = await boardService.getStats(request.user!.org_id);
+      return reply.send({ data: stats });
+    },
+  );
+
   // GET /boards/search — Search board element content
   fastify.get(
     '/boards/search',

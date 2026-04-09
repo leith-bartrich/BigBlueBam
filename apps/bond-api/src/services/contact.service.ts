@@ -227,13 +227,13 @@ export async function createContact(
     })
     .returning();
 
-  // Emit Bolt event (fire-and-forget)
+  // Emit Bolt event (fire-and-forget — must not block the response)
   publishBoltEvent('bond.contact.created', {
     contact_id: contact!.id,
     lifecycle_stage: contact!.lifecycle_stage,
     lead_source: contact!.lead_source,
     lead_score: contact!.lead_score,
-  }, orgId);
+  }, orgId).catch(() => {});
 
   return contact!;
 }

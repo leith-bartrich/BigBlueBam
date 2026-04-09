@@ -217,7 +217,7 @@ export async function createGoal(
       icon: data.icon ?? null,
       color: data.color ?? null,
       status: data.status ?? 'draft',
-      owner_id: data.owner_id ?? null,
+      owner_id: data.owner_id ?? userId,
       created_by: userId,
     })
     .returning();
