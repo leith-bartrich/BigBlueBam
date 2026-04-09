@@ -29,7 +29,7 @@
     "lucide-react": "^0.487.0",
     "date-fns": "^4.1.0",
     "motion": "^12.9.3",
-    "tldraw": "^4.5.8",
+    "@excalidraw/excalidraw": "^0.18.0",
     "@livekit/components-react": "^2.0.0",
     "livekit-client": "^2.0.0"
   },

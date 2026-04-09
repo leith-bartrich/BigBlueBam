@@ -54,17 +54,23 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const createBoard = useCreateBoard();
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleCreate = () => {
+    setError(null);
     const boardName = name.trim() || 'Untitled Board';
     createBoard.mutate(
       {
         name: boardName,
         project_id: activeProjectId ?? undefined,
-        template_id: selectedTemplate !== 'blank' ? selectedTemplate : undefined,
+        // template_id is for future DB-backed templates; the local presets just set a name hint
       },
       {
         onSuccess: (res) => {
           onNavigate(`/${res.data.id}`);
+        },
+        onError: (err) => {
+          setError(err instanceof Error ? err.message : 'Failed to create board');
         },
       },
     );
@@ -126,6 +132,13 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
           })}
         </div>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-3">

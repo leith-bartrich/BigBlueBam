@@ -9,6 +9,7 @@ interface Collaborator {
 
 interface PresenceBarProps {
   boardId: string;
+  collaborators?: Collaborator[];
 }
 
 // Cursor colors assigned to collaborators
@@ -23,10 +24,7 @@ const CURSOR_COLORS = [
   '#f97316', // orange
 ];
 
-export function PresenceBar({ boardId: _boardId }: PresenceBarProps) {
-  // Placeholder — in production this would subscribe to WebSocket presence events
-  // and receive real-time collaborator join/leave/cursor updates.
-  const collaborators: Collaborator[] = [];
+export function PresenceBar({ boardId: _boardId, collaborators = [] }: PresenceBarProps) {
 
   const MAX_SHOWN = 6;
   const shown = collaborators.slice(0, MAX_SHOWN);
