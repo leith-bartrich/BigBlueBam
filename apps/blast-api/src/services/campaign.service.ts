@@ -1,5 +1,8 @@
 import { eq, and, desc, sql } from 'drizzle-orm';
+import { Queue } from 'bullmq';
+import IORedis from 'ioredis';
 import { db } from '../db/index.js';
+import { env } from '../env.js';
 import {
   blastCampaigns,
   blastSendLog,
@@ -9,6 +12,27 @@ import {
   blastSegments,
 } from '../db/schema/index.js';
 import { notFound, badRequest, forbidden } from '../lib/utils.js';
+
+// ---------------------------------------------------------------------------
+// BullMQ queue for blast:send jobs (producer side only)
+// ---------------------------------------------------------------------------
+
+interface BlastSendJobData {
+  campaign_id: string;
+  org_id: string;
+}
+
+let _blastQueue: Queue<BlastSendJobData> | null = null;
+
+function getBlastQueue(): Queue<BlastSendJobData> {
+  if (!_blastQueue) {
+    const connection = new IORedis(env.REDIS_URL, {
+      maxRetriesPerRequest: null,
+    });
+    _blastQueue = new Queue<BlastSendJobData>('blast:send', { connection });
+  }
+  return _blastQueue;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,50 +196,30 @@ export async function sendCampaign(id: string, orgId: string) {
     throw badRequest('Can only send campaigns in draft or scheduled status');
   }
 
-  // Get segment contacts for recipient count
-  let recipientCount = 0;
-  if (campaign.segment_id) {
-    const [result] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(bondContacts)
-      .where(eq(bondContacts.organization_id, orgId));
-    recipientCount = result?.count ?? 0;
-  }
-
-  // Check unsubscribes — real implementation would exclude them
-  const [unsubCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(blastUnsubscribes)
-    .where(eq(blastUnsubscribes.organization_id, orgId));
-
-  const effectiveRecipients = Math.max(0, recipientCount - (unsubCount?.count ?? 0));
-
-  // Transition to sending
+  // Transition to 'sending' — the worker will handle actual delivery
   const [updated] = await db
     .update(blastCampaigns)
     .set({
       status: 'sending',
       sent_at: new Date(),
-      recipient_count: effectiveRecipients,
       updated_at: new Date(),
     })
     .where(eq(blastCampaigns.id, id))
     .returning();
 
-  // In production, this would enqueue BullMQ jobs per recipient batch.
-  // For now, mark as sent immediately.
-  await db
-    .update(blastCampaigns)
-    .set({
-      status: 'sent',
-      completed_at: new Date(),
-      total_sent: effectiveRecipients,
-      total_delivered: effectiveRecipients,
-      updated_at: new Date(),
-    })
-    .where(eq(blastCampaigns.id, id));
+  // Enqueue a BullMQ job for the worker to process asynchronously
+  await getBlastQueue().add(
+    `blast-send-${id}`,
+    { campaign_id: id, org_id: orgId },
+    {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 10_000 },
+      removeOnComplete: 100,
+      removeOnFail: 500,
+    },
+  );
 
-  return { ...updated!, recipient_count: effectiveRecipients };
+  return updated!;
 }
 
 // ---------------------------------------------------------------------------
