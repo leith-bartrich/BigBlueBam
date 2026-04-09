@@ -51,15 +51,41 @@ export default async function publicRoutes(fastify: FastifyInstance) {
       const form = await formService.getFormBySlug(request.params.slug);
 
       // BLANK-008: Enforce CAPTCHA when enabled on the form
-      if (form.captcha_enabled && !body.captcha_token) {
-        return reply.status(400).send({
-          error: {
-            code: 'CAPTCHA_REQUIRED',
-            message: 'CAPTCHA verification is required for this form',
-            details: [{ field: 'captcha_token', issue: 'required' }],
-            request_id: request.id,
-          },
-        });
+      if (form.captcha_enabled) {
+        if (!body.captcha_token) {
+          return reply.status(400).send({
+            error: {
+              code: 'CAPTCHA_REQUIRED',
+              message: 'CAPTCHA verification is required for this form',
+              details: [{ field: 'captcha_token', issue: 'required' }],
+              request_id: request.id,
+            },
+          });
+        }
+        // Verify token with configured provider (Turnstile/reCAPTCHA/hCaptcha)
+        const captchaSecret = process.env.CAPTCHA_SECRET_KEY;
+        if (captchaSecret) {
+          const verifyUrl = process.env.CAPTCHA_VERIFY_URL ?? 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+          try {
+            const res = await fetch(verifyUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: `secret=${encodeURIComponent(captchaSecret)}&response=${encodeURIComponent(body.captcha_token)}`,
+            });
+            const result = await res.json() as { success?: boolean };
+            if (!result.success) {
+              return reply.status(400).send({
+                error: { code: 'CAPTCHA_FAILED', message: 'CAPTCHA verification failed', details: [], request_id: request.id },
+              });
+            }
+          } catch {
+            // If verification service is down, reject to be safe
+            return reply.status(503).send({
+              error: { code: 'CAPTCHA_UNAVAILABLE', message: 'CAPTCHA verification service unavailable', details: [], request_id: request.id },
+            });
+          }
+        }
+        // If CAPTCHA_SECRET_KEY not configured, token presence is all we can check
       }
 
       if (!form.accept_responses) {

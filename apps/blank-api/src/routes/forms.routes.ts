@@ -19,7 +19,7 @@ const FIELD_TYPES = [
 ] as const;
 
 const fieldSchema = z.object({
-  field_key: z.string().min(1).max(60),
+  field_key: z.string().min(1).max(60).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'field_key must be a safe identifier'),
   label: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
   placeholder: z.string().max(255).optional(),

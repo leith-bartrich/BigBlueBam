@@ -43,7 +43,7 @@ const updateLineItemSchema = z.object({
   description: z.string().min(1).max(1000).optional(),
   quantity: z.number().positive().optional(),
   unit: z.string().max(20).optional(),
-  unit_price: z.number().int().optional(),
+  unit_price: z.number().int().min(0).optional(),
   sort_order: z.number().int().optional(),
 });
 
