@@ -7,9 +7,9 @@ import {
   useLocalParticipant,
 } from '@livekit/components-react';
 import { Track } from 'livekit-client';
-import { Mic, MicOff, Headphones, HeadphonesOff, Volume2, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, Volume2, Loader2 } from 'lucide-react';
 import { useBoardAudioToken } from '@/hooks/use-audio';
-import '@livekit/components-styles';
+// @livekit/components-styles omitted — using custom TailwindCSS styling instead
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,7 +88,7 @@ function AudioToolbarContent({ onDisconnect }: { onDisconnect: () => void }) {
         className="flex items-center justify-center h-7 w-7 rounded-md text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
         title="Leave audio room"
       >
-        <HeadphonesOff className="h-3.5 w-3.5" />
+        <PhoneOff className="h-3.5 w-3.5" />
       </button>
     </div>
   );
