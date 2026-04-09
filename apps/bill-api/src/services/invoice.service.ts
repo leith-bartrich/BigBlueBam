@@ -388,8 +388,36 @@ export async function sendInvoice(id: string, orgId: string) {
 // ---------------------------------------------------------------------------
 
 export async function getInvoiceByToken(token: string) {
+  // Select only safe public-facing fields — exclude organization_id, created_by,
+  // bond_deal_id, from_tax_id, to_tax_id, and other internal metadata
   const [invoice] = await db
-    .select()
+    .select({
+      id: billInvoices.id,
+      invoice_number: billInvoices.invoice_number,
+      status: billInvoices.status,
+      currency: billInvoices.currency,
+      subtotal: billInvoices.subtotal,
+      tax_rate: billInvoices.tax_rate,
+      tax_amount: billInvoices.tax_amount,
+      discount_amount: billInvoices.discount_amount,
+      total: billInvoices.total,
+      amount_paid: billInvoices.amount_paid,
+      due_date: billInvoices.due_date,
+      issue_date: billInvoices.invoice_date,
+      from_name: billInvoices.from_name,
+      from_email: billInvoices.from_email,
+      from_address: billInvoices.from_address,
+      from_logo_url: billInvoices.from_logo_url,
+      to_name: billInvoices.to_name,
+      to_email: billInvoices.to_email,
+      to_address: billInvoices.to_address,
+      notes: billInvoices.notes,
+      footer_text: billInvoices.footer_text,
+      terms_text: billInvoices.terms_text,
+      payment_instructions: billInvoices.payment_instructions,
+      payment_terms_days: billInvoices.payment_terms_days,
+      viewed_at: billInvoices.viewed_at,
+    })
     .from(billInvoices)
     .where(eq(billInvoices.public_view_token, token))
     .limit(1);
@@ -400,12 +428,20 @@ export async function getInvoiceByToken(token: string) {
   if (!invoice.viewed_at) {
     await db
       .update(billInvoices)
-      .set({ viewed_at: new Date(), status: invoice.status === 'sent' ? 'viewed' : invoice.status })
+      .set({ viewed_at: new Date(), status: sql`CASE WHEN ${billInvoices.status} = 'sent' THEN 'viewed' ELSE ${billInvoices.status} END` })
       .where(eq(billInvoices.id, invoice.id));
   }
 
   const lineItems = await db
-    .select()
+    .select({
+      id: billLineItems.id,
+      sort_order: billLineItems.sort_order,
+      description: billLineItems.description,
+      quantity: billLineItems.quantity,
+      unit: billLineItems.unit,
+      unit_price: billLineItems.unit_price,
+      amount: billLineItems.amount,
+    })
     .from(billLineItems)
     .where(eq(billLineItems.invoice_id, invoice.id))
     .orderBy(billLineItems.sort_order);

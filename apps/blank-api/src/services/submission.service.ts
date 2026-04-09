@@ -83,6 +83,27 @@ export async function deleteSubmission(id: string, orgId: string) {
 // ---------------------------------------------------------------------------
 
 export async function createSubmission(formId: string, orgId: string, input: SubmitInput) {
+  // Load the form to confirm it exists
+  const [form] = await db
+    .select()
+    .from(blankForms)
+    .where(and(eq(blankForms.id, formId), eq(blankForms.organization_id, orgId)))
+    .limit(1);
+
+  if (!form) throw notFound('Form not found');
+
+  // Load field definitions and validate response_data against them
+  const fields = await db
+    .select()
+    .from(blankFormFields)
+    .where(eq(blankFormFields.form_id, formId))
+    .orderBy(asc(blankFormFields.sort_order));
+
+  const errors = validateResponseData(input.response_data, fields);
+  if (errors.length > 0) {
+    throw badRequest(`Validation failed: ${errors.map((e) => e.message).join('; ')}`);
+  }
+
   const [submission] = await db
     .insert(blankSubmissions)
     .values({
@@ -98,6 +119,176 @@ export async function createSubmission(formId: string, orgId: string, input: Sub
     .returning();
 
   return submission!;
+}
+
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+interface ValidationError {
+  field: string;
+  message: string;
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_REGEX = /^https?:\/\/.+/;
+const PHONE_REGEX = /^[+]?[\d\s().-]{7,20}$/;
+
+// Non-input field types that don't require validation
+const NON_INPUT_TYPES = ['section_header', 'paragraph', 'hidden'];
+
+function validateResponseData(
+  data: Record<string, unknown>,
+  fields: Array<{
+    field_key: string;
+    field_type: string;
+    required: boolean;
+    label: string;
+    min_length: number | null;
+    max_length: number | null;
+    min_value: string | null;
+    max_value: string | null;
+    regex_pattern: string | null;
+    options: unknown;
+    scale_min: number | null;
+    scale_max: number | null;
+  }>,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  for (const field of fields) {
+    if (NON_INPUT_TYPES.includes(field.field_type)) continue;
+
+    const value = data[field.field_key];
+    const isEmpty = value === undefined || value === null || value === '';
+
+    // Required check
+    if (field.required && isEmpty) {
+      errors.push({ field: field.field_key, message: `${field.label} is required` });
+      continue;
+    }
+
+    // Skip further validation if value is empty and not required
+    if (isEmpty) continue;
+
+    // Type-specific validation
+    switch (field.field_type) {
+      case 'email':
+        if (typeof value !== 'string' || !EMAIL_REGEX.test(value)) {
+          errors.push({ field: field.field_key, message: `${field.label} must be a valid email address` });
+        }
+        break;
+
+      case 'url':
+        if (typeof value !== 'string' || !URL_REGEX.test(value)) {
+          errors.push({ field: field.field_key, message: `${field.label} must be a valid URL` });
+        }
+        break;
+
+      case 'phone':
+        if (typeof value !== 'string' || !PHONE_REGEX.test(value)) {
+          errors.push({ field: field.field_key, message: `${field.label} must be a valid phone number` });
+        }
+        break;
+
+      case 'number':
+      case 'rating':
+      case 'scale':
+      case 'nps': {
+        const num = Number(value);
+        if (isNaN(num)) {
+          errors.push({ field: field.field_key, message: `${field.label} must be a number` });
+          break;
+        }
+        if (field.min_value !== null && num < Number(field.min_value)) {
+          errors.push({ field: field.field_key, message: `${field.label} must be at least ${field.min_value}` });
+        }
+        if (field.max_value !== null && num > Number(field.max_value)) {
+          errors.push({ field: field.field_key, message: `${field.label} must be at most ${field.max_value}` });
+        }
+        if ((field.field_type === 'scale' || field.field_type === 'rating') && field.scale_min !== null && num < field.scale_min) {
+          errors.push({ field: field.field_key, message: `${field.label} must be at least ${field.scale_min}` });
+        }
+        if ((field.field_type === 'scale' || field.field_type === 'rating') && field.scale_max !== null && num > field.scale_max) {
+          errors.push({ field: field.field_key, message: `${field.label} must be at most ${field.scale_max}` });
+        }
+        break;
+      }
+
+      case 'single_select':
+      case 'dropdown': {
+        if (field.options && Array.isArray(field.options)) {
+          const validValues = (field.options as Array<{ value: string }>).map((o) => o.value ?? o);
+          if (!validValues.includes(value as string)) {
+            errors.push({ field: field.field_key, message: `${field.label} contains an invalid option` });
+          }
+        }
+        break;
+      }
+
+      case 'multi_select':
+      case 'checkbox_group': {
+        if (!Array.isArray(value)) {
+          errors.push({ field: field.field_key, message: `${field.label} must be an array` });
+          break;
+        }
+        if (field.options && Array.isArray(field.options)) {
+          const validValues = (field.options as Array<{ value: string }>).map((o) => o.value ?? o);
+          for (const v of value) {
+            if (!validValues.includes(v as string)) {
+              errors.push({ field: field.field_key, message: `${field.label} contains an invalid option: ${v}` });
+              break;
+            }
+          }
+        }
+        break;
+      }
+
+      case 'short_text':
+      case 'long_text':
+      case 'textarea': {
+        if (typeof value !== 'string') {
+          errors.push({ field: field.field_key, message: `${field.label} must be a string` });
+          break;
+        }
+        if (field.min_length !== null && value.length < field.min_length) {
+          errors.push({ field: field.field_key, message: `${field.label} must be at least ${field.min_length} characters` });
+        }
+        if (field.max_length !== null && value.length > field.max_length) {
+          errors.push({ field: field.field_key, message: `${field.label} must be at most ${field.max_length} characters` });
+        }
+        break;
+      }
+
+      case 'date': {
+        if (typeof value !== 'string' || isNaN(Date.parse(value))) {
+          errors.push({ field: field.field_key, message: `${field.label} must be a valid date` });
+        }
+        break;
+      }
+
+      case 'checkbox': {
+        if (typeof value !== 'boolean') {
+          errors.push({ field: field.field_key, message: `${field.label} must be true or false` });
+        }
+        break;
+      }
+    }
+
+    // Regex pattern validation (applies to any field type that has one)
+    if (field.regex_pattern && typeof value === 'string') {
+      try {
+        const regex = new RegExp(field.regex_pattern);
+        if (!regex.test(value)) {
+          errors.push({ field: field.field_key, message: `${field.label} does not match the required format` });
+        }
+      } catch {
+        // Invalid regex in field definition — skip pattern check
+      }
+    }
+  }
+
+  return errors;
 }
 
 // ---------------------------------------------------------------------------

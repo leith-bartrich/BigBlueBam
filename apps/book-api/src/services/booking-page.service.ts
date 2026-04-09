@@ -258,25 +258,50 @@ export async function bookSlot(
 
   if (!calendar) throw badRequest('Owner has no default calendar');
 
-  // Create the event
-  const [event] = await db
-    .insert(bookEvents)
-    .values({
-      calendar_id: calendar.id,
-      organization_id: page.organization_id,
-      title: `${page.title} with ${name}`,
-      description: notes ?? '',
-      start_at: start,
-      end_at: end,
-      timezone: 'UTC',
-      status: 'confirmed',
-      visibility: 'busy',
-      booking_page_id: page.id,
-      booked_by_name: name,
-      booked_by_email: email,
-      created_by: page.owner_user_id,
-    })
-    .returning();
+  // Use a transaction with row-level locking to prevent double-booking
+  const event = await db.transaction(async (tx) => {
+    // Lock overlapping rows and check for conflicts.
+    // An overlap exists when: existing.start_at < requested.end AND existing.end_at > requested.start
+    const overlapping = await tx
+      .select({ id: bookEvents.id })
+      .from(bookEvents)
+      .where(
+        and(
+          eq(bookEvents.calendar_id, calendar.id),
+          eq(bookEvents.status, 'confirmed'),
+          sql`${bookEvents.start_at} < ${end}`,
+          sql`${bookEvents.end_at} > ${start}`,
+        ),
+      )
+      .for('update')
+      .limit(1);
 
-  return event!;
+    if (overlapping.length > 0) {
+      throw conflict('This time slot is no longer available');
+    }
+
+    // Create the event inside the transaction
+    const [created] = await tx
+      .insert(bookEvents)
+      .values({
+        calendar_id: calendar.id,
+        organization_id: page.organization_id,
+        title: `${page.title} with ${name}`,
+        description: notes ?? '',
+        start_at: start,
+        end_at: end,
+        timezone: 'UTC',
+        status: 'confirmed',
+        visibility: 'busy',
+        booking_page_id: page.id,
+        booked_by_name: name,
+        booked_by_email: email,
+        created_by: page.owner_user_id,
+      })
+      .returning();
+
+    return created!;
+  });
+
+  return event;
 }
