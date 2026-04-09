@@ -8,6 +8,7 @@ export {
   projects,
   tasks,
   timeEntries,
+  bondDeals,
 } from './bbb-refs.js';
 
 // Bill-specific tables

@@ -282,6 +282,102 @@ const TEMPLATES: AutomationTemplate[] = [
       },
     ],
   },
+  {
+    id: 'tpl_new_document_notification',
+    name: 'New document notification',
+    description: 'Post to a project Banter channel when a new Brief document is created.',
+    category: 'notifications',
+    trigger_source: 'brief',
+    trigger_event: 'document.created',
+    conditions: [],
+    actions: [
+      {
+        sort_order: 0,
+        mcp_tool: 'banter_send_message',
+        parameters: {
+          channel_name: 'project-updates',
+          message: 'New document created: "{{ event.document.title }}" by {{ event.actor.id }}',
+        },
+        on_error: 'continue',
+      },
+    ],
+  },
+  {
+    id: 'tpl_weekly_status_update',
+    name: 'Weekly status update',
+    description: 'Generate a weekly project status report every Monday morning.',
+    category: 'schedule',
+    trigger_source: 'schedule',
+    trigger_event: 'cron.fired',
+    conditions: [],
+    actions: [
+      {
+        sort_order: 0,
+        mcp_tool: 'banter_send_message',
+        parameters: {
+          channel_name: 'general',
+          message: 'Weekly status report for {{ now }}: Please update your task statuses and flag any blockers before standup.',
+        },
+        on_error: 'continue',
+      },
+    ],
+  },
+  {
+    id: 'tpl_task_moved_to_review',
+    name: 'Task moved to review',
+    description: 'Notify the reviewer via Banter DM when a task is moved to the Review phase.',
+    category: 'notifications',
+    trigger_source: 'bam',
+    trigger_event: 'task.moved',
+    conditions: [
+      {
+        sort_order: 0,
+        field: 'event.to_phase.name',
+        operator: 'equals',
+        value: 'Review',
+        logic_group: 'and',
+      },
+    ],
+    actions: [
+      {
+        sort_order: 0,
+        mcp_tool: 'banter_send_dm',
+        parameters: {
+          user_id: '{{ event.task.assignee_id }}',
+          message: 'Task "{{ event.task.title }}" has been moved to Review and is ready for your attention.',
+        },
+        on_error: 'continue',
+      },
+    ],
+  },
+  {
+    id: 'tpl_close_ticket_on_task_complete',
+    name: 'Close ticket on task complete',
+    description: 'When a Bam task is completed, resolve its linked helpdesk ticket automatically.',
+    category: 'sync',
+    trigger_source: 'bam',
+    trigger_event: 'task.completed',
+    conditions: [
+      {
+        sort_order: 0,
+        field: 'event.task.linked_ticket_id',
+        operator: 'is_not_empty',
+        value: null,
+        logic_group: 'and',
+      },
+    ],
+    actions: [
+      {
+        sort_order: 0,
+        mcp_tool: 'helpdesk_update_ticket',
+        parameters: {
+          ticket_id: '{{ event.task.linked_ticket_id }}',
+          status: 'resolved',
+        },
+        on_error: 'continue',
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------

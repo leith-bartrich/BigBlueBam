@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   integer,
+  bigint,
   date,
   jsonb,
   timestamp,
@@ -131,6 +132,24 @@ export const tasks = pgTable('tasks', {
     .references(() => projects.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 500 }).notNull(),
 });
+
+// Bond deals stub (for deal-to-invoice pipeline)
+export const bondDeals = pgTable(
+  'bond_deals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organization_id: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 255 }).notNull(),
+    value: bigint('value', { mode: 'number' }),
+    currency: varchar('currency', { length: 3 }).default('USD').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('bond_deals_org_idx_stub').on(table.organization_id),
+  ],
+);
 
 // Time entries stub (for time-entry-to-invoice pipeline)
 export const timeEntries = pgTable(

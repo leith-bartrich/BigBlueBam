@@ -242,4 +242,33 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
       return reply.status(201).send({ data: invoice });
     },
   );
+
+  // POST /invoices/from-deal — create draft invoice from a Bond CRM deal
+  const fromDealSchema = z.object({
+    deal_id: z.string().uuid(),
+    client_id: z.string().uuid(),
+  });
+
+  fastify.post(
+    '/invoices/from-deal',
+    { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
+    async (request, reply) => {
+      const body = fromDealSchema.parse(request.body);
+      const invoice = await invoiceService.createInvoiceFromDeal(
+        body,
+        request.user!.org_id,
+        request.user!.id,
+      );
+      publishBoltEvent('invoice.created', 'bill', {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        client_id: invoice.client_id,
+        status: invoice.status,
+        source: 'deal',
+        bond_deal_id: body.deal_id,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
+      return reply.status(201).send({ data: invoice });
+    },
+  );
 }

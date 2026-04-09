@@ -21,7 +21,8 @@ import {
   Type, AlignLeft, Mail, Phone, Link, Hash,
   ListChecks, ChevronDown, Calendar, Clock,
   Star, BarChart3, ThumbsUp, CheckSquare, ToggleLeft,
-  Heading, FileText, EyeOff, Upload,
+  Heading, FileText, EyeOff, Upload, SeparatorHorizontal,
+  ChevronLeft, ChevronRight, X,
 } from 'lucide-react';
 import { useForm, useUpdateForm, usePublishForm } from '@/hooks/use-forms';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,7 @@ const FIELD_TYPE_PALETTE = [
   { type: 'section_header', label: 'Section Header', icon: Heading },
   { type: 'paragraph', label: 'Paragraph', icon: FileText },
   { type: 'hidden', label: 'Hidden Field', icon: EyeOff },
+  { type: 'page_break', label: 'Page Break', icon: SeparatorHorizontal },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -122,6 +124,289 @@ function SortableField({ field, isSelected, onSelect, onDelete }: SortableFieldP
 }
 
 /* ------------------------------------------------------------------ */
+/*  Live preview renderer                                              */
+/* ------------------------------------------------------------------ */
+
+function FieldPreviewInput({ field }: { field: BlankField }) {
+  const baseClass =
+    'w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100';
+
+  switch (field.field_type) {
+    case 'short_text':
+      return <input type="text" placeholder={field.placeholder ?? ''} disabled className={baseClass} />;
+    case 'long_text':
+      return <textarea rows={3} placeholder={field.placeholder ?? ''} disabled className={baseClass} />;
+    case 'email':
+      return <input type="email" placeholder={field.placeholder ?? 'email@example.com'} disabled className={baseClass} />;
+    case 'phone':
+      return <input type="tel" placeholder={field.placeholder ?? '+1 (555) 000-0000'} disabled className={baseClass} />;
+    case 'url':
+      return <input type="url" placeholder={field.placeholder ?? 'https://'} disabled className={baseClass} />;
+    case 'number':
+      return <input type="number" placeholder={field.placeholder ?? '0'} disabled className={baseClass} />;
+    case 'date':
+      return <input type="date" disabled className={baseClass} />;
+    case 'time':
+      return <input type="time" disabled className={baseClass} />;
+    case 'single_select':
+    case 'multi_select': {
+      const options = Array.isArray(field.options) ? (field.options as string[]) : [];
+      return (
+        <div className="space-y-1.5">
+          {options.length > 0 ? (
+            options.map((opt, i) => (
+              <label key={i} className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                <input
+                  type={field.field_type === 'single_select' ? 'radio' : 'checkbox'}
+                  disabled
+                  className="rounded"
+                />
+                {opt}
+              </label>
+            ))
+          ) : (
+            <p className="text-xs text-zinc-400 italic">No options configured</p>
+          )}
+        </div>
+      );
+    }
+    case 'dropdown': {
+      const opts = Array.isArray(field.options) ? (field.options as string[]) : [];
+      return (
+        <select disabled className={baseClass}>
+          <option value="">{field.placeholder ?? 'Select an option...'}</option>
+          {opts.map((opt, i) => (
+            <option key={i}>{opt}</option>
+          ))}
+        </select>
+      );
+    }
+    case 'rating':
+      return (
+        <div className="flex gap-1">
+          {Array.from({ length: 5 }, (_, i) => (
+            <Star key={i} className="h-6 w-6 text-zinc-300 dark:text-zinc-600" />
+          ))}
+        </div>
+      );
+    case 'scale':
+      return (
+        <div className="space-y-1">
+          <input type="range" min={field.scale_min} max={field.scale_max} disabled className="w-full" />
+          <div className="flex justify-between text-xs text-zinc-400">
+            <span>{field.scale_min_label ?? field.scale_min}</span>
+            <span>{field.scale_max_label ?? field.scale_max}</span>
+          </div>
+        </div>
+      );
+    case 'nps':
+      return (
+        <div className="flex gap-1">
+          {Array.from({ length: 11 }, (_, i) => (
+            <button
+              key={i}
+              type="button"
+              disabled
+              className="flex-1 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-700 rounded text-zinc-500"
+            >
+              {i}
+            </button>
+          ))}
+        </div>
+      );
+    case 'checkbox':
+      return (
+        <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <input type="checkbox" disabled className="rounded" />
+          {field.label}
+        </label>
+      );
+    case 'toggle':
+      return (
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-5 bg-zinc-300 dark:bg-zinc-600 rounded-full relative">
+            <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full" />
+          </div>
+          <span className="text-sm text-zinc-500">{field.label}</span>
+        </div>
+      );
+    case 'file_upload':
+      return (
+        <div className="flex items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-lg py-6 text-sm text-zinc-400">
+          <Upload className="h-4 w-4 mr-2" />
+          Click or drag to upload
+        </div>
+      );
+    case 'section_header':
+      return <h3 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">{field.label}</h3>;
+    case 'paragraph':
+      return <p className="text-sm text-zinc-500">{field.description || 'Paragraph text'}</p>;
+    case 'hidden':
+      return <p className="text-xs text-zinc-400 italic">Hidden field (not shown to respondent)</p>;
+    case 'page_break':
+      return null; // handled by multi-page logic
+    default:
+      return <input type="text" placeholder={field.placeholder ?? ''} disabled className={baseClass} />;
+  }
+}
+
+function FormPreviewPanel({
+  form,
+  fields,
+  onClose,
+}: {
+  form: BlankForm | undefined;
+  fields: BlankField[];
+  onClose: () => void;
+}) {
+  const [currentPage, setCurrentPage] = useState(0);
+
+  // Split fields into pages at page_break boundaries
+  const pages: BlankField[][] = [];
+  let currentPageFields: BlankField[] = [];
+  for (const field of fields) {
+    if (field.field_type === 'page_break') {
+      if (currentPageFields.length > 0) {
+        pages.push(currentPageFields);
+        currentPageFields = [];
+      }
+    } else {
+      currentPageFields.push(field);
+    }
+  }
+  if (currentPageFields.length > 0) pages.push(currentPageFields);
+  if (pages.length === 0) pages.push([]); // always at least 1 page
+
+  const totalPages = pages.length;
+  const isMultiPage = totalPages > 1;
+  const pageFields = pages[currentPage] ?? [];
+
+  return (
+    <div className="w-[420px] border-l border-zinc-200 dark:border-zinc-800 flex flex-col bg-zinc-50 dark:bg-zinc-900/50">
+      {/* Preview header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center gap-2">
+          <Eye className="h-4 w-4 text-zinc-500" />
+          <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Live Preview</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Preview body */}
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div className="max-w-sm mx-auto bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm p-6 space-y-5">
+          {/* Form title */}
+          <div>
+            <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">
+              {form?.name || 'Untitled Form'}
+            </h2>
+            {form?.description && (
+              <p className="text-sm text-zinc-500 mt-1">{form.description}</p>
+            )}
+          </div>
+
+          {/* Progress bar for multi-page */}
+          {isMultiPage && form?.show_progress_bar !== false && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-zinc-400">
+                <span>Page {currentPage + 1} of {totalPages}</span>
+                <span>{Math.round(((currentPage + 1) / totalPages) * 100)}%</span>
+              </div>
+              <div className="h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary-500 rounded-full transition-all"
+                  style={{ width: `${((currentPage + 1) / totalPages) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Fields */}
+          {pageFields.length === 0 ? (
+            <p className="text-sm text-zinc-400 text-center py-8">
+              No fields on this page. Add fields from the palette.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {pageFields
+                .filter((f) => f.field_type !== 'hidden')
+                .map((field) => {
+                  // section_header and paragraph render directly
+                  if (field.field_type === 'section_header' || field.field_type === 'paragraph') {
+                    return <FieldPreviewInput key={field.id} field={field} />;
+                  }
+                  // checkbox and toggle render inline
+                  if (field.field_type === 'checkbox' || field.field_type === 'toggle') {
+                    return <FieldPreviewInput key={field.id} field={field} />;
+                  }
+                  return (
+                    <div key={field.id} className="space-y-1.5">
+                      <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                      </label>
+                      {field.description && (
+                        <p className="text-xs text-zinc-400">{field.description}</p>
+                      )}
+                      <FieldPreviewInput field={field} />
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
+          {/* Navigation buttons for multi-page */}
+          {isMultiPage ? (
+            <div className="flex justify-between pt-2">
+              <button
+                type="button"
+                disabled={currentPage === 0}
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                className="flex items-center gap-1 px-4 py-2 text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg disabled:opacity-30 text-zinc-600 dark:text-zinc-300"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+              {currentPage < totalPages - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                  className="flex items-center gap-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="px-6 py-2 text-sm bg-primary-600 text-white rounded-lg opacity-75"
+                >
+                  Submit
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="w-full py-2.5 text-sm font-medium bg-primary-600 text-white rounded-lg opacity-75"
+            >
+              Submit
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Form builder page                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -130,6 +415,7 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
   const updateMutation = useUpdateForm(formId);
   const publishMutation = usePublishForm();
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const form = data?.data;
   const fields = form?.fields ?? [];
@@ -228,8 +514,13 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => onNavigate(`/forms/${formId}/preview`)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                onClick={() => setShowPreview(!showPreview)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg',
+                  showPreview
+                    ? 'border-primary-400 bg-primary-50 text-primary-700 dark:border-primary-600 dark:bg-primary-950/20 dark:text-primary-300'
+                    : 'text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800',
+                )}
               >
                 <Eye className="h-4 w-4" /> Preview
               </button>
@@ -268,6 +559,15 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
           </div>
         </div>
       </div>
+
+      {/* Live preview panel */}
+      {showPreview && (
+        <FormPreviewPanel
+          form={form}
+          fields={fields}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
 
       {/* Right panel: Field configuration */}
       {selectedField && (

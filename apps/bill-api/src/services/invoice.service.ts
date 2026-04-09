@@ -10,6 +10,7 @@ import {
   timeEntries,
   tasks,
   users,
+  bondDeals,
 } from '../db/schema/index.js';
 import { notFound, badRequest, formatInvoiceNumber } from '../lib/utils.js';
 import { resolveRate } from './rate.service.js';
@@ -615,6 +616,60 @@ export async function createInvoiceFromTimeEntries(
   await recalculateInvoiceTotals(invoice.id);
 
   // 7. Return the full invoice with line items
+  return getInvoice(invoice.id, orgId);
+}
+
+// ---------------------------------------------------------------------------
+// Create from Bond deal
+// ---------------------------------------------------------------------------
+
+export interface CreateFromDealInput {
+  deal_id: string;
+  client_id: string;
+}
+
+export async function createInvoiceFromDeal(
+  input: CreateFromDealInput,
+  orgId: string,
+  userId: string,
+) {
+  // 1. Look up the deal from Bond's deals table (shared database)
+  const [deal] = await db
+    .select()
+    .from(bondDeals)
+    .where(and(eq(bondDeals.id, input.deal_id), eq(bondDeals.organization_id, orgId)))
+    .limit(1);
+
+  if (!deal) {
+    throw notFound('Deal not found');
+  }
+
+  // 2. Create the draft invoice linked to the deal
+  const invoice = await createInvoice(
+    {
+      client_id: input.client_id,
+      bond_deal_id: input.deal_id,
+    },
+    orgId,
+    userId,
+  );
+
+  // 3. Add the deal value as a single line item
+  const dealValue = deal.value ?? 0;
+  await db.insert(billLineItems).values({
+    invoice_id: invoice.id,
+    sort_order: 0,
+    description: deal.name,
+    quantity: '1',
+    unit: 'unit',
+    unit_price: dealValue,
+    amount: dealValue,
+  });
+
+  // 4. Recalculate totals
+  await recalculateInvoiceTotals(invoice.id);
+
+  // 5. Return the full invoice
   return getInvoice(invoice.id, orgId);
 }
 
