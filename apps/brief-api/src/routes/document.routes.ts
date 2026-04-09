@@ -48,6 +48,18 @@ const listDocumentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+const updateContentSchema = z.object({
+  html_snapshot: z.string().max(5_000_000).nullable().optional(),
+  plain_text: z.string().max(2_000_000).nullable().optional(),
+  content: z.string().max(2_000_000).optional(),
+});
+
+const appendContentSchema = z.object({
+  html: z.string().max(1_000_000).optional(),
+  text: z.string().max(1_000_000).optional(),
+  content: z.string().max(1_000_000).optional(),
+});
+
 const searchDocumentsQuerySchema = z.object({
   query: z.string().min(1).max(500),
   project_id: z.string().uuid().optional(),
@@ -251,6 +263,65 @@ export default async function documentRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
       );
       return reply.status(201).send({ data: result });
+    },
+  );
+
+  // PUT /documents/:id/content — Replace document content (used by MCP brief_update_content)
+  fastify.put<{ Params: { id: string } }>(
+    '/documents/:id/content',
+    { preHandler: [requireAuth, requireDocumentEditAccess(), requireScope('read_write')] },
+    async (request, reply) => {
+      const data = updateContentSchema.parse(request.body);
+      const plainText = data.plain_text ?? data.content ?? null;
+      const htmlSnapshot = data.html_snapshot ?? null;
+      const wordCount = plainText
+        ? plainText.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length
+        : 0;
+
+      const doc = await documentService.updateDocument(
+        (request as any).document.id,
+        {
+          plain_text: plainText,
+          html_snapshot: htmlSnapshot,
+          word_count: wordCount,
+        },
+        request.user!.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: doc });
+    },
+  );
+
+  // POST /documents/:id/append — Append content to document (used by MCP brief_append_content)
+  fastify.post<{ Params: { id: string } }>(
+    '/documents/:id/append',
+    { preHandler: [requireAuth, requireDocumentEditAccess(), requireScope('read_write')] },
+    async (request, reply) => {
+      const data = appendContentSchema.parse(request.body);
+      const doc = (request as any).document;
+
+      const appendText = data.text ?? data.content ?? '';
+      const appendHtml = data.html ?? '';
+
+      const newPlainText = (doc.plain_text ?? '') + (appendText ? '\n' + appendText : '');
+      const newHtmlSnapshot = appendHtml
+        ? (doc.html_snapshot ?? '') + appendHtml
+        : doc.html_snapshot;
+      const wordCount = newPlainText
+        ? newPlainText.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length
+        : 0;
+
+      const updated = await documentService.updateDocument(
+        doc.id,
+        {
+          plain_text: newPlainText,
+          html_snapshot: newHtmlSnapshot,
+          word_count: wordCount,
+        },
+        request.user!.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: updated });
     },
   );
 }

@@ -135,6 +135,7 @@ import embedRoutes from './routes/embed.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import linkRoutes from './routes/link.routes.js';
 import collaboratorRoutes from './routes/collaborator.routes.js';
+import exportRoutes from './routes/export.routes.js';
 
 await fastify.register(documentRoutes, { prefix: '/v1' });
 await fastify.register(folderRoutes, { prefix: '/v1' });
@@ -144,6 +145,7 @@ await fastify.register(embedRoutes, { prefix: '/v1' });
 await fastify.register(templateRoutes, { prefix: '/v1' });
 await fastify.register(linkRoutes, { prefix: '/v1' });
 await fastify.register(collaboratorRoutes, { prefix: '/v1' });
+await fastify.register(exportRoutes, { prefix: '/v1' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
