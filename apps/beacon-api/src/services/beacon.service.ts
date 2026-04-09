@@ -9,6 +9,7 @@ import {
   users,
   projects,
 } from '../db/schema/index.js';
+import { sanitizeHtml } from '../lib/sanitize.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -157,7 +158,7 @@ export async function createBeacon(
       title: data.title,
       summary: data.summary ?? null,
       body_markdown: data.body_markdown,
-      body_html: data.body_html ?? null,
+      body_html: data.body_html ? sanitizeHtml(data.body_html) : null,
       version: 1,
       status: 'Draft',
       visibility: data.visibility ?? 'Project',
@@ -389,7 +390,7 @@ export async function updateBeacon(
   if (data.title !== undefined) updateValues.title = data.title;
   if (data.summary !== undefined) updateValues.summary = data.summary;
   if (data.body_markdown !== undefined) updateValues.body_markdown = data.body_markdown;
-  if (data.body_html !== undefined) updateValues.body_html = data.body_html;
+  if (data.body_html !== undefined) updateValues.body_html = data.body_html ? sanitizeHtml(data.body_html) : data.body_html;
   if (data.visibility !== undefined) updateValues.visibility = data.visibility;
   if (data.metadata !== undefined) updateValues.metadata = data.metadata;
 

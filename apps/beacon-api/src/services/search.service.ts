@@ -218,7 +218,7 @@ export async function hybridSearch(
   if (opts.include_graph_expansion && candidates.size > 0) {
     try {
       const topBeaconIds = getTopBeaconIds(candidates, 10);
-      const linkedIds = await linkTraversalSearch(topBeaconIds);
+      const linkedIds = await linkTraversalSearch(topBeaconIds, request.filters.organization_id);
       for (const id of linkedIds) {
         stages.link_traversal_hits++;
         const existing = candidates.get(id);
@@ -621,29 +621,50 @@ export async function tagExpansionSearch(
 /**
  * Link traversal: follow beacon_links 1-hop from the given beacon IDs.
  * Returns linked beacon IDs not already in the input set.
+ * Filters to beacons within the same organization to prevent cross-org data leakage.
  */
-export async function linkTraversalSearch(beaconIds: string[]): Promise<string[]> {
+export async function linkTraversalSearch(beaconIds: string[], orgId: string): Promise<string[]> {
   if (beaconIds.length === 0) return [];
 
-  const links = await db
+  // Join through beacon_entries to enforce organization_id filter on both ends
+  // Source side: find targets linked from our beacons, where target is in same org
+  const sourceLinks = await db
     .select({
       source_id: beaconLinks.source_id,
       target_id: beaconLinks.target_id,
     })
     .from(beaconLinks)
+    .innerJoin(beaconEntries, eq(beaconEntries.id, beaconLinks.target_id))
     .where(
-      or(
+      and(
         inArray(beaconLinks.source_id, beaconIds),
+        eq(beaconEntries.organization_id, orgId),
+      ),
+    );
+
+  // Target side: find sources linked to our beacons, where source is in same org
+  const targetLinks = await db
+    .select({
+      source_id: beaconLinks.source_id,
+      target_id: beaconLinks.target_id,
+    })
+    .from(beaconLinks)
+    .innerJoin(beaconEntries, eq(beaconEntries.id, beaconLinks.source_id))
+    .where(
+      and(
         inArray(beaconLinks.target_id, beaconIds),
+        eq(beaconEntries.organization_id, orgId),
       ),
     );
 
   const inputSet = new Set(beaconIds);
   const linked = new Set<string>();
 
-  for (const link of links) {
-    if (!inputSet.has(link.source_id)) linked.add(link.source_id);
+  for (const link of sourceLinks) {
     if (!inputSet.has(link.target_id)) linked.add(link.target_id);
+  }
+  for (const link of targetLinks) {
+    if (!inputSet.has(link.source_id)) linked.add(link.source_id);
   }
 
   return [...linked];

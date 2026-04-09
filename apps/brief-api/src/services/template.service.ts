@@ -1,6 +1,7 @@
 import { eq, and, or, isNull, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { briefTemplates } from '../db/schema/index.js';
+import { sanitizeHtml } from '../lib/sanitize.js';
 
 export class TemplateError extends Error {
   code: string;
@@ -58,7 +59,7 @@ export async function createTemplate(
       icon: data.icon ?? null,
       category: data.category ?? null,
       yjs_state: data.yjs_state ?? null,
-      html_preview: data.html_preview ?? null,
+      html_preview: data.html_preview ? sanitizeHtml(data.html_preview) : null,
       sort_order: data.sort_order ?? 0,
       created_by: userId,
     })
@@ -99,7 +100,7 @@ export async function updateTemplate(
   if (data.icon !== undefined) updateValues.icon = data.icon;
   if (data.category !== undefined) updateValues.category = data.category;
   if (data.yjs_state !== undefined) updateValues.yjs_state = data.yjs_state;
-  if (data.html_preview !== undefined) updateValues.html_preview = data.html_preview;
+  if (data.html_preview !== undefined) updateValues.html_preview = data.html_preview ? sanitizeHtml(data.html_preview) : data.html_preview;
   if (data.sort_order !== undefined) updateValues.sort_order = data.sort_order;
 
   const [template] = await db

@@ -12,6 +12,7 @@ import {
   projects,
   beaconEntries,
 } from '../db/schema/index.js';
+import { sanitizeHtml } from '../lib/sanitize.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -125,7 +126,7 @@ export async function createDocument(
       title,
       slug,
       plain_text: plainText,
-      html_snapshot: templateContent,
+      html_snapshot: templateContent ? sanitizeHtml(templateContent) : null,
       word_count: wordCount,
       template_id: data.template_id ?? null,
       status: 'draft',
@@ -320,7 +321,7 @@ export async function updateDocument(
   if (data.visibility !== undefined) updateValues.visibility = data.visibility;
   if (data.pinned !== undefined) updateValues.pinned = data.pinned;
   if (data.plain_text !== undefined) updateValues.plain_text = data.plain_text;
-  if (data.html_snapshot !== undefined) updateValues.html_snapshot = data.html_snapshot;
+  if (data.html_snapshot !== undefined) updateValues.html_snapshot = data.html_snapshot ? sanitizeHtml(data.html_snapshot) : data.html_snapshot;
   if (data.yjs_state !== undefined) updateValues.yjs_state = data.yjs_state;
   if (data.word_count !== undefined) updateValues.word_count = data.word_count;
   if (data.project_id !== undefined) updateValues.project_id = data.project_id;
