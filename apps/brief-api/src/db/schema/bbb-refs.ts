@@ -171,4 +171,14 @@ export const beaconEntries = pgTable('beacon_entries', {
     .references(() => organizations.id),
   title: varchar('title', { length: 512 }).notNull(),
   slug: varchar('slug', { length: 256 }).unique().notNull(),
+  body_markdown: text('body_markdown').notNull(),
+  body_html: text('body_html'),
+  status: varchar('status', { length: 50 }).default('Draft').notNull(),
+  visibility: varchar('visibility', { length: 50 }).default('Project').notNull(),
+  created_by: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  owned_by: uuid('owned_by')
+    .notNull()
+    .references(() => users.id),
 });

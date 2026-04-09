@@ -16,6 +16,8 @@ import { useComments, useCreateComment, useResolveComment, useDeleteComment } fr
 import { useVersions } from '@/hooks/use-versions';
 import { StatusBadge } from '@/components/document/status-badge';
 import { CommentThread } from '@/components/document/comment-thread';
+import { ExportMenu } from '@/components/document/export-menu';
+import { LinkedItems } from '@/components/document/linked-items';
 import { Button } from '@/components/common/button';
 import { Avatar } from '@/components/common/avatar';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
@@ -166,6 +168,7 @@ export function DocumentDetailPage({ idOrSlug, onNavigate }: DocumentDetailPageP
             <Copy className="h-4 w-4" />
             Duplicate
           </Button>
+          <ExportMenu documentId={doc.id} slug={doc.slug} />
           <Button variant="ghost" size="sm" onClick={handlePromote} loading={promoteToBeacon.isPending}>
             <ArrowUpFromLine className="h-4 w-4" />
             Promote to Beacon
@@ -265,6 +268,14 @@ export function DocumentDetailPage({ idOrSlug, onNavigate }: DocumentDetailPageP
               )}
             </div>
           </SidebarField>
+
+          {/* Linked Items */}
+          <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800">
+            <h3 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-3 uppercase tracking-wider">
+              Linked Items
+            </h3>
+            <LinkedItems documentId={doc.id} />
+          </div>
 
           {/* Comments section */}
           <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800">

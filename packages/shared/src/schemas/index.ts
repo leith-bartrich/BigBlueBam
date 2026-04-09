@@ -8,3 +8,4 @@ export * from './task.js';
 export * from './comment.js';
 export * from './superuser.js';
 export * from './bearing.js';
+export * from './brief.js';

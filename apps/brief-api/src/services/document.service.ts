@@ -13,6 +13,7 @@ import {
   beaconEntries,
 } from '../db/schema/index.js';
 import { sanitizeHtml } from '../lib/sanitize.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -136,6 +137,9 @@ export async function createDocument(
       updated_by: userId,
     })
     .returning();
+
+  // Bolt workflow event (fire-and-forget)
+  publishBoltEvent('document.created', 'brief', { document: doc }, orgId).catch(() => {});
 
   return doc!;
 }
@@ -331,6 +335,14 @@ export async function updateDocument(
     .set(updateValues)
     .where(eq(briefDocuments.id, id))
     .returning();
+
+  // Bolt workflow events (fire-and-forget)
+  publishBoltEvent('document.updated', 'brief', { document: doc, changed_fields: Object.keys(updateValues) }, orgId).catch(() => {});
+
+  // Emit document.published when status transitions to approved
+  if (data.status === 'approved' && existing.status !== 'approved') {
+    publishBoltEvent('document.published', 'brief', { document: doc }, orgId).catch(() => {});
+  }
 
   return doc!;
 }
@@ -611,6 +623,12 @@ export async function promoteToBeacon(id: string, userId: string, orgId: string)
       slug: beaconSlug,
       title: existing.title,
       organization_id: orgId,
+      body_html: existing.html_snapshot ?? '',
+      body_markdown: existing.plain_text ?? '',
+      created_by: userId,
+      owned_by: userId,
+      status: 'Draft',
+      visibility: 'Organization',
     })
     .returning();
 
