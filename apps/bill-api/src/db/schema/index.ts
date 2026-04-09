@@ -6,6 +6,8 @@ export {
   apiKeys,
   organizationMemberships,
   projects,
+  tasks,
+  timeEntries,
 } from './bbb-refs.js';
 
 // Bill-specific tables

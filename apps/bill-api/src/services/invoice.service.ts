@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, lte, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   billInvoices,
@@ -7,8 +7,12 @@ import {
   billInvoiceSequences,
   billSettings,
   billClients,
+  timeEntries,
+  tasks,
+  users,
 } from '../db/schema/index.js';
 import { notFound, badRequest, formatInvoiceNumber } from '../lib/utils.js';
+import { resolveRate } from './rate.service.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -450,6 +454,168 @@ export async function getInvoiceByToken(token: string) {
     .orderBy(billLineItems.sort_order);
 
   return { ...invoice, line_items: lineItems };
+}
+
+// ---------------------------------------------------------------------------
+// Create from time entries
+// ---------------------------------------------------------------------------
+
+export interface CreateFromTimeEntriesInput {
+  project_id: string;
+  time_entry_ids: string[];
+  client_id: string;
+}
+
+export async function createInvoiceFromTimeEntries(
+  input: CreateFromTimeEntriesInput,
+  orgId: string,
+  userId: string,
+) {
+  // 1. Fetch the requested time entries joined with tasks to verify project ownership
+  const entries = await db
+    .select({
+      id: timeEntries.id,
+      task_id: timeEntries.task_id,
+      user_id: timeEntries.user_id,
+      minutes: timeEntries.minutes,
+      date: timeEntries.date,
+      description: timeEntries.description,
+      task_title: tasks.title,
+      task_project_id: tasks.project_id,
+    })
+    .from(timeEntries)
+    .innerJoin(tasks, eq(tasks.id, timeEntries.task_id))
+    .where(inArray(timeEntries.id, input.time_entry_ids));
+
+  if (entries.length === 0) {
+    throw badRequest('No time entries found for the given IDs');
+  }
+
+  // Verify all entries belong to the specified project
+  const wrongProject = entries.filter((e) => e.task_project_id !== input.project_id);
+  if (wrongProject.length > 0) {
+    throw badRequest(
+      `${wrongProject.length} time entries do not belong to the specified project`,
+    );
+  }
+
+  // 2. Group time entries by user + task for line item generation
+  const groupKey = (e: { user_id: string; task_id: string }) => `${e.user_id}::${e.task_id}`;
+  const groups = new Map<
+    string,
+    {
+      user_id: string;
+      task_id: string;
+      task_title: string;
+      totalMinutes: number;
+      entryIds: string[];
+      descriptions: string[];
+    }
+  >();
+
+  for (const entry of entries) {
+    const key = groupKey(entry);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.totalMinutes += entry.minutes;
+      existing.entryIds.push(entry.id);
+      if (entry.description) existing.descriptions.push(entry.description);
+    } else {
+      groups.set(key, {
+        user_id: entry.user_id,
+        task_id: entry.task_id,
+        task_title: entry.task_title,
+        totalMinutes: entry.minutes,
+        entryIds: [entry.id],
+        descriptions: entry.description ? [entry.description] : [],
+      });
+    }
+  }
+
+  // 3. Resolve billing rates and build line items
+  const lineItemValues: Array<{
+    description: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    amount: number;
+    time_entry_ids: string[];
+    task_id: string;
+    sort_order: number;
+  }> = [];
+
+  // Fetch user display names for line item descriptions
+  const userIds = [...new Set([...groups.values()].map((g) => g.user_id))];
+  const userRows = userIds.length > 0
+    ? await db
+        .select({ id: users.id, display_name: users.display_name })
+        .from(users)
+        .where(inArray(users.id, userIds))
+    : [];
+  const userNameMap = new Map(userRows.map((u) => [u.id, u.display_name]));
+
+  let sortOrder = 0;
+  for (const group of groups.values()) {
+    // Resolve rate: most specific match wins (user+project > user > project > org)
+    const rateResult = await resolveRate(orgId, input.project_id, group.user_id);
+    if (!rateResult.data) {
+      throw badRequest(
+        `No billing rate configured for user ${userNameMap.get(group.user_id) ?? group.user_id} on this project. Configure a rate first.`,
+      );
+    }
+
+    const rate = rateResult.data;
+    const hours = group.totalMinutes / 60;
+    const quantity = Math.round(hours * 100) / 100; // 2 decimal places
+    const amount = Math.round(quantity * rate.rate_amount);
+
+    const userName = userNameMap.get(group.user_id) ?? 'Unknown';
+    const description = `${group.task_title} - ${userName} (${quantity}h)`;
+
+    lineItemValues.push({
+      description,
+      quantity,
+      unit: 'hours',
+      unit_price: rate.rate_amount,
+      amount,
+      time_entry_ids: group.entryIds,
+      task_id: group.task_id,
+      sort_order: sortOrder++,
+    });
+  }
+
+  // 4. Create the draft invoice
+  const invoice = await createInvoice(
+    {
+      client_id: input.client_id,
+      project_id: input.project_id,
+    },
+    orgId,
+    userId,
+  );
+
+  // 5. Insert line items
+  if (lineItemValues.length > 0) {
+    await db.insert(billLineItems).values(
+      lineItemValues.map((li) => ({
+        invoice_id: invoice.id,
+        sort_order: li.sort_order,
+        description: li.description,
+        quantity: String(li.quantity),
+        unit: li.unit,
+        unit_price: li.unit_price,
+        amount: li.amount,
+        time_entry_ids: li.time_entry_ids,
+        task_id: li.task_id,
+      })),
+    );
+  }
+
+  // 6. Recalculate totals
+  await recalculateInvoiceTotals(invoice.id);
+
+  // 7. Return the full invoice with line items
+  return getInvoice(invoice.id, orgId);
 }
 
 // ---------------------------------------------------------------------------
