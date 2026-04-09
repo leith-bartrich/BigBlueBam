@@ -10,7 +10,7 @@ const createCampaignSchema = z.object({
   html_body: z.string().min(1),
   plain_text_body: z.string().optional(),
   segment_id: z.string().uuid().optional(),
-  from_name: z.string().max(100).optional(),
+  from_name: z.string().max(100).regex(/^[^\r\n]*$/, 'from_name must not contain line breaks').optional(),
   from_email: z.string().email().max(255).optional(),
   reply_to_email: z.string().email().max(255).optional(),
 });

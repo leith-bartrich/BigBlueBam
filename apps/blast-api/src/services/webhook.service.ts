@@ -27,12 +27,11 @@ export async function processBounce(payload: {
       .limit(1);
   }
 
-  if (!sendLog && payload.email) {
-    [sendLog] = await db
-      .select()
-      .from(blastSendLog)
-      .where(eq(blastSendLog.to_email, payload.email))
-      .limit(1);
+  // BLAST-012: When falling back to email match (no message_id), require
+  // message_id to avoid cross-org bounce mis-attribution. Email-only lookups
+  // are ambiguous because the same address may appear in multiple orgs' send logs.
+  if (!sendLog && !payload.message_id && payload.email) {
+    return { processed: false, reason: 'Bounce by email-only match rejected — message_id required to prevent cross-org mis-attribution' };
   }
 
   if (!sendLog) {
@@ -79,12 +78,9 @@ export async function processComplaint(payload: {
       .limit(1);
   }
 
-  if (!sendLog && payload.email) {
-    [sendLog] = await db
-      .select()
-      .from(blastSendLog)
-      .where(eq(blastSendLog.to_email, payload.email))
-      .limit(1);
+  // BLAST-012: Reject email-only fallback to prevent cross-org mis-attribution
+  if (!sendLog && !payload.message_id && payload.email) {
+    return { processed: false, reason: 'Complaint by email-only match rejected — message_id required to prevent cross-org mis-attribution' };
   }
 
   if (!sendLog) {

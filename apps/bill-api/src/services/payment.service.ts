@@ -36,6 +36,14 @@ export async function recordPayment(
   if (invoice.status === 'draft') throw badRequest('Cannot record payment on a draft invoice');
   if (invoice.status === 'void') throw badRequest('Cannot record payment on a voided invoice');
 
+  // BILL-004: Validate that payment does not exceed remaining balance
+  const remaining = Number(invoice.total) - Number(invoice.amount_paid);
+  if (input.amount > remaining) {
+    throw badRequest(
+      `Payment amount (${input.amount}) exceeds remaining balance (${remaining})`,
+    );
+  }
+
   const [payment] = await db
     .insert(billPayments)
     .values({

@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { eq, and, inArray } from 'drizzle-orm';
 import { requireAuth } from '../plugins/auth.js';
 import * as availabilityService from '../services/availability.service.js';
+import { db } from '../db/index.js';
+import { organizationMemberships } from '../db/schema/index.js';
 
 const availabilityQuerySchema = z.object({
   start_date: z.string().datetime(),
@@ -31,6 +34,30 @@ export default async function availabilityRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const query = availabilityQuerySchema.parse(request.query);
+
+      // BOOK-003: Verify target user belongs to the same org as the requester
+      const [membership] = await db
+        .select({ user_id: organizationMemberships.user_id })
+        .from(organizationMemberships)
+        .where(
+          and(
+            eq(organizationMemberships.user_id, request.params.userId),
+            eq(organizationMemberships.org_id, request.user!.org_id),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
       const slots = await availabilityService.getAvailability(
         request.params.userId,
         query.start_date,
@@ -46,7 +73,23 @@ export default async function availabilityRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const query = teamQuerySchema.parse(request.query);
-      const userIds = query.user_ids.split(',').filter(Boolean);
+      const requestedIds = query.user_ids.split(',').filter(Boolean);
+
+      // BOOK-004: Filter user_ids to only include same-org users
+      const sameOrgMembers = requestedIds.length > 0
+        ? await db
+            .select({ user_id: organizationMemberships.user_id })
+            .from(organizationMemberships)
+            .where(
+              and(
+                inArray(organizationMemberships.user_id, requestedIds),
+                eq(organizationMemberships.org_id, request.user!.org_id),
+              ),
+            )
+        : [];
+
+      const userIds = sameOrgMembers.map((m) => m.user_id);
+
       const result = await availabilityService.getTeamAvailability(
         userIds,
         query.start_date,

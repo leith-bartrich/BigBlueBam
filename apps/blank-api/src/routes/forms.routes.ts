@@ -77,6 +77,24 @@ const updateFormSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// CSS sanitization — strips dangerous CSS constructs (BLANK-005)
+// ---------------------------------------------------------------------------
+
+function sanitizeCss(css: string): string {
+  return css
+    // Strip url() to prevent data exfiltration and external resource loading
+    .replace(/url\s*\([^)]*\)/gi, '/* [removed url()] */')
+    // Strip @import to prevent loading external stylesheets
+    .replace(/@import\b[^;]*;?/gi, '/* [removed @import] */')
+    // Strip expression() (IE CSS expressions)
+    .replace(/expression\s*\([^)]*\)/gi, '/* [removed expression()] */')
+    // Strip behavior: (IE HTC bindings)
+    .replace(/behavior\s*:[^;]*/gi, '/* [removed behavior] */')
+    // Strip -moz-binding (Firefox XBL)
+    .replace(/-moz-binding\s*:[^;]*/gi, '/* [removed -moz-binding] */');
+}
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
@@ -125,6 +143,10 @@ export default async function formRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
       const body = updateFormSchema.parse(request.body);
+      // BLANK-005: Sanitize custom_css before storage
+      if (body.custom_css) {
+        body.custom_css = sanitizeCss(body.custom_css);
+      }
       const form = await formService.updateForm(request.params.id, request.user!.org_id, body);
       return reply.send({ data: form });
     },

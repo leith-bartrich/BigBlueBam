@@ -8,7 +8,16 @@ import { notFound } from '../lib/utils.js';
 // Generate iCal feed token
 // ---------------------------------------------------------------------------
 
-export async function generateIcalToken(calendarId: string, userId: string) {
+export async function generateIcalToken(calendarId: string, userId: string, orgId: string) {
+  // BOOK-005: Verify calendar belongs to user's org before generating token
+  const [calendar] = await db
+    .select({ id: bookCalendars.id })
+    .from(bookCalendars)
+    .where(and(eq(bookCalendars.id, calendarId), eq(bookCalendars.organization_id, orgId)))
+    .limit(1);
+
+  if (!calendar) throw notFound('Calendar not found');
+
   const token = nanoid(48);
 
   const [row] = await db

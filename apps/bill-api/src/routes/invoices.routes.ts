@@ -33,7 +33,7 @@ const createLineItemSchema = z.object({
   description: z.string().min(1).max(1000),
   quantity: z.number().positive().optional(),
   unit: z.string().max(20).optional(),
-  unit_price: z.number().int(),
+  unit_price: z.number().int().min(0),
   sort_order: z.number().int().optional(),
   time_entry_ids: z.array(z.string().uuid()).optional(),
   task_id: z.string().uuid().optional(),

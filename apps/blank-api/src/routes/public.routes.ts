@@ -10,6 +10,7 @@ import * as submissionService from '../services/submission.service.js';
 const submitSchema = z.object({
   response_data: z.record(z.unknown()),
   email: z.string().email().optional(),
+  captcha_token: z.string().optional(),
 });
 
 export default async function publicRoutes(fastify: FastifyInstance) {
@@ -48,6 +49,18 @@ export default async function publicRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = submitSchema.parse(request.body);
       const form = await formService.getFormBySlug(request.params.slug);
+
+      // BLANK-008: Enforce CAPTCHA when enabled on the form
+      if (form.captcha_enabled && !body.captcha_token) {
+        return reply.status(400).send({
+          error: {
+            code: 'CAPTCHA_REQUIRED',
+            message: 'CAPTCHA verification is required for this form',
+            details: [{ field: 'captcha_token', issue: 'required' }],
+            request_id: request.id,
+          },
+        });
+      }
 
       if (!form.accept_responses) {
         return reply.status(400).send({

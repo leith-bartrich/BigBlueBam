@@ -260,7 +260,7 @@ export async function executeQuery(
   entity: string,
   config: QueryConfig,
   orgId: string,
-): Promise<{ rows: Record<string, unknown>[]; sql: string; duration_ms: number }> {
+): Promise<{ rows: Record<string, unknown>[]; sql?: string; duration_ms: number }> {
   const pq = buildQuery(product, entity, config, orgId);
   const start = Date.now();
 
@@ -273,7 +273,7 @@ export async function executeQuery(
     const duration_ms = Date.now() - start;
     return {
       rows: Array.isArray(result) ? (result as Record<string, unknown>[]) : [],
-      sql: pq.text,
+      ...(env.NODE_ENV !== 'production' ? { sql: pq.text } : {}),
       duration_ms,
     };
   } catch (err: any) {

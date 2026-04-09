@@ -11,6 +11,7 @@ export default async function icalRoutes(fastify: FastifyInstance) {
       const token = await icalService.generateIcalToken(
         request.params.id,
         request.user!.id,
+        request.user!.org_id,
       );
       return reply.status(201).send({ data: token });
     },

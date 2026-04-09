@@ -254,13 +254,16 @@ export async function finalizeInvoice(id: string, orgId: string) {
       .returning();
   }
 
-  const invoiceNumber = formatInvoiceNumber(seq!.prefix, seq!.next_number);
-
-  // Increment sequence
-  await db
+  // BILL-003: Atomic increment to prevent race condition — the RETURNING clause
+  // gives us the value *before* increment (next_number is the old value, new value
+  // is next_number + 1).
+  const [updated] = await db
     .update(billInvoiceSequences)
-    .set({ next_number: seq!.next_number + 1 })
-    .where(eq(billInvoiceSequences.organization_id, orgId));
+    .set({ next_number: sql`${billInvoiceSequences.next_number} + 1` })
+    .where(eq(billInvoiceSequences.organization_id, orgId))
+    .returning({ prefix: billInvoiceSequences.prefix, next_number: sql<number>`${billInvoiceSequences.next_number} - 1` });
+
+  const invoiceNumber = formatInvoiceNumber(updated!.prefix, updated!.next_number);
 
   // Recalculate totals
   await recalculateInvoiceTotals(id);
