@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { blankForms, blankFormFields, blankSubmissions } from '../db/schema/index.js';
 import { notFound, badRequest, conflict } from '../lib/utils.js';
@@ -126,7 +126,7 @@ export async function listForms(orgId: string, params: {
       count: sql<number>`count(*)::int`,
     })
     .from(blankSubmissions)
-    .where(sql`${blankSubmissions.form_id} = ANY(${formIds})`)
+    .where(inArray(blankSubmissions.form_id, formIds))
     .groupBy(blankSubmissions.form_id);
 
   const countMap = new Map(subCounts.map((sc) => [sc.form_id, sc.count]));
@@ -138,7 +138,7 @@ export async function listForms(orgId: string, params: {
       count: sql<number>`count(*)::int`,
     })
     .from(blankFormFields)
-    .where(sql`${blankFormFields.form_id} = ANY(${formIds})`)
+    .where(inArray(blankFormFields.form_id, formIds))
     .groupBy(blankFormFields.form_id);
 
   const fieldCountMap = new Map(fieldCounts.map((fc) => [fc.form_id, fc.count]));
