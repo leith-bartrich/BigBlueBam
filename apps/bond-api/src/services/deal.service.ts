@@ -32,6 +32,8 @@ export interface DealFilters {
   limit?: number;
   offset?: number;
   sort?: string;
+  /** When set, only return deals owned by this user (for member/viewer "own only" visibility). */
+  visibility_owner_id?: string;
 }
 
 export interface CreateDealInput {
@@ -90,6 +92,9 @@ export async function listDeals(filters: DealFilters) {
   }
   if (filters.expected_close_before) {
     conditions.push(lte(bondDeals.expected_close_date, filters.expected_close_before));
+  }
+  if (filters.visibility_owner_id) {
+    conditions.push(eq(bondDeals.owner_id, filters.visibility_owner_id));
   }
   if (filters.search) {
     const pattern = `%${escapeLike(filters.search)}%`;

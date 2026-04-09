@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  BearingGoalScope,
+  BearingGoalStatus,
+} from '@bigbluebam/shared/schemas/bearing';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import {
   requireMinOrgRole,
@@ -9,8 +13,8 @@ import {
 import * as goalService from '../services/goal.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 
-const GOAL_SCOPES = ['organization', 'project', 'team', 'individual'] as const;
-const GOAL_STATUSES = ['draft', 'on_track', 'at_risk', 'behind', 'achieved', 'missed'] as const;
+const GOAL_SCOPES = BearingGoalScope.options;
+const GOAL_STATUSES = BearingGoalStatus.options;
 
 const createGoalSchema = z.object({
   period_id: z.string().uuid(),

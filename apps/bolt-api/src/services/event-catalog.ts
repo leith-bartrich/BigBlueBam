@@ -99,6 +99,18 @@ const bamEvents: EventDefinition[] = [
   },
   {
     source: 'bam',
+    event_type: 'epic.completed',
+    description: 'Fired when all tasks in an epic are completed.',
+    payload_schema: [
+      { name: 'epic.id', type: 'uuid', description: 'Epic ID' },
+      { name: 'epic.title', type: 'string', description: 'Epic title' },
+      { name: 'epic.project_id', type: 'uuid', description: 'Project ID' },
+      { name: 'tasks_completed', type: 'number', description: 'Number of completed tasks in the epic' },
+      { name: 'actor.id', type: 'uuid', description: 'User whose action triggered the epic completion' },
+    ],
+  },
+  {
+    source: 'bam',
     event_type: 'sprint.started',
     description: 'Fired when a sprint is activated.',
     payload_schema: [

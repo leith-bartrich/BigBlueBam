@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Plus, Save, ArrowLeft, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Save, ArrowLeft, Trash2, GripVertical, Sparkles } from 'lucide-react';
 import { useDashboard, useUpdateDashboard } from '@/hooks/use-dashboards';
-import { useDeleteWidget } from '@/hooks/use-widgets';
+import { useDeleteWidget, useCreateWidget } from '@/hooks/use-widgets';
+import { WidgetGallery, type WidgetPreset } from '@/components/widgets/widget-gallery';
 
 interface DashboardEditPageProps {
   dashboardId: string;
@@ -12,12 +13,14 @@ export function DashboardEditPage({ dashboardId, onNavigate }: DashboardEditPage
   const { data, isLoading } = useDashboard(dashboardId);
   const updateMutation = useUpdateDashboard(dashboardId);
   const deleteWidgetMutation = useDeleteWidget();
+  const createWidget = useCreateWidget(dashboardId);
   const dashboard = data?.data;
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [visibility, setVisibility] = useState('private');
   const [initialized, setInitialized] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
 
   if (dashboard && !initialized) {
     setName(dashboard.name);
@@ -97,14 +100,44 @@ export function DashboardEditPage({ dashboardId, onNavigate }: DashboardEditPage
       {/* Widgets */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Widgets</h2>
-        <button
-          onClick={() => onNavigate(`/dashboards/${dashboardId}/widgets/new`)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add Widget
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowGallery(!showGallery)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Templates
+          </button>
+          <button
+            onClick={() => onNavigate(`/dashboards/${dashboardId}/widgets/new`)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Custom Widget
+          </button>
+        </div>
       </div>
+
+      {/* Widget Gallery */}
+      {showGallery && (
+        <div className="mb-6 border border-zinc-200 dark:border-zinc-700 rounded-xl p-5 bg-zinc-50 dark:bg-zinc-800/30">
+          <WidgetGallery
+            onSelect={async (preset: WidgetPreset) => {
+              await createWidget.mutateAsync({
+                name: preset.name,
+                widget_type: preset.widget_type,
+                data_source: preset.data_source,
+                entity: preset.entity,
+                query_config: preset.query_config,
+                viz_config: preset.viz_config,
+                kpi_config: preset.kpi_config ?? null,
+              });
+              setShowGallery(false);
+            }}
+            onClose={() => setShowGallery(false)}
+          />
+        </div>
+      )}
 
       {dashboard.widgets && dashboard.widgets.length > 0 ? (
         <div className="space-y-2">

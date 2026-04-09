@@ -1,11 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  BearingPeriodType,
+  BearingPeriodStatus,
+} from '@bigbluebam/shared/schemas/bearing';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole } from '../middleware/authorize.js';
 import * as periodService from '../services/period.service.js';
 
-const PERIOD_TYPES = ['annual', 'semi_annual', 'quarterly', 'monthly', 'custom'] as const;
-const PERIOD_STATUSES = ['planning', 'active', 'completed'] as const;
+const PERIOD_TYPES = BearingPeriodType.options;
+const PERIOD_STATUSES = BearingPeriodStatus.options;
 
 const createPeriodSchema = z.object({
   name: z.string().min(1).max(100),

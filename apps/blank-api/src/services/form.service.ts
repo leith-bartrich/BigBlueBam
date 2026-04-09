@@ -190,11 +190,47 @@ export async function getFormBySlug(slug: string) {
 
   if (!form) throw notFound('Form not found');
 
-  const fields = await db
+  let fields = await db
     .select()
     .from(blankFormFields)
     .where(eq(blankFormFields.form_id, form.id))
     .orderBy(asc(blankFormFields.page_number), asc(blankFormFields.sort_order));
+
+  // Apply shuffle_fields if enabled: randomize within each page, keeping non-input fields in place
+  if (form.shuffle_fields) {
+    const NON_SHUFFLABLE = ['section_header', 'paragraph', 'hidden'];
+    const pages = new Map<number, typeof fields>();
+    for (const f of fields) {
+      const page = f.page_number ?? 0;
+      if (!pages.has(page)) pages.set(page, []);
+      pages.get(page)!.push(f);
+    }
+
+    const shuffled: typeof fields = [];
+    for (const [, pageFields] of [...pages.entries()].sort(([a], [b]) => a - b)) {
+      // Separate fixed-position fields from shufflable ones
+      const fixed = pageFields.filter((f) => NON_SHUFFLABLE.includes(f.field_type));
+      const moveable = pageFields.filter((f) => !NON_SHUFFLABLE.includes(f.field_type));
+      // Fisher-Yates shuffle
+      for (let i = moveable.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [moveable[i], moveable[j]] = [moveable[j]!, moveable[i]!];
+      }
+      // Merge back: fixed items go at their original positions
+      const merged: typeof fields = [];
+      let moveIdx = 0;
+      for (const f of pageFields) {
+        if (NON_SHUFFLABLE.includes(f.field_type)) {
+          merged.push(f);
+        } else {
+          merged.push(moveable[moveIdx]!);
+          moveIdx++;
+        }
+      }
+      shuffled.push(...merged);
+    }
+    fields = shuffled;
+  }
 
   return { ...form, fields };
 }

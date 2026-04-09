@@ -1,13 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  BearingMetricType,
+  BearingDirection,
+  BearingProgressMode,
+} from '@bigbluebam/shared/schemas/bearing';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole, requireGoalAccess } from '../middleware/authorize.js';
 import * as krService from '../services/key-result.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 
-const METRIC_TYPES = ['percentage', 'number', 'currency', 'boolean'] as const;
-const DIRECTIONS = ['increase', 'decrease'] as const;
-const PROGRESS_MODES = ['manual', 'linked'] as const;
+const METRIC_TYPES = BearingMetricType.options;
+const DIRECTIONS = BearingDirection.options;
+const PROGRESS_MODES = [...BearingProgressMode.options, 'rollup'] as const;
 const LINKED_TARGET_TYPES = ['task', 'tasks', 'epic', 'sprint'] as const;
 
 /** Strict schema for linked_query — only known fields allowed. */

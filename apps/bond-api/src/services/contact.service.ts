@@ -27,6 +27,8 @@ export interface ContactFilters {
   limit?: number;
   offset?: number;
   sort?: string;
+  /** When set, only return contacts owned by this user (for member/viewer "own only" visibility). */
+  visibility_owner_id?: string;
 }
 
 export interface CreateContactInput {
@@ -81,6 +83,9 @@ export async function listContacts(filters: ContactFilters) {
         ilike(bondContacts.email, pattern),
       )!,
     );
+  }
+  if (filters.visibility_owner_id) {
+    conditions.push(eq(bondContacts.owner_id, filters.visibility_owner_id));
   }
   if (filters.company_id) {
     // Subquery: contacts linked to company

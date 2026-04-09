@@ -593,6 +593,16 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
               />
             </div>
             <div>
+              <label className="block text-xs font-medium text-zinc-500 mb-1">Description</label>
+              <input
+                type="text"
+                defaultValue={selectedField.description ?? ''}
+                onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { description: e.target.value || null }).then(() => updateMutation.mutate({}))}
+                className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                placeholder="Helper text shown below the field"
+              />
+            </div>
+            <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1">Placeholder</label>
               <input
                 type="text"
@@ -609,6 +619,149 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
                 className="rounded"
               />
               <label className="text-sm text-zinc-700 dark:text-zinc-300">Required</label>
+            </div>
+
+            {/* Options editor for select/dropdown field types */}
+            {['single_select', 'multi_select', 'dropdown', 'checkbox_group'].includes(selectedField.field_type) && (
+              <div>
+                <label className="block text-xs font-medium text-zinc-500 mb-1">Options</label>
+                <div className="space-y-1.5">
+                  {(Array.isArray(selectedField.options) ? selectedField.options as string[] : []).map((opt, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        defaultValue={opt}
+                        onBlur={(e) => {
+                          const opts = [...(Array.isArray(selectedField.options) ? selectedField.options as string[] : [])];
+                          opts[i] = e.target.value;
+                          api.patch(`/v1/fields/${selectedField.id}`, { options: opts }).then(() => updateMutation.mutate({}));
+                        }}
+                        className="flex-1 px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                      />
+                      <button
+                        onClick={() => {
+                          const opts = [...(Array.isArray(selectedField.options) ? selectedField.options as string[] : [])];
+                          opts.splice(i, 1);
+                          api.patch(`/v1/fields/${selectedField.id}`, { options: opts }).then(() => updateMutation.mutate({}));
+                        }}
+                        className="p-1 text-zinc-400 hover:text-red-500"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      const opts = [...(Array.isArray(selectedField.options) ? selectedField.options as string[] : []), `Option ${(selectedField.options as string[] ?? []).length + 1}`];
+                      api.patch(`/v1/fields/${selectedField.id}`, { options: opts }).then(() => updateMutation.mutate({}));
+                    }}
+                    className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                  >
+                    + Add option
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Validation for text fields */}
+            {['short_text', 'long_text', 'textarea'].includes(selectedField.field_type) && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Min Length</label>
+                  <input
+                    type="number"
+                    min={0}
+                    defaultValue={selectedField.min_length ?? ''}
+                    onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { min_length: e.target.value ? Number(e.target.value) : null }).then(() => updateMutation.mutate({}))}
+                    className="w-full px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Max Length</label>
+                  <input
+                    type="number"
+                    min={0}
+                    defaultValue={selectedField.max_length ?? ''}
+                    onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { max_length: e.target.value ? Number(e.target.value) : null }).then(() => updateMutation.mutate({}))}
+                    className="w-full px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Validation for numeric fields */}
+            {['number', 'rating', 'scale', 'nps'].includes(selectedField.field_type) && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Min Value</label>
+                  <input
+                    type="number"
+                    defaultValue={selectedField.min_value ?? ''}
+                    onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { min_value: e.target.value || null }).then(() => updateMutation.mutate({}))}
+                    className="w-full px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Max Value</label>
+                  <input
+                    type="number"
+                    defaultValue={selectedField.max_value ?? ''}
+                    onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { max_value: e.target.value || null }).then(() => updateMutation.mutate({}))}
+                    className="w-full px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Scale labels for scale fields */}
+            {selectedField.field_type === 'scale' && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Scale Min</label>
+                  <input
+                    type="number"
+                    defaultValue={selectedField.scale_min ?? 1}
+                    onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { scale_min: Number(e.target.value) || 1 }).then(() => updateMutation.mutate({}))}
+                    className="w-full px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">Scale Max</label>
+                  <input
+                    type="number"
+                    defaultValue={selectedField.scale_max ?? 10}
+                    onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { scale_max: Number(e.target.value) || 10 }).then(() => updateMutation.mutate({}))}
+                    className="w-full px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Regex pattern for any field */}
+            {!['section_header', 'paragraph', 'hidden', 'page_break', 'file_upload'].includes(selectedField.field_type) && (
+              <div>
+                <label className="block text-xs font-medium text-zinc-500 mb-1">Regex Pattern</label>
+                <input
+                  type="text"
+                  defaultValue={selectedField.regex_pattern ?? ''}
+                  onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { regex_pattern: e.target.value || null }).then(() => updateMutation.mutate({}))}
+                  className="w-full px-2 py-1 text-sm font-mono border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                  placeholder="^[A-Z]{3}$"
+                />
+              </div>
+            )}
+
+            {/* Page number assignment */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 mb-1">Page Number</label>
+              <input
+                type="number"
+                min={0}
+                defaultValue={selectedField.page_number ?? 0}
+                onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { page_number: Number(e.target.value) || 0 }).then(() => updateMutation.mutate({}))}
+                className="w-full px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+              />
+              <p className="text-[10px] text-zinc-400 mt-0.5">Fields with the same page number appear together</p>
             </div>
           </div>
         </div>

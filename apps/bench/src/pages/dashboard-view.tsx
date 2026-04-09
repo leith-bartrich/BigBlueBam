@@ -3,6 +3,7 @@ import { Edit2, RefreshCw, Maximize2, Copy, Download, Clock } from 'lucide-react
 import { useDashboard } from '@/hooks/use-dashboards';
 import { useWidgetQuery } from '@/hooks/use-widgets';
 import { ChartRenderer } from '@/components/widgets/chart-renderer';
+import { DateRangePicker, type DateRange } from '@/components/dashboards/date-range-picker';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface DashboardViewPageProps {
@@ -49,6 +50,7 @@ export function DashboardViewPage({ dashboardId, onNavigate }: DashboardViewPage
   const { data, isLoading, refetch } = useDashboard(dashboardId);
   const dashboard = data?.data;
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>({});
 
   // Auto-refresh
   useEffect(() => {
@@ -86,6 +88,7 @@ export function DashboardViewPage({ dashboardId, onNavigate }: DashboardViewPage
           )}
         </div>
         <div className="flex items-center gap-2">
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
           <button
             onClick={() => refetch()}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"

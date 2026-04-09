@@ -13,6 +13,7 @@ import { useProjectStore } from '@/stores/project.store';
 import { TriggerSelector } from '@/components/builder/trigger-selector';
 import { ConditionList } from '@/components/builder/condition-list';
 import { ActionList } from '@/components/builder/action-list';
+import { CronEditor } from '@/components/builder/cron-editor';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 
@@ -167,12 +168,13 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
 
               {/* Cron expression for schedule triggers */}
               {triggerSource === 'schedule' && (
-                <Input
-                  label="Cron Expression"
-                  placeholder="0 9 * * 1-5"
-                  value={cronExpression}
-                  onChange={(e) => setCronExpression(e.target.value)}
-                />
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Schedule</label>
+                  <CronEditor
+                    value={cronExpression}
+                    onChange={setCronExpression}
+                  />
+                </div>
               )}
 
               {/* Optional filter */}
@@ -241,7 +243,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               </p>
             </div>
             <div className="p-5 bg-white dark:bg-zinc-900">
-              <ConditionList conditions={conditions} onChange={setConditions} />
+              <ConditionList conditions={conditions} onChange={setConditions} triggerSource={triggerSource} triggerEvent={triggerEvent} />
             </div>
           </div>
 
