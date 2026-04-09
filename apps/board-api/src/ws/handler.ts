@@ -15,6 +15,8 @@ interface ConnectedClient {
   boardId: string | null;
   displayName: string;
   color: string;
+  canEdit: boolean;
+  isAdminOrOwner: boolean;
 }
 
 const CURSOR_COLORS = [
@@ -142,29 +144,52 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     }
   }
 
+  interface BoardAccessResult {
+    hasAccess: boolean;
+    canEdit: boolean;
+    locked: boolean;
+  }
+
   /**
-   * Check if a user has access to a board (simplified version of the middleware check).
-   * Returns the board row if access is granted, null otherwise.
+   * Check if a user has access to a board and determine edit permissions.
+   * Returns access info including whether the user can edit.
    */
   async function checkBoardAccess(
     boardId: string,
     userId: string,
     orgId: string,
-  ): Promise<boolean> {
+    userRole: string,
+  ): Promise<BoardAccessResult> {
+    const deny: BoardAccessResult = { hasAccess: false, canEdit: false, locked: false };
+
     const [board] = await db
       .select()
       .from(boards)
       .where(and(eq(boards.id, boardId), eq(boards.organization_id, orgId)))
       .limit(1);
 
-    if (!board) return false;
-    if (board.archived_at) return false;
+    if (!board) return deny;
+    if (board.archived_at) return deny;
 
-    // Creator always has access
-    if (board.created_by === userId) return true;
+    const locked = !!board.locked;
+    const ROLE_HIERARCHY = ['viewer', 'member', 'admin', 'owner'] as const;
+    const roleIdx = ROLE_HIERARCHY.indexOf(userRole as (typeof ROLE_HIERARCHY)[number]);
+    const isOrgAdminOrOwner = roleIdx >= 2; // admin or owner
 
-    // Organization-wide visibility
-    if (board.visibility === 'organization') return true;
+    // Org admins/owners always have full access
+    if (isOrgAdminOrOwner) {
+      return { hasAccess: true, canEdit: true, locked };
+    }
+
+    // Creator always has full access
+    if (board.created_by === userId) {
+      return { hasAccess: true, canEdit: true, locked };
+    }
+
+    // Organization-wide visibility: any org member can read and edit
+    if (board.visibility === 'organization') {
+      return { hasAccess: true, canEdit: true, locked };
+    }
 
     // Project visibility: check project membership
     if (board.visibility === 'project' && board.project_id) {
@@ -178,7 +203,9 @@ export default async function websocketHandler(fastify: FastifyInstance) {
           ),
         )
         .limit(1);
-      if (membership) return true;
+      if (membership) {
+        return { hasAccess: true, canEdit: true, locked };
+      }
     }
 
     // Check explicit collaborator
@@ -193,7 +220,15 @@ export default async function websocketHandler(fastify: FastifyInstance) {
       )
       .limit(1);
 
-    return !!collab;
+    if (collab) {
+      return {
+        hasAccess: true,
+        canEdit: collab.permission === 'edit',
+        locked,
+      };
+    }
+
+    return deny;
   }
 
   fastify.get('/ws', { websocket: true }, async (socket, request) => {
@@ -232,6 +267,10 @@ export default async function websocketHandler(fastify: FastifyInstance) {
     const orgId = row.user.org_id;
     const displayName = row.user.display_name;
 
+    const ROLE_HIERARCHY = ['viewer', 'member', 'admin', 'owner'] as const;
+    const roleIdx = ROLE_HIERARCHY.indexOf(row.user.role as (typeof ROLE_HIERARCHY)[number]);
+    const isAdminOrOwner = row.user.is_superuser || roleIdx >= 2;
+
     const client: ConnectedClient = {
       ws: socket,
       userId,
@@ -239,6 +278,8 @@ export default async function websocketHandler(fastify: FastifyInstance) {
       boardId: null,
       displayName,
       color: CURSOR_COLORS[0],
+      canEdit: false,
+      isAdminOrOwner,
     };
     clients.set(socket, client);
 
@@ -260,18 +301,25 @@ export default async function websocketHandler(fastify: FastifyInstance) {
             const boardId = msg.boardId as string;
             if (!boardId) break;
 
-            // Validate access
-            const hasAccess = row.user.is_superuser || await checkBoardAccess(boardId, userId, orgId);
-            if (!hasAccess) {
-              socket.send(
-                JSON.stringify({
-                  type: 'error',
-                  data: { code: 'FORBIDDEN', message: 'No access to this board' },
-                  timestamp: new Date().toISOString(),
-                }),
-              );
-              break;
+            // Validate access and determine edit permissions
+            let canEdit: boolean;
+            if (row.user.is_superuser) {
+              canEdit = true;
+            } else {
+              const access = await checkBoardAccess(boardId, userId, orgId, row.user.role);
+              if (!access.hasAccess) {
+                socket.send(
+                  JSON.stringify({
+                    type: 'error',
+                    data: { code: 'FORBIDDEN', message: 'No access to this board' },
+                    timestamp: new Date().toISOString(),
+                  }),
+                );
+                break;
+              }
+              canEdit = access.canEdit;
             }
+            client.canEdit = canEdit;
 
             // Leave previous board if any
             if (client.boardId && client.boardId !== boardId) {
@@ -321,6 +369,39 @@ export default async function websocketHandler(fastify: FastifyInstance) {
 
           case 'scene_update': {
             if (!client.boardId) break;
+
+            // Reject scene updates from view-only collaborators
+            if (!client.canEdit) {
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  data: { code: 'FORBIDDEN', message: 'You do not have edit permission on this board' },
+                  timestamp: new Date().toISOString(),
+                }),
+              );
+              break;
+            }
+
+            // Reject scene updates on locked boards unless user is admin/owner
+            // We re-check lock status from DB to avoid stale cached state
+            {
+              const [currentBoard] = await db
+                .select({ locked: boards.locked })
+                .from(boards)
+                .where(eq(boards.id, client.boardId))
+                .limit(1);
+              if (currentBoard?.locked && !client.isAdminOrOwner) {
+                socket.send(
+                  JSON.stringify({
+                    type: 'error',
+                    data: { code: 'FORBIDDEN', message: 'Board is locked. Only the owner or an admin can edit it.' },
+                    timestamp: new Date().toISOString(),
+                  }),
+                );
+                break;
+              }
+            }
+
             const elements = msg.elements;
             if (!Array.isArray(elements)) break;
 

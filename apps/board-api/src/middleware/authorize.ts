@@ -153,7 +153,7 @@ export function requireBoardAccess() {
     }
 
     // Visibility checks
-    if (board.visibility === 'org') {
+    if (board.visibility === 'organization') {
       // All org members can access
       (request as any).board = board;
       return;
