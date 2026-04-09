@@ -23,6 +23,10 @@ const envSchema = z.object({
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
+
+  // Bolt integration (fire-and-forget event publishing)
+  BOLT_API_INTERNAL_URL: z.string().default('http://bolt-api:4006'),
+  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

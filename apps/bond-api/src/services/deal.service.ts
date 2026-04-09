@@ -11,6 +11,7 @@ import {
   bondCompanies,
 } from '../db/schema/index.js';
 import { escapeLike, notFound, badRequest } from '../lib/utils.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -275,6 +276,15 @@ export async function createDeal(
     performed_by: userId,
   });
 
+  // Emit Bolt event (fire-and-forget)
+  publishBoltEvent('bond.deal.created', {
+    deal_id: deal!.id,
+    pipeline_id: input.pipeline_id,
+    stage_id: input.stage_id,
+    value: deal!.value,
+    owner_id: deal!.owner_id,
+  }, orgId);
+
   return deal!;
 }
 
@@ -297,6 +307,15 @@ export async function updateDeal(
     .returning();
 
   if (!updated) throw notFound('Deal not found');
+
+  // Emit Bolt event (fire-and-forget)
+  publishBoltEvent('bond.deal.updated', {
+    deal_id: id,
+    changes: Object.keys(input),
+    value: updated.value,
+    owner_id: updated.owner_id,
+  }, orgId);
+
   return updated;
 }
 
@@ -388,6 +407,15 @@ export async function moveDealStage(
     performed_by: userId,
   });
 
+  // Emit Bolt event (fire-and-forget)
+  publishBoltEvent('bond.deal.stage_changed', {
+    deal_id: id,
+    from_stage_id: deal.stage_id,
+    to_stage_id: newStageId,
+    value: deal.value,
+    days_in_previous_stage: Math.floor(durationSeconds / 86400),
+  }, orgId);
+
   return updated!;
 }
 
@@ -459,6 +487,17 @@ export async function closeDealWon(
     metadata: { value: deal.value, close_reason: closeReason },
     performed_by: userId,
   });
+
+  // Emit Bolt event (fire-and-forget)
+  const cycleDays = Math.floor(
+    (now.getTime() - new Date(deal.created_at).getTime()) / 86400000,
+  );
+  publishBoltEvent('bond.deal.won', {
+    deal_id: id,
+    value: deal.value,
+    pipeline_id: deal.pipeline_id,
+    cycle_days: cycleDays,
+  }, orgId);
 
   return updated!;
 }
@@ -532,6 +571,14 @@ export async function closeDealLost(
     metadata: { value: deal.value, close_reason: closeReason, lost_to_competitor: lostToCompetitor },
     performed_by: userId,
   });
+
+  // Emit Bolt event (fire-and-forget)
+  publishBoltEvent('bond.deal.lost', {
+    deal_id: id,
+    value: deal.value,
+    close_reason: closeReason,
+    lost_to_competitor: lostToCompetitor,
+  }, orgId);
 
   return updated!;
 }

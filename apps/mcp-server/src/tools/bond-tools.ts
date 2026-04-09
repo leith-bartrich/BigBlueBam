@@ -416,4 +416,47 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       return result.ok ? ok(result.data) : err('getting stale deals', result.data);
     },
   );
+
+  // ===== LEAD SCORING (1) =====
+
+  server.tool(
+    'bond_score_lead',
+    'Trigger lead score recalculation for a specific contact. Evaluates all enabled scoring rules and updates the cached lead_score on the contact.',
+    {
+      contact_id: z.string().uuid().describe('Contact ID to score'),
+    },
+    async ({ contact_id }) => {
+      const result = await client.request('POST', '/scoring/recalculate', { contact_id });
+      return result.ok ? ok(result.data) : err('scoring lead', result.data);
+    },
+  );
+
+  // ===== FORECAST (1) =====
+
+  server.tool(
+    'bond_get_forecast',
+    'Get revenue forecast from weighted pipeline value, broken into 30/60/90 day buckets based on expected close dates.',
+    {
+      pipeline_id: z.string().uuid().optional().describe('Pipeline ID (defaults to the org default pipeline)'),
+    },
+    async (params) => {
+      const result = await client.request('GET', `/analytics/forecast${buildQs(params)}`);
+      return result.ok ? ok(result.data) : err('getting forecast', result.data);
+    },
+  );
+
+  // ===== SEARCH (1) =====
+
+  server.tool(
+    'bond_search_contacts',
+    'Full-text search across contact name, email, and phone. Returns contacts ranked by lead score.',
+    {
+      query: z.string().min(1).max(200).describe('Search query string'),
+      limit: z.number().int().positive().max(100).optional().describe('Max results (default 20, max 100)'),
+    },
+    async (params) => {
+      const result = await client.request('GET', `/contacts/search${buildQs({ q: params.query, limit: params.limit })}`);
+      return result.ok ? ok(result.data) : err('searching contacts', result.data);
+    },
+  );
 }

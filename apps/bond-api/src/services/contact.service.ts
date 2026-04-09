@@ -9,6 +9,7 @@ import {
   bondActivities,
 } from '../db/schema/index.js';
 import { escapeLike, notFound, badRequest, conflict } from '../lib/utils.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -220,6 +221,14 @@ export async function createContact(
       created_by: userId,
     })
     .returning();
+
+  // Emit Bolt event (fire-and-forget)
+  publishBoltEvent('bond.contact.created', {
+    contact_id: contact!.id,
+    lifecycle_stage: contact!.lifecycle_stage,
+    lead_source: contact!.lead_source,
+    lead_score: contact!.lead_score,
+  }, orgId);
 
   return contact!;
 }
