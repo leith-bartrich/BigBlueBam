@@ -8,10 +8,10 @@ import {
   Target,
   PenTool,
   Headset,
-  Handshake,
   Bot,
   X,
   LayoutGrid,
+  Handshake,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -28,13 +28,13 @@ const APPS: AppDef[] = [
   { id: 'b3', name: 'Bam', description: 'Project Management', icon: LayoutDashboard, color: '#2563eb', path: '/b3/' },
   { id: 'banter', name: 'Banter', description: 'Team Messaging', icon: MessageCircle, color: '#7c3aed', path: '/banter/' },
   { id: 'beacon', name: 'Beacon', description: 'Knowledge Base', icon: BookOpen, color: '#059669', path: '/beacon/' },
+  { id: 'bond', name: 'Bond', description: 'CRM', icon: Handshake, color: '#0891b2', path: '/bond/' },
   { id: 'brief', name: 'Brief', description: 'Documents', icon: FileText, color: '#d97706', path: '/brief/' },
   { id: 'bolt', name: 'Bolt', description: 'Automations', icon: Zap, color: '#dc2626', path: '/bolt/' },
-  { id: 'bearing', name: 'Bearing', description: 'Goals & OKRs', icon: Target, color: '#0891b2', path: '/bearing/' },
+  { id: 'bearing', name: 'Bearing', description: 'Goals & OKRs', icon: Target, color: '#0d9488', path: '/bearing/' },
   { id: 'board', name: 'Board', description: 'Whiteboards', icon: PenTool, color: '#6366f1', path: '/board/' },
-  { id: 'bond', name: 'Bond', description: 'CRM', icon: Handshake, color: '#e11d48', path: '/bond/' },
   { id: 'helpdesk', name: 'Helpdesk', description: 'Customer Support', icon: Headset, color: '#be123c', path: '/helpdesk/' },
-  { id: 'mcp', name: 'MCP Server', description: 'AI Tools (182)', icon: Bot, color: '#64748b', path: '/mcp/' },
+  { id: 'mcp', name: 'MCP Server', description: 'AI Tools', icon: Bot, color: '#64748b', path: '/mcp/' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -168,7 +168,7 @@ export const Launchpad: FC<LaunchpadProps> = ({ isOpen, onClose, currentApp }) =
         </div>
       </div>
 
-      {/* Inline keyframe animations — works without any tailwind config changes */}
+      {/* Inline keyframe animations */}
       <style>{`
         @keyframes lp-fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes lp-scale-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }

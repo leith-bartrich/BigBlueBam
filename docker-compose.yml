@@ -137,6 +137,7 @@ services:
       BOLT_API_URL: http://bolt-api:4006/v1
       BEARING_API_URL: http://bearing-api:4007/v1
       BOARD_API_URL: http://board-api:4008/v1
+      BOND_API_URL: http://bond-api:4009/v1
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
     ports:
       - "${MCP_PORT:-3001}:3001"
@@ -204,6 +205,8 @@ services:
       bearing-api:
         condition: service_healthy
       board-api:
+        condition: service_healthy
+      bond-api:
         condition: service_healthy
       site:
         condition: service_healthy
@@ -491,6 +494,41 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:4008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  bond-api:
+    <<: *common
+    build:
+      context: .
+      dockerfile: apps/bond-api/Dockerfile
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bigbluebam}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - SESSION_SECRET=${SESSION_SECRET}
+      - BBB_API_INTERNAL_URL=http://api:4000
+      - NODE_ENV=production
+      - PORT=4009
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - CORS_ORIGIN=*
+      - RATE_LIMIT_MAX=100
+      - RATE_LIMIT_WINDOW_MS=60000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4009/health"]
       interval: 10s
       timeout: 5s
       retries: 3

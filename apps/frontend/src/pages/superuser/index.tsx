@@ -409,6 +409,8 @@ const ROOT_REDIRECT_OPTIONS = [
   { value: 'brief', label: 'Brief (/brief/)' },
   { value: 'bolt', label: 'Bolt (/bolt/)' },
   { value: 'bearing', label: 'Bearing (/bearing/)' },
+  { value: 'board', label: 'Board (/board/)' },
+  { value: 'bond', label: 'Bond (/bond/)' },
   { value: 'helpdesk', label: 'Helpdesk (/helpdesk/)' },
 ];
 

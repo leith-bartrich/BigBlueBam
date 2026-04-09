@@ -11,6 +11,7 @@ const envSchema = z.object({
   BOLT_API_URL: z.string().url().default('http://bolt-api:4006/v1'),
   BEARING_API_URL: z.string().url().default('http://bearing-api:4007/v1'),
   BOARD_API_URL: z.string().url().default('http://board-api:4008/v1'),
+  BOND_API_URL: z.string().url().default('http://bond-api:4009/v1'),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   MCP_AUTH_REQUIRED: z.coerce.boolean().default(true),
   MCP_RATE_LIMIT_RPM: z.coerce.number().int().positive().default(120),
