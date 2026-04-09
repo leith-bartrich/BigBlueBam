@@ -127,6 +127,8 @@ services:
         condition: service_healthy
       bearing-api:
         condition: service_healthy
+      bill-api:
+        condition: service_healthy
       blank-api:
         condition: service_healthy
     environment:
