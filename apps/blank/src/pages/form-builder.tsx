@@ -1,4 +1,21 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Plus, GripVertical, Trash2, Save, Eye, Send, Settings,
   Type, AlignLeft, Mail, Phone, Link, Hash,
@@ -39,6 +56,75 @@ const FIELD_TYPE_PALETTE = [
   { type: 'hidden', label: 'Hidden Field', icon: EyeOff },
 ];
 
+/* ------------------------------------------------------------------ */
+/*  Sortable field row                                                 */
+/* ------------------------------------------------------------------ */
+
+interface SortableFieldProps {
+  field: BlankField;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}
+
+function SortableField({ field, isSelected, onSelect, onDelete }: SortableFieldProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={onSelect}
+      className={cn(
+        'flex items-start gap-3 p-4 rounded-xl border transition-colors cursor-pointer',
+        isSelected
+          ? 'border-primary-400 dark:border-primary-600 bg-primary-50/50 dark:bg-primary-950/20'
+          : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-600',
+      )}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="touch-none p-0.5 text-zinc-300 hover:text-zinc-500 mt-0.5 shrink-0 cursor-grab active:cursor-grabbing"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical className="h-5 w-5" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{field.label}</span>
+          {field.required && <span className="text-red-500 text-xs">*</span>}
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400">
+            {field.field_type.replace('_', ' ')}
+          </span>
+        </div>
+        {field.description && (
+          <p className="text-xs text-zinc-500">{field.description}</p>
+        )}
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Form builder page                                                  */
+/* ------------------------------------------------------------------ */
+
 export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
   const { data, isLoading } = useForm(formId);
   const updateMutation = useUpdateForm(formId);
@@ -48,6 +134,11 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
   const form = data?.data;
   const fields = form?.fields ?? [];
   const selectedField = fields.find((f) => f.id === selectedFieldId);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const handleAddField = async (fieldType: string) => {
     const fieldKey = `field_${Date.now().toString(36)}`;
@@ -66,6 +157,24 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
     if (selectedFieldId === fieldId) setSelectedFieldId(null);
     updateMutation.mutate({});
   };
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const oldIdx = fields.findIndex((f) => f.id === active.id);
+      const newIdx = fields.findIndex((f) => f.id === over.id);
+      if (oldIdx < 0 || newIdx < 0) return;
+
+      const reordered = arrayMove(fields, oldIdx, newIdx);
+      const fieldOrders = reordered.map((f, i) => ({ id: f.id, sort_order: i }));
+
+      await api.post(`/v1/forms/${formId}/fields/reorder`, { fields: fieldOrders });
+      updateMutation.mutate({});
+    },
+    [fields, formId, updateMutation],
+  );
 
   const handlePublish = async () => {
     await publishMutation.mutateAsync(formId);
@@ -142,38 +251,19 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
                 <p className="text-sm text-zinc-500">Click a field type on the left to add it</p>
               </div>
             ) : (
-              fields.map((field) => (
-                <div
-                  key={field.id}
-                  onClick={() => setSelectedFieldId(field.id)}
-                  className={cn(
-                    'flex items-start gap-3 p-4 rounded-xl border transition-colors cursor-pointer',
-                    selectedFieldId === field.id
-                      ? 'border-primary-400 dark:border-primary-600 bg-primary-50/50 dark:bg-primary-950/20'
-                      : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-600',
-                  )}
-                >
-                  <GripVertical className="h-5 w-5 text-zinc-300 mt-0.5 shrink-0 cursor-grab" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{field.label}</span>
-                      {field.required && <span className="text-red-500 text-xs">*</span>}
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400">
-                        {field.field_type.replace('_', ' ')}
-                      </span>
-                    </div>
-                    {field.description && (
-                      <p className="text-xs text-zinc-500">{field.description}</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteField(field.id); }}
-                    className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                  {fields.map((field) => (
+                    <SortableField
+                      key={field.id}
+                      field={field}
+                      isSelected={selectedFieldId === field.id}
+                      onSelect={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
+                      onDelete={() => handleDeleteField(field.id)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
             )}
           </div>
         </div>
