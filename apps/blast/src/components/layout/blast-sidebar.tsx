@@ -36,9 +36,6 @@ export function BlastSidebar({ onNavigate, activePage }: BlastSidebarProps) {
           <Mail className="h-4.5 w-4.5" />
         </div>
         <span className="text-sm font-semibold text-white">Blast</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-red-400 bg-red-500/10 border border-red-500/30 rounded px-1.5 py-0.5">
-          Email
-        </span>
       </div>
 
       {/* Nav items */}

@@ -97,9 +97,6 @@ export function BondSidebar({ onNavigate, activePage }: BondSidebarProps) {
           <Handshake className="h-4.5 w-4.5" />
         </div>
         <span className="text-sm font-semibold text-white">Bond</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 rounded px-1.5 py-0.5">
-          CRM
-        </span>
       </div>
 
       {/* Pipeline scope selector */}

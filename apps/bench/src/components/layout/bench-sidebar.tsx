@@ -28,9 +28,6 @@ export function BenchSidebar({ onNavigate, activePage }: BenchSidebarProps) {
           <BarChart3 className="h-4.5 w-4.5" />
         </div>
         <span className="text-sm font-semibold text-white">Bench</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-400 bg-blue-500/10 border border-blue-500/30 rounded px-1.5 py-0.5">
-          Analytics
-        </span>
       </div>
 
       {/* Nav items */}

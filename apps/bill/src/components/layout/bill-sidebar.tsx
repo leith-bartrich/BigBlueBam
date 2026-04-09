@@ -36,9 +36,6 @@ export function BillSidebar({ onNavigate, activePage }: BillSidebarProps) {
           <DollarSign className="h-4.5 w-4.5" />
         </div>
         <span className="text-sm font-semibold text-white">Bill</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-green-400 bg-green-500/10 border border-green-500/30 rounded px-1.5 py-0.5">
-          Invoicing
-        </span>
       </div>
 
       {/* Quick actions */}
