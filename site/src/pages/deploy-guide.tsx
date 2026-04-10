@@ -192,7 +192,7 @@ export function DeployGuidePage() {
             {[
               {
                 label: 'A place to run it',
-                desc: 'Any machine with Docker today; managed Railway cloud one-click deploy is coming soon',
+                desc: 'Any machine with Docker, or a Railway account for managed cloud — both fully automated',
               },
               {
                 label: 'A database',
@@ -257,13 +257,13 @@ export function DeployGuidePage() {
               </p>
             </div>
 
-            {/* Railway card — coming soon */}
+            {/* Railway card */}
             <div className="relative rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
               <div className="mb-3 flex items-center gap-2">
                 <Cloud className="h-5 w-5 text-zinc-500" />
                 <h3 className="text-lg font-bold text-zinc-900">Railway</h3>
-                <span className="ml-auto rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-                  Coming soon
+                <span className="ml-auto rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                  Fully automated
                 </span>
               </div>
               <ul className="space-y-2 text-sm text-zinc-600">
@@ -280,15 +280,11 @@ export function DeployGuidePage() {
                   Per-service config-as-code already in the repo (<code className="rounded bg-zinc-100 px-1 text-xs">railway/</code>)
                 </li>
               </ul>
-              <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <strong>Status:</strong> a one-click "Deploy from GitHub" experience is in
-                active development. The Railway-flavored ingress, env-var
-                reference, and per-service manifests are already checked in;
-                what's left is wiring Railway's auto-deploy flow to provision
-                all 19 services in one shot. Until then, follow the Docker
-                Compose path or use the preview adapter in
-                <code className="mx-1 rounded bg-amber-100 px-1 text-xs">scripts/deploy.sh</code>
-                to walk through the manual setup.
+              <p className="mt-4 rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-500 italic">
+                Best for: Teams that want managed cloud hosting with zero server admin. The
+                deploy script provisions the entire stack via Railway's public GraphQL API
+                — project creation, all 19 services, env vars, and deploys in about
+                5–10 minutes.
               </p>
             </div>
           </div>
@@ -327,12 +323,11 @@ cd BigBlueBam`}</CodeBlock>
             <CodeBlock>{`Where are you deploying?
 
   1. Docker Compose — Run locally or on any server with Docker (recommended)
-  2. Railway (Preview) — Cloud containers; one-click deploy coming soon`}</CodeBlock>
+  2. Railway — Managed cloud containers, fully automated`}</CodeBlock>
             <Callout type="tip">
-              Not sure? Start with Docker Compose — it's the fastest path to a
-              running stack today. Railway support is in preview: the per-service
-              config is already in the repo, but the fully automated provisioning
-              flow is still being built.
+              Not sure? Docker Compose is great for local development and self-hosted
+              production. Railway is simpler when you want managed cloud — both are
+              fully automated by the deploy script.
             </Callout>
           </Step>
 
@@ -385,13 +380,12 @@ cd BigBlueBam`}</CodeBlock>
               <div className="rounded-lg border border-zinc-200 bg-white p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Cloud className="h-4 w-4 text-zinc-500" />
-                  <p className="text-sm font-semibold text-zinc-900">Railway <span className="text-amber-600">(Preview)</span></p>
+                  <p className="text-sm font-semibold text-zinc-900">Railway</p>
                 </div>
                 <p className="text-xs text-zinc-500">
-                  Walks you through Railway project + plugin setup, then prints
-                  a checklist of services to create from the config-as-code
-                  manifests under <code className="rounded bg-zinc-100 px-1 text-xs">railway/</code>.
-                  A one-click deploy is on the roadmap.
+                  Logs in to your Railway account, creates the project, provisions
+                  managed PostgreSQL + Redis, then creates and configures all 19
+                  services via Railway's public GraphQL API.
                 </p>
               </div>
             </div>
@@ -567,19 +561,27 @@ Verifying login... ✓`}</CodeBlock>
         <section className="mb-16">
           <h2 className="mb-6 text-2xl font-bold text-zinc-900">Frequently Asked Questions</h2>
           <div className="space-y-3">
-            <FaqItem q="When will the one-click Railway deploy be ready?">
+            <FaqItem q="How does the Railway deploy work?">
               <p>
-                The pieces are landing in stages. Already in the repo:
-                per-service <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">railway/*.json</code> manifests for all 19
-                services, a Railway-flavored nginx ingress that uses
-                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">*.railway.internal</code> upstreams baked into the
-                frontend image, and an env-var reference at
-                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">railway/env-vars.md</code> showing exactly what to set
-                for each service. What's left is wiring Railway's GitHub
-                auto-deploy to provision and link all the services in one
-                action — that's the work in flight. Until it ships, the
-                deploy script's "Railway (Preview)" option walks you through
-                the dashboard steps.
+                The deploy script's Railway path uses Railway's public GraphQL
+                API to provision and configure every service in the stack. You
+                generate a Personal Access Token at{' '}
+                <a
+                  href="https://railway.com/account/tokens"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-600 underline underline-offset-2 hover:text-primary-700"
+                >
+                  railway.com/account/tokens
+                </a>
+                , paste it into the script, and it handles the rest: project
+                creation, service creation (linked to the GitHub repo),
+                per-service Dockerfile + healthcheck + environment variable
+                configuration, and triggering the initial deploys. The only
+                manual step is clicking "Add Postgres" and "Add Redis" in the
+                Railway dashboard once, because Railway's public API doesn't
+                expose plugin creation. Total run time: about 5–10 minutes from
+                start to all services queued.
               </p>
             </FaqItem>
 

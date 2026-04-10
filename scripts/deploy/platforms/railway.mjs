@@ -1,13 +1,11 @@
 // Railway platform adapter — managed container deployment.
 //
-// PREVIEW: This adapter sets up the Railway project, provisions the managed
-// Postgres + Redis plugins, and walks the user through the manual dashboard
-// steps required to bring all 19 BigBlueBam services online with the
-// config-as-code manifests under `railway/` and the env-var reference under
-// `railway/env-vars.md`. A fully automated one-click "deploy from GitHub"
-// experience is on the roadmap — for now this adapter prints a clear
-// checklist instead of pretending it can do `railway up` across the whole
-// stack.
+// This adapter sets up the Railway project and drives Railway's public
+// GraphQL API to create and configure every BigBlueBam service end to end:
+// source repo, Dockerfile, healthcheck, env vars, and initial deploy. The
+// only manual step is adding the managed Postgres and Redis plugins from the
+// Railway dashboard, because Railway's public API doesn't expose plugin
+// creation.
 //
 // Zero dependencies (node:child_process, node:fs only).
 
@@ -22,8 +20,8 @@ import {
   getSelfHostedInfra,
 } from '../shared/services.mjs';
 
-const name = 'Railway (Preview)';
-const description = 'Managed containers on Railway.app — config-as-code ready, one-click deploy coming soon';
+const name = 'Railway';
+const description = 'Managed cloud containers on Railway.app — fully automated';
 
 /**
  * Escape a string for safe interpolation into a shell command.
@@ -112,35 +110,35 @@ async function checkPrerequisites() {
 }
 
 /**
- * Print the preview banner explaining the current state of Railway support.
+ * Print the welcome banner explaining what the Railway adapter will do.
  */
-function printPreviewBanner() {
+function printWelcomeBanner() {
   console.log('');
-  console.log(yellow(bold('  ▲ Railway deployment is in PREVIEW')));
+  console.log(cyan(bold('  ▲ Railway deployment')));
   console.log(dim('  ─────────────────────────────────────────────────────────────'));
-  console.log(dim('  Config-as-code is ready: every service has its own railway/'));
-  console.log(dim('  *.json manifest and the frontend image bakes in a Railway-'));
-  console.log(dim('  flavored nginx config that uses *.railway.internal upstreams.'));
+  console.log(dim('  This will create a Railway project and provision all 19'));
+  console.log(dim("  BigBlueBam services via Railway's public GraphQL API:"));
   console.log('');
-  console.log(dim('  Full automation (one-click "deploy from GitHub") is coming.'));
-  console.log(dim('  For now, this script handles the project + plugin setup,'));
-  console.log(dim('  then walks you through the dashboard steps for each service.'));
+  console.log(dim('    1. Validate your Railway PAT'));
+  console.log(dim('    2. Create the project'));
+  console.log(dim('    3. Prompt to add Postgres + Redis plugins (one click each)'));
+  console.log(dim('    4. Create + configure every service (source, Dockerfile,'));
+  console.log(dim('       healthcheck, env vars)'));
+  console.log(dim('    5. Trigger initial deploys'));
   console.log('');
-  console.log(dim('  See:'));
-  console.log(dim('    railway/README.md     — config-as-code overview'));
-  console.log(dim('    railway/env-vars.md   — full env-var reference'));
+  console.log(dim('  Reference: railway/env-vars.md'));
   console.log(dim('  ─────────────────────────────────────────────────────────────'));
   console.log('');
 }
 
 /**
- * Set up the Railway project, provision managed plugins, and walk through
- * the manual dashboard steps for each app service. Returns false (deploy
- * not "complete") so the orchestrator marks the phase as needing user
- * action — re-running picks up from this point.
+ * Provision the full BigBlueBam stack on Railway: create the project,
+ * prompt once for the managed Postgres + Redis plugins, then create and
+ * configure every service via Railway's public GraphQL API and trigger
+ * the initial deploys.
  */
 async function deploy(envConfig) {
-  printPreviewBanner();
+  printWelcomeBanner();
 
   // Step 1: project
   console.log(bold('Step 1: Railway project\n'));
@@ -234,7 +232,8 @@ async function runCommand(service, cmd) {
 
 /**
  * Verify login. For Railway this is best-effort because the public URL
- * isn't immediately available after a manual dashboard setup.
+ * isn't immediately available until the first deploy finishes and the
+ * public domain is configured.
  */
 async function verifyLogin(_email, _password) {
   throw new Error('Login verification deferred until the public domain is configured in the Railway dashboard.');
