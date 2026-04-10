@@ -76,6 +76,49 @@ export async function getUserProjectIds(userId: string): Promise<Set<string>> {
   return new Set(rows.map((r) => r.project_id));
 }
 
+/**
+ * Builds the SQL visibility predicate used by listDocuments, getRecentDocuments,
+ * searchDocuments and getStats. A document is visible to `userId` when:
+ *   1. visibility = 'organization', OR
+ *   2. visibility = 'private' AND user is creator or explicit collaborator, OR
+ *   3. visibility = 'project' AND user is creator, collaborator, or a member of
+ *      the document's project.
+ */
+export async function documentVisibilityPredicate(userId: string) {
+  const userProjectIds = await getUserProjectIds(userId);
+  const userProjectArray = [...userProjectIds];
+
+  return or(
+    // Organization visibility — visible to all org members
+    sql`${briefDocuments.visibility} = 'organization'`,
+    // Private — only creator or collaborator
+    and(
+      eq(briefDocuments.visibility, 'private'),
+      or(
+        eq(briefDocuments.created_by, userId),
+        sql`${briefDocuments.id} IN (
+          SELECT document_id FROM brief_collaborators
+          WHERE user_id = ${userId}
+        )`,
+      ),
+    ),
+    // Project — creator, collaborator, or project member
+    and(
+      eq(briefDocuments.visibility, 'project'),
+      or(
+        eq(briefDocuments.created_by, userId),
+        sql`${briefDocuments.id} IN (
+          SELECT document_id FROM brief_collaborators
+          WHERE user_id = ${userId}
+        )`,
+        userProjectArray.length > 0
+          ? inArray(briefDocuments.project_id, userProjectArray)
+          : sql`FALSE`,
+      ),
+    ),
+  )!;
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -212,40 +255,7 @@ export async function listDocuments(filters: ListDocumentsFilters) {
   }
 
   // Visibility enforcement
-  const userProjectIds = await getUserProjectIds(filters.userId);
-  const userProjectArray = [...userProjectIds];
-
-  conditions.push(
-    or(
-      // Organization visibility — visible to all org members
-      sql`${briefDocuments.visibility} = 'organization'`,
-      // Private — only creator or collaborator
-      and(
-        eq(briefDocuments.visibility, 'private'),
-        or(
-          eq(briefDocuments.created_by, filters.userId),
-          sql`${briefDocuments.id} IN (
-            SELECT document_id FROM brief_collaborators
-            WHERE user_id = ${filters.userId}
-          )`,
-        ),
-      ),
-      // Project — creator, collaborator, or project member
-      and(
-        eq(briefDocuments.visibility, 'project'),
-        or(
-          eq(briefDocuments.created_by, filters.userId),
-          sql`${briefDocuments.id} IN (
-            SELECT document_id FROM brief_collaborators
-            WHERE user_id = ${filters.userId}
-          )`,
-          userProjectArray.length > 0
-            ? inArray(briefDocuments.project_id, userProjectArray)
-            : sql`FALSE`,
-        ),
-      ),
-    )!,
-  );
+  conditions.push(await documentVisibilityPredicate(filters.userId));
 
   const limit = Math.min(filters.limit ?? 50, 100);
 
@@ -584,25 +594,26 @@ export async function searchDocuments(
   }));
 }
 
-export async function getStats(orgId: string) {
-  const rows: any[] = await db.execute(sql`
-    SELECT
-      COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE status = 'draft')::int AS draft,
-      COUNT(*) FILTER (WHERE status = 'in_review')::int AS in_review,
-      COUNT(*) FILTER (WHERE status = 'approved')::int AS approved,
-      COUNT(*) FILTER (WHERE status = 'archived')::int AS archived
-    FROM brief_documents
-    WHERE org_id = ${orgId}
-  `);
+export async function getStats(orgId: string, userId: string) {
+  const visibility = await documentVisibilityPredicate(userId);
 
-  const row = rows[0] ?? { total: 0, draft: 0, in_review: 0, approved: 0, archived: 0 };
+  const [row] = await db
+    .select({
+      total: sql<number>`COUNT(*)::int`,
+      draft: sql<number>`COUNT(*) FILTER (WHERE ${briefDocuments.status} = 'draft')::int`,
+      in_review: sql<number>`COUNT(*) FILTER (WHERE ${briefDocuments.status} = 'in_review')::int`,
+      approved: sql<number>`COUNT(*) FILTER (WHERE ${briefDocuments.status} = 'approved')::int`,
+      archived: sql<number>`COUNT(*) FILTER (WHERE ${briefDocuments.status} = 'archived')::int`,
+    })
+    .from(briefDocuments)
+    .where(and(eq(briefDocuments.org_id, orgId), visibility));
+
   return {
-    total: row.total,
-    draft: row.draft,
-    in_review: row.in_review,
-    approved: row.approved,
-    archived: row.archived,
+    total: row?.total ?? 0,
+    draft: row?.draft ?? 0,
+    in_review: row?.in_review ?? 0,
+    approved: row?.approved ?? 0,
+    archived: row?.archived ?? 0,
   };
 }
 

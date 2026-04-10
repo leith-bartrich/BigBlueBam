@@ -55,8 +55,8 @@ const TEMPLATES: AutomationTemplate[] = [
   },
   {
     id: 'tpl_auto_assign_ticket',
-    name: 'Auto-assign new helpdesk tickets',
-    description: 'Automatically assign high-priority helpdesk tickets to the on-call agent.',
+    name: 'Auto-progress high-priority tickets',
+    description: 'Automatically move high-priority helpdesk tickets to in-progress when they come in.',
     category: 'helpdesk',
     trigger_source: 'helpdesk',
     trigger_event: 'ticket.created',
@@ -72,10 +72,10 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'helpdesk_assign_ticket',
+        mcp_tool: 'update_ticket_status',
         parameters: {
           ticket_id: '{{ event.ticket.id }}',
-          agent_id: '{{ automation.config.on_call_agent_id }}',
+          status: 'in_progress',
         },
         on_error: 'stop',
       },
@@ -92,7 +92,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'general',
           message: 'Sprint "{{ event.sprint.name }}" completed! {{ event.tasks_completed }} tasks done, {{ event.tasks_carried_forward }} carried forward.',
@@ -112,7 +112,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'knowledge-ops',
           message: 'Beacon entry "{{ event.beacon.title }}" has expired. Please review and update or archive.',
@@ -127,12 +127,12 @@ const TEMPLATES: AutomationTemplate[] = [
     description: 'Post task comments to a project Banter channel for visibility.',
     category: 'sync',
     trigger_source: 'bam',
-    trigger_event: 'task.commented',
+    trigger_event: 'comment.created',
     conditions: [],
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'project-updates',
           message: 'New comment on "{{ event.task.id }}": {{ event.comment.body }}',
@@ -147,20 +147,12 @@ const TEMPLATES: AutomationTemplate[] = [
     description: 'When a Brief document is approved, automatically create a Beacon entry.',
     category: 'knowledge',
     trigger_source: 'brief',
-    trigger_event: 'document.status_changed',
-    conditions: [
-      {
-        sort_order: 0,
-        field: 'new_status',
-        operator: 'equals',
-        value: 'approved',
-        logic_group: 'and',
-      },
-    ],
+    trigger_event: 'document.published',
+    conditions: [],
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'beacon_create_entry',
+        mcp_tool: 'beacon_create',
         parameters: {
           title: '{{ event.document.title }}',
           source_document_id: '{{ event.document.id }}',
@@ -180,7 +172,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'escalations',
           message: 'SLA breach on ticket "{{ event.ticket.subject }}" ({{ event.sla.type }}). Deadline: {{ event.sla.deadline }}',
@@ -189,7 +181,7 @@ const TEMPLATES: AutomationTemplate[] = [
       },
       {
         sort_order: 1,
-        mcp_tool: 'bam_create_task',
+        mcp_tool: 'create_task',
         parameters: {
           title: 'SLA breach: {{ event.ticket.subject }}',
           description: 'Follow up on SLA breach for ticket {{ event.ticket.id }}',
@@ -218,7 +210,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_id: '{{ event.channel.id }}',
           message: 'Welcome! Here are some resources to get started...',
@@ -253,7 +245,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'alerts',
           message: 'New {{ event.task.priority }} priority task: "{{ event.task.title }}"',
@@ -273,7 +265,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'standup',
           message: 'Good morning! Time for standup. What did you work on yesterday? What are you working on today? Any blockers?',
@@ -293,7 +285,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'project-updates',
           message: 'New document created: "{{ event.document.title }}" by {{ event.actor.id }}',
@@ -313,7 +305,7 @@ const TEMPLATES: AutomationTemplate[] = [
     actions: [
       {
         sort_order: 0,
-        mcp_tool: 'banter_send_message',
+        mcp_tool: 'banter_post_message',
         parameters: {
           channel_name: 'general',
           message: 'Weekly status report for {{ now }}: Please update your task statuses and flag any blockers before standup.',

@@ -1,17 +1,19 @@
-import type { BoltAction } from '@/hooks/use-automations';
+import type { BoltAction, TriggerSource } from '@/hooks/use-automations';
 import { ActionEditor } from '@/components/builder/action-editor';
 import { Plus, Play } from 'lucide-react';
 
 interface ActionListProps {
   actions: BoltAction[];
   onChange: (actions: BoltAction[]) => void;
+  triggerSource?: TriggerSource;
+  triggerEvent?: string;
 }
 
 function makeId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
 }
 
-export function ActionList({ actions, onChange }: ActionListProps) {
+export function ActionList({ actions, onChange, triggerSource, triggerEvent }: ActionListProps) {
   const addAction = () => {
     onChange([
       ...actions,
@@ -52,6 +54,9 @@ export function ActionList({ actions, onChange }: ActionListProps) {
               index={index}
               onChange={(updated) => updateAction(index, updated)}
               onRemove={() => removeAction(index)}
+              triggerSource={triggerSource}
+              triggerEvent={triggerEvent}
+              stepCount={index}
             />
           ))}
         </div>

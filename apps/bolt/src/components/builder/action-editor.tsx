@@ -1,6 +1,8 @@
-import type { BoltAction, ErrorPolicy } from '@/hooks/use-automations';
-import { useActionCatalog } from '@/hooks/use-event-catalog';
-import { X, Plus, GripVertical, ChevronDown } from 'lucide-react';
+import type { BoltAction, ErrorPolicy, TriggerSource } from '@/hooks/use-automations';
+import { useActionCatalog, type ActionParameter } from '@/hooks/use-event-catalog';
+import { useTemplateSuggestions } from '@/hooks/use-template-suggestions';
+import { TemplateInput } from '@/components/builder/template-input';
+import { X, Plus, GripVertical } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface ActionEditorProps {
@@ -8,6 +10,9 @@ interface ActionEditorProps {
   index: number;
   onChange: (updated: BoltAction) => void;
   onRemove: () => void;
+  triggerSource?: TriggerSource;
+  triggerEvent?: string;
+  stepCount?: number;
 }
 
 const errorPolicies: { value: ErrorPolicy; label: string; description: string }[] = [
@@ -17,19 +22,58 @@ const errorPolicies: { value: ErrorPolicy; label: string; description: string }[
 ];
 
 const sourceLabels: Record<string, string> = {
-  bam: 'Bam', banter: 'Banter', beacon: 'Beacon', brief: 'Brief', helpdesk: 'Helpdesk', system: 'System',
+  bam: 'Bam',
+  banter: 'Banter',
+  beacon: 'Beacon',
+  brief: 'Brief',
+  helpdesk: 'Helpdesk',
+  bond: 'Bond',
+  blast: 'Blast',
+  board: 'Board',
+  bearing: 'Bearing',
+  bill: 'Bill',
+  book: 'Book',
+  blank: 'Blank',
+  bench: 'Bench',
+  system: 'System',
 };
 
-export function ActionEditor({ action, index, onChange, onRemove }: ActionEditorProps) {
+function placeholderForParam(param: ActionParameter): string {
+  if (param.format === 'uuid') return 'UUID, e.g. {{ task.id }}';
+  if (param.format === 'email') return 'someone@example.com';
+  if (param.format === 'url') return 'https://...';
+  if (param.format === 'datetime') return 'ISO 8601 datetime';
+  if (param.format === 'string[]') return 'comma-separated, or {{ list }}';
+  if (param.format === 'uuid[]') return 'comma-separated UUIDs';
+  if (param.type === 'number') return 'number, or {{ value }}';
+  if (param.type === 'boolean') return 'true / false';
+  if (param.type === 'object') return '{ "key": "value" }';
+  return 'value or {{ template }}';
+}
+
+export function ActionEditor({
+  action,
+  index,
+  onChange,
+  onRemove,
+  triggerSource,
+  triggerEvent,
+  stepCount = 0,
+}: ActionEditorProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { data: actionsResponse } = useActionCatalog();
   const availableActions = actionsResponse?.data ?? [];
+  const templateSuggestions = useTemplateSuggestions({
+    triggerSource,
+    triggerEvent,
+    stepCount,
+  });
 
   // Group actions by source for the dropdown
   const groupedActions = useMemo(() => {
     const groups: Record<string, typeof availableActions> = {};
     for (const a of availableActions) {
-      const src = (a as any).source ?? 'other';
+      const src = a.source ?? 'other';
       if (!groups[src]) groups[src] = [];
       groups[src].push(a);
     }
@@ -37,36 +81,53 @@ export function ActionEditor({ action, index, onChange, onRemove }: ActionEditor
   }, [availableActions]);
 
   const selectedAction = availableActions.find((a) => a.mcp_tool === action.mcp_tool);
+  const schemaParams = selectedAction?.parameters ?? [];
 
-  const params = Object.entries(action.parameters);
+  // Required parameters are always shown; optional parameters can be added on demand.
+  const visibleParamNames = useMemo(() => {
+    const set = new Set<string>(schemaParams.filter((p) => p.required).map((p) => p.name));
+    for (const k of Object.keys(action.parameters)) set.add(k);
+    return set;
+  }, [schemaParams, action.parameters]);
 
-  const addParameter = () => {
+  const orderedVisibleParams = useMemo(() => {
+    // Render schema params first (in declaration order), then any extras
+    // (e.g. legacy free-form params from older automations).
+    const fromSchema = schemaParams.filter((p) => visibleParamNames.has(p.name));
+    const extras = Object.keys(action.parameters)
+      .filter((k) => !schemaParams.some((p) => p.name === k))
+      .map<ActionParameter>((k) => ({
+        name: k,
+        type: 'string',
+        required: false,
+        nullable: false,
+        description: 'Custom parameter',
+      }));
+    return [...fromSchema, ...extras];
+  }, [schemaParams, visibleParamNames, action.parameters]);
+
+  const optionalUnused = schemaParams.filter(
+    (p) => !p.required && !visibleParamNames.has(p.name),
+  );
+
+  const setParameterValue = (name: string, value: string) => {
     onChange({
       ...action,
-      parameters: { ...action.parameters, '': '' },
+      parameters: { ...action.parameters, [name]: value },
     });
   };
 
-  const updateParameterKey = (oldKey: string, newKey: string) => {
-    const entries = Object.entries(action.parameters);
-    const newParams: Record<string, unknown> = {};
-    for (const [k, v] of entries) {
-      newParams[k === oldKey ? newKey : k] = v;
-    }
-    onChange({ ...action, parameters: newParams });
-  };
-
-  const updateParameterValue = (key: string, value: string) => {
-    onChange({
-      ...action,
-      parameters: { ...action.parameters, [key]: value },
-    });
-  };
-
-  const removeParameter = (key: string) => {
+  const removeParameter = (name: string) => {
     const next = { ...action.parameters };
-    delete next[key];
+    delete next[name];
     onChange({ ...action, parameters: next });
+  };
+
+  const addOptionalParameter = (name: string) => {
+    onChange({
+      ...action,
+      parameters: { ...action.parameters, [name]: '' },
+    });
   };
 
   return (
@@ -119,44 +180,105 @@ export function ActionEditor({ action, index, onChange, onRemove }: ActionEditor
           </span>
         </div>
 
-        {params.length === 0 && (
-          <p className="text-xs text-zinc-400 italic">No parameters configured.</p>
+        {!selectedAction && (
+          <p className="text-xs text-zinc-400 italic">Pick an action above to see its parameters.</p>
         )}
 
-        {params.map(([key, value], i) => (
-          <div key={i} className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="key"
-              value={key}
-              onChange={(e) => updateParameterKey(key, e.target.value)}
-              className="w-40 shrink-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-            />
-            <input
-              type="text"
-              placeholder="value or {{ template }}"
-              value={String(value ?? '')}
-              onChange={(e) => updateParameterValue(key, e.target.value)}
-              className="flex-1 min-w-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-            />
-            <button
-              type="button"
-              onClick={() => removeParameter(key)}
-              className="shrink-0 p-1 rounded text-zinc-400 hover:text-red-500 transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
+        {selectedAction && orderedVisibleParams.length === 0 && (
+          <p className="text-xs text-zinc-400 italic">This action takes no parameters.</p>
+        )}
 
-        <button
-          type="button"
-          onClick={addParameter}
-          className="inline-flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add Parameter
-        </button>
+        {orderedVisibleParams.map((param) => {
+          const value = action.parameters[param.name];
+          const isEnum = param.type === 'enum' && param.enum && param.enum.length > 0;
+          const isBoolean = param.type === 'boolean';
+
+          return (
+            <div key={param.name} className="flex items-start gap-2">
+              <div className="w-44 shrink-0 pt-1.5">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm font-mono text-zinc-700 dark:text-zinc-300 truncate" title={param.name}>
+                    {param.name}
+                  </span>
+                  {param.required && (
+                    <span className="text-red-500 text-xs" title="Required">*</span>
+                  )}
+                </div>
+                <div className="text-[10px] text-zinc-400 truncate" title={param.description}>
+                  {param.format ?? param.type}
+                  {param.nullable ? ' • nullable' : ''}
+                </div>
+              </div>
+
+              {isEnum ? (
+                <select
+                  value={String(value ?? '')}
+                  onChange={(e) => setParameterValue(param.name, e.target.value)}
+                  className="flex-1 min-w-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+                >
+                  <option value="">— select —</option>
+                  {param.enum!.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : isBoolean ? (
+                <select
+                  value={String(value ?? '')}
+                  onChange={(e) => setParameterValue(param.name, e.target.value)}
+                  className="flex-1 min-w-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+                >
+                  <option value="">— select —</option>
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              ) : (
+                <TemplateInput
+                  value={String(value ?? '')}
+                  onChange={(v) => setParameterValue(param.name, v)}
+                  suggestions={templateSuggestions}
+                  placeholder={placeholderForParam(param)}
+                  title={param.description}
+                  className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+                />
+              )}
+
+              {!param.required && (
+                <button
+                  type="button"
+                  onClick={() => removeParameter(param.name)}
+                  className="shrink-0 p-1.5 rounded text-zinc-400 hover:text-red-500 transition-colors"
+                  title="Remove this optional parameter"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {optionalUnused.length > 0 && (
+          <div className="pt-1">
+            <details className="text-xs">
+              <summary className="cursor-pointer text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 inline-flex items-center gap-1">
+                <Plus className="h-3.5 w-3.5" />
+                Add optional parameter ({optionalUnused.length} available)
+              </summary>
+              <div className="mt-2 ml-4 flex flex-wrap gap-1.5">
+                {optionalUnused.map((param) => (
+                  <button
+                    key={param.name}
+                    type="button"
+                    onClick={() => addOptionalParameter(param.name)}
+                    title={param.description}
+                    className="rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:border-green-400 hover:text-green-700 dark:hover:text-green-300 transition-colors"
+                  >
+                    {param.name}
+                  </button>
+                ))}
+              </div>
+            </details>
+          </div>
+        )}
       </div>
 
       {/* Advanced: error policy */}

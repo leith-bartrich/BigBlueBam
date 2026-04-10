@@ -52,9 +52,8 @@ export interface BeaconLink {
 }
 
 export interface BeaconTag {
-  id: string;
-  name: string;
-  beacon_count: number;
+  tag: string;
+  count: number;
 }
 
 interface PaginatedResponse<T> {

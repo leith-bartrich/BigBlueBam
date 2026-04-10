@@ -20,7 +20,10 @@ export default async function publicRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { slug: string } }>(
     '/forms/:slug',
     async (request, reply) => {
-      const form = await formService.getFormBySlug(request.params.slug);
+      const form = await formService.getFormBySlug(request.params.slug, {
+        userId: request.user?.id,
+        userOrgId: request.user?.org_id,
+      });
 
       if (!form.accept_responses) {
         return reply
@@ -37,7 +40,10 @@ export default async function publicRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { slug: string } }>(
     '/forms/:slug/definition',
     async (request, reply) => {
-      const form = await formService.getFormBySlug(request.params.slug);
+      const form = await formService.getFormBySlug(request.params.slug, {
+        userId: request.user?.id,
+        userOrgId: request.user?.org_id,
+      });
       return reply.send({
         data: {
           id: form.id,
@@ -67,7 +73,10 @@ export default async function publicRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const body = submitSchema.parse(request.body);
-      const form = await formService.getFormBySlug(request.params.slug);
+      const form = await formService.getFormBySlug(request.params.slug, {
+        userId: request.user?.id,
+        userOrgId: request.user?.org_id,
+      });
 
       // BLANK-008: Enforce CAPTCHA when enabled on the form
       if (form.captcha_enabled) {

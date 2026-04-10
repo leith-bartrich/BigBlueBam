@@ -97,7 +97,7 @@ export default async function aiAssistRoutes(fastify: FastifyInstance) {
         actions: [
           {
             sort_order: 0,
-            mcp_tool: 'banter_send_message',
+            mcp_tool: 'banter_post_message',
             parameters: {
               channel_name: 'alerts',
               message: 'New high priority task: {{ event.task.title }}',

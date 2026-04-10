@@ -53,6 +53,28 @@ export async function listCalendars(filters: CalendarFilters) {
     .where(and(...conditions))
     .orderBy(desc(bookCalendars.created_at));
 
+  // Auto-provision a default personal calendar on first read so users are
+  // never stranded without a calendar to attach events to. Idempotent:
+  // subsequent calls find the row and skip creation.
+  if (rows.length === 0) {
+    const [created] = await db
+      .insert(bookCalendars)
+      .values({
+        organization_id: filters.organization_id,
+        owner_user_id: filters.user_id,
+        name: 'My Calendar',
+        color: '#3b82f6',
+        calendar_type: 'personal',
+        is_default: true,
+        timezone: 'UTC',
+      })
+      .returning();
+
+    if (created) {
+      rows.push(created);
+    }
+  }
+
   return { data: rows };
 }
 

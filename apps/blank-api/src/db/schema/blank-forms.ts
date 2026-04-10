@@ -23,6 +23,8 @@ export const blankForms = pgTable(
     description: text('description'),
     slug: varchar('slug', { length: 60 }).notNull(),
     form_type: varchar('form_type', { length: 20 }).notNull().default('public'),
+    visibility: varchar('visibility', { length: 20 }).notNull().default('public'),
+    expires_at: timestamp('expires_at', { withTimezone: true }),
     requires_login: boolean('requires_login').notNull().default(false),
     allowed_domains: text('allowed_domains').array(),
     accept_responses: boolean('accept_responses').notNull().default(true),

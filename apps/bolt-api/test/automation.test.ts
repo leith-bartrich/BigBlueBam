@@ -115,7 +115,7 @@ function makeAction(overrides: Record<string, unknown> = {}) {
     id: '00000000-0000-0000-0000-000000000070',
     automation_id: AUTOMATION_ID,
     sort_order: 0,
-    mcp_tool: 'banter_send_message',
+    mcp_tool: 'banter_post_message',
     parameters: { channel_name: 'alerts', message: 'Hello' },
     on_error: 'stop',
     retry_count: 0,
@@ -350,7 +350,7 @@ describe('createAutomation', () => {
           { sort_order: 0, field: 'task.priority', operator: 'equals', value: 'high' },
         ],
         actions: [
-          { sort_order: 0, mcp_tool: 'banter_send_message', parameters: { channel_name: 'alerts' } },
+          { sort_order: 0, mcp_tool: 'banter_post_message', parameters: { channel_name: 'alerts' } },
         ],
       },
       USER_ID,
@@ -382,7 +382,7 @@ describe('createAutomation', () => {
         name: 'No Conditions',
         trigger_source: 'bam',
         trigger_event: 'task.created',
-        actions: [{ sort_order: 0, mcp_tool: 'banter_send_message' }],
+        actions: [{ sort_order: 0, mcp_tool: 'banter_post_message' }],
       },
       USER_ID,
       ORG_ID,
@@ -414,7 +414,7 @@ describe('createAutomation', () => {
         trigger_source: 'schedule',
         trigger_event: 'cron.fired',
         cron_expression: '0 9 * * *',
-        actions: [{ sort_order: 0, mcp_tool: 'banter_send_message' }],
+        actions: [{ sort_order: 0, mcp_tool: 'banter_post_message' }],
       },
       USER_ID,
       ORG_ID,
@@ -443,7 +443,7 @@ describe('updateAutomation', () => {
     const existing = makeAutomation();
     const updated = makeAutomation({ name: 'Updated Name' });
     const newCond = makeCondition({ field: 'task.status' });
-    const newAction = makeAction({ mcp_tool: 'bam_create_task' });
+    const newAction = makeAction({ mcp_tool: 'create_task' });
 
     mockSelect.mockReturnValue(chainable([existing]));
 
@@ -465,7 +465,7 @@ describe('updateAutomation', () => {
       {
         name: 'Updated Name',
         conditions: [{ sort_order: 0, field: 'task.status', operator: 'equals', value: 'done' }],
-        actions: [{ sort_order: 0, mcp_tool: 'bam_create_task' }],
+        actions: [{ sort_order: 0, mcp_tool: 'create_task' }],
       },
       USER_ID,
       ORG_ID,

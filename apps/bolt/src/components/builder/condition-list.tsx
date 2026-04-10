@@ -1,11 +1,11 @@
-import type { BoltCondition } from '@/hooks/use-automations';
+import type { BoltCondition, TriggerSource } from '@/hooks/use-automations';
 import { ConditionRow } from '@/components/builder/condition-row';
 import { Plus, Filter } from 'lucide-react';
 
 interface ConditionListProps {
   conditions: BoltCondition[];
   onChange: (conditions: BoltCondition[]) => void;
-  triggerSource?: string;
+  triggerSource?: TriggerSource;
   triggerEvent?: string;
 }
 

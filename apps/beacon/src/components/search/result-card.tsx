@@ -68,7 +68,7 @@ export function ResultCard({ result, onNavigate, onAddTag }: ResultCardProps) {
       {/* Title + status */}
       <div className="flex items-start justify-between gap-3">
         <button
-          onClick={() => onNavigate(`/${result.slug}`)}
+          onClick={() => onNavigate(`/${result.slug ?? result.beacon_id}`)}
           className="text-left font-semibold text-zinc-900 dark:text-zinc-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
         >
           {result.title}

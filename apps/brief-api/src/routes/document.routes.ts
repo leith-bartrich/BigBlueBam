@@ -140,7 +140,10 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     '/documents/stats',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const stats = await documentService.getStats(request.user!.org_id);
+      const stats = await documentService.getStats(
+        request.user!.org_id,
+        request.user!.id,
+      );
       return reply.send({ data: stats });
     },
   );

@@ -156,6 +156,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         .where(
           and(
             eq(banterChannelMemberships.user_id, user.id),
+            // CRITICAL: scope by the caller's active org. Without this
+            // predicate, multi-org users see channels from every org they
+            // belong to (tenant-isolation leak + UX bug).
+            eq(banterChannels.org_id, user.org_id),
             eq(banterChannels.is_archived, false),
           ),
         )

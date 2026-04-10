@@ -21,7 +21,21 @@
 import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 
-export type BoltEventSource = 'bam' | 'banter' | 'beacon' | 'brief' | 'helpdesk' | 'schedule';
+export type BoltEventSource =
+  | 'bam'
+  | 'banter'
+  | 'beacon'
+  | 'brief'
+  | 'helpdesk'
+  | 'schedule'
+  | 'bond'
+  | 'blast'
+  | 'board'
+  | 'bench'
+  | 'bearing'
+  | 'bill'
+  | 'book'
+  | 'blank';
 export type BoltActorType = 'user' | 'agent' | 'system';
 
 export interface PublishBoltEventOptions {
@@ -55,7 +69,7 @@ const BOLT_EVENTS_CHANNEL = 'bolt:events';
  *
  * @param redis    - ioredis client instance
  * @param eventType - e.g. 'task.moved', 'ticket.created', 'message.posted'
- * @param source   - the originating app: 'bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule'
+ * @param source   - the originating app, e.g. 'bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule', 'bond', 'blast', 'board', 'bench', 'bearing', 'bill', 'book', 'blank'
  * @param payload  - event-specific data (task object, ticket object, etc.)
  * @param orgId    - organization ID the event belongs to
  * @param options  - optional actor/project/chain metadata

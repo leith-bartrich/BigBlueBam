@@ -18,6 +18,14 @@ const sourceLabels: Record<TriggerSource, string> = {
   brief: 'Brief',
   helpdesk: 'Helpdesk',
   schedule: 'Schedule',
+  bond: 'Bond',
+  blast: 'Blast',
+  board: 'Board',
+  bench: 'Bench',
+  bearing: 'Bearing',
+  bill: 'Bill',
+  book: 'Book',
+  blank: 'Blank',
 };
 
 const sourceColors: Record<TriggerSource, string> = {
@@ -27,6 +35,14 @@ const sourceColors: Record<TriggerSource, string> = {
   brief: '#d97706',
   helpdesk: '#dc2626',
   schedule: '#6b7280',
+  bond: '#0891b2',
+  blast: '#db2777',
+  board: '#9333ea',
+  bench: '#0d9488',
+  bearing: '#ea580c',
+  bill: '#16a34a',
+  book: '#4f46e5',
+  blank: '#64748b',
 };
 
 function StatsCard({ label, value, icon: Icon, color }: { label: string; value: number | string; icon: typeof Zap; color: string }) {

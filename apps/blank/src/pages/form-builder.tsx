@@ -22,12 +22,12 @@ import {
   ListChecks, ChevronDown, Calendar, Clock,
   Star, BarChart3, ThumbsUp, CheckSquare, ToggleLeft,
   Heading, FileText, EyeOff, Upload, SeparatorHorizontal,
-  ChevronLeft, ChevronRight, X,
+  ChevronLeft, ChevronRight, X, Copy, ExternalLink, CheckCircle2, Globe, Building2, FolderKanban,
 } from 'lucide-react';
-import { useForm, useUpdateForm, usePublishForm } from '@/hooks/use-forms';
+import { useForm, useUpdateForm, usePublishForm, useBamProjects } from '@/hooks/use-forms';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
-import type { BlankField } from '@/hooks/use-forms';
+import type { BlankField, BlankForm } from '@/hooks/use-forms';
 
 interface FormBuilderPageProps {
   formId: string;
@@ -416,6 +416,8 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
   const publishMutation = usePublishForm();
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [publishedForm, setPublishedForm] = useState<BlankForm | null>(null);
 
   const form = data?.data;
   const fields = form?.fields ?? [];
@@ -463,7 +465,12 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
   );
 
   const handlePublish = async () => {
-    await publishMutation.mutateAsync(formId);
+    try {
+      const result = await publishMutation.mutateAsync(formId);
+      setPublishedForm(result.data);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to publish form');
+    }
   };
 
   if (isLoading) {
@@ -524,6 +531,20 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
               >
                 <Eye className="h-4 w-4" /> Preview
               </button>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              >
+                <Settings className="h-4 w-4" /> Settings
+              </button>
+              {form?.status === 'published' && (
+                <button
+                  onClick={() => setPublishedForm(form)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30"
+                >
+                  <ExternalLink className="h-4 w-4" /> Share
+                </button>
+              )}
               <button
                 onClick={handlePublish}
                 disabled={publishMutation.isPending || form?.status === 'published'}
@@ -766,6 +787,328 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
           </div>
         </div>
       )}
+
+      {/* Form settings dialog */}
+      {showSettings && form && (
+        <FormSettingsDialog
+          form={form}
+          onClose={() => setShowSettings(false)}
+          onUpdate={(patch) => updateMutation.mutate(patch)}
+        />
+      )}
+
+      {/* Publish success dialog */}
+      {publishedForm && (
+        <PublishResultDialog
+          form={publishedForm}
+          onClose={() => setPublishedForm(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Form settings dialog — visibility, expiration, project             */
+/* ------------------------------------------------------------------ */
+
+interface FormSettingsDialogProps {
+  form: BlankForm;
+  onClose: () => void;
+  onUpdate: (patch: Partial<BlankForm>) => void;
+}
+
+function FormSettingsDialog({ form, onClose, onUpdate }: FormSettingsDialogProps) {
+  const [visibility, setVisibility] = useState<'public' | 'org' | 'project'>(
+    form.visibility ?? 'public',
+  );
+  const [projectId, setProjectId] = useState<string | null>(form.project_id ?? null);
+  const [expiresAt, setExpiresAt] = useState<string>(() => {
+    if (!form.expires_at) return '';
+    // Convert ISO to local datetime-local value (YYYY-MM-DDTHH:mm)
+    const d = new Date(form.expires_at);
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+  });
+
+  const projectsQuery = useBamProjects();
+  const projects = projectsQuery.data?.data ?? [];
+
+  const handleSave = () => {
+    const patch: Partial<BlankForm> & {
+      visibility: 'public' | 'org' | 'project';
+      expires_at: string | null;
+      project_id: string | null;
+    } = {
+      visibility,
+      expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+      project_id: visibility === 'project' ? projectId : null,
+    };
+    onUpdate(patch);
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg mx-4 bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-700 overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-700">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <Settings className="h-4 w-4" /> Form Settings
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
+          {/* Visibility */}
+          <div>
+            <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
+              Visibility
+            </label>
+            <p className="text-xs text-zinc-500 mb-3">
+              Controls who can access the form via its public URL.
+            </p>
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 p-3 border border-zinc-200 dark:border-zinc-700 rounded-lg cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="public"
+                  checked={visibility === 'public'}
+                  onChange={() => setVisibility('public')}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    <Globe className="h-4 w-4" /> Public
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-0.5">
+                    Anyone with the link can view and submit this form.
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 border border-zinc-200 dark:border-zinc-700 rounded-lg cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="org"
+                  checked={visibility === 'org'}
+                  onChange={() => setVisibility('org')}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    <Building2 className="h-4 w-4" /> Organization
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-0.5">
+                    Only members of your organization can view this form.
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 border border-zinc-200 dark:border-zinc-700 rounded-lg cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="project"
+                  checked={visibility === 'project'}
+                  onChange={() => setVisibility('project')}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    <FolderKanban className="h-4 w-4" /> Project members
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-0.5">
+                    Only members of the chosen project can view this form.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Project picker (only when visibility=project) */}
+          {visibility === 'project' && (
+            <div>
+              <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+                Project
+              </label>
+              {projectsQuery.isLoading ? (
+                <div className="text-xs text-zinc-500">Loading projects...</div>
+              ) : projects.length === 0 ? (
+                <div className="text-xs text-zinc-500">
+                  No projects found. Create one in Bam first.
+                </div>
+              ) : (
+                <select
+                  value={projectId ?? ''}
+                  onChange={(e) => setProjectId(e.target.value || null)}
+                  className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                >
+                  <option value="">Select a project...</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Expiration */}
+          <div>
+            <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+              Expires at
+            </label>
+            <p className="text-xs text-zinc-500 mb-2">
+              Optional. The form stops accepting visitors after this date.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                className="flex-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+              />
+              {expiresAt && (
+                <button
+                  type="button"
+                  onClick={() => setExpiresAt('')}
+                  className="px-3 py-2 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 border border-zinc-200 dark:border-zinc-700 rounded-lg"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm font-medium rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={visibility === 'project' && !projectId}
+            className="px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Publish result dialog — surfaces the public URL                    */
+/* ------------------------------------------------------------------ */
+
+interface PublishResultDialogProps {
+  form: BlankForm;
+  onClose: () => void;
+}
+
+function PublishResultDialog({ form, onClose }: PublishResultDialogProps) {
+  const [copied, setCopied] = useState(false);
+  const publicUrl = `${window.location.origin}/forms/${form.slug}`;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md mx-4 bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-700 overflow-hidden"
+      >
+        <div className="p-6 text-center">
+          <div className="mx-auto mb-4 flex items-center justify-center w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30">
+            <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+          </div>
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+            Your form is live
+          </h2>
+          <p className="text-sm text-zinc-500 mt-1">
+            Share this URL with respondents to collect submissions.
+          </p>
+
+          <div className="mt-5 flex items-center gap-2 p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700">
+            <input
+              type="text"
+              value={publicUrl}
+              readOnly
+              className="flex-1 bg-transparent text-sm text-zinc-700 dark:text-zinc-300 outline-none truncate"
+            />
+            <button
+              onClick={handleCopy}
+              className={cn(
+                'flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                copied
+                  ? 'bg-green-600 text-white'
+                  : 'bg-primary-600 text-white hover:bg-primary-700',
+              )}
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" /> Copy
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-center gap-2 text-xs">
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-700 font-medium"
+            >
+              <ExternalLink className="h-3 w-3" /> Open in new tab
+            </a>
+            <span className="text-zinc-300 dark:text-zinc-600">|</span>
+            <span className="text-zinc-400 capitalize">
+              Visibility: {form.visibility ?? 'public'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end px-5 py-3 border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 text-sm font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200"
+          >
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

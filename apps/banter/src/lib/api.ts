@@ -1,3 +1,5 @@
+import { useAuthStore } from '@/stores/auth.store';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -39,6 +41,17 @@ class ApiClient {
     // Only set Content-Type for requests that have a body
     if (body) {
       headers['Content-Type'] = 'application/json';
+    }
+
+    // Defense-in-depth X-Org-Id injection. The Banter API also reads
+    // sessions.active_org_id off the session cookie, but forwarding the
+    // header here keeps a long-lived tab pinned to the org it was opened
+    // in even if a different tab has since switched orgs. Safe: the
+    // server validates that the caller is actually a member of the
+    // requested org before honoring the header.
+    const activeOrgId = useAuthStore.getState().user?.active_org_id;
+    if (activeOrgId) {
+      headers['X-Org-Id'] = activeOrgId;
     }
 
     const response = await fetch(url.toString(), {
@@ -93,8 +106,15 @@ class ApiClient {
   async upload<T>(path: string, formData: FormData): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`, window.location.origin);
 
+    const uploadHeaders: Record<string, string> = {};
+    const activeOrgId = useAuthStore.getState().user?.active_org_id;
+    if (activeOrgId) {
+      uploadHeaders['X-Org-Id'] = activeOrgId;
+    }
+
     const response = await fetch(url.toString(), {
       method: 'POST',
+      headers: uploadHeaders,
       credentials: 'include',
       body: formData,
       // No Content-Type header — browser sets it with boundary for multipart

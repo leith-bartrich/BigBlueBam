@@ -265,9 +265,13 @@ const FIELD_TYPES = [
   { value: 'boolean', label: 'Boolean' },
 ];
 
+const ENTITY_FILTER_ALL = '__all__';
+
 function FieldsSettings() {
-  const [entityFilter, setEntityFilter] = useState<string>('');
-  const { data, isLoading } = useCustomFieldDefinitions(entityFilter || undefined);
+  const [entityFilter, setEntityFilter] = useState<string>(ENTITY_FILTER_ALL);
+  const { data, isLoading } = useCustomFieldDefinitions(
+    entityFilter === ENTITY_FILTER_ALL ? undefined : entityFilter,
+  );
   const fields = data?.data ?? [];
   const deleteField = useDeleteCustomField();
   const [showCreate, setShowCreate] = useState(false);
@@ -301,7 +305,7 @@ function FieldsSettings() {
               value={entityFilter}
               onValueChange={setEntityFilter}
               options={[
-                { value: '', label: 'All Types' },
+                { value: ENTITY_FILTER_ALL, label: 'All Types' },
                 ...ENTITY_TYPES.map((t) => ({ value: t.value, label: t.label })),
               ]}
               placeholder="Filter..."

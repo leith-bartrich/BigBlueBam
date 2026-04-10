@@ -20,7 +20,22 @@ import type Redis from 'ioredis';
 
 const ingestEventSchema = z.object({
   event_type: z.string().min(1).max(60),
-  source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule']),
+  source: z.enum([
+    'bam',
+    'banter',
+    'beacon',
+    'brief',
+    'helpdesk',
+    'schedule',
+    'bond',
+    'blast',
+    'board',
+    'bench',
+    'bearing',
+    'bill',
+    'book',
+    'blank',
+  ]),
   payload: z.record(z.unknown()),
   org_id: z.string().uuid(),
   project_id: z.string().uuid().optional(),
@@ -74,7 +89,7 @@ let _executeQueue: Queue | null = null;
 
 function getExecuteQueue(redisInstance: Redis): Queue {
   if (!_executeQueue) {
-    _executeQueue = new Queue('bolt:execute', { connection: redisInstance });
+    _executeQueue = new Queue('bolt-execute', { connection: redisInstance });
   }
   return _executeQueue;
 }
@@ -325,7 +340,7 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
 
         // 9. Enqueue BullMQ job for execution
         await executeQueue.add(
-          'bolt:execute',
+          'bolt-execute',
           {
             execution_id: execution!.id,
             automation_id: automation.id,

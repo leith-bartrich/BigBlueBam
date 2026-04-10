@@ -327,7 +327,6 @@ function ChannelItem({
 }) {
   const hasUnread = unread && unread.messages > 0;
   const hasMentions = unread && unread.mentions > 0;
-  const [hovered, setHovered] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameTo, setRenameTo] = useState(channel.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -379,11 +378,7 @@ function ChannelItem({
   }
 
   return (
-    <div
-      className="relative group"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setConfirmDelete(false); }}
-    >
+    <div className="relative group">
       <button
         onClick={onClick}
         className={cn(
@@ -399,82 +394,85 @@ function ChannelItem({
         <span className={cn('truncate', hasUnread && !active && 'font-semibold')}>
           {channel.name}
         </span>
-        {hasMentions && !hovered && (
-          <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
+        {hasMentions && (
+          <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center group-hover:hidden">
             {unread.mentions}
           </span>
         )}
-        {hasUnread && !hasMentions && !hovered && (
-          <span className="ml-auto h-2 w-2 rounded-full bg-zinc-400" />
+        {hasUnread && !hasMentions && (
+          <span className="ml-auto h-2 w-2 rounded-full bg-zinc-400 group-hover:hidden" />
         )}
       </button>
 
-      {/* Context menu trigger — visible on hover */}
-      {hovered && (
-        <div className="absolute right-1 top-1/2 -translate-y-1/2">
-          <DropdownMenu.Root onOpenChange={(open) => { if (!open) setConfirmDelete(false); }}>
-            <DropdownMenu.Trigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                className="p-0.5 rounded hover:bg-sidebar-active/50 text-zinc-500 hover:text-zinc-300 transition-colors"
+      {/* Context menu trigger — always mounted so the portaled Content
+          isn't unmounted mid-interaction. The trigger button itself is
+          hidden by default and revealed on row hover via Tailwind's
+          `group-hover:` variant, or whenever Radix has marked it
+          `data-state="open"`. Closing the menu also resets the delete
+          confirmation state (wired in onOpenChange). */}
+      <div className="absolute right-1 top-1/2 -translate-y-1/2">
+        <DropdownMenu.Root onOpenChange={(open) => { if (!open) setConfirmDelete(false); }}>
+          <DropdownMenu.Trigger asChild>
+            <button
+              onClick={(e) => e.stopPropagation()}
+              className="p-0.5 rounded hover:bg-sidebar-active/50 text-zinc-500 hover:text-zinc-300 transition-colors opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 focus:opacity-100"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              className="min-w-[160px] rounded-lg border border-zinc-700 bg-zinc-800 shadow-lg p-1 z-50"
+              sideOffset={4}
+              align="start"
+            >
+              <DropdownMenu.Item
+                className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
+                onClick={() => { setRenameTo(channel.name); setRenaming(true); }}
               >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                className="min-w-[160px] rounded-lg border border-zinc-700 bg-zinc-800 shadow-lg p-1 z-50"
-                sideOffset={4}
-                align="start"
+                <Pencil className="h-3.5 w-3.5" />
+                Rename
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
+                onClick={onClick}
               >
-                <DropdownMenu.Item
-                  className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
-                  onClick={() => { setRenameTo(channel.name); setRenaming(true); }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Rename
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
-                  onClick={onClick}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                  Channel settings
-                </DropdownMenu.Item>
-                {!channel.is_default && (
-                  <>
-                    <DropdownMenu.Separator className="h-px bg-zinc-700 my-1" />
+                <Settings className="h-3.5 w-3.5" />
+                Channel settings
+              </DropdownMenu.Item>
+              {!channel.is_default && (
+                <>
+                  <DropdownMenu.Separator className="h-px bg-zinc-700 my-1" />
+                  <DropdownMenu.Item
+                    className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
+                    onClick={handleLeave}
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Leave channel
+                  </DropdownMenu.Item>
+                  {!confirmDelete ? (
                     <DropdownMenu.Item
-                      className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-700 text-zinc-300 outline-none"
-                      onClick={handleLeave}
+                      className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-red-900/30 text-red-400 outline-none"
+                      onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
                     >
-                      <LogOut className="h-3.5 w-3.5" />
-                      Leave channel
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete channel
                     </DropdownMenu.Item>
-                    {!confirmDelete ? (
-                      <DropdownMenu.Item
-                        className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer hover:bg-red-900/30 text-red-400 outline-none"
-                        onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete channel
-                      </DropdownMenu.Item>
-                    ) : (
-                      <DropdownMenu.Item
-                        className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer bg-red-900/30 text-red-300 outline-none"
-                        onClick={handleDelete}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Click again to confirm
-                      </DropdownMenu.Item>
-                    )}
-                  </>
-                )}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        </div>
-      )}
+                  ) : (
+                    <DropdownMenu.Item
+                      className="flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer bg-red-900/30 text-red-300 outline-none"
+                      onClick={handleDelete}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Click again to confirm
+                    </DropdownMenu.Item>
+                  )}
+                </>
+              )}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      </div>
     </div>
   );
 }

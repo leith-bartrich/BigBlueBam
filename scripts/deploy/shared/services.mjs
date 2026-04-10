@@ -1,27 +1,502 @@
 // Service catalog — the source of truth for all BigBlueBam services.
+// Used by:
+//   - scripts/deploy/platforms/*.mjs       (deploy orchestration)
+//   - scripts/gen-railway-configs.mjs      (generates railway/*.json)
+//   - docker-compose.yml                   (should be kept in sync manually)
+//   - infra/nginx/nginx-with-site.conf     (upstream names match `name`)
+//
 // Zero dependencies.
 
-export const SERVICES = [
-  { name: 'api', port: 4000, dockerfile: 'apps/api/Dockerfile', required: true, description: 'Main API' },
-  { name: 'helpdesk-api', port: 4001, dockerfile: 'apps/helpdesk-api/Dockerfile', required: true, description: 'Helpdesk API' },
-  { name: 'banter-api', port: 4002, dockerfile: 'apps/banter-api/Dockerfile', required: true, description: 'Messaging API' },
-  { name: 'beacon-api', port: 4004, dockerfile: 'apps/beacon-api/Dockerfile', required: true, description: 'Knowledge Base API' },
-  { name: 'brief-api', port: 4005, dockerfile: 'apps/brief-api/Dockerfile', required: true, description: 'Documents API' },
-  { name: 'bolt-api', port: 4006, dockerfile: 'apps/bolt-api/Dockerfile', required: true, description: 'Automation API' },
-  { name: 'bearing-api', port: 4007, dockerfile: 'apps/bearing-api/Dockerfile', required: true, description: 'Goals & OKRs API' },
-  { name: 'mcp-server', port: 3001, dockerfile: 'apps/mcp-server/Dockerfile', required: true, description: 'MCP Protocol Server' },
-  { name: 'worker', port: null, dockerfile: 'apps/worker/Dockerfile', required: true, description: 'Background Jobs' },
-  { name: 'frontend', port: 80, dockerfile: 'apps/frontend/Dockerfile', required: true, description: 'Web UI (nginx)' },
-  { name: 'voice-agent', port: 4003, dockerfile: 'apps/voice-agent/Dockerfile', required: false, description: 'AI Voice Agent' },
+// ─── Application services ────────────────────────────────────────────
+//
+// Every entry here has its own Dockerfile and is a separately deployable
+// container. The `name` is the upstream hostname used by the nginx ingress
+// container (both in docker-compose and in Railway's private network, where
+// services resolve as `<name>.railway.internal`).
+//
+// `public_paths` lists every public nginx path that routes to this service
+// and is used by the Railway nginx template to generate a Railway-flavored
+// config. An empty array means the service is internal-only (worker, voice
+// agent, site — although `site` is proxied at `/`, it's listed under
+// `public_paths` on the frontend entry).
+
+export const APP_SERVICES = [
+  {
+    name: 'api',
+    description: 'Main Bam API — tasks, sprints, boards, auth',
+    dockerfile: 'apps/api/Dockerfile',
+    port: 4000,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'minio'],
+    public_paths: ['/b3/api/', '/b3/ws', '/files/'],
+    env: {
+      required: [
+        'DATABASE_URL',
+        'REDIS_URL',
+        'SESSION_SECRET',
+        'INTERNAL_HELPDESK_SECRET',
+      ],
+      optional: [
+        'CORS_ORIGIN', 'LOG_LEVEL', 'FRONTEND_URL',
+        'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
+        'OAUTH_GITHUB_CLIENT_ID', 'OAUTH_GITHUB_CLIENT_SECRET',
+        'OAUTH_GOOGLE_CLIENT_ID', 'OAUTH_GOOGLE_CLIENT_SECRET',
+        'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM',
+      ],
+    },
+  },
+  {
+    name: 'helpdesk-api',
+    description: 'Helpdesk API — tickets, replies, SLAs, public portal',
+    dockerfile: 'apps/helpdesk-api/Dockerfile',
+    port: 4001,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'minio', 'api'],
+    public_paths: ['/helpdesk/api/', '/helpdesk/ws'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'INTERNAL_HELPDESK_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: [
+        'CORS_ORIGIN', 'LOG_LEVEL', 'HELPDESK_URL',
+        'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
+        'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM',
+      ],
+    },
+  },
+  {
+    name: 'banter-api',
+    description: 'Banter API — messaging, channels, DMs, calls',
+    dockerfile: 'apps/banter-api/Dockerfile',
+    port: 4002,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'minio', 'livekit', 'api'],
+    public_paths: ['/banter/api/', '/banter/ws'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: [
+        'CORS_ORIGIN', 'LOG_LEVEL',
+        'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
+        'LIVEKIT_HOST', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'LIVEKIT_WS_URL',
+        'VOICE_AGENT_URL',
+      ],
+    },
+  },
+  {
+    name: 'beacon-api',
+    description: 'Beacon API — knowledge base, vector search, policies',
+    dockerfile: 'apps/beacon-api/Dockerfile',
+    port: 4004,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'minio', 'qdrant', 'api'],
+    public_paths: ['/beacon/api/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'QDRANT_URL', 'BBB_API_INTERNAL_URL'],
+      optional: [
+        'CORS_ORIGIN', 'LOG_LEVEL',
+        'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
+      ],
+    },
+  },
+  {
+    name: 'brief-api',
+    description: 'Brief API — collaborative documents, templates, comments',
+    dockerfile: 'apps/brief-api/Dockerfile',
+    port: 4005,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api'],
+    public_paths: ['/brief/api/', '/brief/ws'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
+    },
+  },
+  {
+    name: 'bolt-api',
+    description: 'Bolt API — automation engine, rules, executions',
+    dockerfile: 'apps/bolt-api/Dockerfile',
+    port: 4006,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api', 'mcp-server'],
+    public_paths: ['/bolt/api/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL', 'MCP_INTERNAL_URL'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS', 'INTERNAL_SERVICE_SECRET'],
+    },
+  },
+  {
+    name: 'bearing-api',
+    description: 'Bearing API — goals, key results, progress',
+    dockerfile: 'apps/bearing-api/Dockerfile',
+    port: 4007,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api'],
+    public_paths: ['/bearing/api/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
+    },
+  },
+  {
+    name: 'board-api',
+    description: 'Board API — whiteboards, shapes, real-time collab',
+    dockerfile: 'apps/board-api/Dockerfile',
+    port: 4008,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'livekit', 'api'],
+    public_paths: ['/board/api/', '/board/ws'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: [
+        'CORS_ORIGIN', 'LOG_LEVEL',
+        'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'LIVEKIT_URL',
+      ],
+    },
+  },
+  {
+    name: 'bond-api',
+    description: 'Bond API — CRM contacts, companies, deals, pipeline',
+    dockerfile: 'apps/bond-api/Dockerfile',
+    port: 4009,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api'],
+    public_paths: ['/bond/api/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
+    },
+  },
+  {
+    name: 'blast-api',
+    description: 'Blast API — email campaigns, templates, tracking',
+    dockerfile: 'apps/blast-api/Dockerfile',
+    port: 4010,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api', 'bond-api'],
+    public_paths: ['/blast/api/', '/t/', '/unsub/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL', 'BOND_API_INTERNAL_URL', 'TRACKING_BASE_URL'],
+      optional: [
+        'CORS_ORIGIN', 'LOG_LEVEL',
+        'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS',
+        'SMTP_FROM_EMAIL', 'SMTP_FROM_NAME',
+      ],
+    },
+  },
+  {
+    name: 'bench-api',
+    description: 'Bench API — analytics, dashboards, widgets, reports',
+    dockerfile: 'apps/bench-api/Dockerfile',
+    port: 4011,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api'],
+    public_paths: ['/bench/api/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: ['DATABASE_READ_URL', 'CORS_ORIGIN', 'LOG_LEVEL', 'QUERY_TIMEOUT_MS', 'CACHE_TTL_SECONDS'],
+    },
+  },
+  {
+    name: 'book-api',
+    description: 'Book API — calendar events, booking pages, meetings',
+    dockerfile: 'apps/book-api/Dockerfile',
+    port: 4012,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api'],
+    public_paths: ['/book/api/', '/meet/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL', 'PUBLIC_URL'],
+      optional: [
+        'CORS_ORIGIN', 'LOG_LEVEL',
+        'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
+        'MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET',
+      ],
+    },
+  },
+  {
+    name: 'blank-api',
+    description: 'Blank API — forms, submissions, public form portal',
+    dockerfile: 'apps/blank-api/Dockerfile',
+    port: 4013,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api'],
+    public_paths: ['/blank/api/', '/forms/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'PUBLIC_FORM_RATE_LIMIT', 'PUBLIC_FORM_RATE_WINDOW_MS'],
+    },
+  },
+  {
+    name: 'bill-api',
+    description: 'Bill API — invoices, payments, expenses',
+    dockerfile: 'apps/bill-api/Dockerfile',
+    port: 4014,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: ['postgres', 'redis', 'api'],
+    public_paths: ['/bill/api/', '/invoice/'],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL', 'PUBLIC_URL'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL'],
+    },
+  },
+  {
+    name: 'mcp-server',
+    description: 'MCP Protocol Server — tool orchestration for AI agents',
+    dockerfile: 'apps/mcp-server/Dockerfile',
+    port: 3001,
+    healthcheck: '/health',
+    start_command: 'node dist/server.js',
+    required: true,
+    needs: [
+      'api', 'helpdesk-api', 'banter-api', 'beacon-api', 'brief-api',
+      'bolt-api', 'bearing-api', 'board-api', 'bond-api', 'blast-api',
+      'bench-api', 'book-api', 'blank-api', 'bill-api', 'redis',
+    ],
+    public_paths: ['/mcp/'],
+    env: {
+      required: ['MCP_TRANSPORT', 'API_INTERNAL_URL', 'REDIS_URL'],
+      optional: [
+        'HELPDESK_API_URL', 'BEACON_API_URL', 'BOLT_API_URL', 'BEARING_API_URL',
+        'BOARD_API_URL', 'BOND_API_URL', 'BLAST_API_URL', 'BOOK_API_URL',
+        'BENCH_API_URL', 'BILL_API_URL', 'BLANK_API_URL',
+        'MCP_AUTH_REQUIRED', 'LOG_LEVEL',
+      ],
+    },
+  },
+  {
+    name: 'worker',
+    description: 'Background job processor (BullMQ) — email, exports, sprint close',
+    dockerfile: 'apps/worker/Dockerfile',
+    port: null, // no HTTP listener
+    healthcheck: null,
+    start_command: 'node dist/worker.js',
+    required: true,
+    needs: ['postgres', 'redis', 'minio'],
+    public_paths: [],
+    env: {
+      required: ['DATABASE_URL', 'REDIS_URL'],
+      optional: [
+        'WORKER_CONCURRENCY', 'LOG_LEVEL',
+        'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
+        'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM',
+      ],
+    },
+  },
+  {
+    name: 'voice-agent',
+    description: 'AI voice agent (LiveKit Agents SDK)',
+    dockerfile: 'apps/voice-agent/Dockerfile',
+    port: 4003,
+    healthcheck: '/health',
+    start_command: null, // uses Dockerfile CMD
+    required: false,
+    needs: ['redis', 'livekit'],
+    public_paths: [],
+    env: {
+      required: ['LIVEKIT_URL', 'REDIS_URL'],
+      optional: [],
+    },
+  },
+  {
+    name: 'site',
+    description: 'Marketing site (static)',
+    dockerfile: 'infra/site/Dockerfile',
+    port: 3000,
+    healthcheck: '/',
+    start_command: null,
+    required: true,
+    needs: [],
+    public_paths: [], // proxied by `frontend` at `/`
+    env: { required: [], optional: [] },
+  },
+  {
+    name: 'frontend',
+    description: 'Public nginx ingress — serves all SPAs and proxies APIs',
+    dockerfile: 'apps/frontend/Dockerfile',
+    port: 80,
+    healthcheck: '/',
+    start_command: null,
+    required: true,
+    is_public_ingress: true, // single externally-exposed service
+    // Profile selection happens at container start via the entrypoint script
+    // in infra/nginx/entrypoint.sh, NOT at build time. One image works for
+    // docker-compose, Railway, and bare docker. See apps/frontend/Dockerfile.
+    // Additional watch patterns: changes under infra/nginx/ rebuild the
+    // frontend image because both nginx config profiles are COPY'd in.
+    extra_watch_patterns: ['infra/nginx/**'],
+    needs: [
+      'api', 'helpdesk-api', 'banter-api', 'beacon-api', 'brief-api',
+      'bolt-api', 'bearing-api', 'board-api', 'bond-api', 'blast-api',
+      'bench-api', 'book-api', 'blank-api', 'bill-api',
+      'mcp-server', 'site',
+    ],
+    public_paths: ['/', '/b3/', '/helpdesk/', '/banter/', '/beacon/', '/brief/', '/bolt/', '/bearing/', '/board/', '/bond/', '/blast/', '/bench/', '/book/', '/blank/', '/bill/'],
+    env: { required: [], optional: ['HTTP_PORT', 'HTTPS_PORT'] },
+  },
 ];
 
-export const INFRASTRUCTURE = [
-  { name: 'postgres', image: 'postgres:16-alpine', port: 5432, required: true, managed: true, description: 'PostgreSQL Database' },
-  { name: 'redis', image: 'redis:7-alpine', port: 6379, required: true, managed: true, description: 'Redis Cache & PubSub' },
-  { name: 'minio', image: 'minio/minio:latest', port: 9000, required: false, managed: false, description: 'File Storage (S3-compatible)' },
-  { name: 'qdrant', image: 'qdrant/qdrant:latest', port: 6333, required: false, managed: false, description: 'Vector Search' },
-  { name: 'livekit', image: 'livekit/livekit-server:latest', port: 7880, required: false, managed: false, description: 'Voice/Video Server' },
+// ─── One-shot jobs ───────────────────────────────────────────────────
+
+export const JOB_SERVICES = [
+  {
+    name: 'migrate',
+    description: 'SQL migration runner — reuses api image, runs once and exits',
+    dockerfile: 'apps/api/Dockerfile',
+    start_command: 'node dist/migrate.js',
+    required: true,
+    needs: ['postgres'],
+    env: {
+      required: ['DATABASE_URL'],
+      optional: ['MIGRATIONS_DIR'],
+    },
+  },
 ];
+
+// ─── Infrastructure services ─────────────────────────────────────────
+//
+// `managed_on_railway: true` → use Railway's managed plugin (first-class, no
+// volume needed). For everything else we deploy the upstream image as a
+// regular Railway service backed by a persistent volume.
+
+export const INFRA_SERVICES = [
+  {
+    name: 'postgres',
+    description: 'PostgreSQL 16 database',
+    image: 'postgres:16-alpine',
+    port: 5432,
+    managed_on_railway: true,
+    required: true,
+    volume: null, // managed
+  },
+  {
+    name: 'redis',
+    description: 'Redis 7 (sessions, cache, pubsub, queues)',
+    image: 'redis:7-alpine',
+    port: 6379,
+    managed_on_railway: true,
+    required: true,
+    volume: null,
+  },
+  {
+    name: 'minio',
+    description: 'MinIO S3-compatible object storage',
+    image: 'minio/minio:latest',
+    dockerfile: 'infra/railway/minio/Dockerfile', // passthrough wrapper
+    port: 9000,
+    console_port: 9001,
+    managed_on_railway: false,
+    required: true,
+    volume: { mount_path: '/data', size_gb: 10 },
+    env: {
+      required: ['MINIO_ROOT_USER', 'MINIO_ROOT_PASSWORD'],
+      optional: [],
+    },
+  },
+  {
+    name: 'qdrant',
+    description: 'Qdrant vector database (Beacon/Brief/Bond semantic search)',
+    image: 'qdrant/qdrant:latest',
+    dockerfile: 'infra/railway/qdrant/Dockerfile',
+    port: 6333,
+    managed_on_railway: false,
+    required: true,
+    volume: { mount_path: '/qdrant/storage', size_gb: 5 },
+    env: { required: [], optional: [] },
+  },
+  {
+    name: 'livekit',
+    description: 'LiveKit SFU (voice/video in Banter and Board)',
+    image: 'livekit/livekit-server:latest',
+    dockerfile: 'infra/railway/livekit/Dockerfile',
+    port: 7880,
+    rtc_port: 7881,
+    managed_on_railway: false,
+    required: false,
+    volume: null, // stateless — config is baked into the image
+    env: {
+      required: ['LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'],
+      optional: [],
+    },
+  },
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+export function getRequiredAppServices() {
+  return APP_SERVICES.filter((s) => s.required);
+}
+
+export function getOptionalAppServices() {
+  return APP_SERVICES.filter((s) => !s.required);
+}
+
+export function getAllAppServices() {
+  return APP_SERVICES;
+}
+
+export function getManagedInfra() {
+  return INFRA_SERVICES.filter((i) => i.managed_on_railway);
+}
+
+export function getSelfHostedInfra() {
+  return INFRA_SERVICES.filter((i) => !i.managed_on_railway);
+}
+
+export function findService(name) {
+  return (
+    APP_SERVICES.find((s) => s.name === name) ??
+    INFRA_SERVICES.find((s) => s.name === name) ??
+    JOB_SERVICES.find((s) => s.name === name) ??
+    null
+  );
+}
+
+// ─── Back-compat: legacy exports used by older callers ──────────────
+// Several scripts still import `SERVICES` and `INFRASTRUCTURE` from the
+// previous version of this file. Keep them as thin shims so nothing breaks.
+
+export const SERVICES = APP_SERVICES.map((s) => ({
+  name: s.name,
+  port: s.port,
+  dockerfile: s.dockerfile,
+  required: s.required,
+  description: s.description,
+}));
+
+export const INFRASTRUCTURE = INFRA_SERVICES.map((i) => ({
+  name: i.name,
+  image: i.image,
+  port: i.port,
+  required: i.required,
+  managed: i.managed_on_railway,
+  description: i.description,
+}));
 
 export const APP_URLS = {
   'b3': { label: 'Bam (Project Management)', path: '/b3/' },
@@ -31,33 +506,28 @@ export const APP_URLS = {
   'brief': { label: 'Brief (Documents)', path: '/brief/' },
   'bolt': { label: 'Bolt (Automations)', path: '/bolt/' },
   'bearing': { label: 'Bearing (Goals & OKRs)', path: '/bearing/' },
+  'board': { label: 'Board (Whiteboards)', path: '/board/' },
+  'bond': { label: 'Bond (CRM)', path: '/bond/' },
+  'blast': { label: 'Blast (Email Campaigns)', path: '/blast/' },
+  'bench': { label: 'Bench (Analytics)', path: '/bench/' },
+  'book': { label: 'Book (Calendar)', path: '/book/' },
+  'blank': { label: 'Blank (Forms)', path: '/blank/' },
+  'bill': { label: 'Bill (Invoicing)', path: '/bill/' },
   'mcp': { label: 'MCP Server', path: '/mcp/' },
 };
 
-/**
- * Get all required services.
- */
 export function getRequiredServices() {
   return SERVICES.filter((s) => s.required);
 }
 
-/**
- * Get all optional services.
- */
 export function getOptionalServices() {
   return SERVICES.filter((s) => !s.required);
 }
 
-/**
- * Get all required infrastructure.
- */
 export function getRequiredInfra() {
   return INFRASTRUCTURE.filter((i) => i.required);
 }
 
-/**
- * Get all optional infrastructure.
- */
 export function getOptionalInfra() {
   return INFRASTRUCTURE.filter((i) => !i.required);
 }

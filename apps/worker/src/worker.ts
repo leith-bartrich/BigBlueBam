@@ -267,7 +267,7 @@ bearingDigestWorker.on('failed', (job, err) => {
 
 // Bolt execution worker (runs automation action sequences via MCP tool calls)
 const boltExecuteWorker = new Worker<BoltExecuteJobData>(
-  'bolt:execute',
+  'bolt-execute',
   async (job: Job<BoltExecuteJobData>) => {
     await processBoltExecuteJob(job, logger);
   },
@@ -275,16 +275,16 @@ const boltExecuteWorker = new Worker<BoltExecuteJobData>(
 );
 
 boltExecuteWorker.on('completed', (job) => {
-  logger.info({ jobId: job.id, queue: 'bolt:execute' }, 'Job completed');
+  logger.info({ jobId: job.id, queue: 'bolt-execute' }, 'Job completed');
 });
 
 boltExecuteWorker.on('failed', (job, err) => {
-  logger.error({ jobId: job?.id, queue: 'bolt:execute', err }, 'Job failed');
+  logger.error({ jobId: job?.id, queue: 'bolt-execute', err }, 'Job failed');
 });
 
 // Blast send worker (processes campaign email delivery)
 const blastSendWorker = new Worker<BlastSendJobData>(
-  'blast:send',
+  'blast-send',
   async (job: Job<BlastSendJobData>) => {
     await processBlastSendJob(job, env, logger);
   },
@@ -292,11 +292,11 @@ const blastSendWorker = new Worker<BlastSendJobData>(
 );
 
 blastSendWorker.on('completed', (job) => {
-  logger.info({ jobId: job.id, queue: 'blast:send' }, 'Job completed');
+  logger.info({ jobId: job.id, queue: 'blast-send' }, 'Job completed');
 });
 
 blastSendWorker.on('failed', (job, err) => {
-  logger.error({ jobId: job?.id, queue: 'blast:send', err }, 'Job failed');
+  logger.error({ jobId: job?.id, queue: 'blast-send', err }, 'Job failed');
 });
 
 // Analytics worker (placeholder — processes analytics aggregation jobs)
@@ -323,7 +323,7 @@ analyticsWorker.on('failed', (job, err) => {
 const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, boltExecuteWorker, blastSendWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt:execute', 'blast:send', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt-execute', 'blast-send', 'analytics'] },
   'All workers started',
 );
 

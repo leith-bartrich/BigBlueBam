@@ -126,3 +126,22 @@ export const organizationMemberships = pgTable(
     index('org_memberships_org_id_idx').on(table.org_id),
   ],
 );
+
+export const projectMemberships = pgTable(
+  'project_memberships',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    project_id: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: varchar('role', { length: 50 }).default('member').notNull(),
+    joined_at: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('project_memberships_unique_idx').on(table.project_id, table.user_id),
+    index('project_memberships_user_id_idx').on(table.user_id),
+  ],
+);

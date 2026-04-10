@@ -284,13 +284,15 @@ describe('org-scoped stats', () => {
   });
 
   it('should scope stats to the provided org_id', async () => {
-    mockExecute.mockResolvedValue([
-      { total: 5, draft: 3, in_review: 1, approved: 1, archived: 0 },
-    ]);
+    mockSelect
+      .mockReturnValueOnce(chainable([])) // getUserProjectIds
+      .mockReturnValueOnce(
+        chainable([{ total: 5, draft: 3, in_review: 1, approved: 1, archived: 0 }]),
+      );
 
-    const result = await getStats(ORG_ID);
+    const result = await getStats(ORG_ID, USER_ID);
     expect(result.total).toBe(5);
-    // Verify execute was called (which contains org_id scoping via SQL)
-    expect(mockExecute).toHaveBeenCalled();
+    // Verify select was called (which contains org_id scoping via Drizzle)
+    expect(mockSelect).toHaveBeenCalled();
   });
 });

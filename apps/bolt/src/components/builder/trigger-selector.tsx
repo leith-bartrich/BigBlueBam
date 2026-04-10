@@ -15,6 +15,14 @@ const triggerSources: { value: TriggerSource; label: string }[] = [
   { value: 'brief', label: 'Brief' },
   { value: 'helpdesk', label: 'Helpdesk' },
   { value: 'schedule', label: 'Schedule' },
+  { value: 'bond', label: 'Bond' },
+  { value: 'blast', label: 'Blast' },
+  { value: 'board', label: 'Board' },
+  { value: 'bearing', label: 'Bearing' },
+  { value: 'bill', label: 'Bill' },
+  { value: 'book', label: 'Book' },
+  { value: 'blank', label: 'Blank' },
+  { value: 'bench', label: 'Bench' },
 ];
 
 export function TriggerSelector({ source, eventType, onSourceChange, onEventTypeChange }: TriggerSelectorProps) {

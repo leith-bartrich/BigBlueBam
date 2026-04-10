@@ -29,7 +29,7 @@ function getBlastQueue(): Queue<BlastSendJobData> {
     const connection = new IORedis(env.REDIS_URL, {
       maxRetriesPerRequest: null,
     });
-    _blastQueue = new Queue<BlastSendJobData>('blast:send', { connection });
+    _blastQueue = new Queue<BlastSendJobData>('blast-send', { connection });
   }
   return _blastQueue;
 }

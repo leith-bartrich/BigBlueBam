@@ -146,23 +146,80 @@ export const DEFAULT_MAX_CHAIN_DEPTH = 5;
  * Used to detect self-triggering automations at creation/update time.
  */
 const TOOL_TO_PRODUCED_EVENTS: Record<string, string[]> = {
-  bam_create_task: ['task.created'],
-  bam_update_task: ['task.updated'],
-  bam_assign_task: ['task.assigned', 'task.updated'],
-  bam_move_task: ['task.moved', 'task.updated'],
-  bam_add_comment: ['task.commented'],
-  bam_add_label: ['task.updated'],
-  bam_set_due_date: ['task.updated'],
-  banter_send_message: ['message.posted'],
+  // Bam
+  create_task: ['task.created'],
+  update_task: ['task.updated', 'task.assigned', 'task.moved'],
+  move_task: ['task.moved', 'task.updated'],
+  delete_task: ['task.deleted'],
+  bulk_update_tasks: ['task.updated'],
+  duplicate_task: ['task.created'],
+  add_comment: ['comment.created'],
+  create_sprint: [],
+  start_sprint: ['sprint.started'],
+  complete_sprint: ['sprint.completed'],
+
+  // Banter
+  banter_post_message: ['message.posted'],
+  banter_send_dm: ['message.posted'],
+  banter_send_group_dm: ['message.posted'],
   banter_create_channel: ['channel.created'],
-  beacon_create_entry: ['beacon.published'],
-  beacon_update_entry: ['beacon.verified'],
-  brief_create_document: ['document.created'],
-  brief_update_status: ['document.status_changed'],
-  helpdesk_create_ticket: ['ticket.created'],
-  helpdesk_reply_ticket: ['ticket.replied'],
-  helpdesk_assign_ticket: ['ticket.status_changed'],
-  helpdesk_update_priority: ['ticket.status_changed'],
+  banter_react: ['reaction.added'],
+  banter_share_task: ['message.posted'],
+  banter_share_sprint: ['message.posted'],
+  banter_share_ticket: ['message.posted'],
+
+  // Beacon
+  beacon_create: ['beacon.created'],
+  beacon_update: ['beacon.updated'],
+  beacon_publish: ['beacon.published'],
+  beacon_verify: ['beacon.verified'],
+  beacon_challenge: ['beacon.challenged'],
+
+  // Brief
+  brief_create: ['document.created'],
+  brief_update: ['document.updated'],
+  brief_update_content: ['document.updated'],
+  brief_append_content: ['document.updated'],
+
+  // Helpdesk
+  reply_to_ticket: ['ticket.replied'],
+  update_ticket_status: ['ticket.status_changed'],
+
+  // Bond
+  bond_create_contact: ['contact.created'],
+  bond_create_deal: ['deal.created'],
+  bond_update_deal: ['deal.updated'],
+  bond_move_deal_stage: ['deal.stage_changed', 'deal.updated'],
+  bond_close_deal_won: ['deal.won', 'deal.stage_changed'],
+  bond_close_deal_lost: ['deal.lost', 'deal.stage_changed'],
+  bond_log_activity: ['activity.logged'],
+
+  // Blast
+  blast_draft_campaign: ['campaign.created'],
+  blast_send_campaign: ['campaign.sent'],
+
+  // Board
+  board_create: ['board.created'],
+  board_update: ['board.updated'],
+
+  // Bearing
+  bearing_goal_create: ['goal.created'],
+  bearing_goal_update: ['goal.updated'],
+  bearing_kr_update: ['key_result.updated'],
+
+  // Bill
+  bill_create_invoice: ['invoice.created'],
+  bill_create_invoice_from_time: ['invoice.created'],
+  bill_create_invoice_from_deal: ['invoice.created'],
+  bill_finalize_invoice: ['invoice.finalized'],
+  bill_record_payment: ['payment.recorded'],
+
+  // Book
+  book_create_event: ['event.created'],
+  book_update_event: ['event.updated'],
+
+  // Blank
+  blank_publish_form: ['form.published'],
 };
 
 /**
@@ -194,7 +251,21 @@ export function detectSelfTrigger(
 // Types
 // ---------------------------------------------------------------------------
 
-export type TriggerSource = 'bam' | 'banter' | 'beacon' | 'brief' | 'helpdesk' | 'schedule';
+export type TriggerSource =
+  | 'bam'
+  | 'banter'
+  | 'beacon'
+  | 'brief'
+  | 'helpdesk'
+  | 'schedule'
+  | 'bond'
+  | 'blast'
+  | 'board'
+  | 'bench'
+  | 'bearing'
+  | 'bill'
+  | 'book'
+  | 'blank';
 export type ConditionOperator =
   | 'equals' | 'not_equals' | 'contains' | 'not_contains'
   | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than'
@@ -741,7 +812,15 @@ export async function getStats(orgId: string) {
       COUNT(*) FILTER (WHERE trigger_source = 'beacon')::int AS source_beacon,
       COUNT(*) FILTER (WHERE trigger_source = 'brief')::int AS source_brief,
       COUNT(*) FILTER (WHERE trigger_source = 'helpdesk')::int AS source_helpdesk,
-      COUNT(*) FILTER (WHERE trigger_source = 'schedule')::int AS source_schedule
+      COUNT(*) FILTER (WHERE trigger_source = 'schedule')::int AS source_schedule,
+      COUNT(*) FILTER (WHERE trigger_source = 'bond')::int AS source_bond,
+      COUNT(*) FILTER (WHERE trigger_source = 'blast')::int AS source_blast,
+      COUNT(*) FILTER (WHERE trigger_source = 'board')::int AS source_board,
+      COUNT(*) FILTER (WHERE trigger_source = 'bench')::int AS source_bench,
+      COUNT(*) FILTER (WHERE trigger_source = 'bearing')::int AS source_bearing,
+      COUNT(*) FILTER (WHERE trigger_source = 'bill')::int AS source_bill,
+      COUNT(*) FILTER (WHERE trigger_source = 'book')::int AS source_book,
+      COUNT(*) FILTER (WHERE trigger_source = 'blank')::int AS source_blank
     FROM bolt_automations
     WHERE org_id = ${orgId}
   `);
@@ -750,6 +829,9 @@ export async function getStats(orgId: string) {
     total: 0, enabled: 0, disabled: 0,
     source_bam: 0, source_banter: 0, source_beacon: 0,
     source_brief: 0, source_helpdesk: 0, source_schedule: 0,
+    source_bond: 0, source_blast: 0, source_board: 0,
+    source_bench: 0, source_bearing: 0, source_bill: 0,
+    source_book: 0, source_blank: 0,
   };
 
   return {
@@ -763,6 +845,14 @@ export async function getStats(orgId: string) {
       brief: row.source_brief,
       helpdesk: row.source_helpdesk,
       schedule: row.source_schedule,
+      bond: row.source_bond,
+      blast: row.source_blast,
+      board: row.source_board,
+      bench: row.source_bench,
+      bearing: row.source_bearing,
+      bill: row.source_bill,
+      book: row.source_book,
+      blank: row.source_blank,
     },
   };
 }

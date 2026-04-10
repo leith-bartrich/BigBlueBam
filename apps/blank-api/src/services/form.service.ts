@@ -1,7 +1,12 @@
 import { eq, and, desc, asc, sql, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { blankForms, blankFormFields, blankSubmissions } from '../db/schema/index.js';
-import { notFound, badRequest, conflict } from '../lib/utils.js';
+import {
+  blankForms,
+  blankFormFields,
+  blankSubmissions,
+  projectMemberships,
+} from '../db/schema/index.js';
+import { notFound, badRequest, conflict, forbidden } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -13,6 +18,8 @@ export interface CreateFormInput {
   slug: string;
   project_id?: string;
   form_type?: string;
+  visibility?: string;
+  expires_at?: string | Date | null;
   requires_login?: boolean;
   confirmation_type?: string;
   confirmation_message?: string;
@@ -27,6 +34,8 @@ export interface UpdateFormInput {
   slug?: string;
   project_id?: string | null;
   form_type?: string;
+  visibility?: string;
+  expires_at?: string | Date | null;
   requires_login?: boolean;
   accept_responses?: boolean;
   max_responses?: number | null;
@@ -178,10 +187,15 @@ export async function getForm(id: string, orgId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Get form by slug (public, no org check)
+// Get form by slug (enforces visibility + expiration)
 // ---------------------------------------------------------------------------
 
-export async function getFormBySlug(slug: string) {
+export interface GetFormBySlugContext {
+  userId?: string;
+  userOrgId?: string;
+}
+
+export async function getFormBySlug(slug: string, ctx?: GetFormBySlugContext) {
   const [form] = await db
     .select()
     .from(blankForms)
@@ -189,6 +203,45 @@ export async function getFormBySlug(slug: string) {
     .limit(1);
 
   if (!form) throw notFound('Form not found');
+
+  // Enforce expiration window — treat an expired form as missing so we
+  // don't leak its existence to unauthenticated visitors.
+  if (form.expires_at && new Date(form.expires_at) <= new Date()) {
+    throw notFound('Form not found');
+  }
+
+  // Enforce visibility
+  const visibility = (form as { visibility?: string }).visibility ?? 'public';
+  if (visibility === 'org') {
+    if (!ctx?.userOrgId || ctx.userOrgId !== form.organization_id) {
+      throw forbidden('This form is only available to organization members');
+    }
+  } else if (visibility === 'project') {
+    if (!ctx?.userId || !ctx?.userOrgId) {
+      throw forbidden('This form is only available to project members');
+    }
+    if (!form.project_id) {
+      // Misconfigured — fail closed.
+      throw forbidden('This form is only available to project members');
+    }
+    // Same-org check first (cheap), then project membership.
+    if (ctx.userOrgId !== form.organization_id) {
+      throw forbidden('This form is only available to project members');
+    }
+    const [membership] = await db
+      .select({ id: projectMemberships.id })
+      .from(projectMemberships)
+      .where(
+        and(
+          eq(projectMemberships.project_id, form.project_id),
+          eq(projectMemberships.user_id, ctx.userId),
+        ),
+      )
+      .limit(1);
+    if (!membership) {
+      throw forbidden('This form is only available to project members');
+    }
+  }
 
   let fields = await db
     .select()
@@ -249,6 +302,11 @@ export async function createForm(input: CreateFormInput, orgId: string, userId: 
       slug: input.slug,
       project_id: input.project_id,
       form_type: input.form_type ?? 'public',
+      visibility: input.visibility ?? 'public',
+      expires_at:
+        typeof input.expires_at === 'string'
+          ? new Date(input.expires_at)
+          : (input.expires_at ?? undefined),
       requires_login: input.requires_login ?? false,
       confirmation_type: input.confirmation_type ?? 'message',
       confirmation_message: input.confirmation_message ?? 'Thank you for your submission!',
@@ -300,7 +358,13 @@ export async function updateForm(
   const updateData: Record<string, unknown> = { updated_at: new Date() };
 
   for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined) updateData[key] = value;
+    if (value === undefined) continue;
+    // Coerce ISO strings to Date for timestamp columns
+    if (key === 'expires_at' && typeof value === 'string') {
+      updateData[key] = new Date(value);
+    } else {
+      updateData[key] = value;
+    }
   }
 
   const [updated] = await db

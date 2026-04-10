@@ -815,11 +815,15 @@ describe('getStats', () => {
   });
 
   it('should return correct document counts by status', async () => {
-    mockExecute.mockResolvedValue([
-      { total: 10, draft: 5, in_review: 2, approved: 2, archived: 1 },
-    ]);
+    // First select call: getUserProjectIds (for visibility predicate)
+    // Second select call: the stats aggregate query
+    mockSelect
+      .mockReturnValueOnce(chainable([])) // getUserProjectIds
+      .mockReturnValueOnce(
+        chainable([{ total: 10, draft: 5, in_review: 2, approved: 2, archived: 1 }]),
+      );
 
-    const result = await getStats(ORG_ID);
+    const result = await getStats(ORG_ID, USER_ID);
     expect(result.total).toBe(10);
     expect(result.draft).toBe(5);
     expect(result.in_review).toBe(2);
@@ -828,9 +832,11 @@ describe('getStats', () => {
   });
 
   it('should return zero counts when no documents exist', async () => {
-    mockExecute.mockResolvedValue([]);
+    mockSelect
+      .mockReturnValueOnce(chainable([])) // getUserProjectIds
+      .mockReturnValueOnce(chainable([])); // stats aggregate returns no rows
 
-    const result = await getStats(ORG_ID);
+    const result = await getStats(ORG_ID, USER_ID);
     expect(result.total).toBe(0);
     expect(result.draft).toBe(0);
   });
