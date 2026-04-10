@@ -344,6 +344,14 @@ export const APP_SERVICES = [
     start_command: null,
     required: true,
     is_public_ingress: true, // single externally-exposed service
+    // Bake the Railway-flavored nginx.conf into the image. The Dockerfile
+    // defaults NGINX_PROFILE to `default` (the legacy `nginx.conf` for
+    // bare-docker deployments); on Railway we need the *.railway.internal
+    // upstreams baked in.
+    build_args: { NGINX_PROFILE: 'railway' },
+    // Additional watch patterns: changes under infra/nginx/ rebuild the
+    // frontend image because both nginx config profiles are COPY'd in.
+    extra_watch_patterns: ['infra/nginx/**'],
     needs: [
       'api', 'helpdesk-api', 'banter-api', 'beacon-api', 'brief-api',
       'bolt-api', 'bearing-api', 'board-api', 'bond-api', 'blast-api',

@@ -153,7 +153,19 @@ COPY --from=build /app/apps/book/dist /usr/share/nginx/html/book
 COPY --from=build /app/apps/bench/dist /usr/share/nginx/html/bench
 COPY --from=build /app/apps/bill/dist /usr/share/nginx/html/bill
 COPY --from=build /app/apps/blank/dist /usr/share/nginx/html/blank
-COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Two nginx config profiles bundled in the image:
+#   default → infra/nginx/nginx.conf            (legacy fallback)
+#   railway → infra/nginx/nginx.railway.conf    (uses *.railway.internal upstreams)
+#
+# Pick one with `--build-arg NGINX_PROFILE=railway`. The compose flow doesn't
+# care which profile gets baked in because docker-compose.yml mounts
+# infra/nginx/nginx-with-site.conf over /etc/nginx/conf.d/default.conf at
+# runtime, overriding whatever's in the image.
+COPY infra/nginx/nginx.conf /etc/nginx/profiles/default.conf
+COPY infra/nginx/nginx.railway.conf /etc/nginx/profiles/railway.conf
+ARG NGINX_PROFILE=default
+RUN cp /etc/nginx/profiles/${NGINX_PROFILE}.conf /etc/nginx/conf.d/default.conf
 
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown

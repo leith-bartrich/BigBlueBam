@@ -10,8 +10,12 @@
       "pnpm-workspace.yaml",
       "package.json",
       "tsconfig.base.json",
-      "apps/frontend/Dockerfile"
-    ]
+      "apps/frontend/Dockerfile",
+      "infra/nginx/**"
+    ],
+    "buildArgs": {
+      "NGINX_PROFILE": "railway"
+    }
   },
   "deploy": {
     "restartPolicyType": "ON_FAILURE",
