@@ -130,8 +130,20 @@ async function buildAuthUser(
   row: BaseUserRow,
   apiKeyScope: string | null,
   request: FastifyRequest,
+  sessionActiveOrgId?: string | null,
 ): Promise<AuthUser> {
-  const requestedOrgId = getRequestedOrgId(request);
+  // Priority for the resolved active org:
+  //   1. X-Org-Id request header (explicit per-request override)
+  //   2. sessions.active_org_id (set by /auth/switch-org in Bam — survives
+  //      across requests within a session)
+  //   3. organization_memberships.is_default = true
+  //   4. first membership by joined_at
+  // The Bam API uses the same priority chain; before this fix Bolt-api
+  // skipped step 2, which meant a user who switched orgs in the Bam UI
+  // would still see their default org's data through Bolt's MCP/automation
+  // surface — invisible bug that masquerades as "where are my automations".
+  const requestedOrgId =
+    getRequestedOrgId(request) ?? sessionActiveOrgId ?? undefined;
   const { memberships, activeOrgId, activeRole } = await resolveOrgContext(
     row.id,
     row.org_id,
@@ -197,7 +209,12 @@ async function authPlugin(fastify: FastifyInstance) {
 
       const row = result[0];
       if (row && new Date(row.session.expires_at) > new Date() && row.user.is_active) {
-        request.user = await buildAuthUser(row.user, null, request);
+        request.user = await buildAuthUser(
+          row.user,
+          null,
+          request,
+          row.session.active_org_id ?? null,
+        );
         request.sessionId = sessionId;
         return;
       }

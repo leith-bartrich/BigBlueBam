@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Zap, Activity, Power, PowerOff, Plus, Search, MoreVertical, Copy, Trash2, Loader2 } from 'lucide-react';
+import { Zap, Activity, Power, PowerOff, Plus, Search, MoreVertical, Copy, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { useAutomationList, useAutomationStats, useEnableAutomation, useDisableAutomation, useDeleteAutomation, useDuplicateAutomation, type TriggerSource, type BoltAutomation } from '@/hooks/use-automations';
 import { Badge } from '@/components/common/badge';
 import { Button } from '@/components/common/button';
@@ -168,7 +168,11 @@ export function HomePage({ onNavigate }: HomePageProps) {
   const [enabledFilter, setEnabledFilter] = useState<boolean | undefined>(undefined);
 
   const { data: statsResponse, isLoading: statsLoading } = useAutomationStats();
-  const { data: listResponse, isLoading: listLoading } = useAutomationList({
+  const {
+    data: listResponse,
+    isLoading: listLoading,
+    error: listError,
+  } = useAutomationList({
     source: sourceFilter,
     enabled: enabledFilter,
     search: search || undefined,
@@ -276,6 +280,18 @@ export function HomePage({ onNavigate }: HomePageProps) {
       {listLoading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+        </div>
+      ) : listError ? (
+        <div className="flex flex-col items-center justify-center py-16 text-red-600 dark:text-red-400">
+          <AlertCircle className="h-12 w-12 mb-4 opacity-60" />
+          <p className="text-lg font-medium">Couldn't load automations</p>
+          <p className="text-sm mt-1 text-red-500 dark:text-red-300/80">
+            {(listError as Error)?.message || 'Unexpected error'}
+          </p>
+          <p className="text-xs mt-3 text-zinc-500">
+            The stats card above may show a count from a different code path. If
+            it disagrees with this list, the list query failed at the server.
+          </p>
         </div>
       ) : automations.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
