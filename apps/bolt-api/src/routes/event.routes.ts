@@ -2,7 +2,22 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../plugins/auth.js';
 import { getAllEvents, getEventsBySource, getAvailableActions } from '../services/event-catalog.js';
 
-const VALID_SOURCES = new Set(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule']);
+const VALID_SOURCES = new Set([
+  'bam',
+  'banter',
+  'beacon',
+  'brief',
+  'helpdesk',
+  'schedule',
+  'bond',
+  'blast',
+  'board',
+  'bench',
+  'bearing',
+  'bill',
+  'book',
+  'blank',
+]);
 
 export default async function eventRoutes(fastify: FastifyInstance) {
   // GET /events — Full event catalog

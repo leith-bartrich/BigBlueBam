@@ -9,7 +9,22 @@ import {
 import * as automationService from '../services/automation.service.js';
 import { validateActionTools, validateActionParameters } from '../services/automation.service.js';
 
-const TRIGGER_SOURCES = ['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule'] as const;
+const TRIGGER_SOURCES = [
+  'bam',
+  'banter',
+  'beacon',
+  'brief',
+  'helpdesk',
+  'schedule',
+  'bond',
+  'blast',
+  'board',
+  'bench',
+  'bearing',
+  'bill',
+  'book',
+  'blank',
+] as const;
 const CONDITION_OPERATORS = [
   'equals', 'not_equals', 'contains', 'not_contains',
   'starts_with', 'ends_with', 'greater_than', 'less_than',

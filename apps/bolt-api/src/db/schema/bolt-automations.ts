@@ -19,6 +19,14 @@ export const boltTriggerSourceEnum = pgEnum('bolt_trigger_source', [
   'brief',
   'helpdesk',
   'schedule',
+  'bond',
+  'blast',
+  'board',
+  'bench',
+  'bearing',
+  'bill',
+  'book',
+  'blank',
 ]);
 
 export const boltAutomations = pgTable(

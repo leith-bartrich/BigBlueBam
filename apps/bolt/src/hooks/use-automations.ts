@@ -4,7 +4,21 @@ import { useProjectStore } from '@/stores/project.store';
 
 // ─── Types ───
 
-export type TriggerSource = 'bam' | 'banter' | 'beacon' | 'brief' | 'helpdesk' | 'schedule';
+export type TriggerSource =
+  | 'bam'
+  | 'banter'
+  | 'beacon'
+  | 'brief'
+  | 'helpdesk'
+  | 'schedule'
+  | 'bond'
+  | 'blast'
+  | 'board'
+  | 'bench'
+  | 'bearing'
+  | 'bill'
+  | 'book'
+  | 'blank';
 export type ExecutionStatus = 'running' | 'success' | 'partial' | 'failed' | 'skipped';
 export type ConditionOperator =
   | 'equals'
