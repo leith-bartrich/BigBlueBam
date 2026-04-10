@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { BeaconLayout } from '@/components/layout/beacon-layout';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { HomePage } from '@/pages/home';
 import { BeaconListPage } from '@/pages/beacon-list';
 import { BeaconSearchPage } from '@/pages/beacon-search';
@@ -145,9 +146,16 @@ export function App() {
     }
   };
 
+  // Build a stable key from the current route so the boundary auto-resets
+  // when the user navigates away from a crashed page.
+  const routeKey =
+    route.page +
+    ('idOrSlug' in route ? `:${route.idOrSlug}` : '') +
+    ('focalId' in route && route.focalId ? `:${route.focalId}` : '');
+
   return (
     <BeaconLayout onNavigate={navigate} activeRoute={route}>
-      {renderPage()}
+      <ErrorBoundary resetKey={routeKey}>{renderPage()}</ErrorBoundary>
     </BeaconLayout>
   );
 }

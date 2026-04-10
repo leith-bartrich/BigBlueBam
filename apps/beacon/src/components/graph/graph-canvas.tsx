@@ -110,6 +110,10 @@ export function GraphCanvas({
   const positionedNodes = useMemo(() => {
     if (nodes.length === 0) return [];
 
+    // Scale the initial layout circle with node count so larger graphs
+    // don't start stacked on a tiny 180 px ring.
+    const initialRadius = Math.max(180, Math.sqrt(nodes.length) * 60);
+
     const layoutNodes: LayoutNode[] = initializePositions(
       nodes.map((n) => ({
         id: n.id,
@@ -120,6 +124,7 @@ export function GraphCanvas({
       })),
       width,
       height,
+      initialRadius,
     );
 
     // Pin focal node to center
@@ -138,10 +143,14 @@ export function GraphCanvas({
     }));
 
     const settled = runForceLayout(layoutNodes, layoutEdges, {
-      iterations: Math.min(150, 50 + nodes.length * 3),
-      repulsion: 2500,
+      iterations: Math.min(400, 100 + 4 * nodes.length),
+      repulsion: 3500,
       attraction: 0.025,
-      idealLength: 180,
+      idealLength: 200,
+      // When there's a focal node it's already pinned to center; the
+      // centering force would just fight repulsion and drag siblings back
+      // onto the focal node. Near-zero gets us the behavior the user wants.
+      centering: focalNodeId ? 0.0001 : 0.01,
     });
 
     return settled.map((pos) => {

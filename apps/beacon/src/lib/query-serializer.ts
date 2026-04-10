@@ -102,11 +102,15 @@ export function deserializeFromUrl(searchParams: URLSearchParams): SerializableS
     try {
       const json = fromBase64Url(q);
       const parsed = JSON.parse(json) as Partial<SerializableSearchState>;
+      // Defensive: always coerce array fields via Array.isArray so that a
+      // malformed `?q=` payload (e.g., `tags: null` or `tags: "foo"`) cannot
+      // reach downstream code that calls `.map`/`.filter`/`.join` on them
+      // and throws at render time.
       return {
-        queryText: parsed.queryText ?? DEFAULTS.queryText,
-        projectIds: parsed.projectIds ?? DEFAULTS.projectIds,
-        tags: parsed.tags ?? DEFAULTS.tags,
-        statusFilters: parsed.statusFilters ?? DEFAULTS.statusFilters,
+        queryText: typeof parsed.queryText === 'string' ? parsed.queryText : DEFAULTS.queryText,
+        projectIds: Array.isArray(parsed.projectIds) ? parsed.projectIds : DEFAULTS.projectIds,
+        tags: Array.isArray(parsed.tags) ? parsed.tags : DEFAULTS.tags,
+        statusFilters: Array.isArray(parsed.statusFilters) ? parsed.statusFilters : DEFAULTS.statusFilters,
         expiresAfter: parsed.expiresAfter ?? DEFAULTS.expiresAfter,
         includeGraphExpansion: parsed.includeGraphExpansion ?? DEFAULTS.includeGraphExpansion,
         includeTagExpansion: parsed.includeTagExpansion ?? DEFAULTS.includeTagExpansion,

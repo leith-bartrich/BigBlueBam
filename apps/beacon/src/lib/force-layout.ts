@@ -36,10 +36,16 @@ export interface ForceLayoutOptions {
   idealLength?: number;
   /** Centering pull strength (default 0.01) */
   centering?: number;
-  /** Velocity damping per tick (default 0.85) */
+  /** Velocity damping per tick (default 0.7) */
   damping?: number;
   /** Starting alpha / temperature (default 1.0) */
   alpha?: number;
+  /** Maximum velocity per tick (default 150) */
+  maxSpeed?: number;
+  /** Upper bound on a single repulsion force impulse (default 2000) */
+  repulsionMax?: number;
+  /** Extra gap to enforce between node edges during collision pass (default 12) */
+  collisionPadding?: number;
 }
 
 interface Velocity {
@@ -58,8 +64,11 @@ export function runForceLayout(
     attraction = 0.04,
     idealLength = 120,
     centering = 0.01,
-    damping = 0.85,
+    damping = 0.7,
     alpha: startAlpha = 1.0,
+    maxSpeed = 150,
+    repulsionMax = 2000,
+    collisionPadding = 12,
   } = options;
 
   if (nodes.length === 0) return [];
@@ -81,10 +90,11 @@ export function runForceLayout(
     const alpha = startAlpha * (1 - iter / iterations);
     if (alpha < 0.001) break;
 
-    // 1. Repulsion (all pairs)
+    // 1. Repulsion (all pairs) — inverse-square on raw distance, with a
+    //    hard cap on the force magnitude so close-range pairs still push
+    //    strongly without producing NaN / explosive impulses.
     for (let i = 0; i < pos.length; i++) {
       const a = pos[i]!;
-      if (a.pinned) continue;
       const av = vel.get(a.id)!;
       for (let j = i + 1; j < pos.length; j++) {
         const b = pos[j]!;
@@ -92,18 +102,21 @@ export function runForceLayout(
         let dy = a.y - b.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < 1) {
-          // Jitter to escape overlap
+          // Jitter to escape perfect overlap
           dx = (Math.random() - 0.5) * 2;
           dy = (Math.random() - 0.5) * 2;
-          dist = 1;
+          dist = Math.sqrt(dx * dx + dy * dy) || 1;
         }
-        const minDist = (a.radius ?? 20) + (b.radius ?? 20);
-        const effectiveDist = Math.max(dist, minDist * 0.5);
-        const force = (repulsion * alpha) / (effectiveDist * effectiveDist);
+        // Raw inverse-square — no effectiveDist plateau. The plateau killed
+        // close-range repulsion, which is where we need it most.
+        let force = (repulsion * alpha) / (dist * dist);
+        if (force > repulsionMax) force = repulsionMax;
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
-        av.vx += fx;
-        av.vy += fy;
+        if (!a.pinned) {
+          av.vx += fx;
+          av.vy += fy;
+        }
         if (!b.pinned) {
           const bv = vel.get(b.id)!;
           bv.vx -= fx;
@@ -150,7 +163,6 @@ export function runForceLayout(
       const v = vel.get(n.id)!;
       // Cap velocity
       const speed = Math.sqrt(v.vx * v.vx + v.vy * v.vy);
-      const maxSpeed = 50;
       if (speed > maxSpeed) {
         v.vx = (v.vx / speed) * maxSpeed;
         v.vy = (v.vy / speed) * maxSpeed;
@@ -160,6 +172,46 @@ export function runForceLayout(
       v.vx *= damping;
       v.vy *= damping;
     }
+
+    // 5. Collision pass — hard-separate any pair of nodes whose circles
+    //    overlap. This is the single highest-impact change for the
+    //    clustering complaint: no matter how the other forces settle,
+    //    two nodes can never end up visually on top of each other.
+    for (let i = 0; i < pos.length; i++) {
+      const a = pos[i]!;
+      const ra = (a.radius ?? 20) + collisionPadding / 2;
+      for (let j = i + 1; j < pos.length; j++) {
+        const b = pos[j]!;
+        const rb = (b.radius ?? 20) + collisionPadding / 2;
+        const minDist = ra + rb;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.0001) {
+          dx = (Math.random() - 0.5) * 2;
+          dy = (Math.random() - 0.5) * 2;
+          dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        }
+        if (dist < minDist) {
+          const overlap = (minDist - dist) / 2;
+          const ox = (dx / dist) * overlap;
+          const oy = (dy / dist) * overlap;
+          if (a.pinned && !b.pinned) {
+            b.x += ox * 2;
+            b.y += oy * 2;
+          } else if (!a.pinned && b.pinned) {
+            a.x -= ox * 2;
+            a.y -= oy * 2;
+          } else if (!a.pinned && !b.pinned) {
+            a.x -= ox;
+            a.y -= oy;
+            b.x += ox;
+            b.y += oy;
+          }
+          // If both pinned, nothing we can do — leave them.
+        }
+      }
+    }
   }
 
   return pos;
@@ -167,11 +219,21 @@ export function runForceLayout(
 
 /**
  * Assign initial positions in a circle or random spread if nodes lack positions.
+ *
+ * The initial circle's radius scales with node count so that larger graphs
+ * start spread out rather than piled on a tiny 180 px circle regardless of
+ * size. Caller may override via `initialRadius`.
  */
-export function initializePositions(nodes: LayoutNode[], width: number, height: number): LayoutNode[] {
+export function initializePositions(
+  nodes: LayoutNode[],
+  width: number,
+  height: number,
+  initialRadius?: number,
+): LayoutNode[] {
   const cx = width / 2;
   const cy = height / 2;
-  const radius = Math.min(width, height) * 0.3;
+  const radius =
+    initialRadius ?? Math.max(180, Math.sqrt(Math.max(nodes.length, 1)) * 60);
 
   return nodes.map((n, i) => {
     if (n.x !== 0 || n.y !== 0) return n;
