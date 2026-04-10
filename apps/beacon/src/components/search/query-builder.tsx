@@ -17,8 +17,9 @@ function TagInput({ onAdd }: { onAdd: (tag: string) => void }) {
   const selectedTags = useSearchStore((s) => s.tags);
 
   const filtered = (allTags ?? [])
-    .filter((t) => !selectedTags.includes(t.name))
-    .filter((t) => t.name.toLowerCase().includes(input.toLowerCase()))
+    .filter((t) => t && typeof t.tag === 'string')
+    .filter((t) => !selectedTags.includes(t.tag))
+    .filter((t) => t.tag.toLowerCase().includes(input.toLowerCase()))
     .slice(0, 12);
 
   const handleSelect = (name: string) => {
@@ -38,7 +39,7 @@ function TagInput({ onAdd }: { onAdd: (tag: string) => void }) {
       setHighlightIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter' && highlightIdx >= 0 && filtered[highlightIdx]) {
       e.preventDefault();
-      handleSelect(filtered[highlightIdx].name);
+      handleSelect(filtered[highlightIdx].tag);
     } else if (e.key === 'Escape') {
       setShowDropdown(false);
     }
@@ -72,9 +73,9 @@ function TagInput({ onAdd }: { onAdd: (tag: string) => void }) {
         <div className="absolute top-full left-0 z-20 mt-1 w-56 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg py-1 max-h-48 overflow-y-auto">
           {filtered.map((tag, idx) => (
             <button
-              key={tag.id}
+              key={tag.tag}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => handleSelect(tag.name)}
+              onClick={() => handleSelect(tag.tag)}
               className={cn(
                 'w-full text-left px-3 py-1.5 text-sm flex items-center justify-between',
                 idx === highlightIdx
@@ -82,8 +83,8 @@ function TagInput({ onAdd }: { onAdd: (tag: string) => void }) {
                   : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800',
               )}
             >
-              <span>{tag.name}</span>
-              <span className="text-xs text-zinc-400">{tag.beacon_count}</span>
+              <span>{tag.tag}</span>
+              <span className="text-xs text-zinc-400">{tag.count}</span>
             </button>
           ))}
         </div>
