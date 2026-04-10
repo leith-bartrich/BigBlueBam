@@ -1,0 +1,29 @@
+{
+  "name": "@bigbluebam/e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "End-to-end testing suite for BigBlueBam apps",
+  "scripts": {
+    "test": "playwright test",
+    "test:b3": "playwright test --project=b3",
+    "test:banter": "playwright test --project=banter",
+    "test:beacon": "playwright test --project=beacon",
+    "test:bearing": "playwright test --project=bearing",
+    "test:bench": "playwright test --project=bench",
+    "test:bill": "playwright test --project=bill",
+    "test:blank": "playwright test --project=blank",
+    "test:blast": "playwright test --project=blast",
+    "test:board": "playwright test --project=board",
+    "test:bolt": "playwright test --project=bolt",
+    "test:bond": "playwright test --project=bond",
+    "test:book": "playwright test --project=book",
+    "test:brief": "playwright test --project=brief",
+    "test:helpdesk": "playwright test --project=helpdesk",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

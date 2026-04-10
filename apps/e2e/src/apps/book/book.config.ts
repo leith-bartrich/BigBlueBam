@@ -1,0 +1,101 @@
+import type { AppConfig } from '../../registry/types';
+
+export const bookConfig: AppConfig = {
+  name: 'book',
+  displayName: 'Book',
+  basePath: '/book',
+  apiBasePath: '/book/api',
+  authRequired: true,
+  hasDragDrop: false,
+  hasKeyboardShortcuts: false,
+  hasWebSocket: false,
+  hasRichText: false,
+  pages: [
+    { name: 'week-view', path: '/', requiresAuth: true, interactions: ['calendar', 'modal', 'dropdown'] },
+    { name: 'day-view', path: '/day', requiresAuth: true, interactions: ['calendar', 'modal', 'dropdown'] },
+    {
+      name: 'day-specific',
+      path: '/day/:date',
+      requiresAuth: true,
+      interactions: ['calendar', 'modal'],
+    },
+    { name: 'month-view', path: '/month', requiresAuth: true, interactions: ['calendar', 'modal'] },
+    { name: 'timeline', path: '/timeline', requiresAuth: true, interactions: ['calendar', 'table'] },
+    { name: 'new-event', path: '/events/new', requiresAuth: true, interactions: ['form', 'modal'] },
+    {
+      name: 'event-detail',
+      path: '/events/:id',
+      requiresAuth: true,
+      requiresSetup: 'event',
+      interactions: ['form', 'modal'],
+    },
+    {
+      name: 'event-edit',
+      path: '/events/:id/edit',
+      requiresAuth: true,
+      requiresSetup: 'event',
+      interactions: ['form'],
+    },
+    { name: 'booking-pages', path: '/booking-pages', requiresAuth: true, interactions: ['table', 'modal', 'form'] },
+    {
+      name: 'booking-page-edit',
+      path: '/booking-pages/:id/edit',
+      requiresAuth: true,
+      requiresSetup: 'bookingPage',
+      interactions: ['form'],
+    },
+    { name: 'working-hours', path: '/settings/working-hours', requiresAuth: true, interactions: ['form', 'tabs'] },
+    { name: 'connections', path: '/settings/connections', requiresAuth: true, interactions: ['form', 'table'] },
+  ],
+  entities: [
+    {
+      name: 'event',
+      apiPath: '/events',
+      createFields: [
+        { name: 'title', type: 'text', required: true, label: 'Title' },
+        { name: 'start_time', type: 'date', required: true, label: 'Start Time' },
+        { name: 'end_time', type: 'date', required: true, label: 'End Time' },
+      ],
+      updateFields: [
+        { name: 'title', type: 'text', label: 'Title' },
+        { name: 'start_time', type: 'date', label: 'Start Time' },
+        { name: 'end_time', type: 'date', label: 'End Time' },
+      ],
+      listPath: '/',
+      detailPath: '/events/:id',
+      supportsPagination: true,
+      deleteRequiresConfirmation: true,
+    },
+    {
+      name: 'bookingPage',
+      apiPath: '/booking-pages',
+      createFields: [
+        { name: 'name', type: 'text', required: true, label: 'Name' },
+        { name: 'duration', type: 'number', required: true, label: 'Duration' },
+      ],
+      updateFields: [
+        { name: 'name', type: 'text', label: 'Name' },
+        { name: 'duration', type: 'number', label: 'Duration' },
+      ],
+      listPath: '/booking-pages',
+      detailPath: '/booking-pages/:id/edit',
+      supportsPagination: false,
+    },
+    {
+      name: 'availability',
+      apiPath: '/availability',
+      createFields: [
+        { name: 'day_of_week', type: 'select', required: true, label: 'Day' },
+        { name: 'start_time', type: 'text', required: true, label: 'Start' },
+        { name: 'end_time', type: 'text', required: true, label: 'End' },
+      ],
+      updateFields: [
+        { name: 'start_time', type: 'text', label: 'Start' },
+        { name: 'end_time', type: 'text', label: 'End' },
+      ],
+      listPath: '/settings/working-hours',
+      detailPath: '/settings/working-hours',
+      supportsPagination: false,
+    },
+  ],
+};
