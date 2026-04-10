@@ -11,6 +11,7 @@ import { BookingPageListPage } from '@/pages/booking-page-list';
 import { BookingPageEditorPage } from '@/pages/booking-page-editor';
 import { WorkingHoursPage } from '@/pages/working-hours';
 import { ConnectionsPage } from '@/pages/connections';
+import { CalendarsPage } from '@/pages/calendars';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -24,7 +25,8 @@ type Route =
   | { page: 'booking-pages' }
   | { page: 'booking-page-edit'; id: string }
   | { page: 'working-hours' }
-  | { page: 'connections' };
+  | { page: 'connections' }
+  | { page: 'calendars' };
 
 const BASE_PATH = '/book';
 
@@ -44,6 +46,7 @@ function parseRoute(path: string): Route {
   if (p === '/booking-pages') return { page: 'booking-pages' };
   if (p === '/settings/working-hours') return { page: 'working-hours' };
   if (p === '/settings/connections') return { page: 'connections' };
+  if (p === '/settings/calendars') return { page: 'calendars' };
 
   const dayMatch = p.match(/^\/day\/(\d{4}-\d{2}-\d{2})$/);
   if (dayMatch) return { page: 'day', date: dayMatch[1]! };
@@ -149,6 +152,8 @@ export function App() {
         return <WorkingHoursPage onNavigate={navigate} />;
       case 'connections':
         return <ConnectionsPage onNavigate={navigate} />;
+      case 'calendars':
+        return <CalendarsPage onNavigate={navigate} />;
       default:
         return null;
     }

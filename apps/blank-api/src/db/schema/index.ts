@@ -6,6 +6,7 @@ export {
   sessions,
   apiKeys,
   organizationMemberships,
+  projectMemberships,
 } from './bbb-refs.js';
 
 // Blank-specific tables

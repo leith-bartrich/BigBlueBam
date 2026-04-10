@@ -1,4 +1,4 @@
-import { Plus, Link2, ExternalLink, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Plus, Link2, ExternalLink, Trash2, ToggleLeft, ToggleRight, Construction } from 'lucide-react';
 import { useBookingPages, useDeleteBookingPage, useUpdateBookingPage } from '@/hooks/use-booking-pages';
 import { formatDate } from '@/lib/utils';
 
@@ -31,6 +31,15 @@ export function BookingPageListPage({ onNavigate }: BookingPageListPageProps) {
           <Plus className="h-4 w-4" />
           New Booking Page
         </button>
+      </div>
+
+      {/* Under-development banner */}
+      <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-4 flex items-start gap-3">
+        <Construction className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Feature under development</p>
+          <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Booking pages are coming soon. We're integrating with Bond CRM to support lead capture and meeting scheduling.</p>
+        </div>
       </div>
 
       {/* List */}

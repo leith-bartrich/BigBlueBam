@@ -35,6 +35,9 @@ export interface BlankForm {
   description: string | null;
   slug: string;
   form_type: string;
+  visibility: 'public' | 'org' | 'project';
+  expires_at: string | null;
+  project_id: string | null;
   status: string;
   accept_responses: boolean;
   show_progress_bar: boolean;
@@ -127,5 +130,30 @@ export function useFormAnalytics(formId: string | undefined) {
     queryKey: ['blank', 'analytics', formId],
     queryFn: () => api.get<{ data: unknown }>(`/v1/forms/${formId}/analytics`),
     enabled: !!formId,
+  });
+}
+
+// Fetch the user's projects directly from the Bam API so the form-builder
+// can show a project picker when visibility='project'. Uses the same
+// session cookie as the Blank SPA, so no extra auth wiring is required.
+interface BamProject {
+  id: string;
+  name: string;
+  slug?: string;
+}
+
+export function useBamProjects() {
+  return useQuery({
+    queryKey: ['blank', 'bam-projects'],
+    queryFn: async () => {
+      const res = await fetch('/b3/api/v1/projects', {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return { data: [] as BamProject[] };
+      const json = (await res.json()) as { data?: BamProject[] };
+      return { data: json.data ?? [] };
+    },
+    staleTime: 60_000,
   });
 }

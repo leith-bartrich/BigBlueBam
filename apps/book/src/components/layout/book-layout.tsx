@@ -34,6 +34,8 @@ function breadcrumbsFor(route: ActiveRoute): Crumb[] {
       return [{ label: 'Settings' }, { label: 'Working Hours' }];
     case 'connections':
       return [{ label: 'Settings' }, { label: 'Connections' }];
+    case 'calendars':
+      return [{ label: 'Settings' }, { label: 'Calendars' }];
     default:
       return [];
   }
