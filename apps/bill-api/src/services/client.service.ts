@@ -1,6 +1,6 @@
-import { eq, and, desc, ilike } from 'drizzle-orm';
+import { eq, and, desc, ilike, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { billClients, billInvoices } from '../db/schema/index.js';
+import { billClients, billInvoices, billSettings } from '../db/schema/index.js';
 import { notFound, badRequest } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
@@ -50,19 +50,69 @@ export interface UpdateClientInput {
 // ---------------------------------------------------------------------------
 
 export async function listClients(filters: ClientFilters) {
+  // Resolve the org default currency once — bill_clients has no per-row currency,
+  // so resolver consumers get the org-wide default alongside each row.
+  const [settings] = await db
+    .select({ default_currency: billSettings.default_currency })
+    .from(billSettings)
+    .where(eq(billSettings.organization_id, filters.organization_id))
+    .limit(1);
+  const defaultCurrency = settings?.default_currency ?? 'USD';
+
   const conditions: any[] = [eq(billClients.organization_id, filters.organization_id)];
 
-  if (filters.search) {
-    conditions.push(ilike(billClients.name, `%${filters.search}%`));
+  if (filters.search && filters.search.trim().length > 0) {
+    const term = `%${filters.search.trim()}%`;
+    // Fuzzy search across client name, email, and the joined bond company name.
+    conditions.push(
+      or(
+        ilike(billClients.name, term),
+        ilike(billClients.email, term),
+        sql`bond_companies.name ILIKE ${term}`,
+      ),
+    );
   }
 
+  // LEFT JOIN bond_companies via raw SQL — bond lives in a sibling service but
+  // shares the same Postgres database, and bill_clients.bond_company_id has no
+  // Drizzle FK declared here.
   const rows = await db
-    .select()
+    .select({
+      id: billClients.id,
+      organization_id: billClients.organization_id,
+      name: billClients.name,
+      email: billClients.email,
+      phone: billClients.phone,
+      address_line1: billClients.address_line1,
+      address_line2: billClients.address_line2,
+      city: billClients.city,
+      state_region: billClients.state_region,
+      postal_code: billClients.postal_code,
+      country: billClients.country,
+      tax_id: billClients.tax_id,
+      bond_company_id: billClients.bond_company_id,
+      default_payment_terms_days: billClients.default_payment_terms_days,
+      default_payment_instructions: billClients.default_payment_instructions,
+      notes: billClients.notes,
+      created_by: billClients.created_by,
+      created_at: billClients.created_at,
+      updated_at: billClients.updated_at,
+      company_name: sql<string | null>`bond_companies.name`,
+    })
     .from(billClients)
+    .leftJoin(
+      sql`bond_companies`,
+      sql`bond_companies.id = ${billClients.bond_company_id}`,
+    )
     .where(and(...conditions))
     .orderBy(desc(billClients.created_at));
 
-  return { data: rows };
+  return {
+    data: rows.map((row) => ({
+      ...row,
+      currency: defaultCurrency,
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------

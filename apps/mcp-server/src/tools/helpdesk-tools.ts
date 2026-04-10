@@ -79,6 +79,59 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
   );
 
   server.tool(
+    'helpdesk_get_ticket_by_number',
+    'Resolve a helpdesk ticket by its human-readable ticket number (e.g. 1234 or #1234). Leading "#" is stripped. Returns the full ticket record enriched with requester and task-derived assignee info, or null if not found. Use this when you only have the ticket number (as typically shown to customers or agents) and need to resolve it to the underlying UUID / full record before calling other helpdesk tools.',
+    {
+      number: z.union([z.string().min(1), z.number().int().positive()]).describe('The human-readable ticket number; may be prefixed with "#"'),
+    },
+    async ({ number }) => {
+      const stripped = String(number).trim().replace(/^#/, '');
+      const encoded = encodeURIComponent(stripped);
+      const result = await helpdeskRequest('GET', `/tickets/by-number/${encoded}`);
+
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error resolving ticket by number: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'helpdesk_search_tickets',
+    'Fuzzy search helpdesk tickets by subject and body within the caller\'s org. Returns up to 20 matches as a compact projection ({ id, number, subject, status, priority, requester_email, requester_name, assignee_id, assignee_name }), ordered by most recently updated. Optional filters narrow by status and by the linked task\'s assignee_id. Intended as a resolver for natural-language ticket lookups where only a fragment of the subject/body is known.',
+    {
+      query: z.string().min(1).max(500).describe('Search text — matched case-insensitively against ticket subject and body'),
+      status: z.enum(['open', 'in_progress', 'waiting_on_client', 'waiting_on_customer', 'resolved', 'closed']).optional().describe('Optional status filter'),
+      assignee_id: z.string().uuid().optional().describe('Optional assignee filter (matches the linked task\'s assignee)'),
+    },
+    async ({ query, status, assignee_id }) => {
+      const sp = new URLSearchParams();
+      sp.set('q', query);
+      if (status) sp.set('status', status);
+      if (assignee_id) sp.set('assignee_id', assignee_id);
+
+      const result = await helpdeskRequest('GET', `/tickets/search?${sp.toString()}`);
+
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error searching tickets: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
     'reply_to_ticket',
     'Send a message on a helpdesk ticket (public reply or internal note)',
     {

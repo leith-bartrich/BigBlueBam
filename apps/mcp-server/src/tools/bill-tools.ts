@@ -270,4 +270,29 @@ export function registerBillTools(server: McpServer, api: ApiClient, billApiUrl:
       return result.ok ? ok(result.data) : err('resolving rate', result.data);
     },
   );
+
+  // ===== 15. bill_list_clients =====
+  server.tool(
+    'bill_list_clients',
+    'List billing clients for the organization, with optional fuzzy search across name, email, and linked Bond company name. Returns id, name, email, company_id, company_name, currency (org default), and default_payment_terms_days — the resolver surface every "bill client X" rule needs.',
+    {
+      search: z.string().optional().describe('Optional fuzzy search across client name, email, and Bond company name'),
+    },
+    async (params) => {
+      const result = await client.request('GET', `/clients${buildQs(params)}`);
+      if (!result.ok) return err('listing clients', result.data);
+
+      const rows = (result.data as any)?.data ?? [];
+      const clients = rows.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email ?? null,
+        company_id: c.bond_company_id ?? null,
+        company_name: c.company_name ?? null,
+        currency: c.currency ?? null,
+        default_payment_terms_days: c.default_payment_terms_days,
+      }));
+      return ok({ data: clients });
+    },
+  );
 }

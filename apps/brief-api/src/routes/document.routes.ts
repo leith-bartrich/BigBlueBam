@@ -169,6 +169,32 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /documents/by-slug/:slug — Resolve a slug to a document (mirror of
+  // GET /documents/:id but scoped exclusively to slug lookups so MCP resolvers
+  // never have to guess). Declared before the parametric /documents/:id route
+  // so Fastify matches the literal `/by-slug/` segment first.
+  fastify.get<{ Params: { slug: string } }>(
+    '/documents/by-slug/:slug',
+    {
+      // Pass the slug through as the `:id` param the existing middleware
+      // expects. `requireDocumentAccess` already accepts a UUID *or* a slug
+      // and loads the row onto `request.document`, so reusing it keeps the
+      // auth rules in sync.
+      preHandler: [
+        requireAuth,
+        async (request, _reply) => {
+          (request.params as { id?: string }).id = (request.params as { slug: string }).slug;
+        },
+        requireDocumentAccess(),
+      ],
+    },
+    async (request, reply) => {
+      const doc = (request as any).document;
+      const { yjs_state, ...rest } = doc;
+      return reply.send({ data: rest });
+    },
+  );
+
   // GET /documents/:id — Get a single document
   fastify.get<{ Params: { id: string } }>(
     '/documents/:id',

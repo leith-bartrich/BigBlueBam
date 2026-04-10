@@ -1,4 +1,4 @@
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { benchScheduledReports, benchDashboards } from '../db/schema/index.js';
 import { notFound, badRequest } from '../lib/utils.js';
@@ -32,11 +32,31 @@ export interface UpdateReportInput {
 // List reports
 // ---------------------------------------------------------------------------
 
-export async function listReports(orgId: string) {
+export async function listReports(orgId: string, search?: string) {
+  const conditions = [eq(benchScheduledReports.organization_id, orgId)];
+  if (search && search.trim().length > 0) {
+    conditions.push(ilike(benchScheduledReports.name, `%${search.trim()}%`));
+  }
+
   return db
-    .select()
+    .select({
+      id: benchScheduledReports.id,
+      name: benchScheduledReports.name,
+      dashboard_id: benchScheduledReports.dashboard_id,
+      dashboard_name: benchDashboards.name,
+      cron_expression: benchScheduledReports.cron_expression,
+      cron_timezone: benchScheduledReports.cron_timezone,
+      delivery_method: benchScheduledReports.delivery_method,
+      delivery_target: benchScheduledReports.delivery_target,
+      export_format: benchScheduledReports.export_format,
+      enabled: benchScheduledReports.enabled,
+      last_sent_at: benchScheduledReports.last_sent_at,
+      created_at: benchScheduledReports.created_at,
+      updated_at: benchScheduledReports.updated_at,
+    })
     .from(benchScheduledReports)
-    .where(eq(benchScheduledReports.organization_id, orgId))
+    .innerJoin(benchDashboards, eq(benchScheduledReports.dashboard_id, benchDashboards.id))
+    .where(and(...conditions))
     .orderBy(asc(benchScheduledReports.created_at));
 }
 

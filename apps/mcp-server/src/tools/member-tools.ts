@@ -98,4 +98,53 @@ export function registerMemberTools(server: McpServer, api: ApiClient): void {
       };
     },
   );
+
+  // Bam-scoped user resolvers. These duplicate the surface of the
+  // top-level `find_user_by_email` / `find_user_by_name` tools from
+  // user-resolver-tools.ts so that Bam-centric prompts and rules can
+  // find them via the `bam_*` namespace convention. Both tools call the
+  // same shared `/users/*` endpoints under the hood.
+  server.tool(
+    'bam_find_user_by_email',
+    "Find a user by their exact email address (case-insensitive, scoped to the caller's active org). Returns the user `{ id, email, name, display_name, avatar_url }` or null when no match.",
+    {
+      email: z.string().email().describe('Email address to look up'),
+    },
+    async ({ email }) => {
+      const result = await api.get(`/users/by-email?email=${encodeURIComponent(email)}`);
+
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error looking up user by email: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    'bam_find_user',
+    "Fuzzy-search users by display name or email (scoped to the caller's active org). Results are ranked by relevance and capped at 20.",
+    {
+      query: z.string().min(1).describe('Free-text query matched against display name and email'),
+    },
+    async ({ query }) => {
+      const result = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
+
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error searching users: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  );
 }

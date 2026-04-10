@@ -63,6 +63,29 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
   );
 
   server.tool(
+    'bam_get_task_by_human_id',
+    "Look up a task by its human-readable reference (e.g. 'FRND-42'). The prefix is case-insensitive. Returns the task's id, project_id, human_id, and title. Useful when a prompt or rule refers to a task by its ticket number rather than UUID.",
+    {
+      human_id: z.string().min(3).describe("Human-readable task ID like 'FRND-42' (case-insensitive prefix)"),
+    },
+    async ({ human_id }) => {
+      const ref = encodeURIComponent(human_id.trim().replace(/^#/, ''));
+      const result = await api.get(`/tasks/by-ref/${ref}`);
+
+      if (!result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `Error resolving task ${human_id}: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
     'create_task',
     'Create a new task in a project',
     {

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   banterUserGroups,
@@ -81,6 +81,60 @@ export default async function userGroupRoutes(fastify: FastifyInstance) {
       });
 
       return reply.status(201).send({ data: group });
+    },
+  );
+
+  // GET /v1/user-groups/by-handle/:handle — resolve a group by its @handle
+  //
+  // Read-only resolver used by MCP tooling to translate @engineering
+  // into a stable group id. Caller strips the leading '@'. Scoped to
+  // the authenticated user's active org. Returns `{ data: null }` if
+  // no match (not 404) so callers can treat it uniformly.
+  fastify.get(
+    '/v1/user-groups/by-handle/:handle',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { handle } = request.params as { handle: string };
+      const user = request.user!;
+
+      const cleaned = (handle ?? '').replace(/^@/, '').trim().toLowerCase();
+      if (!cleaned || cleaned.length > 80) {
+        return reply.send({ data: null });
+      }
+
+      const [group] = await db
+        .select({
+          id: banterUserGroups.id,
+          name: banterUserGroups.name,
+          handle: banterUserGroups.handle,
+          description: banterUserGroups.description,
+        })
+        .from(banterUserGroups)
+        .where(
+          and(
+            eq(banterUserGroups.org_id, user.org_id),
+            eq(banterUserGroups.handle, cleaned),
+          ),
+        )
+        .limit(1);
+
+      if (!group) {
+        return reply.send({ data: null });
+      }
+
+      // Include a member_count derived from the memberships table so
+      // callers don't have to make a second round-trip.
+      const [countRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(banterUserGroupMemberships)
+        .where(eq(banterUserGroupMemberships.group_id, group.id));
+
+      return reply.send({
+        data: {
+          ...group,
+          member_count: countRow?.count ?? 0,
+        },
+      });
     },
   );
 

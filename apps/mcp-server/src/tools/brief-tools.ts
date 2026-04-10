@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { resolveDocumentId } from '../middleware/resolve-helpers.js';
 
 /**
  * Helper to make requests to the brief-api service.
@@ -56,6 +57,17 @@ function buildQs(params: Record<string, unknown>): string {
 export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUrl: string): void {
   const client = createBriefClient(briefApiUrl, api);
 
+  // Standard "document not found" response when a slug fails to resolve.
+  // Write tools call `resolveDocumentId` before hitting their mutation
+  // endpoint; this surfaces a clean, actionable error instead of forwarding
+  // the slug and getting a generic 400/404 from the underlying service call.
+  function documentNotFound(idOrSlug: string) {
+    return {
+      content: [{ type: 'text' as const, text: `Brief document not found: ${idOrSlug}` }],
+      isError: true as const,
+    };
+  }
+
   // ===== DOCUMENTS CRUD (9) =====
 
   server.tool(
@@ -108,7 +120,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_update',
     'Update Brief document metadata. Provide only the fields to change.',
     {
-      id: z.string().uuid().describe('Document ID'),
+      id: z.string().describe('Document ID (UUID) or slug'),
       title: z.string().max(500).optional().describe('Updated title'),
       status: z.enum(['draft', 'in_review', 'approved', 'archived']).optional().describe('Updated status'),
       visibility: z.enum(['private', 'project', 'organization']).optional().describe('Updated visibility'),
@@ -117,7 +129,9 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
       pinned: z.boolean().optional().describe('Pin document to top of list'),
     },
     async ({ id, ...body }) => {
-      const result = await client.request('PATCH', `/documents/${id}`, body);
+      const documentId = await resolveDocumentId(client, id);
+      if (!documentId) return documentNotFound(id);
+      const result = await client.request('PATCH', `/documents/${documentId}`, body);
       return result.ok ? ok(result.data) : err('updating document', result.data);
     },
   );
@@ -126,11 +140,13 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_update_content',
     'Replace the entire content of a Brief document with new Markdown.',
     {
-      id: z.string().uuid().describe('Document ID'),
+      id: z.string().describe('Document ID (UUID) or slug'),
       content: z.string().max(500_000).describe('New Markdown content (max 500k chars)'),
     },
     async ({ id, content }) => {
-      const result = await client.request('PUT', `/documents/${id}/content`, { content });
+      const documentId = await resolveDocumentId(client, id);
+      if (!documentId) return documentNotFound(id);
+      const result = await client.request('PUT', `/documents/${documentId}/content`, { content });
       return result.ok ? ok(result.data) : err('updating document content', result.data);
     },
   );
@@ -139,11 +155,13 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_append_content',
     'Append Markdown content to the end of a Brief document.',
     {
-      id: z.string().uuid().describe('Document ID'),
+      id: z.string().describe('Document ID (UUID) or slug'),
       content: z.string().max(100_000).describe('Markdown to append (max 100k chars)'),
     },
     async ({ id, content }) => {
-      const result = await client.request('POST', `/documents/${id}/append`, { content });
+      const documentId = await resolveDocumentId(client, id);
+      if (!documentId) return documentNotFound(id);
+      const result = await client.request('POST', `/documents/${documentId}/append`, { content });
       return result.ok ? ok(result.data) : err('appending to document', result.data);
     },
   );
@@ -152,10 +170,12 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_archive',
     'Archive a Brief document (soft-delete).',
     {
-      id: z.string().uuid().describe('Document ID'),
+      id: z.string().describe('Document ID (UUID) or slug'),
     },
     async ({ id }) => {
-      const result = await client.request('DELETE', `/documents/${id}`);
+      const documentId = await resolveDocumentId(client, id);
+      if (!documentId) return documentNotFound(id);
+      const result = await client.request('DELETE', `/documents/${documentId}`);
       return result.ok ? ok(result.data) : err('archiving document', result.data);
     },
   );
@@ -164,10 +184,12 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_restore',
     'Restore an archived Brief document.',
     {
-      id: z.string().uuid().describe('Document ID'),
+      id: z.string().describe('Document ID (UUID) or slug'),
     },
     async ({ id }) => {
-      const result = await client.request('POST', `/documents/${id}/restore`);
+      const documentId = await resolveDocumentId(client, id);
+      if (!documentId) return documentNotFound(id);
+      const result = await client.request('POST', `/documents/${documentId}/restore`);
       return result.ok ? ok(result.data) : err('restoring document', result.data);
     },
   );
@@ -176,11 +198,13 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_duplicate',
     'Duplicate a Brief document, optionally into a different project.',
     {
-      id: z.string().uuid().describe('Document ID to duplicate'),
+      id: z.string().describe('Document ID (UUID) or slug'),
       project_id: z.string().uuid().optional().describe('Target project ID (defaults to same project)'),
     },
     async ({ id, ...body }) => {
-      const result = await client.request('POST', `/documents/${id}/duplicate`, Object.keys(body).length ? body : undefined);
+      const documentId = await resolveDocumentId(client, id);
+      if (!documentId) return documentNotFound(id);
+      const result = await client.request('POST', `/documents/${documentId}/duplicate`, Object.keys(body).length ? body : undefined);
       return result.ok ? ok(result.data) : err('duplicating document', result.data);
     },
   );
@@ -209,10 +233,12 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_comment_list',
     'List comments on a Brief document.',
     {
-      document_id: z.string().uuid().describe('Document ID'),
+      document_id: z.string().describe('Document ID (UUID) or slug'),
     },
     async ({ document_id }) => {
-      const result = await client.request('GET', `/documents/${document_id}/comments`);
+      const resolved = await resolveDocumentId(client, document_id);
+      if (!resolved) return documentNotFound(document_id);
+      const result = await client.request('GET', `/documents/${resolved}/comments`);
       return result.ok ? ok(result.data) : err('listing comments', result.data);
     },
   );
@@ -221,13 +247,15 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_comment_add',
     'Add a comment to a Brief document, optionally as a reply or anchored to specific text.',
     {
-      document_id: z.string().uuid().describe('Document ID'),
+      document_id: z.string().describe('Document ID (UUID) or slug'),
       body: z.string().max(10_000).describe('Comment body text (max 10k chars)'),
       parent_id: z.string().uuid().optional().describe('Parent comment ID for threaded reply'),
       anchor_text: z.string().max(500).optional().describe('Text selection the comment is anchored to (max 500 chars)'),
     },
     async ({ document_id, ...body }) => {
-      const result = await client.request('POST', `/documents/${document_id}/comments`, body);
+      const resolved = await resolveDocumentId(client, document_id);
+      if (!resolved) return documentNotFound(document_id);
+      const result = await client.request('POST', `/documents/${resolved}/comments`, body);
       return result.ok ? ok(result.data) : err('adding comment', result.data);
     },
   );
@@ -250,10 +278,12 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_versions',
     'List the version history of a Brief document.',
     {
-      document_id: z.string().uuid().describe('Document ID'),
+      document_id: z.string().describe('Document ID (UUID) or slug'),
     },
     async ({ document_id }) => {
-      const result = await client.request('GET', `/documents/${document_id}/versions`);
+      const resolved = await resolveDocumentId(client, document_id);
+      if (!resolved) return documentNotFound(document_id);
+      const result = await client.request('GET', `/documents/${resolved}/versions`);
       return result.ok ? ok(result.data) : err('listing versions', result.data);
     },
   );
@@ -262,11 +292,13 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_version_get',
     'Get a specific version of a Brief document.',
     {
-      document_id: z.string().uuid().describe('Document ID'),
+      document_id: z.string().describe('Document ID (UUID) or slug'),
       version_id: z.string().uuid().describe('Version ID'),
     },
     async ({ document_id, version_id }) => {
-      const result = await client.request('GET', `/documents/${document_id}/versions/${version_id}`);
+      const resolved = await resolveDocumentId(client, document_id);
+      if (!resolved) return documentNotFound(document_id);
+      const result = await client.request('GET', `/documents/${resolved}/versions/${version_id}`);
       return result.ok ? ok(result.data) : err('getting version', result.data);
     },
   );
@@ -275,11 +307,13 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_version_restore',
     'Restore a Brief document to a specific previous version.',
     {
-      document_id: z.string().uuid().describe('Document ID'),
+      document_id: z.string().describe('Document ID (UUID) or slug'),
       version_id: z.string().uuid().describe('Version ID to restore'),
     },
     async ({ document_id, version_id }) => {
-      const result = await client.request('POST', `/documents/${document_id}/versions/${version_id}/restore`);
+      const resolved = await resolveDocumentId(client, document_id);
+      if (!resolved) return documentNotFound(document_id);
+      const result = await client.request('POST', `/documents/${resolved}/versions/${version_id}/restore`);
       return result.ok ? ok(result.data) : err('restoring version', result.data);
     },
   );
@@ -290,10 +324,12 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_promote_to_beacon',
     'Graduate a Brief document to a Beacon knowledge article.',
     {
-      id: z.string().uuid().describe('Document ID to promote'),
+      id: z.string().describe('Document ID (UUID) or slug to promote'),
     },
     async ({ id }) => {
-      const result = await client.request('POST', `/documents/${id}/promote`);
+      const documentId = await resolveDocumentId(client, id);
+      if (!documentId) return documentNotFound(id);
+      const result = await client.request('POST', `/documents/${documentId}/promote`);
       return result.ok ? ok(result.data) : err('promoting document to beacon', result.data);
     },
   );
@@ -302,12 +338,14 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_link_task',
     'Link a Brief document to a Bam task.',
     {
-      document_id: z.string().uuid().describe('Document ID'),
+      document_id: z.string().describe('Document ID (UUID) or slug'),
       task_id: z.string().uuid().describe('Bam task ID to link'),
       link_type: z.enum(['reference', 'spec', 'notes', 'postmortem']).optional().describe('Type of link (default reference)'),
     },
     async ({ document_id, ...body }) => {
-      const result = await client.request('POST', `/documents/${document_id}/links/task`, body);
+      const resolved = await resolveDocumentId(client, document_id);
+      if (!resolved) return documentNotFound(document_id);
+      const result = await client.request('POST', `/documents/${resolved}/links/task`, body);
       return result.ok ? ok(result.data) : err('linking document to task', result.data);
     },
   );

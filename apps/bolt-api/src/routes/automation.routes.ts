@@ -195,6 +195,36 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /automations/by-name/:name — Resolve an automation by its name.
+  // Case-insensitive exact match preferred; single-hit fuzzy fallback.
+  // Returns a resolver-friendly projection (no conditions/actions) with
+  // aggregate action_count and last_execution_at. Returns { data: null }
+  // on miss rather than 404 so the MCP resolver tool can return null
+  // directly without special-casing error envelopes.
+  fastify.get<{ Params: { name: string } }>(
+    '/automations/by-name/:name',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const rawName = request.params.name;
+      if (!rawName || rawName.trim().length === 0) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'name parameter is required',
+            details: [{ field: 'name', issue: 'required' }],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const result = await automationService.getAutomationByName(
+        rawName,
+        request.user!.org_id,
+      );
+      return reply.send({ data: result });
+    },
+  );
+
   // GET /automations/:id — Get automation with conditions and actions
   fastify.get<{ Params: { id: string } }>(
     '/automations/:id',

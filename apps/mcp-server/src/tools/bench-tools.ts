@@ -241,6 +241,69 @@ export function registerBenchTools(server: McpServer, api: ApiClient, benchApiUr
     },
   );
 
+  // ===== bench_list_widgets =====
+  server.tool(
+    'bench_list_widgets',
+    'List widgets across the organization, optionally scoped to a single dashboard. Widgets are normally only reachable by nesting inside bench_get_dashboard; this gives them direct addressability for resolver flows. Returns id, name, type, dashboard_id, dashboard_name, position, and query.',
+    {
+      dashboard_id: z.string().uuid().optional().describe('Optional dashboard ID to scope results to'),
+    },
+    async (params) => {
+      const result = await client.request('GET', `/widgets${buildQs(params)}`);
+      if (!result.ok) return err('listing widgets', result.data);
+
+      const rows = (result.data as any)?.data ?? [];
+      const widgets = rows.map((w: any) => ({
+        id: w.id,
+        name: w.name,
+        type: w.widget_type,
+        dashboard_id: w.dashboard_id,
+        dashboard_name: w.dashboard_name,
+        position: null,
+        query: {
+          data_source: w.data_source,
+          entity: w.entity,
+          config: w.query_config,
+        },
+      }));
+      return ok({ data: widgets });
+    },
+  );
+
+  // ===== bench_list_scheduled_reports =====
+  server.tool(
+    'bench_list_scheduled_reports',
+    'List scheduled reports for the organization, with optional fuzzy search on name. Returns id, name, dashboard_id, dashboard_name, schedule (cron expression + timezone + enabled), recipients (delivery method/target/format), last_run_at, and next_run_at.',
+    {
+      search: z.string().optional().describe('Optional fuzzy search on report name'),
+    },
+    async (params) => {
+      const result = await client.request('GET', `/reports${buildQs(params)}`);
+      if (!result.ok) return err('listing scheduled reports', result.data);
+
+      const rows = (result.data as any)?.data ?? [];
+      const reports = rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        dashboard_id: r.dashboard_id,
+        dashboard_name: r.dashboard_name,
+        schedule: {
+          cron_expression: r.cron_expression,
+          cron_timezone: r.cron_timezone,
+          enabled: r.enabled,
+        },
+        recipients: {
+          delivery_method: r.delivery_method,
+          delivery_target: r.delivery_target,
+          export_format: r.export_format,
+        },
+        last_run_at: r.last_sent_at ?? null,
+        next_run_at: null,
+      }));
+      return ok({ data: reports });
+    },
+  );
+
   // ===== bench_compare_periods =====
   server.tool(
     'bench_compare_periods',

@@ -87,6 +87,19 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
   );
 
   server.tool(
+    'bolt_get_automation_by_name',
+    'Resolve an automation by its name within the caller\'s org. Case-insensitive exact match is preferred; falls back to a single-hit fuzzy ILIKE "%name%" match. Returns a compact projection ({ id, name, description, trigger_source, trigger_event, enabled, action_count, last_execution_at }) or null if no unique match is found. Useful for meta-automations that need to reference other automations by name (e.g. disable the "Nightly Deploys" automation when an incident is declared).',
+    {
+      name: z.string().min(1).max(255).describe('Automation name to resolve (case-insensitive)'),
+    },
+    async ({ name }) => {
+      const encoded = encodeURIComponent(name);
+      const result = await client.request('GET', `/automations/by-name/${encoded}`);
+      return result.ok ? ok(result.data) : err('resolving automation by name', result.data);
+    },
+  );
+
+  server.tool(
     'bolt_create',
     'Create a new workflow automation with trigger, conditions, and actions.',
     {

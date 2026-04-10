@@ -102,6 +102,28 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
   );
 
+  // Resolver: translate a human-friendly name/handle into a channel id.
+  // Read-only, idempotent; returns null on miss rather than erroring so
+  // callers can cheaply probe for existence.
+  server.tool(
+    'banter_get_channel_by_name',
+    'Resolve a Banter channel by name or handle. Accepts "general", "#general", or a slug. Returns the channel {id, name, handle, type, description} or null if not found.',
+    {
+      name_or_handle: z
+        .string()
+        .min(1)
+        .describe('Channel name, handle, or slug. A leading "#" is accepted and stripped.'),
+    },
+    async ({ name_or_handle }) => {
+      const cleaned = name_or_handle.replace(/^#/, '').trim();
+      if (!cleaned) return ok({ data: null });
+      const result = await banter.get(
+        `/banter/api/v1/channels/by-name/${encodeURIComponent(cleaned)}`,
+      );
+      return result.ok ? ok(result.data) : err('resolving channel by name', result.data);
+    },
+  );
+
   server.tool(
     'banter_create_channel',
     'Create a new Banter channel',
@@ -499,6 +521,60 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
   );
 
   // ---------------------------------------------------------------------------
+  // User resolver tools (3) — read-only lookups for translating a human
+  // identifier (email, handle, fuzzy name) into a stable user id. Banter
+  // does not own its user table; these resolve against the shared Bam
+  // users table and are scoped to the caller's active org.
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'banter_find_user_by_email',
+    'Find a Banter user by email (case-insensitive exact match). Returns {id, email, name, display_name, avatar_url} or null if no match.',
+    {
+      email: z.string().min(1).describe('The email address to look up.'),
+    },
+    async ({ email }) => {
+      const qs = new URLSearchParams({ email });
+      const result = await banter.get(`/banter/api/v1/users/by-email?${qs.toString()}`);
+      return result.ok ? ok(result.data) : err('finding user by email', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_find_user_by_handle',
+    'Find a Banter user by handle (accepts "@alice" or "alice"). Banter users do not have a dedicated handle column — matching falls back to a slugified form of display_name (lower-cased, whitespace collapsed to hyphens). Returns the user or null.',
+    {
+      handle: z.string().min(1).describe('The user handle. A leading "@" is accepted and stripped.'),
+    },
+    async ({ handle }) => {
+      const cleaned = handle.replace(/^@/, '').trim();
+      if (!cleaned) return ok({ data: null });
+      const result = await banter.get(
+        `/banter/api/v1/users/by-handle/${encodeURIComponent(cleaned)}`,
+      );
+      return result.ok ? ok(result.data) : err('finding user by handle', result.data);
+    },
+  );
+
+  server.tool(
+    'banter_list_users',
+    'Fuzzy search Banter users by name, display name, or email. Returns up to 20 users in the active org ordered by relevance. If no query is supplied, returns the 20 most recently created users.',
+    {
+      query: z
+        .string()
+        .optional()
+        .describe('Optional fuzzy search term matched against display_name and email.'),
+    },
+    async ({ query }) => {
+      const qs = new URLSearchParams();
+      if (query !== undefined && query.trim().length > 0) qs.set('q', query);
+      qs.set('limit', '20');
+      const result = await banter.get(`/banter/api/v1/users/search?${qs.toString()}`);
+      return result.ok ? ok(result.data) : err('listing users', result.data);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
   // User group tools (5)
   // ---------------------------------------------------------------------------
 
@@ -517,6 +593,25 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       const q = qs.toString();
       const result = await banter.get(`/banter/api/v1/user-groups${q ? `?${q}` : ''}`);
       return result.ok ? ok(result.data) : err('listing user groups', result.data);
+    },
+  );
+
+  // Resolver: closes the loop on banter_create_user_group, which takes a
+  // handle. This lets callers check for an existing group or follow up a
+  // creation with a stable id lookup without needing to scan the list.
+  server.tool(
+    'banter_get_user_group_by_handle',
+    'Resolve a Banter user group by handle (accepts "@engineering" or "engineering"). Returns {id, name, handle, description, member_count} or null if no match.',
+    {
+      handle: z.string().min(1).describe('The group handle. A leading "@" is accepted and stripped.'),
+    },
+    async ({ handle }) => {
+      const cleaned = handle.replace(/^@/, '').trim();
+      if (!cleaned) return ok({ data: null });
+      const result = await banter.get(
+        `/banter/api/v1/user-groups/by-handle/${encodeURIComponent(cleaned)}`,
+      );
+      return result.ok ? ok(result.data) : err('resolving user group by handle', result.data);
     },
   );
 

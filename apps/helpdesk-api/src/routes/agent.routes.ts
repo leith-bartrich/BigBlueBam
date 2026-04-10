@@ -1,12 +1,18 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, or, sql, ilike } from 'drizzle-orm';
 import argon2 from 'argon2';
 import { db } from '../db/index.js';
 import { tickets } from '../db/schema/tickets.js';
 import { ticketMessages } from '../db/schema/ticket-messages.js';
-import { projects, users } from '../db/schema/bbb-refs.js';
+import { projects, users, tasks } from '../db/schema/bbb-refs.js';
+import { helpdeskUsers } from '../db/schema/helpdesk-users.js';
 import { helpdeskAgentApiKeys } from '../db/schema/helpdesk-agent-api-keys.js';
+
+/** Escape LIKE/ILIKE metacharacters so user input is treated as literal text. */
+function escapeLike(s: string): string {
+  return s.replace(/[%_\\]/g, '\\$&');
+}
 import {
   broadcastTicketMessage,
   broadcastTicketStatusChanged,
@@ -314,6 +320,151 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       .innerJoin(projects, eq(projects.id, tickets.project_id))
       .where(conditions.length === 1 ? conditions[0] : and(...conditions))
       .orderBy(desc(tickets.updated_at));
+
+    return reply.send({ data: rows });
+  });
+
+  // GET /tickets/by-number/:number — Resolve a ticket by its human-readable
+  // ticket_number. Leading '#' is stripped. Returns the ticket record
+  // (org-scoped) enriched with requester and task-derived assignee info,
+  // or { data: null } if not found. Registered before /tickets/:id so the
+  // static segment wins the match on Fastify's router.
+  fastify.get('/tickets/by-number/:number', { preHandler: [requireAgentAuth] }, async (request, reply) => {
+    const { number: rawNumber } = request.params as { number: string };
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Strip leading '#' and parse as positive integer.
+    const stripped = String(rawNumber ?? '').trim().replace(/^#/, '');
+    const parsed = Number.parseInt(stripped, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0 || String(parsed) !== stripped) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'number must be a positive integer (optionally prefixed with #)',
+          details: [{ field: 'number', issue: 'invalid' }],
+          request_id: request.id,
+        },
+      });
+    }
+
+    // Org-scoped lookup via projects. Left-join tasks/users so we can
+    // surface assignee_id / assignee_name when the ticket mirrors to a
+    // Bam task; tickets themselves carry no assignee column.
+    const [row] = await db
+      .select({
+        id: tickets.id,
+        ticket_number: tickets.ticket_number,
+        helpdesk_user_id: tickets.helpdesk_user_id,
+        task_id: tickets.task_id,
+        project_id: tickets.project_id,
+        subject: tickets.subject,
+        description: tickets.description,
+        status: tickets.status,
+        priority: tickets.priority,
+        category: tickets.category,
+        created_at: tickets.created_at,
+        updated_at: tickets.updated_at,
+        resolved_at: tickets.resolved_at,
+        closed_at: tickets.closed_at,
+        requester_email: helpdeskUsers.email,
+        requester_name: helpdeskUsers.display_name,
+        assignee_id: tasks.assignee_id,
+        assignee_name: users.display_name,
+      })
+      .from(tickets)
+      .innerJoin(projects, eq(projects.id, tickets.project_id))
+      .innerJoin(helpdeskUsers, eq(helpdeskUsers.id, tickets.helpdesk_user_id))
+      .leftJoin(tasks, eq(tasks.id, tickets.task_id))
+      .leftJoin(users, eq(users.id, tasks.assignee_id))
+      .where(and(eq(tickets.ticket_number, parsed), eq(projects.org_id, scopeOrgId)))
+      .limit(1);
+
+    return reply.send({ data: row ?? null });
+  });
+
+  // GET /tickets/search?q=...&status=...&assignee_id=... — Fuzzy search
+  // tickets by subject + description within the caller's org. Returns up
+  // to 20 rows ordered by most-recently-updated. Optional filters narrow
+  // by status and by (task) assignee_id. Registered before /tickets/:id
+  // so the static segment wins routing.
+  fastify.get('/tickets/search', { preHandler: [requireAgentAuth] }, async (request, reply) => {
+    const query = request.query as { q?: string; status?: string; assignee_id?: string };
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required. Authenticate with a Bam session cookie or use an agent key linked to a user with an org.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    const q = (query.q ?? '').trim();
+    if (q.length === 0) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'q query parameter is required',
+          details: [{ field: 'q', issue: 'required' }],
+          request_id: request.id,
+        },
+      });
+    }
+    if (q.length > 500) {
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'q must be 500 characters or fewer',
+          details: [{ field: 'q', issue: 'too_long' }],
+          request_id: request.id,
+        },
+      });
+    }
+
+    const escaped = escapeLike(q);
+    const pattern = `%${escaped}%`;
+
+    const conditions: any[] = [
+      eq(projects.org_id, scopeOrgId),
+      or(ilike(tickets.subject, pattern), ilike(tickets.description, pattern))!,
+    ];
+    if (query.status) conditions.push(eq(tickets.status, query.status));
+    if (query.assignee_id) conditions.push(eq(tasks.assignee_id, query.assignee_id));
+
+    const rows = await db
+      .select({
+        id: tickets.id,
+        number: tickets.ticket_number,
+        subject: tickets.subject,
+        status: tickets.status,
+        priority: tickets.priority,
+        requester_email: helpdeskUsers.email,
+        requester_name: helpdeskUsers.display_name,
+        assignee_id: tasks.assignee_id,
+        assignee_name: users.display_name,
+      })
+      .from(tickets)
+      .innerJoin(projects, eq(projects.id, tickets.project_id))
+      .innerJoin(helpdeskUsers, eq(helpdeskUsers.id, tickets.helpdesk_user_id))
+      .leftJoin(tasks, eq(tasks.id, tickets.task_id))
+      .leftJoin(users, eq(users.id, tasks.assignee_id))
+      .where(and(...conditions))
+      .orderBy(desc(tickets.updated_at))
+      .limit(20);
 
     return reply.send({ data: rows });
   });

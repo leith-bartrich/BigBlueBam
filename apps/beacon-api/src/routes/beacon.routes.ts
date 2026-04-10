@@ -115,6 +115,30 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /beacons/by-slug/:slug — Resolve a slug to a beacon (mirror of GET
+  // /beacons/:id but scoped exclusively to slug lookups so MCP resolvers
+  // never have to guess). Declared before the parametric /beacons/:id route
+  // so Fastify matches the literal `/by-slug/` segment first.
+  fastify.get<{ Params: { slug: string } }>(
+    '/beacons/by-slug/:slug',
+    {
+      // Pass the slug through as the `:id` param that the existing
+      // middleware expects. `requireBeaconReadAccess` already accepts a
+      // UUID *or* a slug and loads the row onto `request.beacon`, so
+      // reusing it keeps the auth rules in sync.
+      preHandler: [
+        requireAuth,
+        async (request, _reply) => {
+          (request.params as { id?: string }).id = (request.params as { slug: string }).slug;
+        },
+        requireBeaconReadAccess(),
+      ],
+    },
+    async (request, reply) => {
+      return reply.send({ data: (request as any).beacon });
+    },
+  );
+
   // GET /beacons/:id — Get a single beacon by UUID or slug
   fastify.get<{ Params: { id: string } }>(
     '/beacons/:id',

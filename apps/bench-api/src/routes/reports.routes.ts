@@ -33,12 +33,16 @@ const updateReportSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export default async function reportRoutes(fastify: FastifyInstance) {
-  // GET /reports — List reports
+  // GET /reports — List reports (optional fuzzy search on name)
   fastify.get(
     '/reports',
     { preHandler: [requireAuth, requireMinRole('admin')] },
     async (request, reply) => {
-      const reports = await reportService.listReports(request.user!.org_id);
+      const query = z.object({ search: z.string().optional() }).parse(request.query);
+      const reports = await reportService.listReports(
+        request.user!.org_id,
+        query.search,
+      );
       return reply.send({ data: reports });
     },
   );

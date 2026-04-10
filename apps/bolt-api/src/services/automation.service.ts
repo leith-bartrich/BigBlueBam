@@ -427,6 +427,89 @@ export async function getAutomationById(id: string, orgId: string) {
   return automation ?? null;
 }
 
+/**
+ * Resolve an automation by its name within an org. Prefers an exact
+ * case-insensitive match; falls back to a single ILIKE "%name%" hit when
+ * exactly one row contains the query as a substring. Returns null if no
+ * match is found or the fuzzy fallback is ambiguous (>1 row).
+ *
+ * Result shape is resolver-friendly and excludes conditions/actions; it
+ * includes an `action_count` aggregate and the automation's
+ * `last_executed_at` (aliased as `last_execution_at` for external callers).
+ */
+export async function getAutomationByName(
+  name: string,
+  orgId: string,
+): Promise<
+  | {
+      id: string;
+      name: string;
+      description: string | null;
+      trigger_source: string;
+      trigger_event: string;
+      enabled: boolean;
+      action_count: number;
+      last_execution_at: Date | null;
+    }
+  | null
+> {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return null;
+
+  // 1) Exact case-insensitive match first.
+  const exactRows = await db
+    .select()
+    .from(boltAutomations)
+    .where(
+      and(
+        eq(boltAutomations.org_id, orgId),
+        ilike(boltAutomations.name, trimmed),
+      ),
+    )
+    .limit(2);
+
+  let row = exactRows[0];
+
+  // 2) Fuzzy fallback: single-hit ILIKE %trimmed%.
+  if (!row) {
+    const escaped = escapeLike(trimmed);
+    const fuzzyRows = await db
+      .select()
+      .from(boltAutomations)
+      .where(
+        and(
+          eq(boltAutomations.org_id, orgId),
+          ilike(boltAutomations.name, `%${escaped}%`),
+        ),
+      )
+      .orderBy(asc(boltAutomations.created_at))
+      .limit(2);
+
+    // Only accept the fuzzy hit if it's unambiguous.
+    if (fuzzyRows.length === 1) {
+      row = fuzzyRows[0];
+    }
+  }
+
+  if (!row) return null;
+
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(boltActions)
+    .where(eq(boltActions.automation_id, row.id));
+
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    trigger_source: row.trigger_source,
+    trigger_event: row.trigger_event,
+    enabled: row.enabled,
+    action_count: Number(countRow?.count ?? 0),
+    last_execution_at: row.last_executed_at,
+  };
+}
+
 export async function createAutomation(
   data: CreateAutomationInput,
   userId: string,

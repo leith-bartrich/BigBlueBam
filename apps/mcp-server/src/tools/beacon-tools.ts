@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { resolveBeaconId } from '../middleware/resolve-helpers.js';
 
 /**
  * Helper to make requests to the beacon-api service.
@@ -56,6 +57,17 @@ function buildQs(params: Record<string, unknown>): string {
 export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApiUrl: string): void {
   const client = createBeaconClient(beaconApiUrl, api);
 
+  // Standard "beacon not found" response when a slug fails to resolve.
+  // Write tools call `resolveBeaconId` before hitting their mutation endpoint;
+  // this surfaces a clean, actionable error instead of forwarding the slug
+  // and getting a generic 400/404 from the underlying service call.
+  function beaconNotFound(idOrSlug: string) {
+    return {
+      content: [{ type: 'text' as const, text: `Beacon not found: ${idOrSlug}` }],
+      isError: true as const,
+    };
+  }
+
   // ===== CRUD (11) =====
 
   server.tool(
@@ -107,7 +119,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_update',
     'Update a Beacon (creates a new version). Provide only the fields to change.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
       title: z.string().min(1).max(512).optional().describe('Updated title'),
       summary: z.string().max(500).optional().describe('Updated summary'),
       body_markdown: z.string().min(1).max(500_000).optional().describe('Updated body content (Markdown)'),
@@ -115,7 +127,9 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
       change_note: z.string().max(500).optional().describe('Note describing what changed'),
     },
     async ({ id, ...body }) => {
-      const result = await client.request('PUT', `/beacons/${id}`, body);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('PUT', `/beacons/${beaconId}`, body);
       return result.ok ? ok(result.data) : err('updating beacon', result.data);
     },
   );
@@ -124,10 +138,12 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_retire',
     'Retire (soft-delete) a Beacon.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
     },
     async ({ id }) => {
-      const result = await client.request('DELETE', `/beacons/${id}`);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('DELETE', `/beacons/${beaconId}`);
       return result.ok ? ok(result.data) : err('retiring beacon', result.data);
     },
   );
@@ -136,10 +152,12 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_publish',
     'Transition a Beacon from Draft to Active.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
     },
     async ({ id }) => {
-      const result = await client.request('POST', `/beacons/${id}/publish`);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('POST', `/beacons/${beaconId}/publish`);
       return result.ok ? ok(result.data) : err('publishing beacon', result.data);
     },
   );
@@ -148,14 +166,16 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_verify',
     'Record a verification event on a Beacon (confirms content is still accurate).',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
       verification_type: z.enum(['Manual', 'AgentAutomatic', 'AgentAssisted', 'ScheduledReview']).describe('Type of verification'),
       outcome: z.enum(['Confirmed', 'Updated', 'Challenged', 'Retired']).describe('Verification outcome'),
       confidence_score: z.number().min(0).max(1).optional().describe('Confidence score (0-1)'),
       notes: z.string().max(1000).optional().describe('Optional verification notes'),
     },
     async ({ id, ...body }) => {
-      const result = await client.request('POST', `/beacons/${id}/verify`, body);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('POST', `/beacons/${beaconId}/verify`, body);
       return result.ok ? ok(result.data) : err('verifying beacon', result.data);
     },
   );
@@ -164,11 +184,13 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_challenge',
     'Flag a Beacon for review (challenge its accuracy or relevance).',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
       reason: z.string().max(1000).optional().describe('Reason for the challenge'),
     },
     async ({ id, ...body }) => {
-      const result = await client.request('POST', `/beacons/${id}/challenge`, Object.keys(body).length ? body : undefined);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('POST', `/beacons/${beaconId}/challenge`, Object.keys(body).length ? body : undefined);
       return result.ok ? ok(result.data) : err('challenging beacon', result.data);
     },
   );
@@ -177,10 +199,12 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_restore',
     'Restore an Archived Beacon back to Active status.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
     },
     async ({ id }) => {
-      const result = await client.request('POST', `/beacons/${id}/restore`);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('POST', `/beacons/${beaconId}/restore`);
       return result.ok ? ok(result.data) : err('restoring beacon', result.data);
     },
   );
@@ -189,10 +213,12 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_versions',
     'List the version history of a Beacon.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
     },
     async ({ id }) => {
-      const result = await client.request('GET', `/beacons/${id}/versions`);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('GET', `/beacons/${beaconId}/versions`);
       return result.ok ? ok(result.data) : err('listing beacon versions', result.data);
     },
   );
@@ -201,11 +227,13 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_version_get',
     'Get a specific version of a Beacon.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
       version: z.number().int().positive().describe('Version number'),
     },
     async ({ id, version }) => {
-      const result = await client.request('GET', `/beacons/${id}/versions/${version}`);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('GET', `/beacons/${beaconId}/versions/${version}`);
       return result.ok ? ok(result.data) : err('getting beacon version', result.data);
     },
   );
@@ -331,11 +359,13 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_tag_add',
     'Add one or more tags to a Beacon.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
       tags: z.array(z.string().min(1)).min(1).describe('Tags to add'),
     },
     async ({ id, tags }) => {
-      const result = await client.request('POST', `/beacons/${id}/tags`, { tags });
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('POST', `/beacons/${beaconId}/tags`, { tags });
       return result.ok ? ok(result.data) : err('adding tags', result.data);
     },
   );
@@ -344,11 +374,13 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_tag_remove',
     'Remove a tag from a Beacon.',
     {
-      id: z.string().uuid().describe('Beacon ID'),
+      id: z.string().describe('Beacon ID (UUID) or slug'),
       tag: z.string().min(1).describe('Tag to remove'),
     },
     async ({ id, tag }) => {
-      const result = await client.request('DELETE', `/beacons/${id}/tags/${encodeURIComponent(tag)}`);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('DELETE', `/beacons/${beaconId}/tags/${encodeURIComponent(tag)}`);
       return result.ok ? ok(result.data) : err('removing tag', result.data);
     },
   );
@@ -357,12 +389,19 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_link_create',
     'Create a typed link between two Beacons.',
     {
-      id: z.string().uuid().describe('Source Beacon ID'),
-      target_id: z.string().uuid().describe('Target Beacon ID'),
+      id: z.string().describe('Source Beacon ID (UUID) or slug'),
+      target_id: z.string().describe('Target Beacon ID (UUID) or slug'),
       link_type: z.enum(['RelatedTo', 'Supersedes', 'DependsOn', 'ConflictsWith', 'SeeAlso']).describe('Link type'),
     },
-    async ({ id, ...body }) => {
-      const result = await client.request('POST', `/beacons/${id}/links`, body);
+    async ({ id, target_id, link_type }) => {
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const targetId = await resolveBeaconId(client, target_id);
+      if (!targetId) return beaconNotFound(target_id);
+      const result = await client.request('POST', `/beacons/${beaconId}/links`, {
+        target_id: targetId,
+        link_type,
+      });
       return result.ok ? ok(result.data) : err('creating link', result.data);
     },
   );
@@ -371,11 +410,13 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_link_remove',
     'Remove a link from a Beacon.',
     {
-      id: z.string().uuid().describe('Source Beacon ID'),
+      id: z.string().describe('Source Beacon ID (UUID) or slug'),
       link_id: z.string().uuid().describe('Link ID to remove'),
     },
     async ({ id, link_id }) => {
-      const result = await client.request('DELETE', `/beacons/${id}/links/${link_id}`);
+      const beaconId = await resolveBeaconId(client, id);
+      if (!beaconId) return beaconNotFound(id);
+      const result = await client.request('DELETE', `/beacons/${beaconId}/links/${link_id}`);
       return result.ok ? ok(result.data) : err('removing link', result.data);
     },
   );
@@ -441,14 +482,19 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_graph_neighbors',
     'Get nodes and edges within N hops of a focal Beacon for graph exploration.',
     {
-      beacon_id: z.string().uuid().describe('Focal Beacon ID'),
+      beacon_id: z.string().describe('Focal Beacon ID (UUID) or slug'),
       hops: z.number().int().min(1).max(3).optional().describe('Traversal depth (default 1)'),
       include_implicit: z.boolean().optional().describe('Include tag-affinity edges (default true)'),
       tag_affinity_threshold: z.number().int().min(1).max(5).optional().describe('Minimum shared tags for implicit edge (default 2)'),
       status: z.string().optional().describe('Comma-separated status filter (e.g. Active,PendingReview)'),
     },
     async (params) => {
-      const result = await client.request('GET', `/graph/neighbors${buildQs(params)}`);
+      const resolved = await resolveBeaconId(client, params.beacon_id);
+      if (!resolved) return beaconNotFound(params.beacon_id);
+      const result = await client.request(
+        'GET',
+        `/graph/neighbors${buildQs({ ...params, beacon_id: resolved })}`,
+      );
       return result.ok ? ok(result.data) : err('getting graph neighbors', result.data);
     },
   );

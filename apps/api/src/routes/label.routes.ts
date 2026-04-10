@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { labels } from '../db/schema/labels.js';
+import { projects } from '../db/schema/projects.js';
+import { projectMemberships } from '../db/schema/project-memberships.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 
@@ -16,6 +18,55 @@ export default async function labelRoutes(fastify: FastifyInstance) {
         .from(labels)
         .where(eq(labels.project_id, request.params.id))
         .orderBy(asc(labels.position));
+
+      return reply.send({ data: result });
+    },
+  );
+
+  // Org-wide label listing used by the MCP resolver tool
+  // `bam_list_labels` when no project_id is supplied. Returns labels
+  // from every project the caller can see: all projects in the org for
+  // normal members/admins/owners, only project-membership-scoped
+  // projects for guests, and everything for superusers.
+  fastify.get(
+    '/labels',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      let projectIds: string[] = [];
+
+      if (request.user!.is_superuser) {
+        const rows = await db.select({ id: projects.id }).from(projects);
+        projectIds = rows.map((r) => r.id);
+      } else if (request.user!.role === 'guest') {
+        const rows = await db
+          .select({ project_id: projectMemberships.project_id })
+          .from(projectMemberships)
+          .where(eq(projectMemberships.user_id, request.user!.id));
+        projectIds = rows.map((r) => r.project_id);
+      } else {
+        const rows = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.org_id, request.user!.org_id));
+        projectIds = rows.map((r) => r.id);
+      }
+
+      if (projectIds.length === 0) {
+        return reply.send({ data: [] });
+      }
+
+      const result = await db
+        .select({
+          id: labels.id,
+          project_id: labels.project_id,
+          name: labels.name,
+          color: labels.color,
+          description: labels.description,
+          position: labels.position,
+        })
+        .from(labels)
+        .where(inArray(labels.project_id, projectIds))
+        .orderBy(asc(labels.project_id), asc(labels.position));
 
       return reply.send({ data: result });
     },

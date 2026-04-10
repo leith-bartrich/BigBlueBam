@@ -50,6 +50,7 @@ import publicConfigRoutes from './routes/public-config.routes.js';
 import llmProviderRoutes from './routes/llm-provider.routes.js';
 import systemSettingsRoutes from './routes/system-settings.routes.js';
 import versionRoutes from './routes/version.routes.js';
+import userRoutes from './routes/user.routes.js';
 import { sql } from 'drizzle-orm';
 import websocketHandlerPlugin from './plugins/websocket.js';
 
@@ -200,6 +201,7 @@ await fastify.register(publicConfigRoutes);
 await fastify.register(llmProviderRoutes);
 await fastify.register(systemSettingsRoutes);
 await fastify.register(versionRoutes);
+await fastify.register(userRoutes);
 
 // BAM-029: TODO — Add a periodic session cleanup job to the worker service.
 // Expired sessions (sessions.expires_at < NOW()) accumulate in the database
