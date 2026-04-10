@@ -89,7 +89,7 @@ let _executeQueue: Queue | null = null;
 
 function getExecuteQueue(redisInstance: Redis): Queue {
   if (!_executeQueue) {
-    _executeQueue = new Queue('bolt:execute', { connection: redisInstance });
+    _executeQueue = new Queue('bolt-execute', { connection: redisInstance });
   }
   return _executeQueue;
 }
@@ -340,7 +340,7 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
 
         // 9. Enqueue BullMQ job for execution
         await executeQueue.add(
-          'bolt:execute',
+          'bolt-execute',
           {
             execution_id: execution!.id,
             automation_id: automation.id,
