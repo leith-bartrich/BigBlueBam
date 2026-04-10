@@ -60,16 +60,21 @@ interface BaseUserRow {
  * Resolves the active organization context for a user.
  *
  * Precedence:
- *   1. X-Org-Id request header (if user is a member of that org)
- *   2. The user's default membership (is_default=true)
- *   3. The user's first membership (by joined_at)
- *   4. Fallback to users.org_id if no memberships exist yet (pre-migration)
+ *   1. X-Org-Id request header (if user is a member of that org) — highest
+ *      precedence so SuperUser / test paths keep working.
+ *   2. Session-level active_org_id from sessions.active_org_id (set by
+ *      Bam's /auth/switch-org and /superuser/context/switch).
+ *   3. The user's default membership (is_default=true).
+ *   4. The user's first membership (by joined_at).
+ *   5. Fallback to users.org_id if no memberships exist yet (pre-migration).
  */
 async function resolveOrgContext(
   userId: string,
   fallbackOrgId: string,
   fallbackRole: string,
   requestedOrgId: string | undefined,
+  sessionActiveOrgId: string | null = null,
+  isSuperuser = false,
 ): Promise<{ memberships: OrgMembership[]; activeOrgId: string; activeRole: string }> {
   const rows = await db
     .select({
@@ -108,10 +113,36 @@ async function resolveOrgContext(
   if (requestedOrgId) {
     active = memberships.find((m) => m.org_id === requestedOrgId);
     if (!active) {
+      // SuperUsers may view any org even without an explicit membership —
+      // mirror Bam's pattern so cross-org SU visibility works in Banter too.
+      if (isSuperuser) {
+        return {
+          memberships,
+          activeOrgId: requestedOrgId,
+          activeRole: 'owner',
+        };
+      }
       throw new OrgMembershipError(
         `User is not a member of the requested organization: ${requestedOrgId}`,
       );
     }
+  }
+  // Prefer sessions.active_org_id over the is_default fallback. This is the
+  // org the user last switched to via Bam's /auth/switch-org or
+  // /superuser/context/switch — Banter shares the same session cookie so it
+  // should honor the same pin.
+  if (!active && sessionActiveOrgId) {
+    active = memberships.find((m) => m.org_id === sessionActiveOrgId);
+    if (!active && isSuperuser) {
+      // SuperUser is viewing an org they are not a native member of.
+      return {
+        memberships,
+        activeOrgId: sessionActiveOrgId,
+        activeRole: 'owner',
+      };
+    }
+    // If a non-SU's session points at an org they've since been removed from,
+    // silently fall through to the default-membership fallback below.
   }
   if (!active) {
     active = memberships.find((m) => m.is_default);
@@ -142,6 +173,7 @@ async function buildAuthUser(
   row: BaseUserRow,
   apiKeyScope: string | null,
   request: FastifyRequest,
+  sessionActiveOrgId: string | null = null,
 ): Promise<AuthUser> {
   const requestedOrgId = getRequestedOrgId(request);
   const { memberships, activeOrgId, activeRole } = await resolveOrgContext(
@@ -149,6 +181,8 @@ async function buildAuthUser(
     row.org_id,
     row.role,
     requestedOrgId,
+    sessionActiveOrgId,
+    row.is_superuser,
   );
 
   return {
@@ -189,7 +223,11 @@ async function authPlugin(fastify: FastifyInstance) {
     if (sessionId) {
       const result = await db
         .select({
-          session: sessions,
+          session: {
+            id: sessions.id,
+            expires_at: sessions.expires_at,
+            active_org_id: sessions.active_org_id,
+          },
           user: {
             id: users.id,
             org_id: users.org_id,
@@ -209,7 +247,8 @@ async function authPlugin(fastify: FastifyInstance) {
 
       const row = result[0];
       if (row && new Date(row.session.expires_at) > new Date() && row.user.is_active) {
-        request.user = await buildAuthUser(row.user, null, request);
+        const sessionActiveOrgId = row.session.active_org_id ?? null;
+        request.user = await buildAuthUser(row.user, null, request, sessionActiveOrgId);
         request.sessionId = sessionId;
         return;
       }

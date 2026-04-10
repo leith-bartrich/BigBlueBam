@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth.store';
 
 export interface DmOtherParticipant {
   id: string;
@@ -50,9 +51,15 @@ export interface ChannelMember {
 
 /** Fetch all channels the user is a member of */
 export function useChannels() {
+  // Key the cache by active org so a tab whose user has switched orgs
+  // (via Bam's org switcher) refetches instead of surfacing stale data
+  // from the previous org. Without this, TanStack Query reuses the old
+  // ['channels'] entry regardless of which org the backend now resolves.
+  const activeOrgId = useAuthStore((s) => s.user?.active_org_id);
   return useQuery({
-    queryKey: ['channels'],
+    queryKey: ['channels', activeOrgId],
     queryFn: () => api.get<{ data: Channel[] }>('/channels').then((r) => r.data),
+    enabled: !!activeOrgId,
   });
 }
 

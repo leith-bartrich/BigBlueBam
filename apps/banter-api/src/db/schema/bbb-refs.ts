@@ -60,6 +60,12 @@ export const sessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
     data: jsonb('data').default({}).notNull(),
+    // Session-level active org. Set by Bam's /auth/switch-org and
+    // /superuser/context/switch. Mirrors the column already present in
+    // the live DB (see apps/api/src/db/schema/sessions.ts) so Banter can
+    // honor cross-app org switches. No migration needed — the column
+    // already exists; this declaration closes a drift gap.
+    active_org_id: uuid('active_org_id'),
   },
   (table) => [
     index('sessions_user_id_idx').on(table.user_id),

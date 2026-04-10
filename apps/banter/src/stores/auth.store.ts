@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { api, ApiError } from '@/lib/api';
 
 export interface BanterUser {
   id: string;
@@ -7,6 +6,11 @@ export interface BanterUser {
   display_name: string;
   avatar_url: string | null;
   org_id: string;
+  /** The org the user has currently switched to. Persisted server-side
+   *  in sessions.active_org_id and returned by /b3/api/auth/me. Used as
+   *  the X-Org-Id header on every Banter API request so a tab that has
+   *  survived an org switch stays pinned to the correct org. */
+  active_org_id: string;
   presence: 'online' | 'idle' | 'dnd' | 'offline';
   role: string;
   is_superuser?: boolean;
@@ -40,6 +44,11 @@ export const useAuthStore = create<AuthState>((set) => ({
           display_name: user.display_name,
           avatar_url: user.avatar_url ?? null,
           org_id: user.org_id,
+          // `/b3/api/auth/me` returns both fields — they are typically equal
+          // once resolveOrgContext has run, but we key off active_org_id for
+          // the X-Org-Id header and React Query cache to keep them in sync
+          // with Bam's switch-org flow.
+          active_org_id: user.active_org_id ?? user.org_id,
           presence: 'online',
           role: user.role,
           is_superuser: user.is_superuser === true,
