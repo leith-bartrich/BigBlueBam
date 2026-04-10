@@ -27,6 +27,10 @@ const envSchema = z.object({
   // Bolt integration (fire-and-forget event publishing)
   BOLT_API_INTERNAL_URL: z.string().default('http://bolt-api:4006'),
   INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
+
+  // Public base URL for deep-linking into the Bond SPA from event payloads
+  // (e.g. ${PUBLIC_URL}/bond/deals/:id). Matches book-api / bill-api convention.
+  PUBLIC_URL: z.string().default('http://localhost'),
 });
 
 export type Env = z.infer<typeof envSchema>;

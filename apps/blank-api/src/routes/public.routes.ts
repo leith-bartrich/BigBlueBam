@@ -4,6 +4,7 @@ import * as formService from '../services/form.service.js';
 import * as submissionService from '../services/submission.service.js';
 import { renderFormHtml } from '../lib/form-renderer.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import { enrichSubmission, loadOrg } from '../lib/bolt-enrich.js';
 
 // ---------------------------------------------------------------------------
 // Public form endpoints (no auth required)
@@ -138,12 +139,30 @@ export default async function publicRoutes(fastify: FastifyInstance) {
         },
       );
       // Public form submission — anonymous, no authenticated actor (defaults to system)
-      publishBoltEvent('submission.created', 'blank', {
-        id: submission.id,
-        form_id: form.id,
-        form_name: form.name,
-        form_slug: form.slug,
-      }, form.organization_id);
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1)
+      Promise.all([enrichSubmission(submission.id), loadOrg(form.organization_id)])
+        .then(([enriched, org]) => {
+          publishBoltEvent(
+            'submission.created',
+            'blank',
+            {
+              submission: enriched?.submission ?? {
+                id: submission.id,
+                form_id: form.id,
+                submitted_at: new Date().toISOString(),
+                answers: body.response_data,
+              },
+              form: enriched?.form ?? {
+                id: form.id,
+                title: form.name,
+                slug: form.slug,
+              },
+              org,
+            },
+            form.organization_id,
+          );
+        })
+        .catch(() => {});
 
       return reply.status(201).send({
         data: {

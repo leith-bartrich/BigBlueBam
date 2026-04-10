@@ -10,6 +10,12 @@ import {
 } from '../db/schema/index.js';
 import { escapeLike, notFound, badRequest, conflict } from '../lib/utils.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  loadActor,
+  loadOrg,
+  contactDisplayName,
+  contactUrl,
+} from '../lib/bolt-enrichment.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -227,13 +233,60 @@ export async function createContact(
     })
     .returning();
 
-  // Emit Bolt event (fire-and-forget — must not block the response)
-  publishBoltEvent('contact.created', {
-    contact_id: contact!.id,
-    lifecycle_stage: contact!.lifecycle_stage,
-    lead_source: contact!.lead_source,
-    lead_score: contact!.lead_score,
-  }, orgId, userId, 'user').catch(() => {});
+  // Emit Bolt event (fire-and-forget) — enriched payload (Phase B / Tier 1)
+  void (async () => {
+    const c = contact!;
+    const actor = await loadActor(userId);
+    const org = await loadOrg(orgId);
+    const owner = await loadActor(c.owner_id);
+    await publishBoltEvent(
+      'contact.created',
+      {
+        contact: {
+          id: c.id,
+          name: contactDisplayName(c),
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email: c.email,
+          phone: c.phone,
+          title: c.title,
+          lifecycle_stage: c.lifecycle_stage,
+          lead_source: c.lead_source,
+          lead_score: c.lead_score,
+          owner_id: c.owner_id,
+          owner_name: owner?.name ?? null,
+          owner_email: owner?.email ?? null,
+          url: contactUrl(c.id),
+          // company_id/company_name are NOT populated at creation time —
+          // the company association is a separate relation (bondContactCompanies)
+          // and createContact does not take a company_id. Rule authors should
+          // rely on contact.company_assigned follow-up events once those exist.
+          company_id: null,
+          company_name: null,
+        },
+        owner: owner
+          ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email,
+              avatar_url: owner.avatar_url,
+            }
+          : null,
+        actor: actor
+          ? {
+              id: actor.id,
+              name: actor.name,
+              email: actor.email,
+              avatar_url: actor.avatar_url,
+            }
+          : { id: userId },
+        org: org ? { id: org.id, name: org.name, slug: org.slug } : { id: orgId },
+      },
+      orgId,
+      userId,
+      'user',
+    );
+  })();
 
   return contact!;
 }

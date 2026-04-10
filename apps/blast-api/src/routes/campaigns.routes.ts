@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as campaignService from '../services/campaign.service.js';
-import { publishBoltEvent } from '../lib/bolt-events.js';
+import { publishBoltEvent, buildCampaignEventPayload } from '../lib/bolt-events.js';
 
 const createCampaignSchema = z.object({
   name: z.string().min(1).max(255),
@@ -62,13 +62,25 @@ export default async function campaignRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         request.user!.id,
       );
-      publishBoltEvent('campaign.created', 'blast', {
-        id: campaign.id,
-        name: campaign.name,
-        subject: campaign.subject,
-        status: campaign.status,
-        created_by: request.user!.id,
-      }, request.user!.org_id, request.user!.id, 'user');
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1).
+      buildCampaignEventPayload({
+        campaign,
+        orgId: request.user!.org_id,
+        actorId: request.user!.id,
+      })
+        .then((payload) =>
+          publishBoltEvent(
+            'campaign.created',
+            'blast',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          ),
+        )
+        .catch(() => {
+          // Fire-and-forget — never break campaign creation if enrichment fails.
+        });
       return reply.status(201).send({ data: campaign });
     },
   );
@@ -120,11 +132,25 @@ export default async function campaignRoutes(fastify: FastifyInstance) {
         request.params.id,
         request.user!.org_id,
       );
-      publishBoltEvent('campaign.sent', 'blast', {
-        id: request.params.id,
-        status: result.status,
-        sent_by: request.user!.id,
-      }, request.user!.org_id, request.user!.id, 'user');
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1).
+      buildCampaignEventPayload({
+        campaign: result,
+        orgId: request.user!.org_id,
+        actorId: request.user!.id,
+      })
+        .then((payload) =>
+          publishBoltEvent(
+            'campaign.sent',
+            'blast',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          ),
+        )
+        .catch(() => {
+          // Fire-and-forget — never break campaign send if enrichment fails.
+        });
       return reply.send({ data: result });
     },
   );

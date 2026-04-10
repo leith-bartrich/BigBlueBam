@@ -5,6 +5,14 @@ import * as invoiceService from '../services/invoice.service.js';
 import * as lineItemService from '../services/line-item.service.js';
 import * as pdfService from '../services/pdf.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  buildInvoiceUrl,
+  buildInvoicePdfUrl,
+  countLineItems,
+  loadActor,
+  loadCustomer,
+  loadOrg,
+} from '../lib/bolt-event-enrich.js';
 
 const createInvoiceSchema = z.object({
   client_id: z.string().uuid(),
@@ -71,13 +79,50 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = createInvoiceSchema.parse(request.body);
       const invoice = await invoiceService.createInvoice(body, request.user!.org_id, request.user!.id);
-      publishBoltEvent('invoice.created', 'bill', {
-        id: invoice.id,
-        invoice_number: invoice.invoice_number,
-        client_id: invoice.client_id,
-        status: invoice.status,
-        created_by: request.user!.id,
-      }, request.user!.org_id, request.user!.id, 'user');
+      // Fetch related entities in parallel for enriched event payload.
+      const [actor, org, customer, lineItemCount] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadCustomer(invoice.client_id, request.user!.org_id),
+        countLineItems(invoice.id),
+      ]);
+      publishBoltEvent(
+        'invoice.created',
+        'bill',
+        {
+          invoice: {
+            id: invoice.id,
+            number: invoice.invoice_number,
+            status: invoice.status,
+            customer_id: invoice.client_id,
+            customer_name: customer.name,
+            customer_email: customer.email,
+            company_id: customer.company_id,
+            company_name: customer.name,
+            project_id: invoice.project_id,
+            deal_id: invoice.bond_deal_id,
+            subtotal: invoice.subtotal,
+            tax_amount: invoice.tax_amount,
+            discount_amount: invoice.discount_amount,
+            total: invoice.total,
+            amount_paid: invoice.amount_paid,
+            currency: invoice.currency,
+            issue_date: invoice.invoice_date,
+            due_date: invoice.due_date,
+            payment_terms_days: invoice.payment_terms_days,
+            line_item_count: lineItemCount,
+            url: buildInvoiceUrl(invoice.id),
+            pdf_url: buildInvoicePdfUrl(invoice.public_view_token),
+            source: 'manual',
+            created_at: invoice.created_at,
+          },
+          actor: { id: actor.id, name: actor.name, email: actor.email },
+          org: { id: org.id, name: org.name, slug: org.slug },
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
       return reply.status(201).send({ data: invoice });
     },
   );
@@ -156,12 +201,49 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
       const invoice = await invoiceService.finalizeInvoice(request.params.id, request.user!.org_id);
-      publishBoltEvent('invoice.finalized', 'bill', {
-        id: invoice.id,
-        invoice_number: invoice.invoice_number,
-        status: invoice.status,
-        finalized_by: request.user!.id,
-      }, request.user!.org_id, request.user!.id, 'user');
+      // Fetch related entities in parallel for enriched event payload.
+      const [actor, org, customer, lineItemCount] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadCustomer(invoice.client_id, request.user!.org_id),
+        countLineItems(invoice.id),
+      ]);
+      publishBoltEvent(
+        'invoice.finalized',
+        'bill',
+        {
+          invoice: {
+            id: invoice.id,
+            number: invoice.invoice_number,
+            status: invoice.status,
+            customer_id: invoice.client_id,
+            customer_name: customer.name,
+            customer_email: customer.email,
+            company_id: customer.company_id,
+            company_name: customer.name,
+            project_id: invoice.project_id,
+            deal_id: invoice.bond_deal_id,
+            subtotal: invoice.subtotal,
+            tax_amount: invoice.tax_amount,
+            discount_amount: invoice.discount_amount,
+            total: invoice.total,
+            amount_paid: invoice.amount_paid,
+            currency: invoice.currency,
+            issue_date: invoice.invoice_date,
+            due_date: invoice.due_date,
+            payment_terms_days: invoice.payment_terms_days,
+            line_item_count: lineItemCount,
+            url: buildInvoiceUrl(invoice.id),
+            pdf_url: buildInvoicePdfUrl(invoice.public_view_token),
+            finalized_at: invoice.sent_at ?? invoice.updated_at,
+          },
+          actor: { id: actor.id, name: actor.name, email: actor.email },
+          org: { id: org.id, name: org.name, slug: org.slug },
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
       return reply.send({ data: invoice });
     },
   );
@@ -259,15 +341,50 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         request.user!.id,
       );
-      publishBoltEvent('invoice.created', 'bill', {
-        id: invoice.id,
-        invoice_number: invoice.invoice_number,
-        client_id: invoice.client_id,
-        status: invoice.status,
-        source: 'deal',
-        bond_deal_id: body.deal_id,
-        created_by: request.user!.id,
-      }, request.user!.org_id, request.user!.id, 'user');
+      // Fetch related entities in parallel for enriched event payload.
+      const [actor, org, customer, lineItemCount] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadCustomer(invoice.client_id, request.user!.org_id),
+        countLineItems(invoice.id),
+      ]);
+      publishBoltEvent(
+        'invoice.created',
+        'bill',
+        {
+          invoice: {
+            id: invoice.id,
+            number: invoice.invoice_number,
+            status: invoice.status,
+            customer_id: invoice.client_id,
+            customer_name: customer.name,
+            customer_email: customer.email,
+            company_id: customer.company_id,
+            company_name: customer.name,
+            project_id: invoice.project_id,
+            deal_id: invoice.bond_deal_id ?? body.deal_id,
+            subtotal: invoice.subtotal,
+            tax_amount: invoice.tax_amount,
+            discount_amount: invoice.discount_amount,
+            total: invoice.total,
+            amount_paid: invoice.amount_paid,
+            currency: invoice.currency,
+            issue_date: invoice.invoice_date,
+            due_date: invoice.due_date,
+            payment_terms_days: invoice.payment_terms_days,
+            line_item_count: lineItemCount,
+            url: buildInvoiceUrl(invoice.id),
+            pdf_url: buildInvoicePdfUrl(invoice.public_view_token),
+            source: 'deal',
+            created_at: invoice.created_at,
+          },
+          actor: { id: actor.id, name: actor.name, email: actor.email },
+          org: { id: org.id, name: org.name, slug: org.slug },
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
       return reply.status(201).send({ data: invoice });
     },
   );

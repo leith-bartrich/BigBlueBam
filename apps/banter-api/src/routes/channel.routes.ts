@@ -13,6 +13,9 @@ import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireChannelMember, requireChannelAdmin, requireChannelOwner } from '../middleware/channel-auth.js';
 import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
 import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
+import { loadEnrichedActor, loadEnrichedOrg } from '../lib/bolt-enrich.js';
+import { channelDeepLink, dmDeepLink } from '../lib/notify.js';
 
 /**
  * Derive a coarse presence label from the user's last_seen_at timestamp.
@@ -400,6 +403,42 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         data: { channel },
         timestamp: new Date().toISOString(),
       });
+
+      // Bolt workflow event (fire-and-forget) — payload shape must match
+      // the catalog declared in apps/bolt-api/src/services/event-catalog.ts.
+      (async () => {
+        try {
+          if (!channel) return;
+          const [enrichedActor, enrichedOrg] = await Promise.all([
+            loadEnrichedActor(user.id),
+            loadEnrichedOrg(user.org_id),
+          ]);
+          const isDm = channel.type === 'dm' || channel.type === 'group_dm';
+          const channelUrl = isDm ? dmDeepLink(channel.id) : channelDeepLink(channel.slug);
+          await publishBoltEvent(
+            'channel.created',
+            'banter',
+            {
+              channel: {
+                id: channel.id,
+                name: channel.name,
+                handle: channel.slug,
+                type: channel.type,
+                description: channel.description,
+                member_count: channel.member_count,
+                url: channelUrl,
+              },
+              actor: enrichedActor,
+              org: enrichedOrg,
+            },
+            user.org_id,
+            user.id,
+            'user',
+          );
+        } catch {
+          // Fire-and-forget — never affect channel creation
+        }
+      })();
 
       return reply.status(201).send({ data: channel });
     },

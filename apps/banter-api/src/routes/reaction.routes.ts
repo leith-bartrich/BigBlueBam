@@ -11,6 +11,13 @@ import {
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  loadEnrichedChannel,
+  loadEnrichedActor,
+  loadEnrichedOrg,
+  buildMessageUrl,
+} from '../lib/bolt-enrich.js';
 
 const toggleReactionSchema = z.object({
   emoji: z.string().min(1).max(50),
@@ -158,6 +165,61 @@ export default async function reactionRoutes(fastify: FastifyInstance) {
           },
           timestamp: new Date().toISOString(),
         });
+
+        // Bolt workflow event (fire-and-forget) — payload shape must match
+        // the catalog declared in apps/bolt-api/src/services/event-catalog.ts.
+        (async () => {
+          try {
+            const [enrichedChannel, enrichedActor, enrichedOrg, authorRow] = await Promise.all([
+              loadEnrichedChannel(message.channel_id),
+              loadEnrichedActor(user.id),
+              loadEnrichedOrg(user.org_id),
+              db
+                .select({
+                  id: users.id,
+                  display_name: users.display_name,
+                })
+                .from(users)
+                .where(eq(users.id, message.author_id))
+                .limit(1),
+            ]);
+            const author = authorRow[0];
+            const messageUrl = buildMessageUrl(
+              enrichedChannel,
+              message.id,
+              message.thread_parent_id,
+            );
+            await publishBoltEvent(
+              'reaction.added',
+              'banter',
+              {
+                message: {
+                  id: message.id,
+                  author_id: message.author_id,
+                  author_name: author?.display_name ?? null,
+                  url: messageUrl,
+                },
+                reaction: {
+                  emoji: body.emoji,
+                },
+                channel: {
+                  id: enrichedChannel.id,
+                  name: enrichedChannel.name,
+                  handle: enrichedChannel.handle,
+                  type: enrichedChannel.type,
+                  url: enrichedChannel.url,
+                },
+                actor: enrichedActor,
+                org: enrichedOrg,
+              },
+              user.org_id,
+              user.id,
+              'user',
+            );
+          } catch {
+            // Fire-and-forget — never affect reaction toggling
+          }
+        })();
 
         return reply.send({ data: { action: 'added', emoji: body.emoji } });
       }

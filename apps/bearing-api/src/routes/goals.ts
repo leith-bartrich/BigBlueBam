@@ -12,6 +12,13 @@ import {
 } from '../middleware/authorize.js';
 import * as goalService from '../services/goal.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  buildGoalUrl,
+  loadActor,
+  loadOrg,
+  loadOwner,
+  loadPeriod,
+} from '../lib/bolt-event-enrich.js';
 
 const GOAL_SCOPES = BearingGoalScope.options;
 const GOAL_STATUSES = BearingGoalStatus.options;
@@ -94,13 +101,59 @@ export default async function goalRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = createGoalSchema.parse(request.body);
       const goal = await goalService.createGoal(data, request.user!.id, request.user!.org_id);
-      publishBoltEvent('goal.created', 'bearing', {
-        id: goal.id,
-        title: goal.title,
-        scope: goal.scope,
-        status: goal.status,
-        created_by: request.user!.id,
-      }, request.user!.org_id, request.user!.id, 'user');
+      // Fetch related entities in parallel for enriched event payload.
+      const [actor, org, owner, period] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadOwner(goal.owner_id ?? null),
+        loadPeriod(goal.period_id),
+      ]);
+      publishBoltEvent(
+        'goal.created',
+        'bearing',
+        {
+          goal: {
+            id: goal.id,
+            title: goal.title,
+            description: goal.description,
+            scope: goal.scope,
+            status: goal.status,
+            progress_percent: Number(goal.progress),
+            period_id: goal.period_id,
+            owner_id: goal.owner_id,
+            project_id: goal.project_id,
+            // TODO: parent_goal_id — not yet modeled in bearing_goals schema
+            url: buildGoalUrl(goal.id),
+            created_at: goal.created_at,
+          },
+          period: {
+            id: period.id,
+            name: period.name,
+          },
+          owner: owner
+            ? { id: owner.id, name: owner.name, email: owner.email }
+            : null,
+          actor: {
+            id: actor.id,
+            name: actor.name,
+            email: actor.email,
+          },
+          org: {
+            id: org.id,
+            name: org.name,
+            slug: org.slug,
+          },
+          // Legacy flat fields (backwards compat with any existing rules)
+          id: goal.id,
+          title: goal.title,
+          scope: goal.scope,
+          status: goal.status,
+          created_by: request.user!.id,
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
       return reply.status(201).send({ data: goal });
     },
   );
@@ -125,19 +178,90 @@ export default async function goalRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireGoalEditAccess(), requireScope('read_write')] },
     async (request, reply) => {
       const data = updateGoalSchema.parse(request.body);
+      // Capture the pre-update row so we can emit a `changes` diff in the
+      // enriched Bolt event payload. `requireGoalEditAccess` already loaded
+      // the goal onto the request, so no extra query is needed.
+      const previousGoal = (request as any).goal as {
+        id: string;
+        title: string;
+        description: string | null;
+        scope: string;
+        status: string;
+        progress: string | number | null;
+        period_id: string;
+        owner_id: string | null;
+        project_id: string | null;
+      };
       const goal = await goalService.updateGoal(
         (request as any).goal.id,
         data,
         request.user!.org_id,
         fastify.redis,
       );
-      publishBoltEvent('goal.updated', 'bearing', {
-        id: goal.id,
-        title: goal.title,
-        scope: goal.scope,
-        status: goal.status,
-        updated_by: request.user!.id,
-      }, request.user!.org_id, request.user!.id, 'user');
+
+      // Build changes diff from the fields the client actually sent.
+      const changes: Record<string, { old: unknown; new: unknown }> = {};
+      for (const key of Object.keys(data) as (keyof typeof data)[]) {
+        const newVal = data[key];
+        const oldVal = (previousGoal as Record<string, unknown>)[key];
+        if (newVal !== undefined && oldVal !== newVal) {
+          changes[key] = { old: oldVal ?? null, new: newVal ?? null };
+        }
+      }
+
+      const [actor, org, owner, period] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadOwner(goal.owner_id ?? null),
+        loadPeriod(goal.period_id),
+      ]);
+      publishBoltEvent(
+        'goal.updated',
+        'bearing',
+        {
+          goal: {
+            id: goal.id,
+            title: goal.title,
+            description: goal.description,
+            scope: goal.scope,
+            status: goal.status,
+            progress_percent: Number(goal.progress),
+            period_id: goal.period_id,
+            owner_id: goal.owner_id,
+            project_id: goal.project_id,
+            // TODO: parent_goal_id — not yet modeled in bearing_goals schema
+            url: buildGoalUrl(goal.id),
+            updated_at: goal.updated_at,
+          },
+          period: {
+            id: period.id,
+            name: period.name,
+          },
+          owner: owner
+            ? { id: owner.id, name: owner.name, email: owner.email }
+            : null,
+          actor: {
+            id: actor.id,
+            name: actor.name,
+            email: actor.email,
+          },
+          org: {
+            id: org.id,
+            name: org.name,
+            slug: org.slug,
+          },
+          changes,
+          // Legacy flat fields (backwards compat with any existing rules)
+          id: goal.id,
+          title: goal.title,
+          scope: goal.scope,
+          status: goal.status,
+          updated_by: request.user!.id,
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
       return reply.send({ data: goal });
     },
   );
