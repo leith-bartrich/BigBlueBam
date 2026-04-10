@@ -259,7 +259,12 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               </p>
             </div>
             <div className="p-5 bg-white dark:bg-zinc-900">
-              <ActionList actions={actions} onChange={setActions} />
+              <ActionList
+                actions={actions}
+                onChange={setActions}
+                triggerSource={triggerSource}
+                triggerEvent={triggerEvent}
+              />
             </div>
           </div>
         </div>

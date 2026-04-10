@@ -1,5 +1,7 @@
-import type { BoltAction, ErrorPolicy } from '@/hooks/use-automations';
+import type { BoltAction, ErrorPolicy, TriggerSource } from '@/hooks/use-automations';
 import { useActionCatalog, type ActionParameter } from '@/hooks/use-event-catalog';
+import { useTemplateSuggestions } from '@/hooks/use-template-suggestions';
+import { TemplateInput } from '@/components/builder/template-input';
 import { X, Plus, GripVertical } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
@@ -8,6 +10,9 @@ interface ActionEditorProps {
   index: number;
   onChange: (updated: BoltAction) => void;
   onRemove: () => void;
+  triggerSource?: TriggerSource;
+  triggerEvent?: string;
+  stepCount?: number;
 }
 
 const errorPolicies: { value: ErrorPolicy; label: string; description: string }[] = [
@@ -46,10 +51,23 @@ function placeholderForParam(param: ActionParameter): string {
   return 'value or {{ template }}';
 }
 
-export function ActionEditor({ action, index, onChange, onRemove }: ActionEditorProps) {
+export function ActionEditor({
+  action,
+  index,
+  onChange,
+  onRemove,
+  triggerSource,
+  triggerEvent,
+  stepCount = 0,
+}: ActionEditorProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { data: actionsResponse } = useActionCatalog();
   const availableActions = actionsResponse?.data ?? [];
+  const templateSuggestions = useTemplateSuggestions({
+    triggerSource,
+    triggerEvent,
+    stepCount,
+  });
 
   // Group actions by source for the dropdown
   const groupedActions = useMemo(() => {
@@ -214,13 +232,13 @@ export function ActionEditor({ action, index, onChange, onRemove }: ActionEditor
                   <option value="false">false</option>
                 </select>
               ) : (
-                <input
-                  type="text"
-                  placeholder={placeholderForParam(param)}
+                <TemplateInput
                   value={String(value ?? '')}
-                  onChange={(e) => setParameterValue(param.name, e.target.value)}
+                  onChange={(v) => setParameterValue(param.name, v)}
+                  suggestions={templateSuggestions}
+                  placeholder={placeholderForParam(param)}
                   title={param.description}
-                  className="flex-1 min-w-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+                  className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
                 />
               )}
 

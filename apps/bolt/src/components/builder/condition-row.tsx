@@ -1,5 +1,7 @@
-import type { BoltCondition, ConditionOperator } from '@/hooks/use-automations';
+import type { BoltCondition, ConditionOperator, TriggerSource } from '@/hooks/use-automations';
 import { FieldPicker } from '@/components/builder/field-picker';
+import { TemplateInput } from '@/components/builder/template-input';
+import { useTemplateSuggestions } from '@/hooks/use-template-suggestions';
 import { X } from 'lucide-react';
 
 interface ConditionRowProps {
@@ -7,7 +9,7 @@ interface ConditionRowProps {
   isFirst: boolean;
   onChange: (updated: BoltCondition) => void;
   onRemove: () => void;
-  triggerSource?: string;
+  triggerSource?: TriggerSource;
   triggerEvent?: string;
 }
 
@@ -30,6 +32,7 @@ const operators: { value: ConditionOperator; label: string }[] = [
 const noValueOperators = new Set<ConditionOperator>(['is_empty', 'is_not_empty']);
 
 export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSource, triggerEvent }: ConditionRowProps) {
+  const templateSuggestions = useTemplateSuggestions({ triggerSource, triggerEvent });
   return (
     <div className="flex items-start gap-2">
       {/* Logic group toggle */}
@@ -75,12 +78,12 @@ export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSo
 
       {/* Value */}
       {!noValueOperators.has(condition.operator) && (
-        <input
-          type="text"
-          placeholder="value"
+        <TemplateInput
           value={String(condition.value ?? '')}
-          onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          className="flex-1 min-w-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+          onChange={(v) => onChange({ ...condition, value: v })}
+          suggestions={templateSuggestions}
+          placeholder="value or {{ template }}"
+          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
         />
       )}
 
