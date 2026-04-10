@@ -1,8 +1,17 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { isUuid } from '../middleware/resolve-helpers.js';
 
-function createBillClient(billApiUrl: string, api: ApiClient) {
+interface BillClient {
+  request(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<{ ok: boolean; status: number; data: unknown }>;
+}
+
+function createBillClient(billApiUrl: string, api: ApiClient): BillClient {
   const baseUrl = billApiUrl.replace(/\/$/, '');
 
   async function request(method: string, path: string, body?: unknown) {
@@ -25,6 +34,73 @@ function createBillClient(billApiUrl: string, api: ApiClient) {
   }
 
   return { request };
+}
+
+/**
+ * Resolve a billing client identifier that may be a UUID, a client name, or an email.
+ *
+ * Strategy: if already a UUID, return unchanged. Otherwise hit
+ * `GET /clients?search=...&limit=5` (added in Phase C) and prefer an exact
+ * case-insensitive match on name or email. If there is exactly one fuzzy
+ * hit we accept it; otherwise we bail with `null` so the caller can surface
+ * a clean "client not found / ambiguous" error rather than forwarding a
+ * garbage UUID to the Bill API.
+ */
+async function resolveBillClientId(
+  bill: BillClient,
+  nameOrId: string,
+): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  const result = await bill.request(
+    'GET',
+    `/clients?search=${encodeURIComponent(nameOrId)}&limit=5`,
+  );
+  if (!result.ok) return null;
+  const envelope = result.data as {
+    data?: Array<{ id: string; name: string; email?: string | null }>;
+  } | null;
+  const clients = envelope?.data ?? [];
+  const needle = nameOrId.toLowerCase();
+  const exact = clients.find(
+    (c) =>
+      c.name.toLowerCase() === needle ||
+      (c.email?.toLowerCase() ?? '') === needle,
+  );
+  if (exact) return exact.id;
+  if (clients.length === 1) return clients[0].id;
+  return null;
+}
+
+/**
+ * Resolve a Bam project identifier (UUID or name) to a UUID by listing
+ * projects the caller can see and matching case-insensitively. Mirrors the
+ * pattern in task-tools.ts — there is no dedicated `/projects/by-name`
+ * endpoint, so we list and filter client-side.
+ */
+async function resolveBamProjectId(
+  api: ApiClient,
+  nameOrId: string,
+): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  const result = await api.get('/projects?limit=200');
+  if (!result.ok) return null;
+  const envelope = result.data as { data?: Array<{ id: string; name: string }> } | null;
+  const projects = envelope?.data ?? [];
+  const needle = nameOrId.toLowerCase();
+  const match = projects.find((p) => p.name.toLowerCase() === needle);
+  return match?.id ?? null;
+}
+
+function notFound(label: string, value: string) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `${label} not found: ${value}`,
+      },
+    ],
+    isError: true as const,
+  };
 }
 
 function ok(data: unknown) {
@@ -85,13 +161,35 @@ export function registerBillTools(server: McpServer, api: ApiClient, billApiUrl:
     'bill_create_invoice',
     'Create a new blank draft invoice for a billing client.',
     {
-      client_id: z.string().uuid().describe('Billing client UUID'),
-      project_id: z.string().uuid().optional().describe('Link to a Bam project'),
+      client_id: z
+        .string()
+        .describe(
+          'Billing client — UUID, exact client name, or client email (resolved via bill_list_clients search)',
+        ),
+      project_id: z
+        .string()
+        .optional()
+        .describe('Link to a Bam project — UUID or exact project name'),
       tax_rate: z.number().min(0).max(100).optional().describe('Tax rate percentage'),
       notes: z.string().optional().describe('Internal notes'),
     },
     async (params) => {
-      const result = await client.request('POST', '/invoices', params);
+      const clientId = await resolveBillClientId(client, params.client_id);
+      if (!clientId) return notFound('Billing client', params.client_id);
+
+      let projectId: string | undefined;
+      if (params.project_id !== undefined) {
+        const resolved = await resolveBamProjectId(api, params.project_id);
+        if (!resolved) return notFound('Project', params.project_id);
+        projectId = resolved;
+      }
+
+      const body = {
+        ...params,
+        client_id: clientId,
+        ...(projectId !== undefined ? { project_id: projectId } : {}),
+      };
+      const result = await client.request('POST', '/invoices', body);
       return result.ok ? ok(result.data) : err('creating invoice', result.data);
     },
   );
@@ -101,13 +199,23 @@ export function registerBillTools(server: McpServer, api: ApiClient, billApiUrl:
     'bill_create_invoice_from_time',
     'Generate an invoice from Bam time entries for a project and date range.',
     {
-      project_id: z.string().uuid().describe('Bam project UUID'),
-      client_id: z.string().uuid().describe('Billing client UUID'),
+      project_id: z
+        .string()
+        .describe('Bam project — UUID or exact project name'),
+      client_id: z
+        .string()
+        .describe('Billing client — UUID, exact client name, or client email'),
       date_from: z.string().describe('Start date (YYYY-MM-DD)'),
       date_to: z.string().describe('End date (YYYY-MM-DD)'),
     },
     async (params) => {
-      const result = await client.request('POST', '/invoices/from-time-entries', params);
+      const projectId = await resolveBamProjectId(api, params.project_id);
+      if (!projectId) return notFound('Project', params.project_id);
+      const clientId = await resolveBillClientId(client, params.client_id);
+      if (!clientId) return notFound('Billing client', params.client_id);
+
+      const body = { ...params, project_id: projectId, client_id: clientId };
+      const result = await client.request('POST', '/invoices/from-time-entries', body);
       return result.ok ? ok(result.data) : err('creating invoice from time', result.data);
     },
   );
@@ -115,13 +223,26 @@ export function registerBillTools(server: McpServer, api: ApiClient, billApiUrl:
   // ===== 4b. bill_create_invoice_from_deal =====
   server.tool(
     'bill_create_invoice_from_deal',
-    'Generate a draft invoice from a Bond CRM deal, pulling deal value and contact info.',
+    'Generate a draft invoice from a Bond CRM deal, pulling deal value and contact info. ' +
+      'NOTE: deal_id must be a UUID — Bond deal title search is not reachable from this tool. ' +
+      'In a Bolt rule, pass `{{ event.deal.id }}` from the triggering deal.* event.',
     {
-      deal_id: z.string().uuid().describe('Bond deal UUID'),
-      client_id: z.string().uuid().describe('Billing client UUID'),
+      deal_id: z
+        .string()
+        .uuid()
+        .describe(
+          'Bond deal UUID (required). In a Bolt rule, pass `{{ event.deal.id }}` from a deal.* event — deal title lookup is not supported here.',
+        ),
+      client_id: z
+        .string()
+        .describe('Billing client — UUID, exact client name, or client email'),
     },
     async (params) => {
-      const result = await client.request('POST', '/invoices/from-deal', params);
+      const clientId = await resolveBillClientId(client, params.client_id);
+      if (!clientId) return notFound('Billing client', params.client_id);
+
+      const body = { ...params, client_id: clientId };
+      const result = await client.request('POST', '/invoices/from-deal', body);
       return result.ok ? ok(result.data) : err('creating invoice from deal', result.data);
     },
   );

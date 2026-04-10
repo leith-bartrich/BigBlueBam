@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { isUuid } from '../middleware/resolve-helpers.js';
 
 function createBlastClient(blastApiUrl: string, api: ApiClient) {
   const baseUrl = blastApiUrl.replace(/\/$/, '');
@@ -27,6 +28,8 @@ function createBlastClient(blastApiUrl: string, api: ApiClient) {
   return { request };
 }
 
+type BlastClient = ReturnType<typeof createBlastClient>;
+
 function ok(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
@@ -45,6 +48,81 @@ function buildQs(params: Record<string, unknown>): string {
   }
   const qs = sp.toString();
   return qs ? `?${qs}` : '';
+}
+
+// ---------------------------------------------------------------------------
+// Name-or-ID resolvers (Phase D / Tier 3)
+// ---------------------------------------------------------------------------
+//
+// Rule authors routinely reference Blast entities by their human-readable
+// names — "send the Welcome campaign", "use the Newsletter template",
+// "segment: Active Customers". These resolvers let the canonical action
+// tools accept either a UUID (fast path, no HTTP) or a name (single lookup
+// via the existing list endpoints) without forcing the caller to do a
+// two-step list-then-act dance.
+//
+// All three follow the same contract:
+//   - UUID input → returned verbatim, zero extra HTTP calls
+//   - name input → single GET to the list endpoint, exact-match preferred,
+//     single fuzzy match acceptable, multiple fuzzy matches → null
+//   - returns null on failure so the caller can surface a clean error
+//
+// Templates and segments have dedicated `?search=` query params on their
+// list endpoints. Campaigns do not (as of Phase C) — so we fetch a bounded
+// page and filter client-side.
+
+async function resolveCampaignId(
+  blast: BlastClient,
+  nameOrId: string,
+): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  // Campaigns list endpoint has no `search` param — fetch a bounded page
+  // and filter client-side. 100 is the route-level max.
+  const result = await blast.request('GET', '/campaigns?limit=100');
+  if (!result.ok) return null;
+  const campaigns = (result.data as { data: Array<{ id: string; name: string }> }).data ?? [];
+  const needle = nameOrId.toLowerCase();
+  // Exact match preferred (case-insensitive)
+  const exact = campaigns.find((c) => c.name.toLowerCase() === needle);
+  if (exact) return exact.id;
+  // Single substring match acceptable
+  const fuzzy = campaigns.filter((c) => c.name.toLowerCase().includes(needle));
+  if (fuzzy.length === 1 && fuzzy[0]) return fuzzy[0].id;
+  return null;
+}
+
+async function resolveTemplateId(
+  blast: BlastClient,
+  nameOrId: string,
+): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  const result = await blast.request(
+    'GET',
+    `/templates?search=${encodeURIComponent(nameOrId)}&limit=10`,
+  );
+  if (!result.ok) return null;
+  const templates = (result.data as { data: Array<{ id: string; name: string }> }).data ?? [];
+  const exact = templates.find((t) => t.name.toLowerCase() === nameOrId.toLowerCase());
+  if (exact) return exact.id;
+  if (templates.length === 1 && templates[0]) return templates[0].id;
+  return null;
+}
+
+async function resolveSegmentId(
+  blast: BlastClient,
+  nameOrId: string,
+): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  const result = await blast.request(
+    'GET',
+    `/segments?search=${encodeURIComponent(nameOrId)}&limit=10`,
+  );
+  if (!result.ok) return null;
+  const segments = (result.data as { data: Array<{ id: string; name: string }> }).data ?? [];
+  const exact = segments.find((s) => s.name.toLowerCase() === nameOrId.toLowerCase());
+  if (exact) return exact.id;
+  if (segments.length === 1 && segments[0]) return segments[0].id;
+  return null;
 }
 
 export function registerBlastTools(server: McpServer, api: ApiClient, blastApiUrl: string): void {
@@ -98,64 +176,106 @@ export function registerBlastTools(server: McpServer, api: ApiClient, blastApiUr
 
   server.tool(
     'blast_draft_campaign',
-    'Create a campaign in draft status with template, segment, and schedule.',
+    'Create a campaign in draft status with template, segment, and schedule. `template_id` and `segment_id` accept either a UUID or the entity name — exact match preferred, single fuzzy match acceptable.',
     {
       name: z.string().min(1).max(255).describe('Campaign name'),
       subject: z.string().min(1).max(500).describe('Email subject line'),
       html_body: z.string().min(1).describe('HTML email body'),
-      template_id: z.string().uuid().optional().describe('Template ID to use'),
-      segment_id: z.string().uuid().optional().describe('Recipient segment ID'),
+      template_id: z.string().optional().describe('Template UUID or template name (exact match preferred)'),
+      segment_id: z.string().optional().describe('Recipient segment UUID or segment name (exact match preferred)'),
       from_name: z.string().max(100).optional().describe('From name'),
       from_email: z.string().email().optional().describe('From email address'),
     },
     async (params) => {
-      const result = await client.request('POST', '/campaigns', params);
+      // Resolve human-friendly identifiers to UUIDs before hitting the API.
+      let template_id: string | undefined = params.template_id;
+      if (template_id) {
+        const resolved = await resolveTemplateId(client, template_id);
+        if (!resolved) {
+          return err('drafting campaign', {
+            message: `Template not found by name or id: ${template_id}`,
+          });
+        }
+        template_id = resolved;
+      }
+
+      let segment_id: string | undefined = params.segment_id;
+      if (segment_id) {
+        const resolved = await resolveSegmentId(client, segment_id);
+        if (!resolved) {
+          return err('drafting campaign', {
+            message: `Segment not found by name or id: ${segment_id}`,
+          });
+        }
+        segment_id = resolved;
+      }
+
+      const body = { ...params, template_id, segment_id };
+      const result = await client.request('POST', '/campaigns', body);
       return result.ok ? ok(result.data) : err('drafting campaign', result.data);
     },
   );
 
   server.tool(
     'blast_get_campaign',
-    'Get campaign detail and delivery stats.',
+    'Get campaign detail and delivery stats. `id` accepts either a UUID or the campaign name (exact match preferred, single fuzzy match acceptable).',
     {
-      id: z.string().uuid().describe('Campaign ID'),
+      id: z.string().describe('Campaign UUID or campaign name'),
     },
     async ({ id }) => {
-      const result = await client.request('GET', `/campaigns/${id}`);
+      const resolved = await resolveCampaignId(client, id);
+      if (!resolved) {
+        return err('getting campaign', {
+          message: `Campaign not found by name or id: ${id}`,
+        });
+      }
+      const result = await client.request('GET', `/campaigns/${resolved}`);
       return result.ok ? ok(result.data) : err('getting campaign', result.data);
     },
   );
 
   server.tool(
     'blast_send_campaign',
-    'Send a campaign immediately. Requires human approval by default.',
+    'Send a campaign immediately. Requires human approval by default. `id` accepts either a UUID or the campaign name (exact match preferred, single fuzzy match acceptable).',
     {
-      id: z.string().uuid().describe('Campaign ID'),
+      id: z.string().describe('Campaign UUID or campaign name'),
       require_human_approval: z.boolean().default(true).describe('When true, campaign is scheduled for review instead of sent immediately'),
     },
     async ({ id, require_human_approval }) => {
+      const resolved = await resolveCampaignId(client, id);
+      if (!resolved) {
+        return err('sending campaign', {
+          message: `Campaign not found by name or id: ${id}`,
+        });
+      }
       if (require_human_approval) {
         // Schedule instead of send — requires human confirmation
-        const result = await client.request('POST', `/campaigns/${id}/schedule`, {
+        const result = await client.request('POST', `/campaigns/${resolved}/schedule`, {
           scheduled_at: new Date(Date.now() + 3600000).toISOString(), // 1 hour from now
         });
         return result.ok
           ? ok({ ...result.data, note: 'Campaign scheduled for review. A human must confirm before it sends.' })
           : err('scheduling campaign', result.data);
       }
-      const result = await client.request('POST', `/campaigns/${id}/send`);
+      const result = await client.request('POST', `/campaigns/${resolved}/send`);
       return result.ok ? ok(result.data) : err('sending campaign', result.data);
     },
   );
 
   server.tool(
     'blast_get_campaign_analytics',
-    'Get engagement metrics for a sent campaign: open rate, click rate, click map, delivery breakdown.',
+    'Get engagement metrics for a sent campaign: open rate, click rate, click map, delivery breakdown. `id` accepts either a UUID or the campaign name.',
     {
-      id: z.string().uuid().describe('Campaign ID'),
+      id: z.string().describe('Campaign UUID or campaign name'),
     },
     async ({ id }) => {
-      const result = await client.request('GET', `/campaigns/${id}/analytics`);
+      const resolved = await resolveCampaignId(client, id);
+      if (!resolved) {
+        return err('getting campaign analytics', {
+          message: `Campaign not found by name or id: ${id}`,
+        });
+      }
+      const result = await client.request('GET', `/campaigns/${resolved}/analytics`);
       return result.ok ? ok(result.data) : err('getting campaign analytics', result.data);
     },
   );

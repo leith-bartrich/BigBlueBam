@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { isUuid } from '../middleware/resolve-helpers.js';
 import { handleScopeError } from '../middleware/scope-check.js';
 
 export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdeskApiUrl: string): void {
@@ -23,6 +24,23 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
     const res = await fetch(url, init);
     const data = await res.json();
     return { ok: res.ok, status: res.status, data };
+  }
+
+  /**
+   * Resolve a ticket identifier that may be either a UUID or a human-readable
+   * ticket number (e.g. "1234" or "#1234") to a UUID. Returns `null` if the
+   * input is neither a UUID nor a resolvable ticket number, so callers can
+   * surface a clean "Ticket not found" error.
+   */
+  async function resolveTicketId(idOrNumber: string): Promise<string | null> {
+    if (isUuid(idOrNumber)) return idOrNumber;
+    // Strip leading '#' and validate it's a positive integer
+    const stripped = idOrNumber.trim().replace(/^#/, '');
+    if (!/^\d+$/.test(stripped)) return null;
+    const result = await helpdeskRequest('GET', `/tickets/by-number/${encodeURIComponent(stripped)}`);
+    if (!result.ok) return null;
+    const envelope = result.data as { data?: { id?: string } | null } | null;
+    return envelope?.data?.id ?? null;
   }
 
   server.tool(
@@ -135,12 +153,20 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
     'reply_to_ticket',
     'Send a message on a helpdesk ticket (public reply or internal note)',
     {
-      ticket_id: z.string().uuid().describe('The ticket ID'),
+      ticket_id: z.string().min(1).describe('The ticket UUID, ticket number ("1234"), or prefixed ticket number ("#1234")'),
       body: z.string().min(1).describe('The message body'),
       is_internal: z.boolean().optional().default(false).describe('If true, post as an internal note (not visible to client)'),
     },
     async ({ ticket_id, body, is_internal }) => {
-      const result = await helpdeskRequest('POST', `/tickets/${ticket_id}/messages`, {
+      const resolvedId = await resolveTicketId(ticket_id);
+      if (!resolvedId) {
+        return {
+          content: [{ type: 'text' as const, text: `Ticket not found: "${ticket_id}". Provide a UUID or a ticket number (e.g. 1234 or #1234).` }],
+          isError: true,
+        };
+      }
+
+      const result = await helpdeskRequest('POST', `/tickets/${resolvedId}/messages`, {
         body,
         is_internal,
       });
@@ -164,11 +190,19 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
     'update_ticket_status',
     'Update the status of a helpdesk ticket',
     {
-      ticket_id: z.string().uuid().describe('The ticket ID'),
+      ticket_id: z.string().min(1).describe('The ticket UUID, ticket number ("1234"), or prefixed ticket number ("#1234")'),
       status: z.enum(['open', 'in_progress', 'waiting_on_client', 'resolved', 'closed']).describe('The new status'),
     },
     async ({ ticket_id, status }) => {
-      const result = await helpdeskRequest('PATCH', `/tickets/${ticket_id}`, { status });
+      const resolvedId = await resolveTicketId(ticket_id);
+      if (!resolvedId) {
+        return {
+          content: [{ type: 'text' as const, text: `Ticket not found: "${ticket_id}". Provide a UUID or a ticket number (e.g. 1234 or #1234).` }],
+          isError: true,
+        };
+      }
+
+      const result = await helpdeskRequest('PATCH', `/tickets/${resolvedId}`, { status });
 
       if (!result.ok) {
         const scopeErr = handleScopeError('update_ticket_status', 'read_write', result);

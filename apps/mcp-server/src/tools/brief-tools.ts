@@ -1,7 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
-import { resolveDocumentId } from '../middleware/resolve-helpers.js';
+import {
+  resolveDocumentId,
+  resolveProjectId,
+  resolveTaskId,
+} from '../middleware/resolve-helpers.js';
 
 /**
  * Helper to make requests to the brief-api service.
@@ -120,7 +124,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_update',
     'Update Brief document metadata. Provide only the fields to change.',
     {
-      id: z.string().describe('Document ID (UUID) or slug'),
+      id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       title: z.string().max(500).optional().describe('Updated title'),
       status: z.enum(['draft', 'in_review', 'approved', 'archived']).optional().describe('Updated status'),
       visibility: z.enum(['private', 'project', 'organization']).optional().describe('Updated visibility'),
@@ -140,7 +144,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_update_content',
     'Replace the entire content of a Brief document with new Markdown.',
     {
-      id: z.string().describe('Document ID (UUID) or slug'),
+      id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       content: z.string().max(500_000).describe('New Markdown content (max 500k chars)'),
     },
     async ({ id, content }) => {
@@ -155,7 +159,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_append_content',
     'Append Markdown content to the end of a Brief document.',
     {
-      id: z.string().describe('Document ID (UUID) or slug'),
+      id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       content: z.string().max(100_000).describe('Markdown to append (max 100k chars)'),
     },
     async ({ id, content }) => {
@@ -170,7 +174,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_archive',
     'Archive a Brief document (soft-delete).',
     {
-      id: z.string().describe('Document ID (UUID) or slug'),
+      id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
     async ({ id }) => {
       const documentId = await resolveDocumentId(client, id);
@@ -184,7 +188,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_restore',
     'Restore an archived Brief document.',
     {
-      id: z.string().describe('Document ID (UUID) or slug'),
+      id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
     async ({ id }) => {
       const documentId = await resolveDocumentId(client, id);
@@ -198,13 +202,39 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_duplicate',
     'Duplicate a Brief document, optionally into a different project.',
     {
-      id: z.string().describe('Document ID (UUID) or slug'),
-      project_id: z.string().uuid().optional().describe('Target project ID (defaults to same project)'),
+      id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
+      project_id: z
+        .string()
+        .optional()
+        .describe('Target project UUID or exact project name (defaults to same project)'),
     },
-    async ({ id, ...body }) => {
+    async ({ id, project_id }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
-      const result = await client.request('POST', `/documents/${documentId}/duplicate`, Object.keys(body).length ? body : undefined);
+
+      // Resolve an optional human-readable project name (e.g. "Mage Inc") to
+      // its UUID. The Bam API's list endpoint enforces org + membership, so
+      // this cannot leak projects the caller can't already see.
+      let resolvedProjectId: string | undefined;
+      if (project_id !== undefined) {
+        const pid = await resolveProjectId(api, project_id);
+        if (!pid) {
+          return {
+            content: [
+              { type: 'text' as const, text: `Project not found: ${project_id}` },
+            ],
+            isError: true as const,
+          };
+        }
+        resolvedProjectId = pid;
+      }
+
+      const body = resolvedProjectId ? { project_id: resolvedProjectId } : undefined;
+      const result = await client.request(
+        'POST',
+        `/documents/${documentId}/duplicate`,
+        body,
+      );
       return result.ok ? ok(result.data) : err('duplicating document', result.data);
     },
   );
@@ -233,7 +263,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_comment_list',
     'List comments on a Brief document.',
     {
-      document_id: z.string().describe('Document ID (UUID) or slug'),
+      document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
     async ({ document_id }) => {
       const resolved = await resolveDocumentId(client, document_id);
@@ -247,7 +277,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_comment_add',
     'Add a comment to a Brief document, optionally as a reply or anchored to specific text.',
     {
-      document_id: z.string().describe('Document ID (UUID) or slug'),
+      document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       body: z.string().max(10_000).describe('Comment body text (max 10k chars)'),
       parent_id: z.string().uuid().optional().describe('Parent comment ID for threaded reply'),
       anchor_text: z.string().max(500).optional().describe('Text selection the comment is anchored to (max 500 chars)'),
@@ -278,7 +308,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_versions',
     'List the version history of a Brief document.',
     {
-      document_id: z.string().describe('Document ID (UUID) or slug'),
+      document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
     async ({ document_id }) => {
       const resolved = await resolveDocumentId(client, document_id);
@@ -292,7 +322,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_version_get',
     'Get a specific version of a Brief document.',
     {
-      document_id: z.string().describe('Document ID (UUID) or slug'),
+      document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       version_id: z.string().uuid().describe('Version ID'),
     },
     async ({ document_id, version_id }) => {
@@ -307,7 +337,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_version_restore',
     'Restore a Brief document to a specific previous version.',
     {
-      document_id: z.string().describe('Document ID (UUID) or slug'),
+      document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       version_id: z.string().uuid().describe('Version ID to restore'),
     },
     async ({ document_id, version_id }) => {
@@ -324,7 +354,7 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_promote_to_beacon',
     'Graduate a Brief document to a Beacon knowledge article.',
     {
-      id: z.string().describe('Document ID (UUID) or slug to promote'),
+      id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match) to promote'),
     },
     async ({ id }) => {
       const documentId = await resolveDocumentId(client, id);
@@ -338,13 +368,29 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
     'brief_link_task',
     'Link a Brief document to a Bam task.',
     {
-      document_id: z.string().describe('Document ID (UUID) or slug'),
-      task_id: z.string().uuid().describe('Bam task ID to link'),
+      document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
+      task_id: z.string().describe('Bam task UUID or human ref (e.g. FRND-42)'),
       link_type: z.enum(['reference', 'spec', 'notes', 'postmortem']).optional().describe('Type of link (default reference)'),
     },
-    async ({ document_id, ...body }) => {
+    async ({ document_id, task_id, link_type }) => {
       const resolved = await resolveDocumentId(client, document_id);
       if (!resolved) return documentNotFound(document_id);
+
+      // Accept either a UUID or a human ref like "FRND-42". The resolver
+      // hits /tasks/by-ref/:ref which enforces project-membership auth, so
+      // this cannot leak tasks the caller can't already see.
+      const taskId = await resolveTaskId(api, task_id);
+      if (!taskId) {
+        return {
+          content: [
+            { type: 'text' as const, text: `Task not found: ${task_id}` },
+          ],
+          isError: true as const,
+        };
+      }
+
+      const body: Record<string, unknown> = { task_id: taskId };
+      if (link_type !== undefined) body.link_type = link_type;
       const result = await client.request('POST', `/documents/${resolved}/links/task`, body);
       return result.ok ? ok(result.data) : err('linking document to task', result.data);
     },

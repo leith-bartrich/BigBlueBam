@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { isUuid } from '../middleware/resolve-helpers.js';
 import { handleScopeError } from '../middleware/scope-check.js';
 
 /**
@@ -45,6 +46,73 @@ function createBanterClient(banterApiUrl: string, api: ApiClient) {
     patch: (path: string, body?: unknown) => request('PATCH', path, body),
     delete: (path: string) => request('DELETE', path),
   };
+}
+
+/**
+ * Minimal client shape the resolver helpers need. Matches the object returned
+ * by `createBanterClient` above — we only want `get` here since every resolver
+ * endpoint is read-only.
+ */
+type BanterClient = ReturnType<typeof createBanterClient>;
+
+/**
+ * Resolve a Banter channel identifier to a UUID.
+ *
+ * Accepts a UUID (short-circuited with no extra HTTP call), a bare channel
+ * name / slug ("general"), or a `#name` form. Returns `null` if the channel
+ * is not visible to the current caller — callers should surface a clean
+ * "Channel not found" error in that case. This lets automation rules refer
+ * to channels by their human-friendly name so "#general" never has to be
+ * typed as a UUID in a rule step.
+ */
+async function resolveChannelId(
+  banter: BanterClient,
+  idOrName: string,
+): Promise<string | null> {
+  if (isUuid(idOrName)) return idOrName;
+  const cleaned = idOrName.replace(/^#/, '').trim();
+  if (!cleaned) return null;
+  const result = await banter.get(
+    `/banter/api/v1/channels/by-name/${encodeURIComponent(cleaned)}`,
+  );
+  if (!result.ok) return null;
+  const envelope = result.data as { data?: { id?: string } | null } | null;
+  return envelope?.data?.id ?? null;
+}
+
+/**
+ * Resolve a Banter user identifier to a UUID.
+ *
+ * Accepts a UUID, an email address (contains '@' somewhere not at the start),
+ * or a handle (with or without a leading '@'). Returns `null` when no match
+ * is found. Handles are slugified display names, matching Phase C's
+ * `/v1/users/by-handle/:handle` endpoint.
+ */
+async function resolveUserId(
+  banter: BanterClient,
+  idOrEmailOrHandle: string,
+): Promise<string | null> {
+  if (isUuid(idOrEmailOrHandle)) return idOrEmailOrHandle;
+  const trimmed = idOrEmailOrHandle.trim();
+  if (!trimmed) return null;
+  // Email path: contains '@' anywhere not at the start.
+  if (trimmed.includes('@') && !trimmed.startsWith('@')) {
+    const result = await banter.get(
+      `/banter/api/v1/users/by-email?email=${encodeURIComponent(trimmed)}`,
+    );
+    if (!result.ok) return null;
+    const envelope = result.data as { data?: { id?: string } | null } | null;
+    return envelope?.data?.id ?? null;
+  }
+  // Handle path: strip a leading '@' if present.
+  const handle = trimmed.replace(/^@/, '').trim();
+  if (!handle) return null;
+  const result = await banter.get(
+    `/banter/api/v1/users/by-handle/${encodeURIComponent(handle)}`,
+  );
+  if (!result.ok) return null;
+  const envelope = result.data as { data?: { id?: string } | null } | null;
+  return envelope?.data?.id ?? null;
 }
 
 function ok(data: unknown) {
@@ -157,12 +225,19 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_archive_channel',
-    'Archive a Banter channel (reversible)',
+    'Archive a Banter channel (reversible). Accepts a channel UUID, a bare channel name, or #name — no need to resolve the id first.',
     {
-      channel_id: z.string().uuid().describe('The channel ID to archive'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name to archive'),
     },
     async ({ channel_id }) => {
-      const result = await banter.patch(`/banter/api/v1/channels/${channel_id}`, { is_archived: true });
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const result = await banter.patch(`/banter/api/v1/channels/${resolved}`, { is_archived: true });
       return result.ok ? ok(result.data) : writeErr('banter_archive_channel', 'archiving channel', result);
     },
   );
@@ -192,12 +267,19 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_join_channel',
-    'Join a Banter channel',
+    'Join a Banter channel. Accepts a channel UUID, a bare channel name, or #name.',
     {
-      channel_id: z.string().uuid().describe('The channel ID to join'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name to join'),
     },
     async ({ channel_id }) => {
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/join`);
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/join`);
       return result.ok ? ok(result.data) : writeErr('banter_join_channel', 'joining channel', result);
     },
   );
@@ -216,13 +298,34 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_add_channel_members',
-    'Add one or more members to a Banter channel',
+    'Add one or more members to a Banter channel. Accepts a channel UUID, name, or #name, and each user may be a UUID, email, or @handle — mixed lists are supported.',
     {
-      channel_id: z.string().uuid().describe('The channel ID'),
-      user_ids: z.array(z.string().uuid()).min(1).describe('Array of user IDs to add'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name'),
+      user_ids: z
+        .array(z.string().min(1))
+        .min(1)
+        .describe('Users to add. Each element may be a UUID, email address, or @handle.'),
     },
     async ({ channel_id, user_ids }) => {
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/members`, { user_ids });
+      const resolvedChannel = await resolveChannelId(banter, channel_id);
+      if (!resolvedChannel) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const resolvedUsers = await Promise.all(
+        user_ids.map((id) => resolveUserId(banter, id)),
+      );
+      const failed = user_ids.filter((_, i) => !resolvedUsers[i]);
+      if (failed.length > 0) {
+        return err('Users not found', `Could not resolve: ${failed.join(', ')}`);
+      }
+      const userIds = resolvedUsers.filter((id): id is string => id !== null);
+      const result = await banter.post(
+        `/banter/api/v1/channels/${resolvedChannel}/members`,
+        { user_ids: userIds },
+      );
       return result.ok ? ok(result.data) : writeErr('banter_add_channel_members', 'adding channel members', result);
     },
   );
@@ -280,14 +383,21 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_post_message',
-    'Post a new message to a Banter channel',
+    'Post a new message to a Banter channel. Accepts a channel UUID, a bare channel name, or #name — the common Bolt automation pattern "post to #general when X" collapses to a single step with no UUIDs visible.',
     {
-      channel_id: z.string().uuid().describe('The channel ID'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name to post in'),
       content: z.string().min(1).describe('Message content (markdown supported)'),
       attachment_ids: z.array(z.string().uuid()).optional().describe('File attachment IDs'),
     },
     async ({ channel_id, ...body }) => {
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, body);
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/messages`, body);
       return result.ok ? ok(result.data) : writeErr('banter_post_message', 'posting message', result);
     },
   );
@@ -343,26 +453,40 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_pin_message',
-    'Pin a message in a Banter channel',
+    'Pin a message in a Banter channel. Accepts a channel UUID, name, or #name.',
     {
-      channel_id: z.string().uuid().describe('The channel ID'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name'),
       message_id: z.string().uuid().describe('The message ID to pin'),
     },
     async ({ channel_id, message_id }) => {
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/pins`, { message_id });
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/pins`, { message_id });
       return result.ok ? ok(result.data) : writeErr('banter_pin_message', 'pinning message', result);
     },
   );
 
   server.tool(
     'banter_unpin_message',
-    'Unpin a message from a Banter channel',
+    'Unpin a message from a Banter channel. Accepts a channel UUID, name, or #name.',
     {
-      channel_id: z.string().uuid().describe('The channel ID'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name'),
       message_id: z.string().uuid().describe('The message ID to unpin'),
     },
     async ({ channel_id, message_id }) => {
-      const result = await banter.delete(`/banter/api/v1/channels/${channel_id}/pins/${message_id}`);
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const result = await banter.delete(`/banter/api/v1/channels/${resolved}/pins/${message_id}`);
       return result.ok
         ? { content: [{ type: 'text' as const, text: `Message ${message_id} unpinned.` }] }
         : writeErr('banter_unpin_message', 'unpinning message', result);
@@ -476,14 +600,22 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_send_dm',
-    'Send a direct message to another user (creates or reuses existing DM channel)',
+    'Send a direct message to another user (creates or reuses existing DM channel). Accepts a user UUID, email address, or @handle.',
     {
-      user_id: z.string().uuid().describe('The recipient user ID'),
+      to_user_id: z
+        .string()
+        .min(1)
+        .describe('Recipient as UUID, email address, or @handle'),
       content: z.string().min(1).describe('Message content'),
     },
-    async ({ user_id, content }) => {
+    async ({ to_user_id, content }) => {
+      const resolvedUser = await resolveUserId(banter, to_user_id);
+      if (!resolvedUser) {
+        return err('User not found', `User '${to_user_id}' could not be resolved`);
+      }
+
       // Step 1: Create or get existing DM channel
-      const dmResult = await banter.post('/banter/api/v1/dm', { user_id });
+      const dmResult = await banter.post('/banter/api/v1/dm', { user_id: resolvedUser });
       if (!dmResult.ok) return writeErr('banter_send_dm', 'creating DM channel', dmResult);
 
       const channelId = (dmResult.data as Record<string, unknown>).id ??
@@ -499,14 +631,27 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_send_group_dm',
-    'Send a group direct message (creates or reuses existing group DM)',
+    'Send a group direct message (creates or reuses existing group DM). Each recipient may be a UUID, email, or @handle — mixed lists are supported.',
     {
-      user_ids: z.array(z.string().uuid()).min(2).max(7).describe('Recipient user IDs (2-7 users)'),
+      user_ids: z
+        .array(z.string().min(1))
+        .min(2)
+        .max(7)
+        .describe('Recipients (2-7). Each element may be a UUID, email address, or @handle.'),
       content: z.string().min(1).describe('Message content'),
     },
     async ({ user_ids, content }) => {
+      const resolvedUsers = await Promise.all(
+        user_ids.map((id) => resolveUserId(banter, id)),
+      );
+      const failed = user_ids.filter((_, i) => !resolvedUsers[i]);
+      if (failed.length > 0) {
+        return err('Users not found', `Could not resolve: ${failed.join(', ')}`);
+      }
+      const userIds = resolvedUsers.filter((id): id is string => id !== null);
+
       // Step 1: Create or get existing group DM channel
-      const dmResult = await banter.post('/banter/api/v1/group-dm', { user_ids });
+      const dmResult = await banter.post('/banter/api/v1/group-dm', { user_ids: userIds });
       if (!dmResult.ok) return writeErr('banter_send_group_dm', 'creating group DM', dmResult);
 
       const channelId = (dmResult.data as Record<string, unknown>).id ??
@@ -679,13 +824,20 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_start_call',
-    'Start a new voice/video call in a Banter channel',
+    'Start a new voice/video call in a Banter channel. Accepts a channel UUID, name, or #name.',
     {
-      channel_id: z.string().uuid().describe('The channel ID'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name'),
       type: z.enum(['voice', 'video', 'huddle']).optional().describe('Call type (default: voice)'),
     },
     async ({ channel_id, ...body }) => {
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/calls`, body);
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/calls`, body);
       return result.ok ? ok(result.data) : writeErr('banter_start_call', 'starting call', result);
     },
   );
@@ -840,15 +992,22 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_share_task',
-    'Share a BigBlueBam task as a rich embed in a Banter channel',
+    'Share a BigBlueBam task as a rich embed in a Banter channel. Accepts a channel UUID, name, or #name.',
     {
-      channel_id: z.string().uuid().describe('The channel ID to post in'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name to post in'),
       task_id: z.string().uuid().describe('The Bam task ID to share'),
       comment: z.string().optional().describe('Optional comment to include with the share'),
     },
     async ({ channel_id, task_id, comment }) => {
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
       const content = comment ? `${comment}\n\n[task:${task_id}]` : `[task:${task_id}]`;
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, {
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/messages`, {
         content,
         embeds: [{ type: 'bbb_task', id: task_id }],
       });
@@ -858,15 +1017,22 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_share_sprint',
-    'Share a BigBlueBam sprint summary as a rich embed in a Banter channel',
+    'Share a BigBlueBam sprint summary as a rich embed in a Banter channel. Accepts a channel UUID, name, or #name.',
     {
-      channel_id: z.string().uuid().describe('The channel ID to post in'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name to post in'),
       sprint_id: z.string().uuid().describe('The Bam sprint ID to share'),
       comment: z.string().optional().describe('Optional comment to include'),
     },
     async ({ channel_id, sprint_id, comment }) => {
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
       const content = comment ? `${comment}\n\n[sprint:${sprint_id}]` : `[sprint:${sprint_id}]`;
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, {
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/messages`, {
         content,
         embeds: [{ type: 'bbb_sprint', id: sprint_id }],
       });
@@ -876,15 +1042,22 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
 
   server.tool(
     'banter_share_ticket',
-    'Share a Helpdesk ticket as a rich embed in a Banter channel',
+    'Share a Helpdesk ticket as a rich embed in a Banter channel. Accepts a channel UUID, name, or #name.',
     {
-      channel_id: z.string().uuid().describe('The channel ID to post in'),
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name to post in'),
       ticket_id: z.string().uuid().describe('The Helpdesk ticket ID to share'),
       comment: z.string().optional().describe('Optional comment to include'),
     },
     async ({ channel_id, ticket_id, comment }) => {
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
       const content = comment ? `${comment}\n\n[ticket:${ticket_id}]` : `[ticket:${ticket_id}]`;
-      const result = await banter.post(`/banter/api/v1/channels/${channel_id}/messages`, {
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/messages`, {
         content,
         embeds: [{ type: 'helpdesk_ticket', id: ticket_id }],
       });

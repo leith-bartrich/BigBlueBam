@@ -1,22 +1,35 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { resolveProjectId, resolveTemplateId } from './task-tools.js';
+
+function err(label: string, data: unknown) {
+  return {
+    content: [{ type: 'text' as const, text: `Error ${label}: ${JSON.stringify(data)}` }],
+    isError: true as const,
+  };
+}
 
 export function registerTemplateTools(server: McpServer, api: ApiClient): void {
   server.tool(
     'list_templates',
-    'List available task templates for a project',
+    'List available task templates for a project. Accepts project name or UUID.',
     {
-      project_id: z.string().uuid().describe('The project ID'),
+      project_id: z.string().describe('Project name or UUID'),
     },
     async ({ project_id }) => {
-      const result = await api.get(`/projects/${project_id}/task-templates`);
+      const resolvedProjectId = await resolveProjectId(api, project_id);
+      if (!resolvedProjectId) {
+        return err(
+          'listing templates',
+          `Project '${project_id}' could not be resolved by name or UUID`,
+        );
+      }
+
+      const result = await api.get(`/projects/${resolvedProjectId}/task-templates`);
 
       if (!result.ok) {
-        return {
-          content: [{ type: 'text' as const, text: `Error listing templates: ${JSON.stringify(result.data)}` }],
-          isError: true,
-        };
+        return err('listing templates', result.data);
       }
 
       return {
@@ -27,20 +40,48 @@ export function registerTemplateTools(server: McpServer, api: ApiClient): void {
 
   server.tool(
     'create_from_template',
-    'Create a task from a template, optionally overriding specific fields',
+    'Create a task from a template, optionally overriding specific fields. Accepts project name and template name in addition to UUIDs.',
     {
-      project_id: z.string().uuid().describe('The project ID'),
-      template_id: z.string().uuid().describe('The template ID to apply'),
-      overrides: z.record(z.unknown()).optional().describe('Field overrides to apply on top of the template (e.g. { title, assignee_id, priority })'),
+      project_id: z.string().describe('Project name or UUID'),
+      template_id: z
+        .string()
+        .describe('Template name (scoped to the project) or UUID'),
+      overrides: z
+        .record(z.unknown())
+        .optional()
+        .describe(
+          'Field overrides to apply on top of the template (e.g. { title, assignee_id, priority }). ' +
+            'Sub-keys inside overrides must still be UUIDs.',
+        ),
     },
     async ({ project_id, template_id, overrides }) => {
-      const result = await api.post(`/projects/${project_id}/task-templates/${template_id}/apply`, { overrides: overrides ?? {} });
+      const resolvedProjectId = await resolveProjectId(api, project_id);
+      if (!resolvedProjectId) {
+        return err(
+          'creating from template',
+          `Project '${project_id}' could not be resolved by name or UUID`,
+        );
+      }
+
+      const resolvedTemplateId = await resolveTemplateId(
+        api,
+        resolvedProjectId,
+        template_id,
+      );
+      if (!resolvedTemplateId) {
+        return err(
+          'creating from template',
+          `Template '${template_id}' could not be resolved in project '${project_id}'`,
+        );
+      }
+
+      const result = await api.post(
+        `/projects/${resolvedProjectId}/task-templates/${resolvedTemplateId}/apply`,
+        { overrides: overrides ?? {} },
+      );
 
       if (!result.ok) {
-        return {
-          content: [{ type: 'text' as const, text: `Error creating from template: ${JSON.stringify(result.data)}` }],
-          isError: true,
-        };
+        return err('creating from template', result.data);
       }
 
       return {

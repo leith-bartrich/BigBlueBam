@@ -1,7 +1,31 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
-import { resolveBeaconId } from '../middleware/resolve-helpers.js';
+import { isUuid, resolveBeaconId } from '../middleware/resolve-helpers.js';
+
+/**
+ * Resolve a Project identifier to a UUID. Accepts either a UUID (passthrough)
+ * or a project name (case-insensitive exact match against the caller's
+ * visible project list).
+ *
+ * Beacon-api stores `project_id` as a UUID, and there is no dedicated
+ * by-name endpoint on the main API, so we list the caller's projects and
+ * filter client-side. `/projects` returns every project the caller can see
+ * in their active org, which is typically a small set.
+ *
+ * Returns `null` if the name does not match any visible project. Callers
+ * should surface a clean "Project not found" error.
+ */
+async function resolveProjectId(api: ApiClient, nameOrId: string): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  const result = await api.get('/projects?limit=200');
+  if (!result.ok) return null;
+  const projects =
+    ((result.data as { data?: Array<{ id: string; name: string }> } | null)?.data) ?? [];
+  const needle = nameOrId.toLowerCase();
+  const match = projects.find((p) => p.name.toLowerCase() === needle);
+  return match?.id ?? null;
+}
 
 /**
  * Helper to make requests to the beacon-api service.
@@ -78,10 +102,26 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
       summary: z.string().max(500).optional().describe('Short summary (plain text)'),
       body_markdown: z.string().min(1).max(500_000).describe('Beacon body content (Markdown)'),
       visibility: z.enum(['Public', 'Organization', 'Project', 'Private']).optional().describe('Visibility level'),
-      project_id: z.string().uuid().optional().describe('Project scope (if project-level)'),
+      project_id: z
+        .string()
+        .optional()
+        .describe('Project scope (if project-level) — accepts a UUID or project name'),
     },
     async (params) => {
-      const result = await client.request('POST', '/beacons', params);
+      const body: Record<string, unknown> = { ...params };
+      if (params.project_id) {
+        const resolved = await resolveProjectId(api, params.project_id);
+        if (!resolved) {
+          return {
+            content: [
+              { type: 'text' as const, text: `Project not found: ${params.project_id}` },
+            ],
+            isError: true as const,
+          };
+        }
+        body.project_id = resolved;
+      }
+      const result = await client.request('POST', '/beacons', body);
       return result.ok ? ok(result.data) : err('creating beacon', result.data);
     },
   );
@@ -119,7 +159,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_update',
     'Update a Beacon (creates a new version). Provide only the fields to change.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
       title: z.string().min(1).max(512).optional().describe('Updated title'),
       summary: z.string().max(500).optional().describe('Updated summary'),
       body_markdown: z.string().min(1).max(500_000).optional().describe('Updated body content (Markdown)'),
@@ -138,7 +178,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_retire',
     'Retire (soft-delete) a Beacon.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
     },
     async ({ id }) => {
       const beaconId = await resolveBeaconId(client, id);
@@ -152,7 +192,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_publish',
     'Transition a Beacon from Draft to Active.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
     },
     async ({ id }) => {
       const beaconId = await resolveBeaconId(client, id);
@@ -166,7 +206,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_verify',
     'Record a verification event on a Beacon (confirms content is still accurate).',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
       verification_type: z.enum(['Manual', 'AgentAutomatic', 'AgentAssisted', 'ScheduledReview']).describe('Type of verification'),
       outcome: z.enum(['Confirmed', 'Updated', 'Challenged', 'Retired']).describe('Verification outcome'),
       confidence_score: z.number().min(0).max(1).optional().describe('Confidence score (0-1)'),
@@ -184,7 +224,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_challenge',
     'Flag a Beacon for review (challenge its accuracy or relevance).',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
       reason: z.string().max(1000).optional().describe('Reason for the challenge'),
     },
     async ({ id, ...body }) => {
@@ -199,7 +239,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_restore',
     'Restore an Archived Beacon back to Active status.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
     },
     async ({ id }) => {
       const beaconId = await resolveBeaconId(client, id);
@@ -213,7 +253,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_versions',
     'List the version history of a Beacon.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
     },
     async ({ id }) => {
       const beaconId = await resolveBeaconId(client, id);
@@ -227,7 +267,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_version_get',
     'Get a specific version of a Beacon.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
       version: z.number().int().positive().describe('Version number'),
     },
     async ({ id, version }) => {
@@ -359,7 +399,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_tag_add',
     'Add one or more tags to a Beacon.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
       tags: z.array(z.string().min(1)).min(1).describe('Tags to add'),
     },
     async ({ id, tags }) => {
@@ -374,7 +414,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_tag_remove',
     'Remove a tag from a Beacon.',
     {
-      id: z.string().describe('Beacon ID (UUID) or slug'),
+      id: z.string().describe('Beacon ID (UUID), slug, or title'),
       tag: z.string().min(1).describe('Tag to remove'),
     },
     async ({ id, tag }) => {
@@ -389,8 +429,8 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_link_create',
     'Create a typed link between two Beacons.',
     {
-      id: z.string().describe('Source Beacon ID (UUID) or slug'),
-      target_id: z.string().describe('Target Beacon ID (UUID) or slug'),
+      id: z.string().describe('Source Beacon ID (UUID), slug, or title'),
+      target_id: z.string().describe('Target Beacon ID (UUID), slug, or title'),
       link_type: z.enum(['RelatedTo', 'Supersedes', 'DependsOn', 'ConflictsWith', 'SeeAlso']).describe('Link type'),
     },
     async ({ id, target_id, link_type }) => {
@@ -410,7 +450,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_link_remove',
     'Remove a link from a Beacon.',
     {
-      id: z.string().describe('Source Beacon ID (UUID) or slug'),
+      id: z.string().describe('Source Beacon ID (UUID), slug, or title'),
       link_id: z.string().uuid().describe('Link ID to remove'),
     },
     async ({ id, link_id }) => {
@@ -482,7 +522,7 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     'beacon_graph_neighbors',
     'Get nodes and edges within N hops of a focal Beacon for graph exploration.',
     {
-      beacon_id: z.string().describe('Focal Beacon ID (UUID) or slug'),
+      beacon_id: z.string().describe('Focal Beacon ID (UUID), slug, or title'),
       hops: z.number().int().min(1).max(3).optional().describe('Traversal depth (default 1)'),
       include_implicit: z.boolean().optional().describe('Include tag-affinity edges (default true)'),
       tag_affinity_threshold: z.number().int().min(1).max(5).optional().describe('Minimum shared tags for implicit edge (default 2)'),

@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { isUuid } from '../middleware/resolve-helpers.js';
 
 /**
  * Helper to make requests to the bolt-api service.
@@ -56,6 +57,35 @@ function buildQs(params: Record<string, unknown>): string {
 export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl: string): void {
   const client = createBoltClient(boltApiUrl, api);
 
+  /**
+   * Resolve an automation identifier that may be either a UUID or a human
+   * automation name to a UUID. Delegates to the `by-name` resolver endpoint
+   * added in Phase C. Returns `null` on miss so callers can surface a clean
+   * "Automation not found" error.
+   */
+  async function resolveAutomationId(nameOrId: string): Promise<string | null> {
+    if (isUuid(nameOrId)) return nameOrId;
+    const result = await client.request(
+      'GET',
+      `/automations/by-name/${encodeURIComponent(nameOrId)}`,
+    );
+    if (!result.ok) return null;
+    const envelope = result.data as { data?: { id?: string } | null } | null;
+    return envelope?.data?.id ?? null;
+  }
+
+  function automationNotFound(nameOrId: string) {
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Automation not found: "${nameOrId}". Provide a UUID or the automation's exact name.`,
+        },
+      ],
+      isError: true as const,
+    };
+  }
+
   // ===== AUTOMATIONS CRUD (7) =====
 
   server.tool(
@@ -78,10 +108,12 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_get',
     'Get a single automation with its conditions and actions.',
     {
-      id: z.string().uuid().describe('Automation ID'),
+      id: z.string().min(1).describe('Automation UUID or exact automation name'),
     },
     async ({ id }) => {
-      const result = await client.request('GET', `/automations/${id}`);
+      const resolvedId = await resolveAutomationId(id);
+      if (!resolvedId) return automationNotFound(id);
+      const result = await client.request('GET', `/automations/${resolvedId}`);
       return result.ok ? ok(result.data) : err('getting automation', result.data);
     },
   );
@@ -125,7 +157,7 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_update',
     'Update an existing automation. Provide only the fields to change.',
     {
-      id: z.string().uuid().describe('Automation ID'),
+      id: z.string().min(1).describe('Automation UUID or exact automation name'),
       name: z.string().max(255).optional().describe('Updated name'),
       description: z.string().max(2000).optional().describe('Updated description'),
       trigger_source: z.enum(['bam', 'banter', 'beacon', 'brief', 'helpdesk', 'schedule', 'bond', 'blast', 'board', 'bench', 'bearing', 'bill', 'book', 'blank']).optional().describe('Updated trigger source'),
@@ -136,7 +168,9 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
       enabled: z.boolean().optional().describe('Enable or disable'),
     },
     async ({ id, ...body }) => {
-      const result = await client.request('PUT', `/automations/${id}`, body);
+      const resolvedId = await resolveAutomationId(id);
+      if (!resolvedId) return automationNotFound(id);
+      const result = await client.request('PUT', `/automations/${resolvedId}`, body);
       return result.ok ? ok(result.data) : err('updating automation', result.data);
     },
   );
@@ -145,10 +179,12 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_enable',
     'Enable a workflow automation.',
     {
-      id: z.string().uuid().describe('Automation ID'),
+      id: z.string().min(1).describe('Automation UUID or exact automation name (e.g. "Nightly Deploys")'),
     },
     async ({ id }) => {
-      const result = await client.request('POST', `/automations/${id}/enable`);
+      const resolvedId = await resolveAutomationId(id);
+      if (!resolvedId) return automationNotFound(id);
+      const result = await client.request('POST', `/automations/${resolvedId}/enable`);
       return result.ok ? ok(result.data) : err('enabling automation', result.data);
     },
   );
@@ -157,10 +193,12 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_disable',
     'Disable a workflow automation.',
     {
-      id: z.string().uuid().describe('Automation ID'),
+      id: z.string().min(1).describe('Automation UUID or exact automation name (e.g. "Nightly Deploys")'),
     },
     async ({ id }) => {
-      const result = await client.request('POST', `/automations/${id}/disable`);
+      const resolvedId = await resolveAutomationId(id);
+      if (!resolvedId) return automationNotFound(id);
+      const result = await client.request('POST', `/automations/${resolvedId}/disable`);
       return result.ok ? ok(result.data) : err('disabling automation', result.data);
     },
   );
@@ -169,10 +207,12 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_delete',
     'Delete a workflow automation.',
     {
-      id: z.string().uuid().describe('Automation ID'),
+      id: z.string().min(1).describe('Automation UUID or exact automation name'),
     },
     async ({ id }) => {
-      const result = await client.request('DELETE', `/automations/${id}`);
+      const resolvedId = await resolveAutomationId(id);
+      if (!resolvedId) return automationNotFound(id);
+      const result = await client.request('DELETE', `/automations/${resolvedId}`);
       return result.ok ? ok(result.data) : err('deleting automation', result.data);
     },
   );
@@ -183,11 +223,13 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_test',
     'Test-fire an automation with a simulated event payload.',
     {
-      id: z.string().uuid().describe('Automation ID to test'),
+      id: z.string().min(1).describe('Automation UUID or exact automation name to test'),
       event: z.record(z.unknown()).describe('Simulated event payload object'),
     },
     async ({ id, event }) => {
-      const result = await client.request('POST', `/automations/${id}/test`, { event });
+      const resolvedId = await resolveAutomationId(id);
+      if (!resolvedId) return automationNotFound(id);
+      const result = await client.request('POST', `/automations/${resolvedId}/test`, { event });
       return result.ok ? ok(result.data) : err('testing automation', result.data);
     },
   );
@@ -198,12 +240,14 @@ export function registerBoltTools(server: McpServer, api: ApiClient, boltApiUrl:
     'bolt_executions',
     'List execution history for an automation.',
     {
-      automation_id: z.string().uuid().describe('Automation ID'),
+      automation_id: z.string().min(1).describe('Automation UUID or exact automation name'),
       status: z.enum(['running', 'success', 'partial', 'failed', 'skipped']).optional().describe('Filter by execution status'),
       limit: z.number().int().positive().max(100).optional().describe('Max results (default 50, max 100)'),
     },
     async ({ automation_id, ...rest }) => {
-      const result = await client.request('GET', `/automations/${automation_id}/executions${buildQs(rest)}`);
+      const resolvedId = await resolveAutomationId(automation_id);
+      if (!resolvedId) return automationNotFound(automation_id);
+      const result = await client.request('GET', `/automations/${resolvedId}/executions${buildQs(rest)}`);
       return result.ok ? ok(result.data) : err('listing executions', result.data);
     },
   );
