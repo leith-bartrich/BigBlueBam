@@ -12,10 +12,7 @@
       "tsconfig.base.json",
       "apps/frontend/Dockerfile",
       "infra/nginx/**"
-    ],
-    "buildArgs": {
-      "NGINX_PROFILE": "railway"
-    }
+    ]
   },
   "deploy": {
     "restartPolicyType": "ON_FAILURE",

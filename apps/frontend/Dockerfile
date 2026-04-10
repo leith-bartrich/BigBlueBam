@@ -154,18 +154,23 @@ COPY --from=build /app/apps/bench/dist /usr/share/nginx/html/bench
 COPY --from=build /app/apps/bill/dist /usr/share/nginx/html/bill
 COPY --from=build /app/apps/blank/dist /usr/share/nginx/html/blank
 
-# Two nginx config profiles bundled in the image:
-#   default → infra/nginx/nginx.conf            (legacy fallback)
+# Two nginx config profiles are baked into the image and the right one is
+# picked at container start by infra/nginx/entrypoint.sh, which lives at
+# /docker-entrypoint.d/ so the official nginx image runs it before starting
+# the server.
+#
+#   default → infra/nginx/nginx.conf            (docker-compose / bare docker)
 #   railway → infra/nginx/nginx.railway.conf    (uses *.railway.internal upstreams)
 #
-# Pick one with `--build-arg NGINX_PROFILE=railway`. The compose flow doesn't
-# care which profile gets baked in because docker-compose.yml mounts
-# infra/nginx/nginx-with-site.conf over /etc/nginx/conf.d/default.conf at
-# runtime, overriding whatever's in the image.
+# Selection rule: if RAILWAY_ENVIRONMENT_NAME or RAILWAY_PROJECT_ID is set
+# (Railway injects these on every service), use the railway profile;
+# otherwise use the default profile. The compose flow continues to override
+# whichever profile is selected because docker-compose.yml mounts
+# infra/nginx/nginx-with-site.conf over default.conf at runtime.
 COPY infra/nginx/nginx.conf /etc/nginx/profiles/default.conf
 COPY infra/nginx/nginx.railway.conf /etc/nginx/profiles/railway.conf
-ARG NGINX_PROFILE=default
-RUN cp /etc/nginx/profiles/${NGINX_PROFILE}.conf /etc/nginx/conf.d/default.conf
+COPY infra/nginx/entrypoint.sh /docker-entrypoint.d/00-pick-nginx-profile.sh
+RUN chmod +x /docker-entrypoint.d/00-pick-nginx-profile.sh
 
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
