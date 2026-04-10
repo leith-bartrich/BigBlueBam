@@ -861,7 +861,7 @@ Configure providers in **Settings → AI Providers** in the Bam frontend. If no 
 
 ## Quick Start
 
-> **📖 Full deployment guide:** [docs/deployment-guide.md](docs/deployment-guide.md) — step-by-step walkthrough with interactive setup wizard, password generation, and platform selection (Railway or Docker Compose).
+> **📖 Full deployment guide:** [docs/deployment-guide.md](docs/deployment-guide.md) — step-by-step walkthrough with interactive setup wizard, password generation, and platform selection (Docker Compose today; Railway one-click deploy coming soon — config-as-code is already in `railway/`).
 
 ### Guided Setup (Recommended)
 
@@ -1097,7 +1097,7 @@ scripts/            → Utility and seed scripts
 | [API Reference](docs/api-reference.md) | All REST endpoints with examples |
 | [MCP Server](docs/mcp-server.md) | Tools, resources, prompts, configuration |
 | [Operations](docs/operations.md) | Updates, backups, scaling, troubleshooting |
-| [Deployment Guide](docs/deployment-guide.md) | Interactive setup wizard, Railway & Docker Compose, step-by-step |
+| [Deployment Guide](docs/deployment-guide.md) | Interactive setup wizard, Docker Compose (today) + Railway preview, step-by-step |
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, scaling, backup |
 | [Development](docs/development.md) | Contributing, testing, code style |
 | [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |

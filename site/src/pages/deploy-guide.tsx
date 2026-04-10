@@ -192,7 +192,7 @@ export function DeployGuidePage() {
             {[
               {
                 label: 'A place to run it',
-                desc: 'Railway cloud (free tier available) or your own machine with Docker',
+                desc: 'Any machine with Docker today; managed Railway cloud one-click deploy is coming soon',
               },
               {
                 label: 'A database',
@@ -227,13 +227,43 @@ export function DeployGuidePage() {
             Two paths, same result. Pick the one that fits your team.
           </p>
           <div className="grid gap-6 sm:grid-cols-2">
-            {/* Railway card */}
+            {/* Docker Compose card — currently the recommended path */}
             <div className="rounded-xl border-2 border-primary-200 bg-white p-6 shadow-sm">
               <div className="mb-3 flex items-center gap-2">
-                <Cloud className="h-5 w-5 text-primary-600" />
-                <h3 className="text-lg font-bold text-zinc-900">Railway</h3>
+                <Server className="h-5 w-5 text-primary-600" />
+                <h3 className="text-lg font-bold text-zinc-900">Docker Compose</h3>
                 <span className="ml-auto rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
                   Recommended
+                </span>
+              </div>
+              <ul className="space-y-2 text-sm text-zinc-600">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  Run on any machine with Docker — Linux, macOS, Windows
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  Full control over your infrastructure
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  One <code className="rounded bg-zinc-100 px-1 text-xs">docker compose up</code> brings the entire stack online
+                </li>
+              </ul>
+              <p className="mt-4 rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-500 italic">
+                Best for: Teams running BigBlueBam today. Works for both local
+                development and production self-hosted deployments on a single
+                VM or any Docker host.
+              </p>
+            </div>
+
+            {/* Railway card — coming soon */}
+            <div className="relative rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+              <div className="mb-3 flex items-center gap-2">
+                <Cloud className="h-5 w-5 text-zinc-500" />
+                <h3 className="text-lg font-bold text-zinc-900">Railway</h3>
+                <span className="ml-auto rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                  Coming soon
                 </span>
               </div>
               <ul className="space-y-2 text-sm text-zinc-600">
@@ -243,43 +273,22 @@ export function DeployGuidePage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                  Free tier available
+                  Automatic HTTPS, scaling, managed Postgres &amp; Redis
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                  Automatic HTTPS, scaling, backups
+                  Per-service config-as-code already in the repo (<code className="rounded bg-zinc-100 px-1 text-xs">railway/</code>)
                 </li>
               </ul>
-              <p className="mt-4 rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-500 italic">
-                Best for: Teams that want to get started quickly without managing servers.
-              </p>
-            </div>
-
-            {/* Docker Compose card */}
-            <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <Server className="h-5 w-5 text-zinc-600" />
-                <h3 className="text-lg font-bold text-zinc-900">Docker Compose</h3>
-                <span className="ml-auto rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-600">
-                  Self-hosted
-                </span>
-              </div>
-              <ul className="space-y-2 text-sm text-zinc-600">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                  Run on any machine with Docker
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                  Full control over your infrastructure
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                  Works on Linux, macOS, Windows
-                </li>
-              </ul>
-              <p className="mt-4 rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-500 italic">
-                Best for: Teams that want to keep everything on their own hardware.
+              <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <strong>Status:</strong> a one-click "Deploy from GitHub" experience is in
+                active development. The Railway-flavored ingress, env-var
+                reference, and per-service manifests are already checked in;
+                what's left is wiring Railway's auto-deploy flow to provision
+                all 19 services in one shot. Until then, follow the Docker
+                Compose path or use the preview adapter in
+                <code className="mx-1 rounded bg-amber-100 px-1 text-xs">scripts/deploy.sh</code>
+                to walk through the manual setup.
               </p>
             </div>
           </div>
@@ -317,10 +326,13 @@ cd BigBlueBam`}</CodeBlock>
             </p>
             <CodeBlock>{`Where are you deploying?
 
-  1. Railway — Managed containers with free tier (recommended)
-  2. Docker Compose — Run locally or on any server with Docker`}</CodeBlock>
+  1. Docker Compose — Run locally or on any server with Docker (recommended)
+  2. Railway (Preview) — Cloud containers; one-click deploy coming soon`}</CodeBlock>
             <Callout type="tip">
-              Not sure? Start with Railway. You can migrate to self-hosted later without losing data.
+              Not sure? Start with Docker Compose — it's the fastest path to a
+              running stack today. Railway support is in preview: the per-service
+              config is already in the repo, but the fully automated provisioning
+              flow is still being built.
             </Callout>
           </Step>
 
@@ -359,24 +371,27 @@ cd BigBlueBam`}</CodeBlock>
               The script takes it from here. Depending on which path you chose:
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border border-zinc-200 bg-white p-4">
+              <div className="rounded-lg border border-primary-200 bg-white p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Cloud className="h-4 w-4 text-primary-600" />
-                  <p className="text-sm font-semibold text-zinc-900">Railway</p>
-                </div>
-                <p className="text-xs text-zinc-500">
-                  Connects to your Railway account, creates the project, provisions databases,
-                  and deploys all services automatically.
-                </p>
-              </div>
-              <div className="rounded-lg border border-zinc-200 bg-white p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Terminal className="h-4 w-4 text-zinc-600" />
+                  <Terminal className="h-4 w-4 text-primary-600" />
                   <p className="text-sm font-semibold text-zinc-900">Docker Compose</p>
                 </div>
                 <p className="text-xs text-zinc-500">
                   Pulls or builds all container images locally and starts the full stack
                   with a single <code className="rounded bg-zinc-100 px-1 text-xs">docker compose up -d</code>.
+                  Migrations run automatically before app services start.
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Cloud className="h-4 w-4 text-zinc-500" />
+                  <p className="text-sm font-semibold text-zinc-900">Railway <span className="text-amber-600">(Preview)</span></p>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  Walks you through Railway project + plugin setup, then prints
+                  a checklist of services to create from the config-as-code
+                  manifests under <code className="rounded bg-zinc-100 px-1 text-xs">railway/</code>.
+                  A one-click deploy is on the roadmap.
                 </p>
               </div>
             </div>
@@ -552,12 +567,28 @@ Verifying login... ✓`}</CodeBlock>
         <section className="mb-16">
           <h2 className="mb-6 text-2xl font-bold text-zinc-900">Frequently Asked Questions</h2>
           <div className="space-y-3">
-            <FaqItem q="How much does Railway cost?">
+            <FaqItem q="When will the one-click Railway deploy be ready?">
               <p>
-                Railway offers a free Starter plan that includes $5 of usage per month, which
-                is enough to run BigBlueBam for small teams. For production use, the Developer plan
-                is $5/month plus usage-based pricing. Most small teams spend $10-25/month total.
-                See{' '}
+                The pieces are landing in stages. Already in the repo:
+                per-service <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">railway/*.json</code> manifests for all 19
+                services, a Railway-flavored nginx ingress that uses
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">*.railway.internal</code> upstreams baked into the
+                frontend image, and an env-var reference at
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">railway/env-vars.md</code> showing exactly what to set
+                for each service. What's left is wiring Railway's GitHub
+                auto-deploy to provision and link all the services in one
+                action — that's the work in flight. Until it ships, the
+                deploy script's "Railway (Preview)" option walks you through
+                the dashboard steps.
+              </p>
+            </FaqItem>
+
+            <FaqItem q="How much will Railway cost?">
+              <p>
+                Railway offers a free Starter plan that includes $5 of usage per month.
+                With BigBlueBam's 19 services + managed Postgres + Redis, expect to land
+                in the Developer plan ($5/month + usage). Most small teams spend $20-40/month
+                total once everything's running. See{' '}
                 <a
                   href="https://railway.app/pricing"
                   target="_blank"
@@ -570,12 +601,12 @@ Verifying login... ✓`}</CodeBlock>
               </p>
             </FaqItem>
 
-            <FaqItem q="Can I migrate from Railway to self-hosted later?">
+            <FaqItem q="Can I migrate between Railway and self-hosted?">
               <p>
-                Yes. Your data lives in PostgreSQL and Redis, both of which support standard
-                backup/restore. Export your Railway Postgres database with{' '}
+                Yes — in either direction. Your data lives in PostgreSQL and Redis, both of which support standard
+                backup/restore. Export your Postgres database with{' '}
                 <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">pg_dump</code>,
-                import it into your self-hosted Postgres, copy your{' '}
+                import it into the destination, copy your{' '}
                 <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">.env</code> over,
                 and run <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">docker compose up -d</code>.
                 The migration service will apply any pending schema changes automatically.

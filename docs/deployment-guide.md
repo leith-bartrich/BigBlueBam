@@ -8,30 +8,33 @@ Deploy BigBlueBam from zero to running in about 10 minutes. No IT department req
 
 Before you start, here's what the setup wizard will configure for you:
 
-- **A place to run it** — Railway (cloud, free tier available) or your own machine with Docker
+- **A place to run it** — any machine with Docker today; Railway one-click deploy coming soon
 - **A database** — PostgreSQL and Redis, automatically provisioned
 - **An admin account** — you'll create this during setup
 - **Optional**: file storage (S3/MinIO), AI features (Anthropic/OpenAI), voice/video (LiveKit)
 
 ## Choose Your Deployment
 
-### Option 1: Railway (Recommended for most teams)
+### Option 1: Docker Compose (Recommended)
 
-Cloud-hosted, managed infrastructure. Best for teams that want to get started quickly without managing servers.
-
-- Free tier available
-- Automatic HTTPS
-- Managed PostgreSQL and Redis
-- No Docker required on your machine
-
-### Option 2: Docker Compose (Self-hosted)
-
-Run on any machine with Docker. Best for teams that want full control over their infrastructure.
+Run on any machine with Docker. The fastest path to a running stack today, and the path most teams use for both local development and production self-hosted deployments.
 
 - Works on Linux, macOS, Windows
-- All 17 services run locally
+- All 22 services run with one `docker compose up -d`
 - Full control over data and configuration
+- Migrations apply automatically before app services start
 - Requires Docker Desktop or Docker Engine
+
+### Option 2: Railway (Preview — one-click deploy coming soon)
+
+Cloud-hosted, managed containers with managed PostgreSQL and Redis. The pieces are landing in stages: every service already ships a `railway/<name>.json` config-as-code manifest, the frontend image bakes in a Railway-flavored nginx config that uses `*.railway.internal` upstreams, and `railway/env-vars.md` lists every variable you'll need to set per service. **What's still in flight**: wiring Railway's GitHub auto-deploy so the whole 19-service stack provisions in one action.
+
+For now, the deploy script's "Railway (Preview)" option:
+- Logs in and creates a Railway project
+- Provisions the managed Postgres + Redis plugins
+- Prints a per-service checklist of what to create in the Railway dashboard, pointing each service at its `railway/*.json` config and `railway/env-vars.md` entry
+
+You can follow that checklist today; the one-click experience is on the roadmap.
 
 ---
 
@@ -63,7 +66,7 @@ The script checks for Node.js and Docker, installing them if needed.
 scripts\deploy.bat
 ```
 
-> **Note:** Docker is only required if you choose Docker Compose. Railway deployments run entirely in the cloud.
+> **Note:** Docker is required for the recommended Docker Compose path. The Railway preview option runs entirely in the cloud and doesn't need Docker locally.
 
 ### Step 3: Pick your platform
 
@@ -72,8 +75,8 @@ The script presents an interactive menu:
 ```
 Where are you deploying?
 
-  1. Railway — Managed containers with free tier (recommended)
-  2. Docker Compose — Run locally or on any server with Docker
+  1. Docker Compose — Run locally or on any server with Docker (recommended)
+  2. Railway (Preview) — Cloud containers; one-click deploy coming soon
 ```
 
 ### Step 4: Configure your services
@@ -93,10 +96,10 @@ Similar prompts for vector search (Beacon knowledge base) and voice/video (Bante
 
 ### Step 5: Deploy
 
-- **Railway**: Connects to your Railway account, creates the project, provisions managed PostgreSQL and Redis, deploys all services
-- **Docker Compose**: Builds all containers locally, starts everything with `docker compose up`
+- **Docker Compose**: Builds all containers locally, starts everything with `docker compose up`. Migrations run automatically before app services start.
+- **Railway (Preview)**: Logs in to your Railway account, creates the project, provisions managed PostgreSQL + Redis, then prints a per-service checklist (with paths to `railway/*.json` and `railway/env-vars.md`) for the dashboard steps that aren't yet automated.
 
-This takes 3–5 minutes on first run.
+This takes 3–5 minutes on first run for Docker Compose; the Railway preview path is mostly waiting for you to click through the dashboard.
 
 ### Step 6: Create your admin account
 
@@ -177,34 +180,43 @@ Configure SMTP settings in your environment variables or through the deploy scri
 
 ## What's Running
 
-BigBlueBam consists of 17 services, all managed through Docker Compose or Railway:
+BigBlueBam consists of 22 services, all managed through Docker Compose. The
+authoritative service catalog lives at `scripts/deploy/shared/services.mjs` —
+that's also what generates the per-service Railway manifests under `railway/`.
 
 ### Application Services
 
 | Service | Port | Description |
 |---------|------|-------------|
-| api | 4000 | Main BigBlueBam REST API + WebSocket |
-| helpdesk-api | 4001 | Customer support portal API |
-| banter-api | 4002 | Team messaging API + WebSocket |
-| beacon-api | 4004 | Knowledge base API |
-| brief-api | 4005 | Collaborative documents API |
-| bolt-api | 4006 | Workflow automation API |
-| bearing-api | 4007 | Goals & OKR tracking API |
-| mcp-server | 3001 | MCP protocol server (182 AI tools) |
+| api | 4000 | Main Bam API — tasks, sprints, boards, auth |
+| helpdesk-api | 4001 | Helpdesk API — tickets, replies, SLAs, public portal |
+| banter-api | 4002 | Banter API — messaging, channels, DMs, calls |
+| beacon-api | 4004 | Beacon API — knowledge base, vector search, policies |
+| brief-api | 4005 | Brief API — collaborative documents, templates |
+| bolt-api | 4006 | Bolt API — automation engine, rules, executions |
+| bearing-api | 4007 | Bearing API — goals, key results, progress |
+| board-api | 4008 | Board API — whiteboards, real-time collab |
+| bond-api | 4009 | Bond API — CRM contacts, companies, deals |
+| blast-api | 4010 | Blast API — email campaigns, templates, tracking |
+| bench-api | 4011 | Bench API — analytics, dashboards, widgets |
+| book-api | 4012 | Book API — calendar events, booking pages |
+| blank-api | 4013 | Blank API — forms, submissions, public portal |
+| bill-api | 4014 | Bill API — invoices, payments, expenses |
+| mcp-server | 3001 | MCP protocol server (~270 AI tools) |
 | worker | — | Background job processor (BullMQ) |
 | voice-agent | 4003 | AI voice agent (Python/FastAPI) |
 | frontend | 80 | nginx reverse proxy serving all SPAs |
+| site | 3000 | Marketing website (proxied at `/` by frontend) |
 
 ### Infrastructure Services
 
 | Service | Port | Description |
 |---------|------|-------------|
 | PostgreSQL | 5432 | Primary database (managed on Railway) |
-| Redis | 6379 | Cache, sessions, PubSub, job queues |
+| Redis | 6379 | Cache, sessions, PubSub, job queues (managed on Railway) |
 | MinIO | 9000 | S3-compatible file storage |
 | Qdrant | 6333 | Vector search for semantic retrieval |
 | LiveKit | 7880 | WebRTC server for voice/video |
-| Site | 3000 | Marketing website |
 
 ---
 
@@ -296,11 +308,14 @@ docker compose down -v
 
 ## FAQ
 
-**How much does Railway cost?**
-Railway offers a free tier with $5/month of usage credits. Most small teams can run BigBlueBam within this. Paid plans start at $5/month per user with more resources.
+**When will the one-click Railway deploy be ready?**
+The pieces are landing in stages. Already in the repo: per-service `railway/*.json` manifests for all 19 services, a Railway-flavored nginx ingress that uses `*.railway.internal` upstreams baked into the frontend image, and an env-var reference at `railway/env-vars.md` showing exactly what to set per service. What's still in flight: wiring Railway's GitHub auto-deploy so the whole stack provisions in one action. Until that ships, the deploy script's "Railway (Preview)" option walks you through the dashboard steps.
 
-**Can I migrate from Railway to self-hosted later?**
-Yes. Export your database with `pg_dump`, set up Docker Compose on your server, import the dump, and update your DNS. The application code is identical.
+**How much will Railway cost?**
+Railway offers a free Starter plan that includes $5 of usage per month. With 19 services + managed Postgres + Redis, expect to land in the Developer plan ($5/month + usage). Most small teams spend $20–40/month total once everything's running.
+
+**Can I migrate between Railway and self-hosted?**
+Yes — in either direction. Export your database with `pg_dump`, set up Docker Compose (or Railway) on the destination, import the dump, and update your DNS. The application code is identical.
 
 **Can I use BigBlueBam without Docker?**
 While Docker Compose is the recommended deployment, you can run each service natively with Node.js 22, PostgreSQL 16, Redis 7, and nginx. You would configure each service manually.
