@@ -25,11 +25,20 @@
 set -e
 
 if [ -n "${RAILWAY_ENVIRONMENT_NAME:-}" ] || [ -n "${RAILWAY_PROJECT_ID:-}" ]; then
-  cp /etc/nginx/profiles/railway.conf /etc/nginx/conf.d/default.conf
-  echo "[entrypoint] using nginx profile: railway"
+  PROFILE=railway
 else
-  cp /etc/nginx/profiles/default.conf /etc/nginx/conf.d/default.conf
-  echo "[entrypoint] using nginx profile: default"
+  PROFILE=default
+fi
+
+# Try to install the chosen profile. If docker-compose.yml has bind-mounted
+# nginx-with-site.conf as :ro over /etc/nginx/conf.d/default.conf, the cp
+# will fail because the destination is on a read-only mount — and that's
+# intentional. The bind-mounted file IS the active config for the compose
+# flow, so we leave it alone and let nginx start with whatever's there.
+if cp "/etc/nginx/profiles/${PROFILE}.conf" /etc/nginx/conf.d/default.conf 2>/dev/null; then
+  echo "[entrypoint] using nginx profile: ${PROFILE}"
+else
+  echo "[entrypoint] /etc/nginx/conf.d/default.conf is read-only — using bind-mounted config instead"
 fi
 
 exit 0
