@@ -24,6 +24,7 @@ const navItems = [
 ];
 
 const settingsItems = [
+  { label: 'Calendars', icon: CalendarRange, path: '/settings/calendars', page: 'calendars' },
   { label: 'Working Hours', icon: Clock, path: '/settings/working-hours', page: 'working-hours' },
   { label: 'Connections', icon: Plug, path: '/settings/connections', page: 'connections' },
 ];
