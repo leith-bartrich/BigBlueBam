@@ -179,7 +179,7 @@ export default async function formRoutes(fastify: FastifyInstance) {
         slug: form.slug,
         form_type: form.form_type,
         published_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.send({ data: form });
     },
   );

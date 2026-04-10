@@ -173,7 +173,7 @@ export default async function commentRoutes(fastify: FastifyInstance) {
         comment,
         task_id: request.params.id,
         project_id: task.project_id,
-      }, request.user!.org_id).catch(() => {});
+      }, request.user!.org_id, request.user!.id, 'user').catch(() => {});
 
       return reply.status(201).send({ data: comment });
     },

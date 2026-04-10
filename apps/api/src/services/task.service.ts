@@ -123,7 +123,7 @@ export async function createTask(
 
   // Bolt workflow event (fire-and-forget)
   getProjectOrgId(projectId).then((orgId) => {
-    if (orgId) publishBoltEvent('task.created', 'bam', { task }, orgId);
+    if (orgId) publishBoltEvent('task.created', 'bam', { task }, orgId, reporterId, 'user');
   }).catch(() => {});
 
   return task!;
@@ -208,7 +208,7 @@ export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?
 
     // Bolt workflow event (fire-and-forget)
     getProjectOrgId(task.project_id).then((orgId) => {
-      if (orgId) publishBoltEvent('task.updated', 'bam', { task, changed_fields: changedFields }, orgId);
+      if (orgId) publishBoltEvent('task.updated', 'bam', { task, changed_fields: changedFields }, orgId, actorId, actorId ? 'user' : 'system');
     }).catch(() => {});
   }
 
@@ -250,7 +250,7 @@ export async function deleteTask(taskId: string, actorId?: string, impersonatorI
 
     // Bolt workflow event (fire-and-forget)
     getProjectOrgId(deleted.project_id).then((orgId) => {
-      if (orgId) publishBoltEvent('task.deleted', 'bam', { task_id: taskId, task: deleted }, orgId);
+      if (orgId) publishBoltEvent('task.deleted', 'bam', { task_id: taskId, task: deleted }, orgId, actorId, actorId ? 'user' : 'system');
     }).catch(() => {});
   }
 
@@ -427,7 +427,7 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
         task,
         from_phase_id: existingTask?.phase_id ?? null,
         to_phase_id: data.phase_id,
-      }, orgId);
+      }, orgId, actorId, actorId ? 'user' : 'system');
     }).catch(() => {});
   }
 

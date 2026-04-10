@@ -182,7 +182,7 @@ export async function createDocument(
     .returning();
 
   // Bolt workflow event (fire-and-forget)
-  publishBoltEvent('document.created', 'brief', { document: doc }, orgId).catch(() => {});
+  publishBoltEvent('document.created', 'brief', { document: doc }, orgId, userId, 'user').catch(() => {});
 
   return doc!;
 }
@@ -347,11 +347,11 @@ export async function updateDocument(
     .returning();
 
   // Bolt workflow events (fire-and-forget)
-  publishBoltEvent('document.updated', 'brief', { document: doc, changed_fields: Object.keys(updateValues) }, orgId).catch(() => {});
+  publishBoltEvent('document.updated', 'brief', { document: doc, changed_fields: Object.keys(updateValues) }, orgId, userId, 'user').catch(() => {});
 
   // Emit document.published when status transitions to approved
   if (data.status === 'approved' && existing.status !== 'approved') {
-    publishBoltEvent('document.published', 'brief', { document: doc }, orgId).catch(() => {});
+    publishBoltEvent('document.published', 'brief', { document: doc }, orgId, userId, 'user').catch(() => {});
   }
 
   return doc!;

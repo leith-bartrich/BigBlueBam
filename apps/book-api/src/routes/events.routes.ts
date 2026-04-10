@@ -100,7 +100,7 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         end_at: event.end_at,
         status: event.status,
         created_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id);
       return reply.status(201).send({ data: event });
     },
   );
@@ -136,7 +136,7 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         end_at: event.end_at,
         status: event.status,
         updated_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id);
       return reply.send({ data: event });
     },
   );

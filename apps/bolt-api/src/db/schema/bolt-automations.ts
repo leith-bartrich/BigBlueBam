@@ -50,6 +50,7 @@ export const boltAutomations = pgTable(
     max_executions_per_hour: integer('max_executions_per_hour').default(100).notNull(),
     cooldown_seconds: integer('cooldown_seconds').default(0).notNull(),
     max_chain_depth: integer('max_chain_depth').default(5).notNull(),
+    template_strict: boolean('template_strict').default(false).notNull(),
     last_executed_at: timestamp('last_executed_at', { withTimezone: true }),
 
     created_by: uuid('created_by')

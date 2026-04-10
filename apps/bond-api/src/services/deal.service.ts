@@ -282,13 +282,13 @@ export async function createDeal(
   });
 
   // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.created', {
+  publishBoltEvent('deal.created', {
     deal_id: deal!.id,
     pipeline_id: input.pipeline_id,
     stage_id: input.stage_id,
     value: deal!.value,
     owner_id: deal!.owner_id,
-  }, orgId);
+  }, orgId, userId, 'user');
 
   return deal!;
 }
@@ -301,6 +301,7 @@ export async function updateDeal(
   id: string,
   orgId: string,
   input: UpdateDealInput,
+  userId?: string,
 ) {
   const [updated] = await db
     .update(bondDeals)
@@ -314,12 +315,12 @@ export async function updateDeal(
   if (!updated) throw notFound('Deal not found');
 
   // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.updated', {
+  publishBoltEvent('deal.updated', {
     deal_id: id,
     changes: Object.keys(input),
     value: updated.value,
     owner_id: updated.owner_id,
-  }, orgId);
+  }, orgId, userId, userId ? 'user' : 'system');
 
   return updated;
 }
@@ -413,13 +414,13 @@ export async function moveDealStage(
   });
 
   // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.stage_changed', {
+  publishBoltEvent('deal.stage_changed', {
     deal_id: id,
     from_stage_id: deal.stage_id,
     to_stage_id: newStageId,
     value: deal.value,
     days_in_previous_stage: Math.floor(durationSeconds / 86400),
-  }, orgId);
+  }, orgId, userId, 'user');
 
   return updated!;
 }
@@ -497,12 +498,12 @@ export async function closeDealWon(
   const cycleDays = Math.floor(
     (now.getTime() - new Date(deal.created_at).getTime()) / 86400000,
   );
-  publishBoltEvent('bond.deal.won', {
+  publishBoltEvent('deal.won', {
     deal_id: id,
     value: deal.value,
     pipeline_id: deal.pipeline_id,
     cycle_days: cycleDays,
-  }, orgId);
+  }, orgId, userId, 'user');
 
   return updated!;
 }
@@ -578,12 +579,12 @@ export async function closeDealLost(
   });
 
   // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.lost', {
+  publishBoltEvent('deal.lost', {
     deal_id: id,
     value: deal.value,
     close_reason: closeReason,
     lost_to_competitor: lostToCompetitor,
-  }, orgId);
+  }, orgId, userId, 'user');
 
   return updated!;
 }

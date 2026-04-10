@@ -77,7 +77,7 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
         client_id: invoice.client_id,
         status: invoice.status,
         created_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.status(201).send({ data: invoice });
     },
   );
@@ -161,7 +161,7 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
         invoice_number: invoice.invoice_number,
         status: invoice.status,
         finalized_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.send({ data: invoice });
     },
   );
@@ -267,7 +267,7 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
         source: 'deal',
         bond_deal_id: body.deal_id,
         created_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.status(201).send({ data: invoice });
     },
   );

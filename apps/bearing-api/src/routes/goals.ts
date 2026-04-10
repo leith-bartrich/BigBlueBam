@@ -100,7 +100,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         scope: goal.scope,
         status: goal.status,
         created_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.status(201).send({ data: goal });
     },
   );
@@ -137,7 +137,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         scope: goal.scope,
         status: goal.status,
         updated_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.send({ data: goal });
     },
   );

@@ -351,6 +351,7 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
             actor_id: event.actor_id,
             actor_type: event.actor_type ?? 'system',
             chain_depth: event.chain_depth ?? 0,
+            template_strict: automation.template_strict === true,
           },
           {
             attempts: 1, // Bolt handles retries at the action step level, not job level

@@ -137,6 +137,7 @@ export default async function publicRoutes(fastify: FastifyInstance) {
           user_agent: request.headers['user-agent'] ?? undefined,
         },
       );
+      // Public form submission — anonymous, no authenticated actor (defaults to system)
       publishBoltEvent('submission.created', 'blank', {
         id: submission.id,
         form_id: form.id,

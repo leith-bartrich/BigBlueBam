@@ -347,12 +347,46 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         }
       })();
 
-      // Bolt workflow event (fire-and-forget)
-      publishBoltEvent('message.posted', 'banter', {
-        message,
-        channel_id: id,
-        author_id: user.id,
-      }, user.org_id).catch(() => {});
+      // Bolt workflow event (fire-and-forget) — payload shape must match the
+      // catalog declared in apps/bolt-api/src/services/event-catalog.ts so that
+      // rule templates like {{ event.channel.name }} resolve correctly.
+      (async () => {
+        try {
+          if (!message) return;
+          const [chRow] = await db
+            .select({
+              id: banterChannels.id,
+              name: banterChannels.name,
+              type: banterChannels.type,
+            })
+            .from(banterChannels)
+            .where(eq(banterChannels.id, id))
+            .limit(1);
+          await publishBoltEvent(
+            'message.posted',
+            'banter',
+            {
+              message: {
+                id: message.id,
+                content: message.content_plain ?? message.content,
+                content_html: message.content,
+                thread_parent_id: message.thread_parent_id,
+                created_at: message.created_at,
+              },
+              channel: {
+                id: chRow?.id ?? id,
+                name: chRow?.name ?? null,
+                type: chRow?.type ?? null,
+              },
+            },
+            user.org_id,
+            user.id,
+            'user',
+          );
+        } catch {
+          // Fire-and-forget — never affect message delivery
+        }
+      })();
 
       return reply.status(201).send({ data: message });
     },
@@ -503,12 +537,45 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
-      // Bolt workflow event (fire-and-forget)
-      publishBoltEvent('message.edited', 'banter', {
-        message: updated,
-        channel_id: existing.channel_id,
-        author_id: user.id,
-      }, user.org_id).catch(() => {});
+      // Bolt workflow event (fire-and-forget) — payload shape must match the
+      // catalog declared in apps/bolt-api/src/services/event-catalog.ts.
+      (async () => {
+        try {
+          if (!updated) return;
+          const [chRow] = await db
+            .select({
+              id: banterChannels.id,
+              name: banterChannels.name,
+              type: banterChannels.type,
+            })
+            .from(banterChannels)
+            .where(eq(banterChannels.id, existing.channel_id))
+            .limit(1);
+          await publishBoltEvent(
+            'message.edited',
+            'banter',
+            {
+              message: {
+                id: updated.id,
+                content: updated.content_plain ?? updated.content,
+                content_html: updated.content,
+                is_edited: updated.is_edited,
+                edited_at: updated.edited_at,
+              },
+              channel: {
+                id: chRow?.id ?? existing.channel_id,
+                name: chRow?.name ?? null,
+                type: chRow?.type ?? null,
+              },
+            },
+            user.org_id,
+            user.id,
+            'user',
+          );
+        } catch {
+          // Fire-and-forget — never affect message edit
+        }
+      })();
 
       return reply.send({ data: updated });
     },

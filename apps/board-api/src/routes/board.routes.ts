@@ -89,7 +89,7 @@ export default async function boardRoutes(fastify: FastifyInstance) {
         name: board.name,
         visibility: board.visibility,
         created_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.status(201).send({ data: board });
     },
   );
@@ -194,7 +194,7 @@ export default async function boardRoutes(fastify: FastifyInstance) {
         name: board.name,
         visibility: board.visibility,
         updated_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.send({ data: board });
     },
   );

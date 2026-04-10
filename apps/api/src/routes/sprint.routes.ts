@@ -188,7 +188,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         }).catch(() => {});
 
         // Bolt workflow event (fire-and-forget)
-        publishBoltEvent('sprint.started', 'bam', { sprint: result.data }, request.user!.org_id).catch(() => {});
+        publishBoltEvent('sprint.started', 'bam', { sprint: result.data }, request.user!.org_id, request.user!.id, 'user').catch(() => {});
       }
 
       return reply.send({ data: result.data });
@@ -341,7 +341,7 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         }).catch(() => {});
 
         // Bolt workflow event (fire-and-forget)
-        publishBoltEvent('sprint.completed', 'bam', { sprint: result.data }, request.user!.org_id).catch(() => {});
+        publishBoltEvent('sprint.completed', 'bam', { sprint: result.data }, request.user!.org_id, request.user!.id, 'user').catch(() => {});
       }
 
       return reply.send({ data: result.data });

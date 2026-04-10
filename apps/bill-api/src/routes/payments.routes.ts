@@ -33,7 +33,7 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
         amount: payment.amount,
         payment_method: payment.payment_method,
         recorded_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.status(201).send({ data: payment });
     },
   );

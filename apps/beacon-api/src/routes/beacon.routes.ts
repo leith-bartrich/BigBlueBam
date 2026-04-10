@@ -61,7 +61,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         visibility: beacon.visibility,
         status: beacon.status,
         created_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id);
       return reply.status(201).send({ data: beacon });
     },
   );
@@ -134,7 +134,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         title: beacon.title,
         status: beacon.status,
         updated_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id);
       return reply.send({ data: beacon });
     },
   );
@@ -153,7 +153,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         id: beacon.id,
         title: beacon.title,
         retired_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id);
       return reply.send({ data: beacon });
     },
   );
@@ -173,7 +173,7 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         title: beacon.title,
         visibility: beacon.visibility,
         published_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id);
       return reply.send({ data: beacon });
     },
   );

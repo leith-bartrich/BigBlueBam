@@ -228,12 +228,12 @@ export async function createContact(
     .returning();
 
   // Emit Bolt event (fire-and-forget — must not block the response)
-  publishBoltEvent('bond.contact.created', {
+  publishBoltEvent('contact.created', {
     contact_id: contact!.id,
     lifecycle_stage: contact!.lifecycle_stage,
     lead_source: contact!.lead_source,
     lead_score: contact!.lead_score,
-  }, orgId).catch(() => {});
+  }, orgId, userId, 'user').catch(() => {});
 
   return contact!;
 }

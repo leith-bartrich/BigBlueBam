@@ -8,6 +8,8 @@ export async function publishBoltEvent(
   eventType: string,
   payload: Record<string, unknown>,
   orgId: string,
+  actorId?: string,
+  actorType?: string,
 ) {
   try {
     const url = `${env.BOLT_API_INTERNAL_URL}/v1/events/ingest`;
@@ -25,6 +27,8 @@ export async function publishBoltEvent(
           source: 'bond',
           payload,
           org_id: orgId,
+          actor_id: actorId,
+          actor_type: actorType,
         }),
         signal: controller.signal,
       });

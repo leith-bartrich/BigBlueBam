@@ -174,12 +174,12 @@ export async function createActivity(
   }
 
   // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.activity.logged', {
+  publishBoltEvent('activity.logged', {
     activity_id: activity!.id,
     activity_type: input.activity_type,
     contact_id: input.contact_id,
     deal_id: input.deal_id,
-  }, orgId);
+  }, orgId, userId, 'user');
 
   return activity!;
 }

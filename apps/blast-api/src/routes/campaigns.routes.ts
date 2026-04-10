@@ -68,7 +68,7 @@ export default async function campaignRoutes(fastify: FastifyInstance) {
         subject: campaign.subject,
         status: campaign.status,
         created_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.status(201).send({ data: campaign });
     },
   );
@@ -124,7 +124,7 @@ export default async function campaignRoutes(fastify: FastifyInstance) {
         id: request.params.id,
         status: result.status,
         sent_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.send({ data: result });
     },
   );

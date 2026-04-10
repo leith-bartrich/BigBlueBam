@@ -3,14 +3,22 @@ import { env } from '../env.js';
 /**
  * Publish an event to Bolt's ingest endpoint for workflow automation.
  * Fire-and-forget — never throws, never blocks the caller.
+ *
+ * The optional actor identifier is forwarded so Bolt rules can reference
+ * `{{ actor.id }}` / `{{ actor.type }}` in their templates. When `actorId`
+ * is provided, `actorType` defaults to `'user'`; otherwise it defaults to
+ * `'system'`.
  */
 export async function publishBoltEvent(
   eventType: string,
   source: string,
   payload: Record<string, unknown>,
   orgId: string,
+  actorId?: string,
+  actorType?: 'user' | 'agent' | 'system',
 ) {
   try {
+    const resolvedActorType = actorType ?? (actorId ? 'user' : 'system');
     const url = `${env.BOLT_API_INTERNAL_URL}/v1/events/ingest`;
     await fetch(url, {
       method: 'POST',
@@ -23,6 +31,8 @@ export async function publishBoltEvent(
         source,
         payload,
         org_id: orgId,
+        actor_id: actorId,
+        actor_type: resolvedActorType,
       }),
     });
   } catch {

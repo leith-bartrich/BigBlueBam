@@ -62,7 +62,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         booked_by_name: body.name,
         booked_by_email: body.email,
         booking_page_slug: request.params.slug,
-      }, event.organization_id);
+      }, event.organization_id, undefined, 'system');
       return reply.status(201).send({ data: event });
     },
   );

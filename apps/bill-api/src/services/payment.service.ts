@@ -79,7 +79,7 @@ export async function recordPayment(
       invoice_number: updated.invoice_number,
       total: updated.total,
       amount_paid: updated.amount_paid,
-    }, orgId);
+    }, orgId, userId, 'user');
   } else if (updated && updated.amount_paid > 0) {
     await db
       .update(billInvoices)

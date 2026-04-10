@@ -152,7 +152,7 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
         current_value: kr.current_value,
         target_value: kr.target_value,
         updated_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.send({ data: kr });
     },
   );
@@ -187,7 +187,7 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
         current_value: kr.current_value,
         target_value: kr.target_value,
         updated_by: request.user!.id,
-      }, request.user!.org_id);
+      }, request.user!.org_id, request.user!.id, 'user');
       return reply.send({ data: kr });
     },
   );
