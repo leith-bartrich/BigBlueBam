@@ -59,13 +59,18 @@ export async function processBearingSnapshotJob(
     `);
 
     for (const kr of krs) {
-      // Upsert snapshot — idempotent for re-runs on the same day
+      // Idempotent snapshot insert for the current day.
+      // The Drizzle schema uses `value` and `recorded_at` (not the
+      // original design-doc names `current_value` / `snapshot_date`).
+      // Delete any existing snapshot for this KR + day, then insert fresh.
       await db.execute(sql`
-        INSERT INTO bearing_kr_snapshots (key_result_id, snapshot_date, current_value, progress)
-        VALUES (${kr.id}, ${today}, ${kr.current_value}, ${kr.progress})
-        ON CONFLICT (key_result_id, snapshot_date) DO UPDATE
-        SET current_value = EXCLUDED.current_value,
-            progress = EXCLUDED.progress
+        DELETE FROM bearing_kr_snapshots
+        WHERE key_result_id = ${kr.id}
+          AND recorded_at::date = ${today}::date
+      `);
+      await db.execute(sql`
+        INSERT INTO bearing_kr_snapshots (key_result_id, value, progress, recorded_at)
+        VALUES (${kr.id}, ${kr.current_value}, ${kr.progress}, ${today}::timestamptz)
       `);
       snapshotCount++;
     }

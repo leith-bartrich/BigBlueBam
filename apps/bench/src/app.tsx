@@ -15,7 +15,7 @@ type Route =
   | { page: 'dashboards' }
   | { page: 'dashboard-view'; id: string }
   | { page: 'dashboard-edit'; id: string }
-  | { page: 'widget-new' }
+  | { page: 'widget-new'; dashboardId: string }
   | { page: 'widget-edit'; id: string }
   | { page: 'explorer' }
   | { page: 'reports' }
@@ -37,7 +37,12 @@ function parseRoute(path: string): Route {
   if (p === '/explorer') return { page: 'explorer' };
   if (p === '/reports') return { page: 'reports' };
   if (p === '/settings') return { page: 'settings' };
-  if (p === '/widgets/new') return { page: 'widget-new' };
+  // /dashboards/:id/widgets/new
+  const widgetNewMatch = p.match(/^\/dashboards\/([^/]+)\/widgets\/new$/);
+  if (widgetNewMatch) return { page: 'widget-new', dashboardId: widgetNewMatch[1]! };
+
+  // Legacy route without dashboard context — redirect to dashboard list
+  if (p === '/widgets/new') return { page: 'dashboards' };
 
   // /dashboards/:id/edit
   const editMatch = p.match(/^\/dashboards\/([^/]+)\/edit$/);
@@ -124,7 +129,7 @@ export function App() {
       case 'dashboard-edit':
         return <DashboardEditPage dashboardId={route.id} onNavigate={navigate} />;
       case 'widget-new':
-        return <WidgetWizardPage onNavigate={navigate} />;
+        return <WidgetWizardPage dashboardId={route.dashboardId} onNavigate={navigate} />;
       case 'widget-edit':
         return <WidgetEditPage widgetId={route.id} onNavigate={navigate} />;
       case 'explorer':

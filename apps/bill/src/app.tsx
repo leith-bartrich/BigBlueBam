@@ -7,6 +7,7 @@ import { InvoiceFromTimePage } from '@/pages/invoice-from-time';
 import { InvoiceDetailPage } from '@/pages/invoice-detail';
 import { InvoiceEditPage } from '@/pages/invoice-edit';
 import { ClientListPage } from '@/pages/client-list';
+import { ClientDetailPage } from '@/pages/client-detail';
 import { ExpenseListPage } from '@/pages/expense-list';
 import { ExpenseNewPage } from '@/pages/expense-new';
 import { RateListPage } from '@/pages/rate-list';
@@ -136,6 +137,8 @@ export function App() {
         return <InvoiceEditPage invoiceId={(route as any).id} onNavigate={navigate} />;
       case 'clients':
         return <ClientListPage onNavigate={navigate} />;
+      case 'client-detail':
+        return <ClientDetailPage clientId={(route as any).id} onNavigate={navigate} />;
       case 'expenses':
         return <ExpenseListPage onNavigate={navigate} />;
       case 'expense-new':

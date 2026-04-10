@@ -8,6 +8,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().email().default('noreply@bigbluebam.com'),
+  TRACKING_BASE_URL: z.string().default('http://localhost'),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });

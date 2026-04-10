@@ -23,6 +23,9 @@ const envSchema = z.object({
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
+
+  // Internal service-to-service secret (shared with other BigBlueBam services)
+  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

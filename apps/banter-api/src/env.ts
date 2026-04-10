@@ -38,6 +38,9 @@ const envSchema = z.object({
   // Internal service-to-service authentication
   INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
 
+  // Bolt workflow automation engine URL (fire-and-forget event publishing)
+  BOLT_API_INTERNAL_URL: z.string().default('http://bolt-api:4006'),
+
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
 });

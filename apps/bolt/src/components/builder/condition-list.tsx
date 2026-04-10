@@ -5,13 +5,15 @@ import { Plus, Filter } from 'lucide-react';
 interface ConditionListProps {
   conditions: BoltCondition[];
   onChange: (conditions: BoltCondition[]) => void;
+  triggerSource?: string;
+  triggerEvent?: string;
 }
 
 function makeId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
 }
 
-export function ConditionList({ conditions, onChange }: ConditionListProps) {
+export function ConditionList({ conditions, onChange, triggerSource, triggerEvent }: ConditionListProps) {
   const addCondition = () => {
     onChange([
       ...conditions,
@@ -54,6 +56,8 @@ export function ConditionList({ conditions, onChange }: ConditionListProps) {
               isFirst={index === 0}
               onChange={(updated) => updateCondition(index, updated)}
               onRemove={() => removeCondition(index)}
+              triggerSource={triggerSource}
+              triggerEvent={triggerEvent}
             />
           ))}
         </div>

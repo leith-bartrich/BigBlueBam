@@ -22,6 +22,11 @@
     "test:unit": {
       "dependsOn": ["^build"]
     },
+    "test:e2e": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "env": ["E2E_BASE_URL", "E2E_ADMIN_EMAIL", "E2E_ADMIN_PASSWORD", "E2E_MEMBER_EMAIL", "E2E_MEMBER_PASSWORD", "E2E_ORG_NAME", "CI"]
+    },
     "clean": {
       "cache": false
     }

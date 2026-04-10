@@ -116,6 +116,15 @@ fastify.get('/health/ready', async (_request, reply) => {
   });
 });
 
+// Initialize cache service with Redis client
+import { CacheService } from './services/cache.service.js';
+import { setCacheService } from './services/widget.service.js';
+import { setDashboardCacheService } from './services/dashboard.service.js';
+
+const cacheService = new CacheService(fastify.redis, env.CACHE_TTL_SECONDS);
+setCacheService(cacheService);
+setDashboardCacheService(cacheService);
+
 // Routes
 import dashboardRoutes from './routes/dashboards.routes.js';
 import widgetRoutes from './routes/widgets.routes.js';

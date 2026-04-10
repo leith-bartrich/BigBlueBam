@@ -1,12 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  BearingMetricType,
+  BearingDirection,
+  BearingProgressMode,
+} from '@bigbluebam/shared';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole, requireGoalAccess } from '../middleware/authorize.js';
 import * as krService from '../services/key-result.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
-const METRIC_TYPES = ['percentage', 'number', 'currency', 'boolean'] as const;
-const DIRECTIONS = ['increase', 'decrease'] as const;
-const PROGRESS_MODES = ['manual', 'linked'] as const;
+const METRIC_TYPES = BearingMetricType.options;
+const DIRECTIONS = BearingDirection.options;
+const PROGRESS_MODES = [...BearingProgressMode.options, 'rollup'] as const;
 const LINKED_TARGET_TYPES = ['task', 'tasks', 'epic', 'sprint'] as const;
 
 /** Strict schema for linked_query — only known fields allowed. */
@@ -138,7 +144,15 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params;
       const data = updateKeyResultSchema.parse(request.body);
-      const kr = await krService.updateKeyResult(id, data, request.user!.org_id);
+      const kr = await krService.updateKeyResult(id, data, request.user!.org_id, fastify.redis);
+      publishBoltEvent('key_result.updated', 'bearing', {
+        id: kr.id,
+        title: kr.title,
+        goal_id: kr.goal_id,
+        current_value: kr.current_value,
+        target_value: kr.target_value,
+        updated_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: kr });
     },
   );
@@ -165,7 +179,15 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { value } = setValueSchema.parse(request.body);
-      const kr = await krService.setCurrentValue(request.params.id, value, request.user!.org_id);
+      const kr = await krService.setCurrentValue(request.params.id, value, request.user!.org_id, fastify.redis);
+      publishBoltEvent('key_result.updated', 'bearing', {
+        id: kr.id,
+        title: kr.title,
+        goal_id: kr.goal_id,
+        current_value: kr.current_value,
+        target_value: kr.target_value,
+        updated_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: kr });
     },
   );

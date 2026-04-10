@@ -78,9 +78,13 @@ export default async function dealRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const query = listQuerySchema.parse(request.query);
+      // "Own only" visibility: members and viewers only see deals they own
+      const role = request.user!.role;
+      const isRestrictedRole = role === 'member' || role === 'viewer';
       const result = await dealService.listDeals({
         organization_id: request.user!.org_id,
         ...query,
+        visibility_owner_id: isRestrictedRole ? request.user!.id : undefined,
       });
       return reply.send(result);
     },

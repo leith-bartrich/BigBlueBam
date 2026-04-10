@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as invoiceService from '../services/invoice.service.js';
 import * as lineItemService from '../services/line-item.service.js';
+import * as pdfService from '../services/pdf.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const createInvoiceSchema = z.object({
   client_id: z.string().uuid(),
@@ -69,6 +71,13 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = createInvoiceSchema.parse(request.body);
       const invoice = await invoiceService.createInvoice(body, request.user!.org_id, request.user!.id);
+      publishBoltEvent('invoice.created', 'bill', {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        client_id: invoice.client_id,
+        status: invoice.status,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: invoice });
     },
   );
@@ -147,6 +156,12 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
       const invoice = await invoiceService.finalizeInvoice(request.params.id, request.user!.org_id);
+      publishBoltEvent('invoice.finalized', 'bill', {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        status: invoice.status,
+        finalized_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: invoice });
     },
   );
@@ -181,6 +196,78 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         request.user!.id,
       );
+      return reply.status(201).send({ data: invoice });
+    },
+  );
+
+  // GET /invoices/:id/pdf — generate and return invoice PDF
+  fastify.get<{ Params: { id: string } }>(
+    '/invoices/:id/pdf',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const pdfBytes = await pdfService.generateInvoicePdf(
+        request.params.id,
+        request.user!.org_id,
+      );
+
+      // Fetch invoice for the filename
+      const invoice = await invoiceService.getInvoice(request.params.id, request.user!.org_id);
+      const filename = `${invoice.invoice_number === 'DRAFT' ? 'DRAFT' : invoice.invoice_number}.pdf`;
+
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `inline; filename="${filename}"`)
+        .header('Content-Length', pdfBytes.length)
+        .send(Buffer.from(pdfBytes));
+    },
+  );
+
+  // POST /invoices/from-time-entries — create invoice from Bam time entries
+  const fromTimeEntriesSchema = z.object({
+    project_id: z.string().uuid(),
+    time_entry_ids: z.array(z.string().uuid()).min(1),
+    client_id: z.string().uuid(),
+  });
+
+  fastify.post(
+    '/invoices/from-time-entries',
+    { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
+    async (request, reply) => {
+      const body = fromTimeEntriesSchema.parse(request.body);
+      const invoice = await invoiceService.createInvoiceFromTimeEntries(
+        body,
+        request.user!.org_id,
+        request.user!.id,
+      );
+      return reply.status(201).send({ data: invoice });
+    },
+  );
+
+  // POST /invoices/from-deal — create draft invoice from a Bond CRM deal
+  const fromDealSchema = z.object({
+    deal_id: z.string().uuid(),
+    client_id: z.string().uuid(),
+  });
+
+  fastify.post(
+    '/invoices/from-deal',
+    { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
+    async (request, reply) => {
+      const body = fromDealSchema.parse(request.body);
+      const invoice = await invoiceService.createInvoiceFromDeal(
+        body,
+        request.user!.org_id,
+        request.user!.id,
+      );
+      publishBoltEvent('invoice.created', 'bill', {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        client_id: invoice.client_id,
+        status: invoice.status,
+        source: 'deal',
+        bond_deal_id: body.deal_id,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: invoice });
     },
   );

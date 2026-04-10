@@ -1,14 +1,14 @@
 import { z } from 'zod';
 
 // ── Enums ──────────────────────────────────────────────────────────────
-export const BearingPeriodType = z.enum(['quarter', 'half', 'year', 'custom']);
+export const BearingPeriodType = z.enum(['annual', 'semi_annual', 'quarterly', 'monthly', 'quarter', 'half', 'year', 'custom']);
 export const BearingPeriodStatus = z.enum(['planning', 'active', 'completed', 'archived']);
-export const BearingGoalScope = z.enum(['organization', 'team', 'project']);
-export const BearingGoalStatus = z.enum(['on_track', 'at_risk', 'behind', 'achieved', 'cancelled']);
+export const BearingGoalScope = z.enum(['organization', 'team', 'project', 'individual']);
+export const BearingGoalStatus = z.enum(['draft', 'on_track', 'at_risk', 'behind', 'achieved', 'missed', 'cancelled']);
 export const BearingMetricType = z.enum(['percentage', 'number', 'currency', 'boolean']);
 export const BearingDirection = z.enum(['increase', 'decrease']);
 export const BearingProgressMode = z.enum(['manual', 'linked', 'rollup']);
-export const BearingLinkType = z.enum(['epic', 'project', 'task_query']);
+export const BearingLinkType = z.enum(['epic', 'project', 'task_query', 'task', 'tasks']);
 
 // ── Period schemas ─────────────────────────────────────────────────────
 export const createBearingPeriodSchema = z.object({
@@ -34,8 +34,8 @@ export const createBearingGoalSchema = z.object({
   scope: BearingGoalScope.default('organization'),
   project_id: z.string().uuid().optional(),
   team_name: z.string().max(100).optional(),
-  icon: z.string().max(10).optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  icon: z.string().max(50).optional(),
+  color: z.string().max(20).optional(),
   owner_id: z.string().uuid(),
 });
 
@@ -45,8 +45,8 @@ export const updateBearingGoalSchema = z.object({
   scope: BearingGoalScope.optional(),
   project_id: z.string().uuid().nullable().optional(),
   team_name: z.string().max(100).nullable().optional(),
-  icon: z.string().max(10).nullable().optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  icon: z.string().max(50).nullable().optional(),
+  color: z.string().max(20).nullable().optional(),
   owner_id: z.string().uuid().optional(),
 });
 

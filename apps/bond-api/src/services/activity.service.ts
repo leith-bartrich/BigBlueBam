@@ -2,6 +2,7 @@ import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bondActivities, bondDeals, bondContacts, bondCompanies } from '../db/schema/index.js';
 import { notFound } from '../lib/utils.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,6 +172,14 @@ export async function createActivity(
       .set({ last_activity_at: new Date() })
       .where(eq(bondDeals.id, input.deal_id));
   }
+
+  // Emit Bolt event (fire-and-forget)
+  publishBoltEvent('bond.activity.logged', {
+    activity_id: activity!.id,
+    activity_type: input.activity_type,
+    contact_id: input.contact_id,
+    deal_id: input.deal_id,
+  }, orgId);
 
   return activity!;
 }

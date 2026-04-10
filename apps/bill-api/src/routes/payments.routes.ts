@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as paymentService from '../services/payment.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const recordPaymentSchema = z.object({
   amount: z.number().int().positive(),
@@ -26,6 +27,13 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
         request.user!.id,
         body,
       );
+      publishBoltEvent('payment.recorded', 'bill', {
+        id: payment.id,
+        invoice_id: request.params.id,
+        amount: payment.amount,
+        payment_method: payment.payment_method,
+        recorded_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: payment });
     },
   );

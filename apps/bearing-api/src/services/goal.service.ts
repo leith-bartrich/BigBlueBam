@@ -8,8 +8,14 @@ import {
   bearingPeriods,
   users,
 } from '../db/schema/index.js';
+import type Redis from 'ioredis';
 import { BearingError } from './period.service.js';
-import { computeGoalProgress, computeGoalStatus } from './progress-engine.js';
+import {
+  computeGoalProgress,
+  computeGoalStatus,
+  getCachedGoalProgress,
+  invalidateGoalProgressCache,
+} from './progress-engine.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -149,7 +155,7 @@ export async function listGoals(filters: ListGoalFilters) {
   };
 }
 
-export async function getGoal(id: string, orgId: string) {
+export async function getGoal(id: string, orgId: string, redis?: Redis) {
   const [goal] = await db
     .select()
     .from(bearingGoals)
@@ -164,8 +170,10 @@ export async function getGoal(id: string, orgId: string) {
     .where(eq(bearingKeyResults.goal_id, id))
     .orderBy(asc(bearingKeyResults.sort_order));
 
-  // Compute live progress
-  const progress = await computeGoalProgress(id);
+  // Use cached progress when Redis is available, otherwise compute live
+  const progress = redis
+    ? await getCachedGoalProgress(id, redis)
+    : await computeGoalProgress(id);
   const status = await computeGoalStatus({ ...goal, progress: progress.toString() });
 
   return {
@@ -209,7 +217,7 @@ export async function createGoal(
       icon: data.icon ?? null,
       color: data.color ?? null,
       status: data.status ?? 'draft',
-      owner_id: data.owner_id ?? null,
+      owner_id: data.owner_id ?? userId,
       created_by: userId,
     })
     .returning();
@@ -221,6 +229,7 @@ export async function updateGoal(
   id: string,
   data: UpdateGoalInput,
   orgId: string,
+  redis?: Redis,
 ) {
   const existing = await getGoalById(id, orgId);
   if (!existing) throw new BearingError('NOT_FOUND', 'Goal not found', 404);
@@ -256,7 +265,21 @@ export async function updateGoal(
 
   if (!goal) throw new BearingError('NOT_FOUND', 'Goal not found', 404);
 
+  // Invalidate cached progress so the next GET recomputes
+  if (redis) {
+    await invalidateGoalProgressCache(id, redis);
+  }
+
   return goal;
+}
+
+/**
+ * Invalidate goal progress cache. Exported for use by KR mutation paths.
+ */
+export async function invalidateGoalCache(goalId: string, redis?: Redis) {
+  if (redis) {
+    await invalidateGoalProgressCache(goalId, redis);
+  }
 }
 
 export async function deleteGoal(id: string, orgId: string) {
@@ -267,7 +290,7 @@ export async function deleteGoal(id: string, orgId: string) {
   return { deleted: true };
 }
 
-export async function overrideStatus(id: string, status: string, orgId: string) {
+export async function overrideStatus(id: string, status: string, orgId: string, redis?: Redis) {
   const existing = await getGoalById(id, orgId);
   if (!existing) throw new BearingError('NOT_FOUND', 'Goal not found', 404);
 
@@ -282,6 +305,10 @@ export async function overrideStatus(id: string, status: string, orgId: string) 
     .returning();
 
   if (!goal) throw new BearingError('NOT_FOUND', 'Goal not found', 404);
+
+  if (redis) {
+    await invalidateGoalProgressCache(id, redis);
+  }
 
   return goal;
 }

@@ -126,7 +126,7 @@ export function Launchpad({ isOpen, onClose, currentApp }: LaunchpadProps) {
                 href={app.path}
                 className={`flex flex-col items-center gap-2 p-4 rounded-xl transition-colors ${
                   isCurrent
-                    ? 'bg-primary-50 dark:bg-primary-950/20 ring-2 ring-primary-400/50 dark:ring-primary-500/30'
+                    ? 'bg-primary-50 dark:bg-zinc-800/60 ring-2 ring-primary-400/50 dark:ring-primary-500/40'
                     : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
                 }`}
               >

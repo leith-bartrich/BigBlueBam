@@ -109,7 +109,7 @@ export function CalendarMonthPage({ onNavigate, month }: CalendarMonthPageProps)
                   {dayEvents.slice(0, 3).map((event) => (
                     <button
                       key={event.id}
-                      onClick={() => onNavigate(`/events/${event.id}`)}
+                      onClick={() => onNavigate(`/events/${event.id}/edit`)}
                       className="w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded truncate hover:opacity-80 text-white"
                       style={{ backgroundColor: '#3b82f6' }}
                     >

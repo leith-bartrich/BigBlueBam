@@ -1,4 +1,4 @@
-import { eq, and, ilike, desc, sql } from 'drizzle-orm';
+import { eq, and, or, ilike, desc, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { blastSegments, bondContacts } from '../db/schema/index.js';
 import { escapeLike, notFound } from '../lib/utils.js';
@@ -137,38 +137,123 @@ export async function deleteSegment(id: string, orgId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Supported filter fields mapped to bond_contacts columns
+// ---------------------------------------------------------------------------
+
+const CONTACT_COLUMN_MAP: Record<string, typeof bondContacts[keyof typeof bondContacts] | undefined> = {
+  lifecycle_stage: bondContacts.lifecycle_stage,
+  lead_source: bondContacts.lead_source,
+  lead_score: bondContacts.lead_score,
+  city: bondContacts.city,
+  country: bondContacts.country,
+  last_contacted_at: bondContacts.last_contacted_at,
+  email: bondContacts.email,
+  first_name: bondContacts.first_name,
+  last_name: bondContacts.last_name,
+};
+
+/**
+ * Translate a single filter condition into a Drizzle SQL fragment.
+ * Returns undefined if the field or operator is not recognized.
+ */
+function buildConditionSql(condition: {
+  field: string;
+  op: string;
+  value: unknown;
+}): SQL | undefined {
+  const col = CONTACT_COLUMN_MAP[condition.field];
+  if (!col) return undefined;
+
+  switch (condition.op) {
+    case 'equals':
+      return sql`${col} = ${condition.value as string}`;
+
+    case 'not_equals':
+      return sql`${col} != ${condition.value as string}`;
+
+    case 'in': {
+      const values = condition.value as string[];
+      if (!values || values.length === 0) return undefined;
+      return sql`${col} = ANY(${values})`;
+    }
+
+    case 'contains': {
+      const pattern = `%${escapeLike(String(condition.value))}%`;
+      return sql`${col} ILIKE ${pattern}`;
+    }
+
+    case 'greater_than':
+      return sql`${col} > ${condition.value as string | number}`;
+
+    case 'less_than':
+      return sql`${col} < ${condition.value as string | number}`;
+
+    case 'older_than_days': {
+      const days = Number(condition.value);
+      if (Number.isNaN(days)) return undefined;
+      return sql`${col} < NOW() - INTERVAL '1 day' * ${days}`;
+    }
+
+    case 'is_set':
+      return sql`${col} IS NOT NULL`;
+
+    case 'is_not_set':
+      return sql`${col} IS NULL`;
+
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Build all SQL conditions from filter_criteria and combine with AND or OR.
+ * Always includes the org-scoping condition.
+ */
+function buildFilterWhere(
+  orgId: string,
+  criteria: {
+    conditions: Array<{ field: string; op: string; value: unknown }>;
+    match: string;
+  },
+): SQL {
+  const orgCondition = eq(bondContacts.organization_id, orgId);
+
+  const filterConditions: SQL[] = [];
+  for (const condition of criteria.conditions ?? []) {
+    const fragment = buildConditionSql(condition);
+    if (fragment) filterConditions.push(fragment);
+  }
+
+  if (filterConditions.length === 0) {
+    return orgCondition;
+  }
+
+  const combined =
+    criteria.match === 'any'
+      ? or(...filterConditions)!
+      : and(...filterConditions)!;
+
+  return and(orgCondition, combined)!;
+}
+
+// ---------------------------------------------------------------------------
 // Recalculate segment count (queries Bond contacts)
 // ---------------------------------------------------------------------------
 
 export async function recalculateSegmentCount(id: string, orgId: string) {
   const segment = await getSegment(id, orgId);
 
-  // Simple count based on org contacts — real implementation would apply
-  // filter_criteria against bond_contacts columns and custom_fields.
   const criteria = segment.filter_criteria as {
     conditions: Array<{ field: string; op: string; value: unknown }>;
     match: string;
   };
 
-  // Build dynamic conditions from filter_criteria
-  const baseConditions = [eq(bondContacts.organization_id, orgId)];
-
-  for (const condition of criteria.conditions ?? []) {
-    if (condition.field === 'lifecycle_stage' && condition.op === 'in') {
-      // Add lifecycle_stage filter
-      const values = condition.value as string[];
-      if (values.length > 0) {
-        baseConditions.push(
-          sql`${bondContacts.lifecycle_stage} = ANY(${values})`,
-        );
-      }
-    }
-  }
+  const whereClause = buildFilterWhere(orgId, criteria);
 
   const [result] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(bondContacts)
-    .where(and(...baseConditions));
+    .where(whereClause);
 
   const count = result?.count ?? 0;
 
@@ -191,7 +276,13 @@ export async function recalculateSegmentCount(id: string, orgId: string) {
 export async function previewSegmentContacts(id: string, orgId: string) {
   const segment = await getSegment(id, orgId);
 
-  // Return first 50 matching contacts — simplified version
+  const criteria = segment.filter_criteria as {
+    conditions: Array<{ field: string; op: string; value: unknown }>;
+    match: string;
+  };
+
+  const whereClause = buildFilterWhere(orgId, criteria);
+
   const contacts = await db
     .select({
       id: bondContacts.id,
@@ -201,7 +292,7 @@ export async function previewSegmentContacts(id: string, orgId: string) {
       lifecycle_stage: bondContacts.lifecycle_stage,
     })
     .from(bondContacts)
-    .where(eq(bondContacts.organization_id, orgId))
+    .where(whereClause)
     .limit(50);
 
   return { segment_id: segment.id, contacts, count: contacts.length };

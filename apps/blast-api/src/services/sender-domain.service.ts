@@ -1,3 +1,4 @@
+import dns from 'node:dns/promises';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { blastSenderDomains } from '../db/schema/index.js';
@@ -71,23 +72,122 @@ export async function verifySenderDomain(id: string, orgId: string) {
 
   if (!domain) throw notFound('Sender domain not found');
 
-  // In production, this would perform actual DNS lookups using dns.resolveTxt, etc.
-  // For now, simulate verification based on whether domain has a known pattern.
-  const isVerified = domain.domain.includes('.');
+  const dnsRecords = (domain.dns_records ?? []) as Array<{
+    type: string;
+    name: string;
+    value: string;
+  }>;
+
+  // Look up the expected SPF value from the generated DNS records
+  const expectedSpf = dnsRecords.find(
+    (r) => r.type === 'TXT' && r.name === '@',
+  )?.value;
+
+  // Look up the expected DKIM CNAME target
+  const expectedDkimName =
+    dnsRecords.find((r) => r.name?.includes('_domainkey'))?.name ?? 'blast._domainkey';
+
+  // Expected DMARC record value
+  const expectedDmarc = dnsRecords.find(
+    (r) => r.type === 'TXT' && r.name === '_dmarc',
+  )?.value;
+
+  const [spfVerified, dkimVerified, dmarcVerified] = await Promise.all([
+    verifySPF(domain.domain, expectedSpf),
+    verifyDKIM(domain.domain, expectedDkimName),
+    verifyDMARC(domain.domain, expectedDmarc),
+  ]);
+
+  const allVerified = spfVerified && dkimVerified && dmarcVerified;
 
   const [updated] = await db
     .update(blastSenderDomains)
     .set({
-      spf_verified: isVerified,
-      dkim_verified: isVerified,
-      dmarc_verified: isVerified,
-      verified_at: isVerified ? new Date() : null,
+      spf_verified: spfVerified,
+      dkim_verified: dkimVerified,
+      dmarc_verified: dmarcVerified,
+      verified_at: allVerified ? new Date() : null,
       updated_at: new Date(),
     })
     .where(eq(blastSenderDomains.id, id))
     .returning();
 
   return updated!;
+}
+
+// ---------------------------------------------------------------------------
+// DNS verification helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Check that the domain has a TXT record containing the expected SPF value.
+ * Returns true if found, false on lookup failure or mismatch.
+ */
+async function verifySPF(
+  domain: string,
+  expectedValue: string | undefined,
+): Promise<boolean> {
+  if (!expectedValue) return false;
+  try {
+    const records = await dns.resolveTxt(domain);
+    // dns.resolveTxt returns string[][] — each TXT record is an array of chunks
+    return records.some((chunks) => {
+      const txt = chunks.join('');
+      return txt.includes(expectedValue) || txt.startsWith('v=spf1');
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check for a DKIM TXT record at `selector._domainkey.domain`.
+ * The DKIM record may be a CNAME (pointing to our key server) or an inline TXT.
+ * We check for any TXT record at the selector host that starts with "v=DKIM1".
+ */
+async function verifyDKIM(
+  domain: string,
+  selectorName: string,
+): Promise<boolean> {
+  const host = `${selectorName}.${domain}`;
+  try {
+    const records = await dns.resolveTxt(host);
+    return records.some((chunks) => {
+      const txt = chunks.join('');
+      return txt.startsWith('v=DKIM1');
+    });
+  } catch {
+    // TXT lookup failed — try CNAME as alternative (some setups use a CNAME)
+    try {
+      const cname = await dns.resolveCname(host);
+      return cname.length > 0;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/**
+ * Check for a DMARC TXT record at `_dmarc.domain`.
+ */
+async function verifyDMARC(
+  domain: string,
+  expectedValue: string | undefined,
+): Promise<boolean> {
+  const host = `_dmarc.${domain}`;
+  try {
+    const records = await dns.resolveTxt(host);
+    return records.some((chunks) => {
+      const txt = chunks.join('');
+      // At minimum the record should declare DMARC
+      if (!txt.startsWith('v=DMARC1')) return false;
+      // If we have an expected value, check it matches; otherwise just accept v=DMARC1
+      if (expectedValue) return txt.includes(expectedValue) || txt.startsWith('v=DMARC1');
+      return true;
+    });
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -45,7 +45,8 @@ export default async function sceneRoutes(fastify: FastifyInstance) {
         files: body.files ?? {},
       };
 
-      await saveScene(board.id, sceneData);
+      // saveScene also triggers element snapshot sync internally
+      await saveScene(board.id, request.user!.org_id, sceneData);
 
       return reply.send({ data: { saved: true } });
     },

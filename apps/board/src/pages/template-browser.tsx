@@ -13,16 +13,18 @@ const categories: { value: TemplateCategory | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'retro', label: 'Retro' },
   { value: 'brainstorm', label: 'Brainstorm' },
-  { value: 'architecture', label: 'Architecture' },
   { value: 'planning', label: 'Planning' },
+  { value: 'architecture', label: 'Architecture' },
+  { value: 'strategy', label: 'Strategy' },
   { value: 'general', label: 'General' },
 ];
 
 const categoryBadgeVariant: Record<TemplateCategory, 'primary' | 'success' | 'warning' | 'info' | 'default'> = {
   retro: 'warning',
   brainstorm: 'success',
-  architecture: 'info',
   planning: 'primary',
+  architecture: 'info',
+  strategy: 'info',
   general: 'default',
 };
 
@@ -113,7 +115,11 @@ export function TemplateBrowserPage({ onNavigate }: TemplateBrowserPageProps) {
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <LayoutTemplate className="h-10 w-10 text-zinc-300 dark:text-zinc-600" />
+                    {template.icon ? (
+                      <span className="text-4xl">{template.icon}</span>
+                    ) : (
+                      <LayoutTemplate className="h-10 w-10 text-zinc-300 dark:text-zinc-600" />
+                    )}
                   </div>
                 )}
               </div>
@@ -124,7 +130,7 @@ export function TemplateBrowserPage({ onNavigate }: TemplateBrowserPageProps) {
                   <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                     {template.name}
                   </h3>
-                  <Badge variant={categoryBadgeVariant[template.category]} className="shrink-0 text-[10px]">
+                  <Badge variant={categoryBadgeVariant[template.category] ?? 'default'} className="shrink-0 text-[10px]">
                     {template.category}
                   </Badge>
                 </div>
@@ -133,7 +139,9 @@ export function TemplateBrowserPage({ onNavigate }: TemplateBrowserPageProps) {
                 </p>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-[11px] text-zinc-400">
-                    {template.element_count} element{template.element_count !== 1 ? 's' : ''}
+                    {template.element_count != null
+                      ? `${template.element_count} element${template.element_count !== 1 ? 's' : ''}`
+                      : 'Empty canvas'}
                   </span>
                   <Button
                     size="sm"

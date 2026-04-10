@@ -112,6 +112,20 @@ export function registerBillTools(server: McpServer, api: ApiClient, billApiUrl:
     },
   );
 
+  // ===== 4b. bill_create_invoice_from_deal =====
+  server.tool(
+    'bill_create_invoice_from_deal',
+    'Generate a draft invoice from a Bond CRM deal, pulling deal value and contact info.',
+    {
+      deal_id: z.string().uuid().describe('Bond deal UUID'),
+      client_id: z.string().uuid().describe('Billing client UUID'),
+    },
+    async (params) => {
+      const result = await client.request('POST', '/invoices/from-deal', params);
+      return result.ok ? ok(result.data) : err('creating invoice from deal', result.data);
+    },
+  );
+
   // ===== 5. bill_add_line_item =====
   server.tool(
     'bill_add_line_item',

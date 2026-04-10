@@ -9,6 +9,7 @@ import { sprintTasks } from '../db/schema/sprint-tasks.js';
 import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 import { postToSlack } from '../services/slack-notify.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 export default async function sprintRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
@@ -185,6 +186,9 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
           event_type: 'sprint.started',
           text: `:rocket: Sprint started: *${result.data.name}*${result.data.goal ? ` — ${result.data.goal}` : ''}`,
         }).catch(() => {});
+
+        // Bolt workflow event (fire-and-forget)
+        publishBoltEvent('sprint.started', 'bam', { sprint: result.data }, request.user!.org_id).catch(() => {});
       }
 
       return reply.send({ data: result.data });
@@ -335,6 +339,9 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
           event_type: 'sprint.completed',
           text: `:checkered_flag: Sprint completed: *${result.data.name}* — velocity: ${result.data.velocity ?? 0} pts`,
         }).catch(() => {});
+
+        // Bolt workflow event (fire-and-forget)
+        publishBoltEvent('sprint.completed', 'bam', { sprint: result.data }, request.user!.org_id).catch(() => {});
       }
 
       return reply.send({ data: result.data });

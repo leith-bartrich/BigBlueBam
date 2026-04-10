@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react';
 import { useDataSources } from '@/hooks/use-data-sources';
+import { useCreateWidget } from '@/hooks/use-widgets';
 import { cn } from '@/lib/utils';
 
 interface WidgetWizardPageProps {
+  dashboardId: string;
   onNavigate: (path: string) => void;
 }
 
@@ -23,9 +25,10 @@ const WIDGET_TYPES = [
   { value: 'progress_bar', label: 'Progress Bar' },
 ];
 
-export function WidgetWizardPage({ onNavigate }: WidgetWizardPageProps) {
+export function WidgetWizardPage({ dashboardId, onNavigate }: WidgetWizardPageProps) {
   const { data: sourcesData, isLoading } = useDataSources();
   const sources = sourcesData?.data ?? [];
+  const createWidget = useCreateWidget(dashboardId);
 
   const [step, setStep] = useState<Step>('source');
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
@@ -203,7 +206,7 @@ export function WidgetWizardPage({ onNavigate }: WidgetWizardPageProps) {
         <button
           onClick={() => {
             if (stepIndex > 0) setStep(steps[stepIndex - 1]!.key);
-            else onNavigate('/');
+            else onNavigate(`/dashboards/${dashboardId}/edit`);
           }}
           className="flex items-center gap-1.5 px-4 py-2 text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
         >
@@ -211,18 +214,49 @@ export function WidgetWizardPage({ onNavigate }: WidgetWizardPageProps) {
           {stepIndex === 0 ? 'Cancel' : 'Back'}
         </button>
         <button
-          onClick={() => {
-            if (stepIndex < steps.length - 1) setStep(steps[stepIndex + 1]!.key);
-            else {
-              // Create widget (would call API)
-              onNavigate('/');
+          onClick={async () => {
+            if (stepIndex < steps.length - 1) {
+              setStep(steps[stepIndex + 1]!.key);
+            } else {
+              // Build payload and call create API
+              const [product, entity] = (selectedSource ?? '').split(':');
+              const queryConfig: Record<string, unknown> = {
+                measures: selectedMeasures.map((field) => {
+                  const measureDef = currentSource?.measures.find((m) => m.field === field);
+                  const agg = measureDef?.aggregations?.[0] ?? 'count';
+                  return { field, agg, alias: field };
+                }),
+                dimensions: selectedDimensions.map((field) => ({ field, alias: field })),
+              };
+
+              await createWidget.mutateAsync({
+                name: widgetName || `${widgetType.replace('_', ' ')} widget`,
+                widget_type: widgetType,
+                data_source: product ?? '',
+                entity: entity ?? '',
+                query_config: queryConfig,
+                viz_config: {},
+              });
+
+              onNavigate(`/dashboards/${dashboardId}/edit`);
             }
           }}
-          disabled={step === 'source' && !selectedSource}
+          disabled={(step === 'source' && !selectedSource) || createWidget.isPending}
           className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
         >
-          {stepIndex === steps.length - 1 ? 'Create Widget' : 'Next'}
-          {stepIndex < steps.length - 1 && <ArrowRight className="h-3.5 w-3.5" />}
+          {createWidget.isPending ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Creating...
+            </>
+          ) : stepIndex === steps.length - 1 ? (
+            'Create Widget'
+          ) : (
+            <>
+              Next
+              <ArrowRight className="h-3.5 w-3.5" />
+            </>
+          )}
         </button>
       </div>
     </div>

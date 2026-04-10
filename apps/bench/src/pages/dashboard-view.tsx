@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Edit2, RefreshCw, Maximize2, Copy, Download, Clock } from 'lucide-react';
 import { useDashboard } from '@/hooks/use-dashboards';
 import { useWidgetQuery } from '@/hooks/use-widgets';
+import { ChartRenderer } from '@/components/widgets/chart-renderer';
+import { DateRangePicker, type DateRange } from '@/components/dashboards/date-range-picker';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface DashboardViewPageProps {
@@ -22,28 +24,15 @@ function WidgetCard({ widget }: { widget: any }) {
       <div className="flex-1 flex items-center justify-center min-h-[120px]">
         {isLoading ? (
           <div className="text-sm text-zinc-400">Loading...</div>
-        ) : widget.widget_type === 'kpi_card' || widget.widget_type === 'counter' ? (
-          <div className="text-center">
-            <div className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
-              {queryResult?.rows?.[0] ? Object.values(queryResult.rows[0])[0] as string : '0'}
-            </div>
-            <div className="text-xs text-zinc-500 mt-1">{widget.name}</div>
-          </div>
         ) : (
           <div className="w-full">
-            {queryResult?.rows && queryResult.rows.length > 0 ? (
-              <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                {queryResult.rows.slice(0, 10).map((row: Record<string, unknown>, i: number) => (
-                  <div key={i} className="flex items-center justify-between text-xs px-2 py-1 rounded bg-zinc-50 dark:bg-zinc-700/50">
-                    {Object.entries(row).map(([key, val]) => (
-                      <span key={key} className="text-zinc-600 dark:text-zinc-300 truncate">{String(val)}</span>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-zinc-400 text-center">No data</div>
-            )}
+            <ChartRenderer
+              widgetType={widget.widget_type}
+              data={queryResult?.rows ?? []}
+              vizConfig={widget.viz_config}
+              kpiConfig={widget.kpi_config}
+              widgetName={widget.name}
+            />
           </div>
         )}
       </div>
@@ -61,6 +50,7 @@ export function DashboardViewPage({ dashboardId, onNavigate }: DashboardViewPage
   const { data, isLoading, refetch } = useDashboard(dashboardId);
   const dashboard = data?.data;
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>({});
 
   // Auto-refresh
   useEffect(() => {
@@ -98,6 +88,7 @@ export function DashboardViewPage({ dashboardId, onNavigate }: DashboardViewPage
           )}
         </div>
         <div className="flex items-center gap-2">
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
           <button
             onClick={() => refetch()}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"

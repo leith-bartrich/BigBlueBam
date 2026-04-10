@@ -6,8 +6,9 @@ import {
   bearingKrSnapshots,
   bearingGoals,
 } from '../db/schema/index.js';
+import type Redis from 'ioredis';
 import { BearingError } from './period.service.js';
-import { computeKrProgress } from './progress-engine.js';
+import { computeKrProgress, invalidateGoalProgressCache } from './progress-engine.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -149,6 +150,7 @@ export async function updateKeyResult(
   id: string,
   data: UpdateKeyResultInput,
   orgId: string,
+  redis?: Redis,
 ) {
   const existing = await getKeyResultWithOrgCheck(id, orgId);
   if (!existing) throw new BearingError('NOT_FOUND', 'Key result not found', 404);
@@ -203,6 +205,11 @@ export async function updateKeyResult(
     });
   }
 
+  // Invalidate parent goal's cached progress
+  if (redis) {
+    await invalidateGoalProgressCache(kr!.goal_id, redis);
+  }
+
   return updated!;
 }
 
@@ -214,7 +221,7 @@ export async function deleteKeyResult(id: string, orgId: string) {
   return { deleted: true };
 }
 
-export async function setCurrentValue(id: string, value: number, orgId: string) {
+export async function setCurrentValue(id: string, value: number, orgId: string, redis?: Redis) {
   const existing = await getKeyResultWithOrgCheck(id, orgId);
   if (!existing) throw new BearingError('NOT_FOUND', 'Key result not found', 404);
 
@@ -245,6 +252,11 @@ export async function setCurrentValue(id: string, value: number, orgId: string) 
     value: newCurrentValue,
     progress: progress.toFixed(2),
   });
+
+  // Invalidate parent goal's cached progress
+  if (redis) {
+    await invalidateGoalProgressCache(existing.goal_id, redis);
+  }
 
   return kr!;
 }

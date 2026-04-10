@@ -124,6 +124,7 @@ import dealRoutes from './routes/deals.routes.js';
 import activityRoutes from './routes/activities.routes.js';
 import scoringRoutes from './routes/scoring.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
+import customFieldRoutes from './routes/custom-fields.routes.js';
 
 await fastify.register(contactRoutes, { prefix: '/v1' });
 await fastify.register(companyRoutes, { prefix: '/v1' });
@@ -132,6 +133,7 @@ await fastify.register(dealRoutes, { prefix: '/v1' });
 await fastify.register(activityRoutes, { prefix: '/v1' });
 await fastify.register(scoringRoutes, { prefix: '/v1' });
 await fastify.register(analyticsRoutes, { prefix: '/v1' });
+await fastify.register(customFieldRoutes, { prefix: '/v1' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

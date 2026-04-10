@@ -8,6 +8,11 @@ import {
   Trash2,
   GripVertical,
   Edit2,
+  Power,
+  PowerOff,
+  AlertTriangle,
+  Check,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
@@ -16,6 +21,20 @@ import { Dialog } from '@/components/common/dialog';
 import { Select } from '@/components/common/select';
 import { cn } from '@/lib/utils';
 import { usePipelines, useCreatePipeline, useCreateStage, useDeleteStage, type Pipeline, type PipelineStage } from '@/hooks/use-pipelines';
+import {
+  useScoringRules,
+  useCreateScoringRule,
+  useUpdateScoringRule,
+  useDeleteScoringRule,
+  type ScoringRule,
+} from '@/hooks/use-scoring';
+import {
+  useCustomFieldDefinitions,
+  useCreateCustomField,
+  useDeleteCustomField,
+  type CustomFieldDefinition,
+  type CustomFieldOption,
+} from '@/hooks/use-custom-fields';
 import { Loader2 } from 'lucide-react';
 
 interface SettingsPageProps {
@@ -228,49 +247,764 @@ function AddStageForm({ pipelineId }: { pipelineId: string }) {
 /*  Custom fields settings tab                                         */
 /* ------------------------------------------------------------------ */
 
+const ENTITY_TYPES = [
+  { value: 'contact', label: 'Contact' },
+  { value: 'company', label: 'Company' },
+  { value: 'deal', label: 'Deal' },
+] as const;
+
+const FIELD_TYPES = [
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'date', label: 'Date' },
+  { value: 'select', label: 'Select' },
+  { value: 'multi_select', label: 'Multi Select' },
+  { value: 'url', label: 'URL' },
+  { value: 'email', label: 'Email' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'boolean', label: 'Boolean' },
+];
+
 function FieldsSettings() {
+  const [entityFilter, setEntityFilter] = useState<string>('');
+  const { data, isLoading } = useCustomFieldDefinitions(entityFilter || undefined);
+  const fields = data?.data ?? [];
+  const deleteField = useDeleteCustomField();
+  const [showCreate, setShowCreate] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+      </div>
+    );
+  }
+
+  const groupedFields: Record<string, CustomFieldDefinition[]> = {};
+  for (const field of fields) {
+    if (!groupedFields[field.entity_type]) groupedFields[field.entity_type] = [];
+    groupedFields[field.entity_type].push(field);
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Custom Fields</h3>
-        <p className="text-sm text-zinc-500 mt-0.5">
-          Define custom fields for contacts, companies, and deals.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Custom Fields</h3>
+          <p className="text-sm text-zinc-500 mt-0.5">
+            Define custom fields for contacts, companies, and deals.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="w-36">
+            <Select
+              value={entityFilter}
+              onValueChange={setEntityFilter}
+              options={[
+                { value: '', label: 'All Types' },
+                ...ENTITY_TYPES.map((t) => ({ value: t.value, label: t.label })),
+              ]}
+              placeholder="Filter..."
+            />
+          </div>
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" />
+            New Field
+          </Button>
+        </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-8 text-center">
-        <FormInput className="h-8 w-8 text-zinc-300 mx-auto mb-3" />
-        <p className="text-sm text-zinc-500">
-          Custom field configuration coming soon. Fields will be definable per entity type
-          (contact, company, deal) with support for text, number, date, select, and multi-select types.
-        </p>
-      </div>
+      {fields.length === 0 ? (
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-8 text-center">
+          <FormInput className="h-8 w-8 text-zinc-300 mx-auto mb-3" />
+          <p className="text-sm text-zinc-500">
+            No custom fields defined yet. Create your first field to extend contacts, companies, or deals with custom data.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(groupedFields).map(([entityType, entityFields]) => (
+            <div key={entityType}>
+              <h4 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-3">
+                {entityType} fields
+              </h4>
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden divide-y divide-zinc-100 dark:divide-zinc-800">
+                {entityFields.map((field) => (
+                  <div
+                    key={field.id}
+                    className="flex items-center gap-4 px-5 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 group"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {field.label}
+                        </span>
+                        {field.required && (
+                          <Badge variant="warning">Required</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <code className="text-xs text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
+                          {field.field_key}
+                        </code>
+                      </div>
+                    </div>
+                    <Badge variant="info">{field.field_type}</Badge>
+                    {(field.field_type === 'select' || field.field_type === 'multi_select') &&
+                      field.options && (
+                        <span className="text-xs text-zinc-400">
+                          {(field.options as CustomFieldOption[]).length} options
+                        </span>
+                      )}
+                    <button
+                      onClick={() => deleteField.mutate(field.id)}
+                      className="opacity-0 group-hover:opacity-100 rounded p-1 text-zinc-400 hover:text-red-500 transition-all"
+                      title="Delete field"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <CreateCustomFieldDialog
+        open={showCreate}
+        onOpenChange={setShowCreate}
+      />
     </div>
   );
+}
+
+function CreateCustomFieldDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const createField = useCreateCustomField();
+  const [entityType, setEntityType] = useState('contact');
+  const [fieldKey, setFieldKey] = useState('');
+  const [label, setLabel] = useState('');
+  const [fieldType, setFieldType] = useState('text');
+  const [required, setRequired] = useState(false);
+  const [options, setOptions] = useState<CustomFieldOption[]>([]);
+  const [newOptionValue, setNewOptionValue] = useState('');
+  const [newOptionLabel, setNewOptionLabel] = useState('');
+
+  const showOptions = fieldType === 'select' || fieldType === 'multi_select';
+
+  const handleAddOption = () => {
+    if (!newOptionValue.trim() || !newOptionLabel.trim()) return;
+    setOptions([...options, { value: newOptionValue.trim(), label: newOptionLabel.trim() }]);
+    setNewOptionValue('');
+    setNewOptionLabel('');
+  };
+
+  const handleRemoveOption = (index: number) => {
+    setOptions(options.filter((_, i) => i !== index));
+  };
+
+  const resetForm = () => {
+    setEntityType('contact');
+    setFieldKey('');
+    setLabel('');
+    setFieldType('text');
+    setRequired(false);
+    setOptions([]);
+    setNewOptionValue('');
+    setNewOptionLabel('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fieldKey.trim() || !label.trim()) return;
+
+    await createField.mutateAsync({
+      entity_type: entityType as 'contact' | 'company' | 'deal',
+      field_key: fieldKey.trim(),
+      label: label.trim(),
+      field_type: fieldType,
+      required,
+      options: showOptions && options.length > 0 ? options : undefined,
+    });
+
+    resetForm();
+    onOpenChange(false);
+  };
+
+  // Auto-generate field_key from label
+  const handleLabelChange = (val: string) => {
+    setLabel(val);
+    if (!fieldKey || fieldKey === labelToKey(label)) {
+      setFieldKey(labelToKey(val));
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) resetForm();
+        onOpenChange(v);
+      }}
+      title="Create Custom Field"
+      description="Add a custom field to extend the data model for a specific entity type."
+      className="max-w-xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            value={entityType}
+            onValueChange={setEntityType}
+            options={ENTITY_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+            label="Entity Type"
+          />
+          <Select
+            value={fieldType}
+            onValueChange={setFieldType}
+            options={FIELD_TYPES}
+            label="Field Type"
+          />
+        </div>
+        <Input
+          label="Label"
+          placeholder="e.g., Company Size"
+          value={label}
+          onChange={(e) => handleLabelChange(e.target.value)}
+          required
+          autoFocus
+        />
+        <Input
+          label="Field Key"
+          placeholder="e.g., company_size"
+          value={fieldKey}
+          onChange={(e) => setFieldKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+          required
+        />
+        <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={required}
+            onChange={(e) => setRequired(e.target.checked)}
+            className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+          />
+          Required field
+        </label>
+
+        {showOptions && (
+          <div className="space-y-3">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Options</span>
+            {options.length > 0 && (
+              <div className="space-y-1.5">
+                {options.map((opt, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <code className="bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-xs text-zinc-600 dark:text-zinc-400">
+                      {opt.value}
+                    </code>
+                    <span className="text-zinc-700 dark:text-zinc-300 flex-1">{opt.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveOption(i)}
+                      className="text-zinc-400 hover:text-red-500"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  placeholder="Value"
+                  value={newOptionValue}
+                  onChange={(e) => setNewOptionValue(e.target.value)}
+                />
+              </div>
+              <div className="flex-1">
+                <Input
+                  placeholder="Label"
+                  value={newOptionLabel}
+                  onChange={(e) => setNewOptionLabel(e.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={handleAddOption}
+                disabled={!newOptionValue.trim() || !newOptionLabel.trim()}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="secondary" type="button" onClick={() => { resetForm(); onOpenChange(false); }}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={createField.isPending} disabled={!fieldKey.trim() || !label.trim()}>
+            Create Field
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function labelToKey(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 60);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Lead scoring settings tab                                          */
 /* ------------------------------------------------------------------ */
 
+const CONDITION_FIELDS = [
+  { value: 'lifecycle_stage', label: 'Lifecycle Stage' },
+  { value: 'lead_source', label: 'Lead Source' },
+  { value: 'title', label: 'Job Title' },
+  { value: 'city', label: 'City' },
+  { value: 'country', label: 'Country' },
+  { value: 'lead_score', label: 'Current Score' },
+  { value: 'custom_fields.company_size', label: 'Company Size (custom)' },
+  { value: 'custom_fields.industry', label: 'Industry (custom)' },
+];
+
+const CONDITION_OPERATORS = [
+  { value: 'equals', label: 'Equals' },
+  { value: 'not_equals', label: 'Not Equals' },
+  { value: 'contains', label: 'Contains' },
+  { value: 'gt', label: 'Greater Than' },
+  { value: 'lt', label: 'Less Than' },
+  { value: 'gte', label: 'Greater or Equal' },
+  { value: 'lte', label: 'Less or Equal' },
+  { value: 'exists', label: 'Exists' },
+  { value: 'not_exists', label: 'Not Exists' },
+];
+
 function ScoringSettings() {
+  const { data, isLoading } = useScoringRules();
+  const rules = data?.data ?? [];
+  const deleteRule = useDeleteScoringRule();
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingRule, setEditingRule] = useState<ScoringRule | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Lead Scoring</h3>
-        <p className="text-sm text-zinc-500 mt-0.5">
-          Configure rules to automatically score contacts based on their attributes and behavior.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Lead Scoring</h3>
+          <p className="text-sm text-zinc-500 mt-0.5">
+            Configure rules to automatically score contacts based on their attributes and behavior.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" />
+          New Rule
+        </Button>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-8 text-center">
-        <Star className="h-8 w-8 text-zinc-300 mx-auto mb-3" />
-        <p className="text-sm text-zinc-500">
-          Lead scoring rule builder coming soon. Rules can match on lifecycle stage, lead source,
-          custom fields, and activity history, with configurable point values.
+      {rules.length > 0 && (
+        <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/30 p-3">
+          <p className="text-xs text-zinc-500">
+            Scores are calculated per contact by evaluating all enabled rules. Each matching rule adds (or subtracts) its
+            point delta. Final score is clamped to 0-100.
+          </p>
+        </div>
+      )}
+
+      {rules.length === 0 ? (
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-8 text-center">
+          <Star className="h-8 w-8 text-zinc-300 mx-auto mb-3" />
+          <p className="text-sm text-zinc-500">
+            No scoring rules configured yet. Create rules to automatically score contacts
+            based on lifecycle stage, lead source, custom fields, and more.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden divide-y divide-zinc-100 dark:divide-zinc-800">
+          {rules.map((rule) => (
+            <ScoringRuleRow
+              key={rule.id}
+              rule={rule}
+              onEdit={() => setEditingRule(rule)}
+              onDelete={() => deleteRule.mutate(rule.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <CreateScoringRuleDialog
+        open={showCreate}
+        onOpenChange={setShowCreate}
+      />
+
+      {editingRule && (
+        <EditScoringRuleDialog
+          rule={editingRule}
+          open={true}
+          onOpenChange={(v) => { if (!v) setEditingRule(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ScoringRuleRow({
+  rule,
+  onEdit,
+  onDelete,
+}: {
+  rule: ScoringRule;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const operatorLabel =
+    CONDITION_OPERATORS.find((o) => o.value === rule.condition_operator)?.label ?? rule.condition_operator;
+  const fieldLabel =
+    CONDITION_FIELDS.find((f) => f.value === rule.condition_field)?.label ?? rule.condition_field;
+
+  const needsValue = rule.condition_operator !== 'exists' && rule.condition_operator !== 'not_exists';
+
+  return (
+    <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 group">
+      <div
+        className={cn(
+          'h-2 w-2 rounded-full shrink-0',
+          rule.enabled ? 'bg-green-500' : 'bg-zinc-300 dark:bg-zinc-600',
+        )}
+        title={rule.enabled ? 'Enabled' : 'Disabled'}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+            {rule.name}
+          </span>
+          {!rule.enabled && <Badge variant="default">Disabled</Badge>}
+        </div>
+        <p className="text-xs text-zinc-500 mt-0.5">
+          When <span className="font-medium text-zinc-600 dark:text-zinc-400">{fieldLabel}</span>{' '}
+          <span className="text-zinc-400">{operatorLabel.toLowerCase()}</span>
+          {needsValue && (
+            <>
+              {' '}
+              <code className="bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-zinc-600 dark:text-zinc-400">
+                {rule.condition_value}
+              </code>
+            </>
+          )}
         </p>
+        {rule.description && (
+          <p className="text-xs text-zinc-400 mt-0.5">{rule.description}</p>
+        )}
+      </div>
+      <div
+        className={cn(
+          'text-sm font-semibold tabular-nums px-2 py-0.5 rounded',
+          rule.score_delta > 0
+            ? 'text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-900/20'
+            : rule.score_delta < 0
+              ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-900/20'
+              : 'text-zinc-500',
+        )}
+      >
+        {rule.score_delta > 0 ? '+' : ''}{rule.score_delta} pts
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={onEdit}
+          className="rounded p-1 text-zinc-400 hover:text-primary-500 transition-colors"
+          title="Edit rule"
+        >
+          <Edit2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={onDelete}
+          className="rounded p-1 text-zinc-400 hover:text-red-500 transition-colors"
+          title="Delete rule"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
+  );
+}
+
+function CreateScoringRuleDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const createRule = useCreateScoringRule();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [conditionField, setConditionField] = useState('lifecycle_stage');
+  const [conditionOperator, setConditionOperator] = useState('equals');
+  const [conditionValue, setConditionValue] = useState('');
+  const [scoreDelta, setScoreDelta] = useState('10');
+  const [enabled, setEnabled] = useState(true);
+
+  const needsValue = conditionOperator !== 'exists' && conditionOperator !== 'not_exists';
+
+  const resetForm = () => {
+    setName('');
+    setDescription('');
+    setConditionField('lifecycle_stage');
+    setConditionOperator('equals');
+    setConditionValue('');
+    setScoreDelta('10');
+    setEnabled(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const delta = parseInt(scoreDelta, 10);
+    if (isNaN(delta)) return;
+
+    await createRule.mutateAsync({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      condition_field: conditionField,
+      condition_operator: conditionOperator,
+      condition_value: needsValue ? conditionValue : '_',
+      score_delta: delta,
+      enabled,
+    });
+
+    resetForm();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) resetForm();
+        onOpenChange(v);
+      }}
+      title="Create Scoring Rule"
+      description="Define a condition that adds or subtracts points from a contact's lead score."
+      className="max-w-xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input
+          label="Rule Name"
+          placeholder="e.g., +10 for Sales Qualified"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          autoFocus
+        />
+        <Input
+          label="Description (optional)"
+          placeholder="Brief explanation of this rule"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+
+        <div className="space-y-2">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Condition</span>
+          <div className="grid grid-cols-3 gap-3">
+            <Select
+              value={conditionField}
+              onValueChange={setConditionField}
+              options={CONDITION_FIELDS}
+              placeholder="Field..."
+            />
+            <Select
+              value={conditionOperator}
+              onValueChange={setConditionOperator}
+              options={CONDITION_OPERATORS}
+              placeholder="Operator..."
+            />
+            {needsValue && (
+              <Input
+                placeholder="Value..."
+                value={conditionValue}
+                onChange={(e) => setConditionValue(e.target.value)}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Score Delta"
+            type="number"
+            min={-100}
+            max={100}
+            value={scoreDelta}
+            onChange={(e) => setScoreDelta(e.target.value)}
+            required
+          />
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Status</span>
+            <label className="flex items-center gap-2 h-10 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+                className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+              />
+              Enabled
+            </label>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="secondary" type="button" onClick={() => { resetForm(); onOpenChange(false); }}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={createRule.isPending} disabled={!name.trim()}>
+            Create Rule
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function EditScoringRuleDialog({
+  rule,
+  open,
+  onOpenChange,
+}: {
+  rule: ScoringRule;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const updateRule = useUpdateScoringRule(rule.id);
+  const [name, setName] = useState(rule.name);
+  const [description, setDescription] = useState(rule.description ?? '');
+  const [conditionField, setConditionField] = useState(rule.condition_field);
+  const [conditionOperator, setConditionOperator] = useState(rule.condition_operator);
+  const [conditionValue, setConditionValue] = useState(rule.condition_value);
+  const [scoreDelta, setScoreDelta] = useState(String(rule.score_delta));
+  const [enabled, setEnabled] = useState(rule.enabled);
+
+  const needsValue = conditionOperator !== 'exists' && conditionOperator !== 'not_exists';
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const delta = parseInt(scoreDelta, 10);
+    if (isNaN(delta)) return;
+
+    await updateRule.mutateAsync({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      condition_field: conditionField,
+      condition_operator: conditionOperator,
+      condition_value: needsValue ? conditionValue : '_',
+      score_delta: delta,
+      enabled,
+    });
+
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Edit Scoring Rule"
+      description="Modify the condition or point value for this scoring rule."
+      className="max-w-xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input
+          label="Rule Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          autoFocus
+        />
+        <Input
+          label="Description (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+
+        <div className="space-y-2">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Condition</span>
+          <div className="grid grid-cols-3 gap-3">
+            <Select
+              value={conditionField}
+              onValueChange={setConditionField}
+              options={CONDITION_FIELDS}
+            />
+            <Select
+              value={conditionOperator}
+              onValueChange={setConditionOperator}
+              options={CONDITION_OPERATORS}
+            />
+            {needsValue && (
+              <Input
+                placeholder="Value..."
+                value={conditionValue}
+                onChange={(e) => setConditionValue(e.target.value)}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Score Delta"
+            type="number"
+            min={-100}
+            max={100}
+            value={scoreDelta}
+            onChange={(e) => setScoreDelta(e.target.value)}
+            required
+          />
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Status</span>
+            <label className="flex items-center gap-2 h-10 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+                className="rounded border-zinc-300 text-primary-600 focus:ring-primary-500"
+              />
+              Enabled
+            </label>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="secondary" type="button" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={updateRule.isPending} disabled={!name.trim()}>
+            Save Changes
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  BearingGoalScope,
+  BearingGoalStatus,
+} from '@bigbluebam/shared';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import {
   requireMinOrgRole,
@@ -7,9 +11,10 @@ import {
   requireGoalEditAccess,
 } from '../middleware/authorize.js';
 import * as goalService from '../services/goal.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
-const GOAL_SCOPES = ['organization', 'project', 'team', 'individual'] as const;
-const GOAL_STATUSES = ['draft', 'on_track', 'at_risk', 'behind', 'achieved', 'missed'] as const;
+const GOAL_SCOPES = BearingGoalScope.options;
+const GOAL_STATUSES = BearingGoalStatus.options;
 
 const createGoalSchema = z.object({
   period_id: z.string().uuid(),
@@ -89,6 +94,13 @@ export default async function goalRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = createGoalSchema.parse(request.body);
       const goal = await goalService.createGoal(data, request.user!.id, request.user!.org_id);
+      publishBoltEvent('goal.created', 'bearing', {
+        id: goal.id,
+        title: goal.title,
+        scope: goal.scope,
+        status: goal.status,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: goal });
     },
   );
@@ -101,6 +113,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
       const goal = await goalService.getGoal(
         (request as any).goal.id,
         request.user!.org_id,
+        fastify.redis,
       );
       return reply.send({ data: goal });
     },
@@ -116,7 +129,15 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         (request as any).goal.id,
         data,
         request.user!.org_id,
+        fastify.redis,
       );
+      publishBoltEvent('goal.updated', 'bearing', {
+        id: goal.id,
+        title: goal.title,
+        scope: goal.scope,
+        status: goal.status,
+        updated_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: goal });
     },
   );
@@ -141,6 +162,7 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         (request as any).goal.id,
         status,
         request.user!.org_id,
+        fastify.redis,
       );
       return reply.send({ data: goal });
     },

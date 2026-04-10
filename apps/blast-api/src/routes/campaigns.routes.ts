@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as campaignService from '../services/campaign.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const createCampaignSchema = z.object({
   name: z.string().min(1).max(255),
@@ -61,6 +62,13 @@ export default async function campaignRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         request.user!.id,
       );
+      publishBoltEvent('campaign.created', 'blast', {
+        id: campaign.id,
+        name: campaign.name,
+        subject: campaign.subject,
+        status: campaign.status,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: campaign });
     },
   );
@@ -112,6 +120,11 @@ export default async function campaignRoutes(fastify: FastifyInstance) {
         request.params.id,
         request.user!.org_id,
       );
+      publishBoltEvent('campaign.sent', 'blast', {
+        id: request.params.id,
+        status: result.status,
+        sent_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: result });
     },
   );

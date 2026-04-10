@@ -5,11 +5,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from './sidebar';
 import { Avatar } from '@/components/common/avatar';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
+import { CommandPalette } from '@/components/common/command-palette';
 import { SuperuserContextBanner } from '@/components/superuser-context-banner';
 import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { useAuthStore } from '@/stores/auth.store';
 import { useOrgSummary } from '@/hooks/use-org-summary';
+import { useProjects } from '@/hooks/use-projects';
 import { useVersion } from '@/hooks/use-version';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { api } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
 
@@ -63,7 +66,20 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [launchpadOpen, setLaunchpadOpen] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const { data: projectsRes } = useProjects();
+  const projects = projectsRes?.data ?? [];
+
+  // Global Cmd+K / Ctrl+K shortcut for command palette
+  useKeyboardShortcuts(
+    {
+      'Ctrl+k': () => setShowCommandPalette(true),
+      'Cmd+k': () => setShowCommandPalette(true),
+    },
+    true,
+  );
 
   const { data: orgSummary } = useOrgSummary();
   const orgId = orgSummary?.id;
@@ -318,6 +334,12 @@ export function AppLayout({ children, currentProjectId, breadcrumbs = [], onNavi
       </div>
       </div>
       <Launchpad isOpen={launchpadOpen} onClose={() => setLaunchpadOpen(false)} currentApp="b3" />
+      <CommandPalette
+        open={showCommandPalette}
+        onOpenChange={setShowCommandPalette}
+        onNavigate={onNavigate}
+        projects={projects}
+      />
     </div>
   );
 }

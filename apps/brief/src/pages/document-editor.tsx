@@ -14,6 +14,7 @@ import { useProjects } from '@/hooks/use-projects';
 import { useBriefEditor, BriefEditorContent } from '@/components/editor/brief-editor';
 import { EditorToolbar } from '@/components/editor/editor-toolbar';
 import { TableOfContents } from '@/components/editor/table-of-contents';
+import { ExportMenu } from '@/components/document/export-menu';
 import { markdownToHtml, htmlToMarkdown } from '@/lib/markdown';
 
 interface DocumentEditorPageProps {
@@ -251,6 +252,9 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {isEditMode && existing && (
+            <ExportMenu documentId={existing.id} slug={existing.slug} />
+          )}
           <Button variant="secondary" size="sm" onClick={handleSaveDraft} loading={isSaving} disabled={!title.trim()}>
             Save Draft
           </Button>

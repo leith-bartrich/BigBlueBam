@@ -21,6 +21,8 @@ const envSchema = z.object({
   MCP_INTERNAL_URL: z.string().default('http://mcp-server:3001'),
   BBB_API_INTERNAL_URL: z.string().default('http://api:4000'),
   BOND_API_INTERNAL_URL: z.string().default('http://bond-api:4009'),
+  BOLT_API_INTERNAL_URL: z.string().default('http://bolt-api:4006'),
+  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
 
   // SMTP configuration for sending emails
   SMTP_HOST: z.string().optional(),

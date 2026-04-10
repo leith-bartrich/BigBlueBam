@@ -71,9 +71,13 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const query = listQuerySchema.parse(request.query);
+      // "Own only" visibility: members and viewers only see contacts they own
+      const role = request.user!.role;
+      const isRestrictedRole = role === 'member' || role === 'viewer';
       const result = await contactService.listContacts({
         organization_id: request.user!.org_id,
         ...query,
+        visibility_owner_id: isRestrictedRole ? request.user!.id : undefined,
       });
       return reply.send(result);
     },

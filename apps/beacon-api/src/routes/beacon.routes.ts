@@ -5,6 +5,7 @@ import { requireMinOrgRole, requireBeaconEditAccess, requireBeaconReadAccess } f
 import * as beaconService from '../services/beacon.service.js';
 import * as verificationService from '../services/verification.service.js';
 import { transitionBeacon } from '../services/lifecycle.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const createBeaconSchema = z.object({
   title: z.string().min(1).max(512),
@@ -54,6 +55,13 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
+      publishBoltEvent('beacon.created', 'beacon', {
+        id: beacon.id,
+        title: beacon.title,
+        visibility: beacon.visibility,
+        status: beacon.status,
+        created_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.status(201).send({ data: beacon });
     },
   );
@@ -121,6 +129,12 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
+      publishBoltEvent('beacon.updated', 'beacon', {
+        id: beacon.id,
+        title: beacon.title,
+        status: beacon.status,
+        updated_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: beacon });
     },
   );
@@ -135,6 +149,11 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
+      publishBoltEvent('beacon.expired', 'beacon', {
+        id: beacon.id,
+        title: beacon.title,
+        retired_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: beacon });
     },
   );
@@ -149,6 +168,12 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
+      publishBoltEvent('beacon.published', 'beacon', {
+        id: beacon.id,
+        title: beacon.title,
+        visibility: beacon.visibility,
+        published_by: request.user!.id,
+      }, request.user!.org_id);
       return reply.send({ data: beacon });
     },
   );

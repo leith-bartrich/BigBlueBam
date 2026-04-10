@@ -1,6 +1,7 @@
 import { eq, and, or, isNull, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { boardTemplates, boards, boardCollaborators, projectMembers } from '../db/schema/index.js';
+import { createBoard } from './board.service.js';
 
 export class BoardError extends Error {
   code: string;
@@ -169,4 +170,37 @@ export async function deleteTemplate(id: string, orgId: string) {
 
   await db.delete(boardTemplates).where(eq(boardTemplates.id, id));
   return { deleted: true };
+}
+
+export async function instantiateTemplate(
+  templateId: string,
+  opts: { name?: string; project_id?: string },
+  userId: string,
+  orgId: string,
+) {
+  const [template] = await db
+    .select()
+    .from(boardTemplates)
+    .where(eq(boardTemplates.id, templateId))
+    .limit(1);
+
+  if (!template) throw new BoardError('NOT_FOUND', 'Template not found', 404);
+
+  // System templates (org_id NULL) are available to everyone.
+  // Org templates must belong to the same org.
+  if (template.org_id !== null && template.org_id !== orgId) {
+    throw new BoardError('NOT_FOUND', 'Template not found', 404);
+  }
+
+  const boardName = opts.name || template.name;
+  return createBoard(
+    {
+      name: boardName,
+      description: template.description,
+      template_id: templateId,
+      project_id: opts.project_id ?? null,
+    },
+    userId,
+    orgId,
+  );
 }

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as bookingPageService from '../services/booking-page.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const slotsQuerySchema = z.object({
   start_date: z.string(),
@@ -53,6 +54,15 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         body.email,
         body.notes,
       );
+      publishBoltEvent('booking.created', 'book', {
+        id: event.id,
+        title: event.title,
+        start_at: event.start_at,
+        end_at: event.end_at,
+        booked_by_name: body.name,
+        booked_by_email: body.email,
+        booking_page_slug: request.params.slug,
+      }, event.organization_id);
       return reply.status(201).send({ data: event });
     },
   );

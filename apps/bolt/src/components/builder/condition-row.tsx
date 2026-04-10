@@ -1,4 +1,5 @@
 import type { BoltCondition, ConditionOperator } from '@/hooks/use-automations';
+import { FieldPicker } from '@/components/builder/field-picker';
 import { X } from 'lucide-react';
 
 interface ConditionRowProps {
@@ -6,6 +7,8 @@ interface ConditionRowProps {
   isFirst: boolean;
   onChange: (updated: BoltCondition) => void;
   onRemove: () => void;
+  triggerSource?: string;
+  triggerEvent?: string;
 }
 
 const operators: { value: ConditionOperator; label: string }[] = [
@@ -26,7 +29,7 @@ const operators: { value: ConditionOperator; label: string }[] = [
 
 const noValueOperators = new Set<ConditionOperator>(['is_empty', 'is_not_empty']);
 
-export function ConditionRow({ condition, isFirst, onChange, onRemove }: ConditionRowProps) {
+export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSource, triggerEvent }: ConditionRowProps) {
   return (
     <div className="flex items-start gap-2">
       {/* Logic group toggle */}
@@ -47,13 +50,15 @@ export function ConditionRow({ condition, isFirst, onChange, onRemove }: Conditi
       </div>
 
       {/* Field */}
-      <input
-        type="text"
-        placeholder="field.path"
-        value={condition.field}
-        onChange={(e) => onChange({ ...condition, field: e.target.value })}
-        className="flex-1 min-w-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-      />
+      <div className="flex-1 min-w-0">
+        <FieldPicker
+          value={condition.field}
+          onChange={(v) => onChange({ ...condition, field: v })}
+          triggerSource={triggerSource}
+          triggerEvent={triggerEvent}
+          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700 pr-8"
+        />
+      </div>
 
       {/* Operator */}
       <select

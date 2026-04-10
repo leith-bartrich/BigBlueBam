@@ -3,6 +3,9 @@ import {
   uuid,
   varchar,
   text,
+  integer,
+  bigint,
+  date,
   jsonb,
   timestamp,
   boolean,
@@ -120,3 +123,52 @@ export const projects = pgTable('projects', {
   name: varchar('name', { length: 255 }).notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Tasks stub (for time-entry-to-invoice linkage)
+export const tasks = pgTable('tasks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  project_id: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 500 }).notNull(),
+});
+
+// Bond deals stub (for deal-to-invoice pipeline)
+export const bondDeals = pgTable(
+  'bond_deals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organization_id: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 255 }).notNull(),
+    value: bigint('value', { mode: 'number' }),
+    currency: varchar('currency', { length: 3 }).default('USD').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('bond_deals_org_idx_stub').on(table.organization_id),
+  ],
+);
+
+// Time entries stub (for time-entry-to-invoice pipeline)
+export const timeEntries = pgTable(
+  'time_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    task_id: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    minutes: integer('minutes').notNull(),
+    date: date('date').notNull(),
+    description: text('description'),
+    created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('time_entries_task_id_idx').on(table.task_id),
+    index('time_entries_user_id_idx').on(table.user_id),
+  ],
+);

@@ -12,6 +12,9 @@ export interface BlankField {
   required: boolean;
   min_length: number | null;
   max_length: number | null;
+  min_value: string | null;
+  max_value: string | null;
+  regex_pattern: string | null;
   options: unknown;
   scale_min: number;
   scale_max: number;
@@ -21,6 +24,7 @@ export interface BlankField {
   page_number: number;
   column_span: number;
   default_value: string | null;
+  conditional_logic: unknown;
   created_at: string;
   updated_at: string;
 }

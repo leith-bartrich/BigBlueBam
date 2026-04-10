@@ -80,7 +80,7 @@ export function CalendarDayPage({ onNavigate, date }: CalendarDayPageProps) {
                     return (
                       <button
                         key={event.id}
-                        onClick={() => onNavigate(`/events/${event.id}`)}
+                        onClick={() => onNavigate(`/events/${event.id}/edit`)}
                         className="absolute left-1 right-4 rounded-lg px-3 py-1 text-sm text-white overflow-hidden cursor-pointer hover:opacity-90 shadow-sm"
                         style={{
                           top: `${top}px`,

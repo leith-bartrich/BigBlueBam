@@ -54,6 +54,12 @@ const envSchema = z.object({
   // /internal/helpdesk/* surface. Must be at least 32 chars. Both apps
   // must receive the same value.
   INTERNAL_HELPDESK_SECRET: z.string().min(32),
+
+  // Internal service-to-service authentication
+  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
+
+  // Bolt workflow automation engine URL (fire-and-forget event publishing)
+  BOLT_API_INTERNAL_URL: z.string().default('http://bolt-api:4006'),
 }).transform((data) => ({
   ...data,
   // BAM-010: Default COOKIE_SECURE to true in production when not explicitly set
