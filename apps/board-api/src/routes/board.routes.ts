@@ -119,7 +119,10 @@ export default async function boardRoutes(fastify: FastifyInstance) {
     '/boards/stats',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const stats = await boardService.getStats(request.user!.org_id);
+      const stats = await boardService.getStats(
+        request.user!.org_id,
+        request.user!.id,
+      );
       return reply.send({ data: stats });
     },
   );

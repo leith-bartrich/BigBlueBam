@@ -27,6 +27,10 @@ const updateTemplateSchema = z.object({
   sort_order: z.number().int().min(0).max(10000).optional(),
 });
 
+const listTemplatesQuerySchema = z.object({
+  category: z.string().max(100).optional(),
+});
+
 function validateUuid(id: string, request: any, reply: any) {
   if (!id || !UUID_REGEX.test(id)) {
     reply.status(400).send({
@@ -48,7 +52,11 @@ export default async function templateRoutes(fastify: FastifyInstance) {
     '/templates',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const templates = await templateService.listTemplates(request.user!.org_id);
+      const { category } = listTemplatesQuerySchema.parse(request.query);
+      const templates = await templateService.listTemplates(
+        request.user!.org_id,
+        category,
+      );
       return reply.send({ data: templates });
     },
   );

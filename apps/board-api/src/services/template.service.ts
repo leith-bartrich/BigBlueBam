@@ -1,4 +1,4 @@
-import { eq, and, or, isNull, asc } from 'drizzle-orm';
+import { eq, and, or, isNull, asc, type SQL } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { boardTemplates, boards, boardCollaborators, projectMembers } from '../db/schema/index.js';
 import { createBoard } from './board.service.js';
@@ -31,11 +31,17 @@ export interface UpdateTemplateInput {
   sort_order?: number;
 }
 
-export async function listTemplates(orgId: string) {
+export async function listTemplates(orgId: string, category?: string) {
+  const conditions: SQL[] = [
+    or(isNull(boardTemplates.org_id), eq(boardTemplates.org_id, orgId))!,
+  ];
+  if (category) {
+    conditions.push(eq(boardTemplates.category, category));
+  }
   return await db
     .select()
     .from(boardTemplates)
-    .where(or(isNull(boardTemplates.org_id), eq(boardTemplates.org_id, orgId)))
+    .where(and(...conditions))
     .orderBy(asc(boardTemplates.sort_order), asc(boardTemplates.name));
 }
 

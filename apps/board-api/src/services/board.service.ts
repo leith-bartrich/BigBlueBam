@@ -449,20 +449,50 @@ export async function searchBoards(query: string, orgId: string, userId: string)
   return { data: rows };
 }
 
-export async function getStats(orgId: string) {
+export async function getStats(orgId: string, userId: string) {
   const result: any[] = await db.execute(sql`
     SELECT
-      COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '7 days')::int AS recent,
+      COUNT(*) FILTER (WHERE b.archived_at IS NULL)::int AS total,
+      COUNT(*) FILTER (
+        WHERE b.archived_at IS NULL
+          AND b.updated_at > NOW() - INTERVAL '7 days'
+      )::int AS recent,
+      COUNT(*) FILTER (WHERE b.archived_at IS NOT NULL)::int AS archived,
       (SELECT COUNT(*)::int FROM board_stars bs
         JOIN boards b2 ON bs.board_id = b2.id
-        WHERE b2.organization_id = ${orgId}) AS starred
-    FROM boards
-    WHERE organization_id = ${orgId}
-      AND archived_at IS NULL
+        WHERE b2.organization_id = ${orgId}
+          AND bs.user_id = ${userId}
+          AND b2.archived_at IS NULL
+          AND (
+            b2.visibility = 'organization'
+            OR b2.created_by = ${userId}
+            OR EXISTS (
+              SELECT 1 FROM board_collaborators
+              WHERE board_id = b2.id AND user_id = ${userId}
+            )
+            OR (b2.visibility = 'project' AND EXISTS (
+              SELECT 1 FROM project_members
+              WHERE project_id = b2.project_id AND user_id = ${userId}
+            ))
+          )
+      ) AS starred
+    FROM boards b
+    WHERE b.organization_id = ${orgId}
+      AND (
+        b.visibility = 'organization'
+        OR b.created_by = ${userId}
+        OR EXISTS (
+          SELECT 1 FROM board_collaborators
+          WHERE board_id = b.id AND user_id = ${userId}
+        )
+        OR (b.visibility = 'project' AND EXISTS (
+          SELECT 1 FROM project_members
+          WHERE project_id = b.project_id AND user_id = ${userId}
+        ))
+      )
   `);
 
-  const row = result[0] ?? { total: 0, recent: 0, starred: 0 };
+  const row = result[0] ?? { total: 0, recent: 0, archived: 0, starred: 0 };
   return row;
 }
 
