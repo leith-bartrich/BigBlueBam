@@ -186,11 +186,21 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   );
 
   // GET /automations/stats — Automation statistics
+  // Accepts an optional project_id query param so the stats card on the home
+  // page stays consistent with the list query underneath it. Without this,
+  // a user with an active project filter would see "13 total" but an empty
+  // list (the list filtered by project, the stats didn't).
   fastify.get(
     '/automations/stats',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const stats = await automationService.getStats(request.user!.org_id);
+      const query = z
+        .object({ project_id: z.string().uuid().optional() })
+        .parse(request.query);
+      const stats = await automationService.getStats(
+        request.user!.org_id,
+        query.project_id,
+      );
       return reply.send({ data: stats });
     },
   );

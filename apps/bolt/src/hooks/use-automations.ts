@@ -113,8 +113,11 @@ export function useAutomationList(filters?: {
     queryFn: () =>
       api.get<ListResponse>('/automations', {
         project_id: projectId ?? undefined,
-        'filter[trigger_source]': filters?.source,
-        'filter[enabled]': filters?.enabled != null ? String(filters.enabled) : undefined,
+        // The API's Zod schema uses flat keys, NOT filter[...] brackets.
+        // Unknown keys are stripped silently, so the bracket form was a no-op
+        // and the source/enabled chips never reached the server.
+        trigger_source: filters?.source,
+        enabled: filters?.enabled != null ? String(filters.enabled) : undefined,
         search: filters?.search,
         cursor: filters?.cursor,
       }),

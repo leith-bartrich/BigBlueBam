@@ -884,7 +884,11 @@ export async function testAutomation(
   };
 }
 
-export async function getStats(orgId: string) {
+export async function getStats(orgId: string, projectId?: string) {
+  // Mirror the list endpoint's filtering: when the caller passes a
+  // project_id (e.g. the home page sourcing it from the active-project
+  // store), scope the counts to that project so the stats card and the
+  // list view stay in sync.
   const rows: any[] = await db.execute(sql`
     SELECT
       COUNT(*)::int AS total,
@@ -906,6 +910,7 @@ export async function getStats(orgId: string) {
       COUNT(*) FILTER (WHERE trigger_source = 'blank')::int AS source_blank
     FROM bolt_automations
     WHERE org_id = ${orgId}
+      AND (${projectId ?? null}::uuid IS NULL OR project_id = ${projectId ?? null}::uuid)
   `);
 
   const row = rows[0] ?? {
