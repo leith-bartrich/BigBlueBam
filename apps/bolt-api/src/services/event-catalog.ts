@@ -2,6 +2,8 @@
 // Static event catalog — all available trigger events across BigBlueBam apps
 // ---------------------------------------------------------------------------
 
+import { MCP_TOOL_SCHEMAS, type McpToolParameter } from './mcp-tool-schemas.generated.js';
+
 export interface PayloadField {
   name: string;
   type: string;
@@ -13,6 +15,23 @@ export interface EventDefinition {
   event_type: string;
   description: string;
   payload_schema: PayloadField[];
+}
+
+export interface ActionParameter {
+  name: string;
+  type: string;
+  format?: string;
+  enum?: string[];
+  required: boolean;
+  nullable: boolean;
+  description: string;
+}
+
+export interface ActionDefinition {
+  mcp_tool: string;
+  description: string;
+  source: string;
+  parameters: ActionParameter[];
 }
 
 const bamEvents: EventDefinition[] = [
@@ -689,13 +708,42 @@ export function getEventDefinition(source: string, eventType: string): EventDefi
   return ALL_EVENTS.find((e) => e.source === source && e.event_type === eventType);
 }
 
+// Lookup map of mcp_tool → parameter list, sourced from the auto-generated
+// schema file (scripts/extract-mcp-tool-schemas.mjs). Keeping the lookup
+// separate from the curated whitelist below means parameters auto-update
+// whenever an MCP tool's schema changes — no manual maintenance.
+const MCP_TOOL_PARAMS: Record<string, McpToolParameter[]> = Object.fromEntries(
+  MCP_TOOL_SCHEMAS.map((t) => [t.mcp_tool, t.parameters]),
+);
+
+// System tools (not registered as MCP tools) — declare parameters inline.
+const SYSTEM_TOOL_PARAMS: Record<string, ActionParameter[]> = {
+  send_email_notification: [
+    { name: 'to', type: 'string', format: 'email', required: true, nullable: false, description: 'Recipient email address' },
+    { name: 'subject', type: 'string', required: true, nullable: false, description: 'Email subject line' },
+    { name: 'body', type: 'string', required: true, nullable: false, description: 'Email body (plain text or HTML)' },
+    { name: 'cc', type: 'string', format: 'email', required: false, nullable: false, description: 'Optional CC address' },
+  ],
+  send_webhook: [
+    { name: 'url', type: 'string', format: 'url', required: true, nullable: false, description: 'Target webhook URL (https://...)' },
+    { name: 'method', type: 'enum', enum: ['POST', 'PUT', 'PATCH'], required: false, nullable: false, description: 'HTTP method (defaults to POST)' },
+    { name: 'headers', type: 'object', required: false, nullable: false, description: 'Optional headers as a JSON object' },
+    { name: 'body', type: 'object', required: false, nullable: false, description: 'Request body as a JSON object' },
+  ],
+};
+
 /**
  * Returns a list of all available MCP tools that can be used as actions.
  * Tool names must match the names registered in apps/mcp-server/src/tools/*-tools.ts —
  * anything here is added to the validator allowlist in automation.service.ts.
+ *
+ * Each entry is enriched with the tool's parameter schema so the Bolt rule
+ * builder can present a typed parameter picker instead of free-form key/value
+ * inputs. Parameters come from MCP_TOOL_PARAMS (auto-generated) for real MCP
+ * tools and SYSTEM_TOOL_PARAMS (hand-maintained) for the cross-app primitives.
  */
-export function getAvailableActions(): { mcp_tool: string; description: string; source: string }[] {
-  return [
+export function getAvailableActions(): ActionDefinition[] {
+  const curated: { mcp_tool: string; description: string; source: string }[] = [
     // -------- Bam (tasks, sprints, projects, comments) --------
     { mcp_tool: 'create_task', description: 'Create a new task in a project', source: 'bam' },
     { mcp_tool: 'update_task', description: 'Update task fields (title, description, assignee, priority, due_date, labels, phase)', source: 'bam' },
@@ -834,4 +882,12 @@ export function getAvailableActions(): { mcp_tool: string; description: string; 
     { mcp_tool: 'send_email_notification', description: 'Send an email notification', source: 'system' },
     { mcp_tool: 'send_webhook', description: 'Send an HTTP webhook to an external URL', source: 'system' },
   ];
+
+  return curated.map((entry) => ({
+    ...entry,
+    parameters:
+      SYSTEM_TOOL_PARAMS[entry.mcp_tool] ??
+      MCP_TOOL_PARAMS[entry.mcp_tool] ??
+      [],
+  }));
 }

@@ -11,10 +11,21 @@ export interface EventDef {
   payload_schema: { name: string; type: string; description: string }[];
 }
 
+export interface ActionParameter {
+  name: string;
+  type: string;
+  format?: string;
+  enum?: string[];
+  required: boolean;
+  nullable: boolean;
+  description: string;
+}
+
 export interface ActionDef {
   mcp_tool: string;
   description: string;
-  parameters: { name: string; type: string; description: string; required: boolean }[];
+  source: string;
+  parameters: ActionParameter[];
 }
 
 // ─── Response types ───
