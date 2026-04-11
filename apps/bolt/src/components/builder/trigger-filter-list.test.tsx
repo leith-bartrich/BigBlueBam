@@ -5,11 +5,10 @@ import { TriggerFilterList } from './trigger-filter-list';
 
 // Mock ConditionRow to avoid deep dependency chain in unit tests
 vi.mock('./condition-row', () => ({
-  ConditionRow: ({ condition, onChange, onRemove, isFirst }: {
+  ConditionRow: ({ condition, onChange, onRemove }: {
     condition: { id: string; field: string; value: unknown };
     onChange: (c: { id: string; field: string; operator: string; value: unknown; logic_group: string; sort_order: number }) => void;
     onRemove: () => void;
-    isFirst: boolean;
   }) => (
     <div data-testid={`row-${condition.id}`}>
       <input

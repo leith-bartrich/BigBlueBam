@@ -40,6 +40,9 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
   const [triggerEvent, setTriggerEvent] = useState('');
   const [triggerFilter, setTriggerFilter] = useState<Record<string, unknown>>({});
   const [cronExpression, setCronExpression] = useState('');
+  const [cronTimezone, setCronTimezone] = useState(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+  });
   const [conditions, setConditions] = useState<BoltCondition[]>([]);
   const [actions, setActions] = useState<BoltAction[]>([]);
   const [maxExecutionsPerHour, setMaxExecutionsPerHour] = useState(60);
@@ -57,6 +60,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
       setTriggerEvent(a.trigger_event);
       setTriggerFilter(a.trigger_filter ?? {});
       setCronExpression(a.cron_expression ?? '');
+      if (a.cron_timezone) setCronTimezone(a.cron_timezone);
       setConditions(a.conditions);
       setActions(a.actions);
       setMaxExecutionsPerHour(a.max_executions_per_hour);
@@ -81,6 +85,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
       trigger_event: triggerEvent,
       trigger_filter: Object.keys(triggerFilter).length > 0 ? triggerFilter : null,
       cron_expression: cronExpression || null,
+      cron_timezone: cronTimezone,
       conditions,
       actions,
       max_executions_per_hour: maxExecutionsPerHour,
@@ -156,6 +161,8 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
                   <CronEditor
                     value={cronExpression}
                     onChange={setCronExpression}
+                    timezone={cronTimezone}
+                    onTimezoneChange={setCronTimezone}
                   />
                 </div>
               )}

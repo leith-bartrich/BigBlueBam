@@ -1,9 +1,77 @@
-import { useState, useCallback } from 'react';
-import { Clock, Calendar, ChevronDown } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
+import { Clock } from 'lucide-react';
+
+// ─── Timezone helpers ─────────────────────────────────────────────────────────
+
+/** Get all IANA timezone names supported by the runtime, or fall back to a curated list. */
+function getTimezoneOptions(): string[] {
+  try {
+    // Available in modern browsers / Node 18+
+    const zones = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.('timeZone');
+    if (zones && zones.length > 0) return zones;
+  } catch {
+    // fall through to hardcoded list
+  }
+  return [
+    'UTC',
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'America/Halifax',
+    'America/Sao_Paulo',
+    'America/Argentina/Buenos_Aires',
+    'America/Toronto',
+    'America/Vancouver',
+    'America/Mexico_City',
+    'America/Bogota',
+    'America/Lima',
+    'Europe/London',
+    'Europe/Paris',
+    'Europe/Berlin',
+    'Europe/Madrid',
+    'Europe/Rome',
+    'Europe/Amsterdam',
+    'Europe/Stockholm',
+    'Europe/Warsaw',
+    'Europe/Moscow',
+    'Europe/Istanbul',
+    'Africa/Cairo',
+    'Africa/Johannesburg',
+    'Africa/Lagos',
+    'Asia/Dubai',
+    'Asia/Kolkata',
+    'Asia/Dhaka',
+    'Asia/Bangkok',
+    'Asia/Singapore',
+    'Asia/Shanghai',
+    'Asia/Tokyo',
+    'Asia/Seoul',
+    'Asia/Hong_Kong',
+    'Australia/Perth',
+    'Australia/Adelaide',
+    'Australia/Sydney',
+    'Pacific/Auckland',
+    'Pacific/Honolulu',
+  ];
+}
+
+/** Detect user's local timezone, fallback UTC. */
+function getUserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
 
 interface CronEditorProps {
   value: string;
   onChange: (value: string) => void;
+  /** IANA timezone string. Defaults to user's local timezone. */
+  timezone?: string;
+  onTimezoneChange?: (tz: string) => void;
 }
 
 type Preset = {
@@ -84,9 +152,12 @@ function describeCron(cron: string): string {
   return segments.join(', ') || cron;
 }
 
-export function CronEditor({ value, onChange }: CronEditorProps) {
+export function CronEditor({ value, onChange, timezone, onTimezoneChange }: CronEditorProps) {
   const [mode, setMode] = useState<EditorMode>('presets');
-  const [showPresets, setShowPresets] = useState(false);
+
+  // Lazily compute timezone list — stable across renders
+  const timezoneOptions = useMemo(() => getTimezoneOptions(), []);
+  const effectiveTimezone = timezone || getUserTimezone();
 
   const parts = parseCronParts(value);
 
@@ -280,12 +351,31 @@ export function CronEditor({ value, onChange }: CronEditorProps) {
         </div>
       )}
 
+      {/* Timezone selector */}
+      {onTimezoneChange && (
+        <div>
+          <label className="block text-xs font-medium text-zinc-500 mb-1">Timezone</label>
+          <select
+            value={effectiveTimezone}
+            onChange={(e) => onTimezoneChange(e.target.value)}
+            className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2.5 py-1.5 text-sm text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 outline-none"
+          >
+            {timezoneOptions.map((tz) => (
+              <option key={tz} value={tz}>{tz}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Current value description */}
       {value && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50">
           <Clock className="h-3.5 w-3.5 text-blue-500 shrink-0" />
           <span className="text-xs text-blue-700 dark:text-blue-300">{describeCron(value)}</span>
           <span className="ml-auto text-[10px] font-mono text-blue-400">{value}</span>
+          {onTimezoneChange && (
+            <span className="text-[10px] font-mono text-blue-400 shrink-0">{effectiveTimezone}</span>
+          )}
         </div>
       )}
     </div>
