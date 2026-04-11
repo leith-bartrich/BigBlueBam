@@ -884,6 +884,86 @@ export async function testAutomation(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Internal worker helper — no org-scoped auth
+// ---------------------------------------------------------------------------
+
+/**
+ * Lean fetch used by the BullMQ `bolt-execute` worker on every execution.
+ *
+ * This function intentionally bypasses request-scoped org auth because the
+ * worker has no Fastify request context — it receives an `automation_id`
+ * directly from the BullMQ job payload, which was already validated at
+ * enqueue time by the bolt-api route that created the execution record.
+ *
+ * Returns exactly the fields the worker needs — automation metadata plus
+ * the ordered action list — and nothing else (no conditions, no schedules).
+ * Keeping the query surface small matters because this is called on every
+ * `bolt:execute` job, making it a hot path.
+ *
+ * Do NOT use this function from Fastify request handlers; prefer
+ * `getAutomation(id, orgId)` there to enforce org isolation.
+ */
+export async function getAutomationForExecution(id: string): Promise<{
+  automation: {
+    id: string;
+    org_id: string;
+    name: string;
+    max_chain_depth: number;
+    created_by: string;
+    template_strict: boolean;
+  };
+  actions: Array<{
+    id: string;
+    automation_id: string;
+    sort_order: number;
+    mcp_tool: string;
+    parameters: Record<string, unknown> | null;
+    on_error: string;
+    retry_count: number;
+    retry_delay_ms: number;
+  }>;
+} | null> {
+  const [automation] = await db
+    .select({
+      id: boltAutomations.id,
+      org_id: boltAutomations.org_id,
+      name: boltAutomations.name,
+      max_chain_depth: boltAutomations.max_chain_depth,
+      created_by: boltAutomations.created_by,
+      template_strict: boltAutomations.template_strict,
+    })
+    .from(boltAutomations)
+    .where(eq(boltAutomations.id, id))
+    .limit(1);
+
+  if (!automation) return null;
+
+  const actions = await db
+    .select({
+      id: boltActions.id,
+      automation_id: boltActions.automation_id,
+      sort_order: boltActions.sort_order,
+      mcp_tool: boltActions.mcp_tool,
+      parameters: boltActions.parameters,
+      on_error: boltActions.on_error,
+      retry_count: boltActions.retry_count,
+      retry_delay_ms: boltActions.retry_delay_ms,
+    })
+    .from(boltActions)
+    .where(eq(boltActions.automation_id, id))
+    .orderBy(asc(boltActions.sort_order));
+
+  return {
+    automation,
+    actions: actions.map((a) => ({
+      ...a,
+      parameters: (a.parameters as Record<string, unknown> | null) ?? null,
+      on_error: a.on_error as string,
+    })),
+  };
+}
+
 export async function getStats(orgId: string, projectId?: string) {
   // Mirror the list endpoint's filtering: when the caller passes a
   // project_id (e.g. the home page sourcing it from the active-project

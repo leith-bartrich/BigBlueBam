@@ -13,8 +13,9 @@
 
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
-import { sql } from 'drizzle-orm';
+import { eq, asc, sql } from 'drizzle-orm';
 import { getDb } from '../utils/db.js';
+import { boltAutomations, boltActions } from '../utils/bolt-schema.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -362,15 +363,22 @@ export async function processBoltExecuteJob(
   const mcpUrl = process.env.MCP_INTERNAL_URL ?? 'http://mcp-server:3001';
   const startTime = Date.now();
 
-  // 1. Load automation
-  const automationRows = await db.execute(sql`
-    SELECT id, org_id, name, max_chain_depth, created_by, template_strict
-    FROM bolt_automations
-    WHERE id = ${automation_id}
-    LIMIT 1
-  `);
-
-  const automation = automationRows[0] as AutomationRow | undefined;
+  // 1. Load automation — uses typed Drizzle query via bolt-schema stubs so the
+  //    read path mirrors apps/bolt-api/src/services/automation.service.ts
+  //    (getAutomationForExecution).  No request-scoped org auth needed here;
+  //    the automation_id was validated at enqueue time by the bolt-api route.
+  const [automation] = await db
+    .select({
+      id: boltAutomations.id,
+      org_id: boltAutomations.org_id,
+      name: boltAutomations.name,
+      max_chain_depth: boltAutomations.max_chain_depth,
+      created_by: boltAutomations.created_by,
+      template_strict: boltAutomations.template_strict,
+    })
+    .from(boltAutomations)
+    .where(eq(boltAutomations.id, automation_id))
+    .limit(1);
   if (!automation) {
     logger.error({ automation_id }, 'Automation not found, marking execution as failed');
     await db.execute(sql`
@@ -384,13 +392,27 @@ export async function processBoltExecuteJob(
     return;
   }
 
-  // 2. Load actions sorted by sort_order
-  const actionRows = (await db.execute(sql`
-    SELECT id, automation_id, sort_order, mcp_tool, parameters, on_error, retry_count, retry_delay_ms
-    FROM bolt_actions
-    WHERE automation_id = ${automation_id}
-    ORDER BY sort_order ASC
-  `)) as ActionRow[];
+  // 2. Load actions sorted by sort_order — typed Drizzle query, mirroring the
+  //    action fetch in getAutomationForExecution in automation.service.ts.
+  const actionRows: ActionRow[] = (
+    await db
+      .select({
+        id: boltActions.id,
+        automation_id: boltActions.automation_id,
+        sort_order: boltActions.sort_order,
+        mcp_tool: boltActions.mcp_tool,
+        parameters: boltActions.parameters,
+        on_error: boltActions.on_error,
+        retry_count: boltActions.retry_count,
+        retry_delay_ms: boltActions.retry_delay_ms,
+      })
+      .from(boltActions)
+      .where(eq(boltActions.automation_id, automation_id))
+      .orderBy(asc(boltActions.sort_order))
+  ).map((row) => ({
+    ...row,
+    parameters: (row.parameters as Record<string, unknown> | null) ?? null,
+  }));
 
   if (actionRows.length === 0) {
     logger.warn({ automation_id }, 'Automation has no actions, marking execution as success');
