@@ -12,6 +12,8 @@ interface ConditionRowProps {
   onRemove: () => void;
   triggerSource?: TriggerSource;
   triggerEvent?: string;
+  /** When true, the operator select is hidden — used by TriggerFilterList where storage is equality-only. */
+  lockOperator?: boolean;
 }
 
 // ─── Operator definitions ─────────────────────────────────────────────────────
@@ -99,7 +101,7 @@ function useFieldSchema(
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSource, triggerEvent }: ConditionRowProps) {
+export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSource, triggerEvent, lockOperator }: ConditionRowProps) {
   const { fieldType, fieldEnum } = useFieldSchema(condition.field, triggerSource, triggerEvent);
 
   const validOperators = useMemo(() => getValidOperators(fieldType), [fieldType]);
@@ -148,18 +150,20 @@ export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSo
         />
       </div>
 
-      {/* Operator (A2: filtered by fieldType) */}
-      <select
-        value={safeOperator}
-        onChange={(e) => handleOperatorChange(e.target.value as ConditionOperator)}
-        className="w-40 shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-      >
-        {validOperators.map((op) => (
-          <option key={op.value} value={op.value}>
-            {op.label}
-          </option>
-        ))}
-      </select>
+      {/* Operator (A2: filtered by fieldType; hidden when lockOperator) */}
+      {!lockOperator && (
+        <select
+          value={safeOperator}
+          onChange={(e) => handleOperatorChange(e.target.value as ConditionOperator)}
+          className="w-40 shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+        >
+          {validOperators.map((op) => (
+            <option key={op.value} value={op.value}>
+              {op.label}
+            </option>
+          ))}
+        </select>
+      )}
 
       {/* Value (A1: type-aware) */}
       <div className="flex-1 min-w-0">

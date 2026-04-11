@@ -14,6 +14,7 @@ import { TriggerSelector } from '@/components/builder/trigger-selector';
 import { ConditionList } from '@/components/builder/condition-list';
 import { ActionList } from '@/components/builder/action-list';
 import { CronEditor } from '@/components/builder/cron-editor';
+import { TriggerFilterList } from '@/components/builder/trigger-filter-list';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 
@@ -43,7 +44,6 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
   const [actions, setActions] = useState<BoltAction[]>([]);
   const [maxExecutionsPerHour, setMaxExecutionsPerHour] = useState(60);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
   const [showFilterEditor, setShowFilterEditor] = useState(false);
 
   // Populate from existing automation
@@ -104,25 +104,8 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  // Filter key-value pairs
-  const filterEntries = Object.entries(triggerFilter);
-  const addFilterPair = () => setTriggerFilter({ ...triggerFilter, '': '' });
-  const updateFilterKey = (oldKey: string, newKey: string) => {
-    const entries = Object.entries(triggerFilter);
-    const newFilter: Record<string, unknown> = {};
-    for (const [k, v] of entries) {
-      newFilter[k === oldKey ? newKey : k] = v;
-    }
-    setTriggerFilter(newFilter);
-  };
-  const updateFilterValue = (key: string, value: string) => {
-    setTriggerFilter({ ...triggerFilter, [key]: value });
-  };
-  const removeFilterPair = (key: string) => {
-    const next = { ...triggerFilter };
-    delete next[key];
-    setTriggerFilter(next);
-  };
+  // Filter entry count for the toggle label
+  const filterEntryCount = Object.keys(triggerFilter).length;
 
   return (
     <div className="flex h-full">
@@ -185,46 +168,18 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
                   className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
                 >
                   {showFilterEditor ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  {filterEntries.length > 0
-                    ? `Filter (${filterEntries.length} ${filterEntries.length === 1 ? 'rule' : 'rules'})`
+                  {filterEntryCount > 0
+                    ? `Filter (${filterEntryCount} ${filterEntryCount === 1 ? 'rule' : 'rules'})`
                     : 'Add trigger filter'}
                 </button>
 
                 {showFilterEditor && (
-                  <div className="mt-2 space-y-2">
-                    {filterEntries.map(([key, value], i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="key"
-                          value={key}
-                          onChange={(e) => updateFilterKey(key, e.target.value)}
-                          className="w-40 shrink-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-                        />
-                        <input
-                          type="text"
-                          placeholder="value"
-                          value={String(value ?? '')}
-                          onChange={(e) => updateFilterValue(key, e.target.value)}
-                          className="flex-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeFilterPair(key)}
-                          className="text-xs text-red-500 hover:text-red-600"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addFilterPair}
-                      className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400"
-                    >
-                      + Add filter pair
-                    </button>
-                  </div>
+                  <TriggerFilterList
+                    value={triggerFilter}
+                    onChange={setTriggerFilter}
+                    triggerSource={triggerSource}
+                    triggerEvent={triggerEvent}
+                  />
                 )}
               </div>
             </div>
