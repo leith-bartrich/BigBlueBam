@@ -62,6 +62,34 @@ function unionEvents(events: EventDef[]): TemplateSuggestion[] {
   return Array.from(seen.values());
 }
 
+// ─── Type compatibility filtering ────────────────────────────────────
+
+/**
+ * Filter suggestions to ones that are type-compatible with the given field type.
+ * Undefined fieldType → no filtering (backwards compat).
+ */
+function filterByFieldType(
+  suggestions: TemplateSuggestion[],
+  fieldType: string | undefined,
+): TemplateSuggestion[] {
+  if (!fieldType) return suggestions;
+  switch (fieldType) {
+    case 'number':
+    case 'date':
+      // Keep numeric/date/unknown; drop string-specific fields
+      return suggestions.filter((s) =>
+        s.type === 'number' || s.type === 'date' || s.type === 'datetime' || s.type === 'any',
+      );
+    case 'boolean':
+      return suggestions.filter((s) => s.type === 'boolean' || s.type === 'any');
+    case 'enum':
+      return suggestions.filter((s) => s.type === 'string' || s.type === 'enum' || s.type === 'any');
+    case 'string':
+    default:
+      return suggestions;
+  }
+}
+
 // ─── Public hook ─────────────────────────────────────────────────────
 
 export interface UseTemplateSuggestionsOptions {
@@ -69,6 +97,11 @@ export interface UseTemplateSuggestionsOptions {
   triggerEvent?: string;
   /** Number of preceding action steps (for step[N].result.* suggestions). */
   stepCount?: number;
+  /**
+   * Optional field type hint. When provided, filters returned suggestions to
+   * type-compatible entries only. Undefined → no filtering (backwards compat).
+   */
+  fieldType?: string;
 }
 
 /**
@@ -83,6 +116,7 @@ export function useTemplateSuggestions({
   triggerSource,
   triggerEvent,
   stepCount = 0,
+  fieldType,
 }: UseTemplateSuggestionsOptions): TemplateSuggestion[] {
   const { data } = useEventCatalog();
   const allEvents = data?.data ?? [];
@@ -118,12 +152,13 @@ export function useTemplateSuggestions({
       });
     }
 
-    return [
+    const all = [
       ...eventSuggestions,
       ...ACTOR_SUGGESTIONS,
       ...AUTOMATION_SUGGESTIONS,
       ...SYSTEM_SUGGESTIONS,
       ...stepSuggestions,
     ];
-  }, [allEvents, triggerSource, triggerEvent, stepCount]);
+    return filterByFieldType(all, fieldType);
+  }, [allEvents, triggerSource, triggerEvent, stepCount, fieldType]);
 }
