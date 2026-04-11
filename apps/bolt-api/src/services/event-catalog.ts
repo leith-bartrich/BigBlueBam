@@ -8,7 +8,17 @@ export interface PayloadField {
   name: string;
   type: string;
   description: string;
+  /** Known enum values for type-aware condition UI. */
+  enum?: string[];
+  /** Semantic format hint, e.g. 'uuid', 'iso8601'. */
+  format?: string;
 }
+
+// TODO: populate enum/format for remaining catalog entries (banter, beacon,
+// brief, helpdesk, etc.) as those domains mature. The bam task events below
+// have partial coverage — task.priority is annotated as an enum, but uuid/
+// date format hints are not yet filled in because the enriched catalog
+// landed via Phase B after the first pass.
 
 export interface EventDefinition {
   source: string;
@@ -52,7 +62,7 @@ const bamEvents: EventDefinition[] = [
       { name: 'task.parent_task_id', type: 'uuid?', description: 'Parent task id (for subtasks)' },
       { name: 'task.assignee_id', type: 'uuid?', description: 'Assigned user ID' },
       { name: 'task.reporter_id', type: 'uuid?', description: 'Reporter user ID' },
-      { name: 'task.priority', type: 'string', description: 'Priority level' },
+      { name: 'task.priority', type: 'enum', description: 'Priority level', enum: ['low', 'medium', 'high', 'urgent'] },
       { name: 'task.story_points', type: 'number?', description: 'Story points estimate' },
       { name: 'task.start_date', type: 'date?', description: 'Start date' },
       { name: 'task.due_date', type: 'date?', description: 'Due date' },
@@ -181,7 +191,7 @@ const bamEvents: EventDefinition[] = [
       { name: 'task.title', type: 'string', description: 'Task title' },
       { name: 'task.project_id', type: 'uuid', description: 'Project ID' },
       { name: 'task.phase_id', type: 'uuid?', description: 'Current phase ID' },
-      { name: 'task.priority', type: 'string', description: 'Priority level' },
+      { name: 'task.priority', type: 'enum', description: 'Priority level', enum: ['low', 'medium', 'high', 'urgent'] },
       { name: 'task.due_date', type: 'date?', description: 'Due date' },
       { name: 'task.url', type: 'string', description: 'Deep link URL to the task' },
       { name: 'assignee.id', type: 'uuid', description: 'New assignee user ID' },
@@ -241,7 +251,7 @@ const bamEvents: EventDefinition[] = [
       { name: 'task.title', type: 'string', description: 'Task title' },
       { name: 'task.project_id', type: 'uuid', description: 'Project ID' },
       { name: 'task.phase_id', type: 'uuid?', description: 'Current phase ID' },
-      { name: 'task.priority', type: 'string', description: 'Priority level' },
+      { name: 'task.priority', type: 'enum', description: 'Priority level', enum: ['low', 'medium', 'high', 'urgent'] },
       { name: 'task.due_date', type: 'date', description: 'Due date that was missed' },
       { name: 'task.days_overdue', type: 'number', description: 'How many days past due' },
       { name: 'task.url', type: 'string', description: 'Deep link URL to the task' },
