@@ -4,11 +4,19 @@ import type { TriggerSource } from '@/hooks/use-automations';
 
 // ─── Types ───
 
+export interface PayloadFieldDef {
+  name: string;
+  type: string;
+  description: string;
+  enum?: string[];
+  format?: string;
+}
+
 export interface EventDef {
   source: TriggerSource;
   event_type: string;
   description: string;
-  payload_schema: { name: string; type: string; description: string }[];
+  payload_schema: PayloadFieldDef[];
 }
 
 export interface ActionParameter {

@@ -63,6 +63,7 @@ export interface BoltAutomation {
   trigger_event: string;
   trigger_filter: Record<string, unknown> | null;
   cron_expression: string | null;
+  cron_timezone: string | null;
   conditions: BoltCondition[];
   actions: BoltAction[];
   max_executions_per_hour: number;

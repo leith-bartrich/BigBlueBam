@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import type { BoltCondition, ConditionOperator, TriggerSource } from '@/hooks/use-automations';
 import { FieldPicker } from '@/components/builder/field-picker';
-import { TemplateInput } from '@/components/builder/template-input';
-import { useTemplateSuggestions } from '@/hooks/use-template-suggestions';
+import { ConditionValueInput } from '@/components/builder/condition-value-input';
+import { useEventCatalog } from '@/hooks/use-event-catalog';
 import { X } from 'lucide-react';
 
 interface ConditionRowProps {
@@ -11,9 +12,15 @@ interface ConditionRowProps {
   onRemove: () => void;
   triggerSource?: TriggerSource;
   triggerEvent?: string;
+  /** When true, the operator select is hidden — used by TriggerFilterList where storage is equality-only. */
+  lockOperator?: boolean;
 }
 
-const operators: { value: ConditionOperator; label: string }[] = [
+// ─── Operator definitions ─────────────────────────────────────────────────────
+
+type OperatorDef = { value: ConditionOperator; label: string };
+
+const ALL_OPERATORS: OperatorDef[] = [
   { value: 'equals', label: 'equals' },
   { value: 'not_equals', label: 'not equals' },
   { value: 'contains', label: 'contains' },
@@ -29,10 +36,90 @@ const operators: { value: ConditionOperator; label: string }[] = [
   { value: 'matches_regex', label: 'matches regex' },
 ];
 
-const noValueOperators = new Set<ConditionOperator>(['is_empty', 'is_not_empty']);
+/** A2: filter operators by resolved field type */
+function getValidOperators(fieldType?: string): OperatorDef[] {
+  if (!fieldType) return ALL_OPERATORS;
+  switch (fieldType) {
+    case 'string':
+      return ALL_OPERATORS.filter((op) =>
+        ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with',
+          'matches_regex', 'is_empty', 'is_not_empty', 'in', 'not_in'].includes(op.value),
+      );
+    case 'number':
+    case 'date':
+      return ALL_OPERATORS.filter((op) =>
+        ['equals', 'not_equals', 'greater_than', 'less_than', 'is_empty', 'is_not_empty',
+          'in', 'not_in'].includes(op.value),
+      );
+    case 'boolean':
+      return ALL_OPERATORS.filter((op) =>
+        ['equals', 'not_equals', 'is_empty', 'is_not_empty'].includes(op.value),
+      );
+    case 'enum':
+      return ALL_OPERATORS.filter((op) =>
+        ['equals', 'not_equals', 'is_empty', 'is_not_empty', 'in', 'not_in'].includes(op.value),
+      );
+    default:
+      return ALL_OPERATORS;
+  }
+}
 
-export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSource, triggerEvent }: ConditionRowProps) {
-  const templateSuggestions = useTemplateSuggestions({ triggerSource, triggerEvent });
+// ─── Field schema resolver ────────────────────────────────────────────────────
+
+/** Look up a condition field path against the event catalog. Returns {type, enum} or undefined. */
+function useFieldSchema(
+  fieldPath: string,
+  triggerSource?: TriggerSource,
+  triggerEvent?: string,
+): { fieldType: string | undefined; fieldEnum: string[] | undefined } {
+  const { data } = useEventCatalog();
+  return useMemo(() => {
+    if (!fieldPath || !data?.data) return { fieldType: undefined, fieldEnum: undefined };
+    const allEvents = data.data;
+
+    // Narrow to the selected event if possible, otherwise check all source events
+    const candidates = triggerSource
+      ? allEvents.filter((e) => {
+          if (triggerEvent) return e.source === triggerSource && e.event_type === triggerEvent;
+          return e.source === triggerSource;
+        })
+      : allEvents;
+
+    // condition field paths use "event.task.priority" style — strip the "event." prefix
+    // to match payload_schema names, but also check "actor.*" directly
+    const normalised = fieldPath.startsWith('event.') ? fieldPath.slice('event.'.length) : fieldPath;
+
+    for (const evt of candidates) {
+      const found = evt.payload_schema.find((f) => f.name === normalised || `event.${f.name}` === fieldPath);
+      if (found) {
+        return { fieldType: found.type, fieldEnum: found.enum };
+      }
+    }
+    return { fieldType: undefined, fieldEnum: undefined };
+  }, [data, fieldPath, triggerSource, triggerEvent]);
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSource, triggerEvent, lockOperator }: ConditionRowProps) {
+  const { fieldType, fieldEnum } = useFieldSchema(condition.field, triggerSource, triggerEvent);
+
+  const validOperators = useMemo(() => getValidOperators(fieldType), [fieldType]);
+
+  // A2: when field type changes the current operator may become invalid — reset to 'equals'
+  const safeOperator = useMemo((): ConditionOperator => {
+    const valid = validOperators.map((op) => op.value);
+    return valid.includes(condition.operator) ? condition.operator : 'equals';
+  }, [validOperators, condition.operator]);
+
+  const handleFieldChange = (newField: string) => {
+    onChange({ ...condition, field: newField });
+  };
+
+  const handleOperatorChange = (newOp: ConditionOperator) => {
+    onChange({ ...condition, operator: newOp });
+  };
+
   return (
     <div className="flex items-start gap-2">
       {/* Logic group toggle */}
@@ -56,36 +143,40 @@ export function ConditionRow({ condition, isFirst, onChange, onRemove, triggerSo
       <div className="flex-1 min-w-0">
         <FieldPicker
           value={condition.field}
-          onChange={(v) => onChange({ ...condition, field: v })}
+          onChange={handleFieldChange}
           triggerSource={triggerSource}
           triggerEvent={triggerEvent}
           className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700 pr-8"
         />
       </div>
 
-      {/* Operator */}
-      <select
-        value={condition.operator}
-        onChange={(e) => onChange({ ...condition, operator: e.target.value as ConditionOperator })}
-        className="w-40 shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-      >
-        {operators.map((op) => (
-          <option key={op.value} value={op.value}>
-            {op.label}
-          </option>
-        ))}
-      </select>
-
-      {/* Value */}
-      {!noValueOperators.has(condition.operator) && (
-        <TemplateInput
-          value={String(condition.value ?? '')}
-          onChange={(v) => onChange({ ...condition, value: v })}
-          suggestions={templateSuggestions}
-          placeholder="value or {{ template }}"
-          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-        />
+      {/* Operator (A2: filtered by fieldType; hidden when lockOperator) */}
+      {!lockOperator && (
+        <select
+          value={safeOperator}
+          onChange={(e) => handleOperatorChange(e.target.value as ConditionOperator)}
+          className="w-40 shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
+        >
+          {validOperators.map((op) => (
+            <option key={op.value} value={op.value}>
+              {op.label}
+            </option>
+          ))}
+        </select>
       )}
+
+      {/* Value (A1: type-aware) */}
+      <div className="flex-1 min-w-0">
+        <ConditionValueInput
+          operator={safeOperator}
+          fieldType={fieldType}
+          fieldEnum={fieldEnum}
+          value={condition.value}
+          onChange={(v) => onChange({ ...condition, value: v })}
+          triggerSource={triggerSource}
+          triggerEvent={triggerEvent}
+        />
+      </div>
 
       {/* Remove */}
       <button
