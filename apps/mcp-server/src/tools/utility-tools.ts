@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import crypto from 'node:crypto';
+import { registerTool } from '../lib/register-tool.js';
 
 const TOOL_NAMES = [
   'list_projects',
@@ -106,11 +107,20 @@ setInterval(() => {
 }, 30_000);
 
 export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimiter: RateLimiter): void {
-  server.tool(
-    'get_server_info',
-    'Get information about this MCP server including version, available tools, authenticated user, and rate limit status',
-    {},
-    async () => {
+  registerTool(server, {
+    name: 'get_server_info',
+    description: 'Get information about this MCP server including version, available tools, authenticated user, and rate limit status',
+    input: {},
+    returns: z.object({
+      name: z.string(),
+      version: z.string(),
+      description: z.string(),
+      tool_count: z.number(),
+      available_tools: z.array(z.string()),
+      authenticated_user: z.unknown().nullable(),
+      rate_limit: z.unknown().optional(),
+    }),
+    handler: async () => {
       // Fetch authenticated user info
       const meResult = await api.get('/auth/me');
 
@@ -128,17 +138,24 @@ export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimi
         content: [{ type: 'text' as const, text: JSON.stringify(info, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'confirm_action',
-    'Confirm a destructive action using a confirmation token. First call without a token to stage the action and receive a token. Then call again with the token to execute.',
-    {
+  registerTool(server, {
+    name: 'confirm_action',
+    description: 'Confirm a destructive action using a confirmation token. First call without a token to stage the action and receive a token. Then call again with the token to execute.',
+    input: {
       action: z.string().describe('Description of the action to confirm'),
       resource_id: z.string().describe('ID of the resource being affected'),
       token: z.string().optional().describe('Confirmation token received from the staging call. Omit to stage a new action.'),
     },
-    async ({ action, resource_id, token }) => {
+    returns: z.object({
+      status: z.enum(['pending_confirmation', 'confirmed']),
+      message: z.string(),
+      action: z.string(),
+      resource_id: z.string(),
+      confirmation_token: z.string().optional().describe('Present when status is pending_confirmation'),
+    }),
+    handler: async ({ action, resource_id, token }) => {
       if (!token) {
         // Stage the action: generate a token
         const confirmToken = crypto.randomBytes(16).toString('hex');
@@ -212,5 +229,5 @@ export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimi
         }],
       };
     },
-  );
+  });
 }

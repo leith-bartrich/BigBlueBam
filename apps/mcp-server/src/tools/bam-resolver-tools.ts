@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { registerTool } from '../lib/register-tool.js';
 
 /**
  * Bam resolver / list tools — Phase C, Tier 2 of the Bolt ID-mapping
@@ -12,13 +13,21 @@ import type { ApiClient } from '../middleware/api-client.js';
  * used by the other tool files in this directory.
  */
 export function registerBamResolverTools(server: McpServer, api: ApiClient): void {
-  server.tool(
-    'bam_list_phases',
-    "List all phases (board columns) for a project, ordered by position",
-    {
+  registerTool(server, {
+    name: 'bam_list_phases',
+    description: 'List all phases (board columns) for a project, ordered by position',
+    input: {
       project_id: z.string().uuid().describe('The project ID'),
     },
-    async ({ project_id }) => {
+    returns: z.object({
+      data: z.array(z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        position: z.number().optional(),
+        project_id: z.string().uuid().optional(),
+      }).passthrough()),
+    }),
+    handler: async ({ project_id }) => {
       const result = await api.get(`/projects/${project_id}/phases`);
 
       if (!result.ok) {
@@ -32,15 +41,23 @@ export function registerBamResolverTools(server: McpServer, api: ApiClient): voi
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'bam_list_labels',
-    'List labels. If project_id is given, lists labels for that project; otherwise lists labels for every project the caller can see in their org.',
-    {
+  registerTool(server, {
+    name: 'bam_list_labels',
+    description: 'List labels. If project_id is given, lists labels for that project; otherwise lists labels for every project the caller can see in their org.',
+    input: {
       project_id: z.string().uuid().optional().describe('Optional project ID to scope results'),
     },
-    async ({ project_id }) => {
+    returns: z.object({
+      data: z.array(z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        color: z.string().nullable().optional(),
+        project_id: z.string().uuid().optional(),
+      }).passthrough()),
+    }),
+    handler: async ({ project_id }) => {
       const path = project_id ? `/projects/${project_id}/labels` : '/labels';
       const result = await api.get(path);
 
@@ -55,15 +72,24 @@ export function registerBamResolverTools(server: McpServer, api: ApiClient): voi
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'bam_list_states',
-    "List all task states for a project, ordered by position. Each state has a category in { todo, active, blocked, review, done, cancelled }.",
-    {
+  registerTool(server, {
+    name: 'bam_list_states',
+    description: 'List all task states for a project, ordered by position. Each state has a category in { todo, active, blocked, review, done, cancelled }.',
+    input: {
       project_id: z.string().uuid().describe('The project ID'),
     },
-    async ({ project_id }) => {
+    returns: z.object({
+      data: z.array(z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        category: z.string(),
+        position: z.number().optional(),
+        project_id: z.string().uuid().optional(),
+      }).passthrough()),
+    }),
+    handler: async ({ project_id }) => {
       const result = await api.get(`/projects/${project_id}/states`);
 
       if (!result.ok) {
@@ -77,15 +103,24 @@ export function registerBamResolverTools(server: McpServer, api: ApiClient): voi
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'bam_list_epics',
-    'List all epics for a project, with task counts and status.',
-    {
+  registerTool(server, {
+    name: 'bam_list_epics',
+    description: 'List all epics for a project, with task counts and status.',
+    input: {
       project_id: z.string().uuid().describe('The project ID'),
     },
-    async ({ project_id }) => {
+    returns: z.object({
+      data: z.array(z.object({
+        id: z.string().uuid(),
+        title: z.string(),
+        status: z.string().optional(),
+        task_count: z.number().optional(),
+        project_id: z.string().uuid().optional(),
+      }).passthrough()),
+    }),
+    handler: async ({ project_id }) => {
       const result = await api.get(`/projects/${project_id}/epics`);
 
       if (!result.ok) {
@@ -99,5 +134,5 @@ export function registerBamResolverTools(server: McpServer, api: ApiClient): voi
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 }

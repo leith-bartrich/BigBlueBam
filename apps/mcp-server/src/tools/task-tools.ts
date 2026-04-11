@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
 import { isUuid } from '../middleware/resolve-helpers.js';
 import { handleScopeError } from '../middleware/scope-check.js';
+import { registerTool } from '../lib/register-tool.js';
 
 /**
  * Bam-specific name-or-id resolvers (Phase D / Tier 3).
@@ -176,11 +177,28 @@ function err(label: string, data: unknown) {
   };
 }
 
+const taskShape = z.object({
+  id: z.string().uuid(),
+  human_id: z.string(),
+  title: z.string(),
+  description: z.string().nullable().optional(),
+  state_id: z.string().uuid().nullable().optional(),
+  state_category: z.string().optional(),
+  priority: z.string().optional(),
+  story_points: z.number().nullable().optional(),
+  assignee_id: z.string().uuid().nullable().optional(),
+  sprint_id: z.string().uuid().nullable().optional(),
+  phase_id: z.string().uuid().optional(),
+  project_id: z.string().uuid().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
 export function registerTaskTools(server: McpServer, api: ApiClient): void {
-  server.tool(
-    'search_tasks',
-    'Search and filter tasks in a project',
-    {
+  registerTool(server, {
+    name: 'search_tasks',
+    description: 'Search and filter tasks in a project',
+    input: {
       project_id: z.string().uuid().describe('The project ID'),
       q: z.string().optional().describe('Search query string'),
       phase_id: z.string().uuid().optional().describe('Filter by phase'),
@@ -191,7 +209,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       cursor: z.string().optional().describe('Pagination cursor'),
       limit: z.number().int().positive().max(200).optional().describe('Number of results'),
     },
-    async ({ project_id, ...filters }) => {
+    returns: z.object({ data: z.array(taskShape), next_cursor: z.string().nullable().optional() }),
+    handler: async ({ project_id, ...filters }) => {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(filters)) {
         if (value !== undefined) params.set(key, String(value));
@@ -213,13 +232,14 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
     },
   );
 
-  server.tool(
-    'get_task',
-    'Get detailed information about a specific task',
-    {
+  registerTool(server, {
+    name: 'get_task',
+    description: 'Get detailed information about a specific task',
+    input: {
       task_id: z.string().uuid().describe('The task ID'),
     },
-    async ({ task_id }) => {
+    returns: taskShape,
+    handler: async ({ task_id }) => {
       const result = await api.get(`/tasks/${task_id}`);
 
       if (!result.ok) {
@@ -233,15 +253,16 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'bam_get_task_by_human_id',
-    "Look up a task by its human-readable reference (e.g. 'FRND-42'). The prefix is case-insensitive. Returns the task's id, project_id, human_id, and title. Useful when a prompt or rule refers to a task by its ticket number rather than UUID.",
-    {
+  registerTool(server, {
+    name: 'bam_get_task_by_human_id',
+    description: "Look up a task by its human-readable reference (e.g. 'FRND-42'). The prefix is case-insensitive. Returns the task's id, project_id, human_id, and title. Useful when a prompt or rule refers to a task by its ticket number rather than UUID.",
+    input: {
       human_id: z.string().min(3).describe("Human-readable task ID like 'FRND-42' (case-insensitive prefix)"),
     },
-    async ({ human_id }) => {
+    returns: z.object({ id: z.string().uuid(), project_id: z.string().uuid(), human_id: z.string(), title: z.string() }).passthrough(),
+    handler: async ({ human_id }) => {
       const ref = encodeURIComponent(human_id.trim().replace(/^#/, ''));
       const result = await api.get(`/tasks/by-ref/${ref}`);
 
@@ -256,12 +277,12 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'create_task',
-    'Create a new task in a project. Accepts natural identifiers (project name, phase name, sprint name, label name, user email) in addition to UUIDs.',
-    {
+  registerTool(server, {
+    name: 'create_task',
+    description: 'Create a new task in a project. Accepts natural identifiers (project name, phase name, sprint name, label name, user email) in addition to UUIDs.',
+    input: {
       project_id: z
         .string()
         .describe('Project name or UUID'),
@@ -289,7 +310,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       epic_id: z.string().uuid().nullable().optional().describe('Epic to link to'),
       parent_task_id: z.string().uuid().nullable().optional().describe('Parent task for sub-tasks'),
     },
-    async ({ project_id, phase_id, sprint_id, assignee_id, label_ids, ...rest }) => {
+    returns: taskShape,
+    handler: async ({ project_id, phase_id, sprint_id, assignee_id, label_ids, ...rest }) => {
       const resolvedProjectId = await resolveProjectId(api, project_id);
       if (!resolvedProjectId) {
         return err(
@@ -353,12 +375,12 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'update_task',
-    'Update an existing task. Accepts natural identifiers for task, assignee, state, and sprint in addition to UUIDs.',
-    {
+  registerTool(server, {
+    name: 'update_task',
+    description: 'Update an existing task. Accepts natural identifiers for task, assignee, state, and sprint in addition to UUIDs.',
+    input: {
       task_id: z
         .string()
         .describe("Task UUID or human_id (e.g. 'FRND-42')"),
@@ -383,7 +405,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       start_date: z.string().optional().describe('Start date (ISO 8601)'),
       due_date: z.string().optional().describe('Due date (ISO 8601)'),
     },
-    async ({ task_id, assignee_id, sprint_id, state_id, ...rest }) => {
+    returns: taskShape,
+    handler: async ({ task_id, assignee_id, sprint_id, state_id, ...rest }) => {
       const resolvedTaskId = await resolveTaskId(api, task_id);
       if (!resolvedTaskId) {
         return err(
@@ -462,12 +485,12 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'move_task',
-    'Move a task to a different phase and/or position on the board. Accepts natural identifiers for task and phase.',
-    {
+  registerTool(server, {
+    name: 'move_task',
+    description: 'Move a task to a different phase and/or position on the board. Accepts natural identifiers for task and phase.',
+    input: {
       task_id: z
         .string()
         .describe("Task UUID or human_id (e.g. 'FRND-42')"),
@@ -481,7 +504,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         .optional()
         .describe('Optionally change sprint — name or UUID'),
     },
-    async ({ task_id, phase_id, position, sprint_id }) => {
+    returns: taskShape,
+    handler: async ({ task_id, phase_id, position, sprint_id }) => {
       const resolvedTaskId = await resolveTaskId(api, task_id);
       if (!resolvedTaskId) {
         return err(
@@ -553,16 +577,17 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'delete_task',
-    'Delete a task (destructive action - will ask for confirmation)',
-    {
+  registerTool(server, {
+    name: 'delete_task',
+    description: 'Delete a task (destructive action - will ask for confirmation)',
+    input: {
       task_id: z.string().uuid().describe('The task ID to delete'),
       confirm: z.boolean().describe('Must be true to confirm deletion'),
     },
-    async ({ task_id, confirm }) => {
+    returns: z.object({ ok: z.boolean() }),
+    handler: async ({ task_id, confirm }) => {
       if (!confirm) {
         return {
           content: [{
@@ -587,12 +612,12 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: `Task ${task_id} deleted successfully.` }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'bulk_update_tasks',
-    'Perform a bulk operation on multiple tasks at once. Each task_ids entry may be a UUID or a human_id (e.g. FRND-42).',
-    {
+  registerTool(server, {
+    name: 'bulk_update_tasks',
+    description: 'Perform a bulk operation on multiple tasks at once. Each task_ids entry may be a UUID or a human_id (e.g. FRND-42).',
+    input: {
       task_ids: z
         .array(z.string())
         .min(1)
@@ -609,7 +634,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
             '(assignee_id/phase_id/sprint_id) must still be UUIDs.',
         ),
     },
-    async ({ task_ids, operation, fields }) => {
+    returns: z.object({ updated: z.number(), failed: z.number().optional() }),
+    handler: async ({ task_ids, operation, fields }) => {
       // Resolve each task id (UUID or human_id) in parallel. Callers that
       // pass all UUIDs pay nothing because `resolveTaskId` short-circuits.
       const resolved = await Promise.all(task_ids.map((id) => resolveTaskId(api, id)));
@@ -650,18 +676,19 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'log_time',
-    'Log time spent on a task',
-    {
+  registerTool(server, {
+    name: 'log_time',
+    description: 'Log time spent on a task',
+    input: {
       task_id: z.string().uuid().describe('The task ID'),
       minutes: z.number().int().positive().describe('Number of minutes spent'),
       date: z.string().describe('Date of the time entry (ISO 8601)'),
       description: z.string().optional().describe('Description of work done'),
     },
-    async ({ task_id, ...timeData }) => {
+    returns: z.object({ id: z.string().uuid(), task_id: z.string().uuid(), minutes: z.number(), date: z.string() }).passthrough(),
+    handler: async ({ task_id, ...timeData }) => {
       const result = await api.post(`/tasks/${task_id}/time-entries`, timeData);
 
       if (!result.ok) {
@@ -677,16 +704,17 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'duplicate_task',
-    'Duplicate an existing task, optionally including its subtasks',
-    {
+  registerTool(server, {
+    name: 'duplicate_task',
+    description: 'Duplicate an existing task, optionally including its subtasks',
+    input: {
       task_id: z.string().uuid().describe('The task ID to duplicate'),
       include_subtasks: z.boolean().optional().describe('Whether to also duplicate subtasks (default false)'),
     },
-    async ({ task_id, include_subtasks }) => {
+    returns: taskShape,
+    handler: async ({ task_id, include_subtasks }) => {
       const result = await api.post(`/tasks/${task_id}/duplicate`, { include_subtasks: include_subtasks ?? false });
 
       if (!result.ok) {
@@ -702,17 +730,18 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'import_csv',
-    'Import tasks from CSV data into a project',
-    {
+  registerTool(server, {
+    name: 'import_csv',
+    description: 'Import tasks from CSV data into a project',
+    input: {
       project_id: z.string().uuid().describe('The project ID'),
       rows: z.array(z.record(z.string())).describe('Array of row objects from the CSV'),
       mapping: z.record(z.string()).describe('Mapping of CSV column names to task fields (e.g. { "Title": "title", "Priority": "priority" })'),
     },
-    async ({ project_id, rows, mapping }) => {
+    returns: z.object({ imported: z.number(), failed: z.number().optional(), errors: z.array(z.string()).optional() }),
+    handler: async ({ project_id, rows, mapping }) => {
       const result = await api.post(`/projects/${project_id}/import/csv`, { rows, mapping });
 
       if (!result.ok) {
@@ -728,5 +757,5 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 }

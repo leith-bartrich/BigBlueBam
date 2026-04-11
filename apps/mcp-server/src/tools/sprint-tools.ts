@@ -2,16 +2,30 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
 import { handleScopeError } from '../middleware/scope-check.js';
+import { registerTool } from '../lib/register-tool.js';
+
+const sprintShape = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  project_id: z.string().uuid(),
+  status: z.enum(['planned', 'active', 'completed', 'cancelled']),
+  start_date: z.string().nullable().optional(),
+  end_date: z.string().nullable().optional(),
+  goal: z.string().nullable().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
 
 export function registerSprintTools(server: McpServer, api: ApiClient): void {
-  server.tool(
-    'list_sprints',
-    'List all sprints for a project',
-    {
+  registerTool(server, {
+    name: 'list_sprints',
+    description: 'List all sprints for a project',
+    input: {
       project_id: z.string().uuid().describe('The project ID'),
       status: z.enum(['planned', 'active', 'completed', 'cancelled']).optional().describe('Filter by status'),
     },
-    async ({ project_id, status }) => {
+    returns: z.object({ data: z.array(sprintShape), next_cursor: z.string().nullable().optional() }),
+    handler: async ({ project_id, status }) => {
       const params = new URLSearchParams();
       if (status) params.set('status', status);
 
@@ -29,19 +43,20 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'create_sprint',
-    'Create a new sprint for a project',
-    {
+  registerTool(server, {
+    name: 'create_sprint',
+    description: 'Create a new sprint for a project',
+    input: {
       project_id: z.string().uuid().describe('The project ID'),
       name: z.string().max(100).describe('Sprint name'),
       start_date: z.string().describe('Start date (ISO 8601)'),
       end_date: z.string().describe('End date (ISO 8601)'),
       goal: z.string().optional().describe('Sprint goal'),
     },
-    async ({ project_id, ...sprintData }) => {
+    returns: sprintShape,
+    handler: async ({ project_id, ...sprintData }) => {
       const result = await api.post(`/projects/${project_id}/sprints`, sprintData);
 
       if (!result.ok) {
@@ -57,15 +72,16 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'start_sprint',
-    'Start a planned sprint',
-    {
+  registerTool(server, {
+    name: 'start_sprint',
+    description: 'Start a planned sprint',
+    input: {
       sprint_id: z.string().uuid().describe('The sprint ID'),
     },
-    async ({ sprint_id }) => {
+    returns: sprintShape,
+    handler: async ({ sprint_id }) => {
       const result = await api.post(`/sprints/${sprint_id}/start`, {});
 
       if (!result.ok) {
@@ -81,12 +97,12 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'complete_sprint',
-    'Complete an active sprint',
-    {
+  registerTool(server, {
+    name: 'complete_sprint',
+    description: 'Complete an active sprint',
+    input: {
       sprint_id: z.string().uuid().describe('The sprint ID'),
       carry_forward: z.object({
         target_sprint_id: z.string().uuid().describe('Sprint to carry incomplete tasks to'),
@@ -97,7 +113,8 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
       }).describe('How to handle incomplete tasks'),
       retrospective_notes: z.string().optional().describe('Retro notes'),
     },
-    async ({ sprint_id, ...body }) => {
+    returns: z.object({ sprint: sprintShape, carried_forward: z.number().optional(), moved_to_backlog: z.number().optional() }).passthrough(),
+    handler: async ({ sprint_id, ...body }) => {
       const result = await api.post(`/sprints/${sprint_id}/complete`, body);
 
       if (!result.ok) {
@@ -113,15 +130,22 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'get_sprint_report',
-    'Get a sprint report with velocity, completion stats, and burndown data',
-    {
+  registerTool(server, {
+    name: 'get_sprint_report',
+    description: 'Get a sprint report with velocity, completion stats, and burndown data',
+    input: {
       sprint_id: z.string().uuid().describe('The sprint ID'),
     },
-    async ({ sprint_id }) => {
+    returns: z.object({
+      sprint_id: z.string().uuid(),
+      velocity: z.number().optional(),
+      total_points: z.number().optional(),
+      completed_points: z.number().optional(),
+      completion_rate: z.number().optional(),
+    }).passthrough(),
+    handler: async ({ sprint_id }) => {
       const result = await api.get(`/sprints/${sprint_id}/report`);
 
       if (!result.ok) {
@@ -135,5 +159,5 @@ export function registerSprintTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 }

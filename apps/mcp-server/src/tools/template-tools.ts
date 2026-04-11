@@ -2,6 +2,15 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
 import { resolveProjectId, resolveTemplateId } from './task-tools.js';
+import { registerTool } from '../lib/register-tool.js';
+
+const templateShape = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  project_id: z.string().uuid(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
 
 function err(label: string, data: unknown) {
   return {
@@ -11,13 +20,14 @@ function err(label: string, data: unknown) {
 }
 
 export function registerTemplateTools(server: McpServer, api: ApiClient): void {
-  server.tool(
-    'list_templates',
-    'List available task templates for a project. Accepts project name or UUID.',
-    {
+  registerTool(server, {
+    name: 'list_templates',
+    description: 'List available task templates for a project. Accepts project name or UUID.',
+    input: {
       project_id: z.string().describe('Project name or UUID'),
     },
-    async ({ project_id }) => {
+    returns: z.object({ data: z.array(templateShape) }),
+    handler: async ({ project_id }) => {
       const resolvedProjectId = await resolveProjectId(api, project_id);
       if (!resolvedProjectId) {
         return err(
@@ -36,12 +46,12 @@ export function registerTemplateTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
-  server.tool(
-    'create_from_template',
-    'Create a task from a template, optionally overriding specific fields. Accepts project name and template name in addition to UUIDs.',
-    {
+  registerTool(server, {
+    name: 'create_from_template',
+    description: 'Create a task from a template, optionally overriding specific fields. Accepts project name and template name in addition to UUIDs.',
+    input: {
       project_id: z.string().describe('Project name or UUID'),
       template_id: z
         .string()
@@ -54,7 +64,13 @@ export function registerTemplateTools(server: McpServer, api: ApiClient): void {
             'Sub-keys inside overrides must still be UUIDs.',
         ),
     },
-    async ({ project_id, template_id, overrides }) => {
+    returns: z.object({
+      id: z.string().uuid(),
+      human_id: z.string(),
+      title: z.string(),
+      project_id: z.string().uuid(),
+    }).passthrough(),
+    handler: async ({ project_id, template_id, overrides }) => {
       const resolvedProjectId = await resolveProjectId(api, project_id);
       if (!resolvedProjectId) {
         return err(
@@ -88,5 +104,5 @@ export function registerTemplateTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 }

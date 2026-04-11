@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { registerTool } from '../lib/register-tool.js';
 
 /**
  * SuperUser-gated tools:
@@ -35,11 +36,12 @@ async function requireSuperuser(api: ApiClient): Promise<SuperuserCheckResult> {
 export function registerPlatformTools(server: McpServer, api: ApiClient): void {
   // ─── /superuser/* passthroughs (server-side gated) ───────────────────────
 
-  server.tool(
-    'get_platform_settings',
-    'SuperUser only. Fetch platform-wide settings (public signup toggle, etc).',
-    {},
-    async () => {
+  registerTool(server, {
+    name: 'get_platform_settings',
+    description: 'SuperUser only. Fetch platform-wide settings (public signup toggle, etc).',
+    input: {},
+    returns: z.object({ public_signup_disabled: z.boolean().optional() }).passthrough(),
+    handler: async () => {
       const result = await api.get('/superuser/platform-settings');
       if (!result.ok) {
         return {
@@ -49,15 +51,16 @@ export function registerPlatformTools(server: McpServer, api: ApiClient): void {
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }] };
     },
-  );
+  });
 
-  server.tool(
-    'set_public_signup_disabled',
-    "SuperUser only. Toggle the platform-wide public signup kill switch. When true, POST /auth/register and POST /helpdesk/auth/register return 403 SIGNUP_DISABLED and the login pages' 'Create one' link routes to the beta-gate page.",
-    {
+  registerTool(server, {
+    name: 'set_public_signup_disabled',
+    description: "SuperUser only. Toggle the platform-wide public signup kill switch. When true, POST /auth/register and POST /helpdesk/auth/register return 403 SIGNUP_DISABLED and the login pages' 'Create one' link routes to the beta-gate page.",
+    input: {
       public_signup_disabled: z.boolean().describe('true to freeze new-account creation; false to open signup back up.'),
     },
-    async ({ public_signup_disabled }) => {
+    returns: z.object({ public_signup_disabled: z.boolean() }).passthrough(),
+    handler: async ({ public_signup_disabled }) => {
       const result = await api.patch('/superuser/platform-settings', { public_signup_disabled });
       if (!result.ok) {
         return {
@@ -67,13 +70,21 @@ export function registerPlatformTools(server: McpServer, api: ApiClient): void {
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }] };
     },
-  );
+  });
 
-  server.tool(
-    'list_beta_signups',
-    'SuperUser only. List notify-me submissions from the public beta-gate form, newest first.',
-    {},
-    async () => {
+  registerTool(server, {
+    name: 'list_beta_signups',
+    description: 'SuperUser only. List notify-me submissions from the public beta-gate form, newest first.',
+    input: {},
+    returns: z.object({
+      data: z.array(z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        email: z.string(),
+        created_at: z.string(),
+      }).passthrough()),
+    }),
+    handler: async () => {
       const result = await api.get('/superuser/beta-signups');
       if (!result.ok) {
         return {
@@ -83,15 +94,16 @@ export function registerPlatformTools(server: McpServer, api: ApiClient): void {
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }] };
     },
-  );
+  });
 
   // ─── Public endpoints, gated to SuperUser only at the MCP layer ──────────
 
-  server.tool(
-    'get_public_config',
-    'SuperUser only (MCP gate). Read the unauthenticated /public/config — currently returns whether public signup is disabled. The underlying endpoint is public, but we gate MCP access to SuperUsers since this is part of the platform-admin surface.',
-    {},
-    async () => {
+  registerTool(server, {
+    name: 'get_public_config',
+    description: 'SuperUser only (MCP gate). Read the unauthenticated /public/config — currently returns whether public signup is disabled. The underlying endpoint is public, but we gate MCP access to SuperUsers since this is part of the platform-admin surface.',
+    input: {},
+    returns: z.object({ public_signup_disabled: z.boolean().optional() }).passthrough(),
+    handler: async () => {
       const check = await requireSuperuser(api);
       if (!check.ok) {
         return { content: [{ type: 'text' as const, text: check.errorText }], isError: true };
@@ -105,18 +117,19 @@ export function registerPlatformTools(server: McpServer, api: ApiClient): void {
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }] };
     },
-  );
+  });
 
-  server.tool(
-    'submit_beta_signup',
-    'SuperUser only (MCP gate). Create a notify-me submission via the public /public/beta-signup endpoint. The HTTP endpoint is public-by-anyone, but we only allow SuperUsers to invoke it through MCP (typically for testing or manual entry on behalf of a prospect).',
-    {
+  registerTool(server, {
+    name: 'submit_beta_signup',
+    description: 'SuperUser only (MCP gate). Create a notify-me submission via the public /public/beta-signup endpoint. The HTTP endpoint is public-by-anyone, but we only allow SuperUsers to invoke it through MCP (typically for testing or manual entry on behalf of a prospect).',
+    input: {
       name: z.string().trim().min(1).max(200).describe('Contact name.'),
       email: z.string().trim().email().max(320).describe('Contact email.'),
       phone: z.string().trim().max(40).optional().describe('Phone number (optional).'),
       message: z.string().trim().max(2000).optional().describe('What would they like to use BigBlueBam for (optional).'),
     },
-    async (body) => {
+    returns: z.object({ id: z.string().uuid(), email: z.string() }).passthrough(),
+    handler: async (body) => {
       const check = await requireSuperuser(api);
       if (!check.ok) {
         return { content: [{ type: 'text' as const, text: check.errorText }], isError: true };
@@ -130,5 +143,5 @@ export function registerPlatformTools(server: McpServer, api: ApiClient): void {
       }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }] };
     },
-  );
+  });
 }
