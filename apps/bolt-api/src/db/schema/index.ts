@@ -10,6 +10,7 @@ export {
 
 // Bolt-specific tables
 export { boltAutomations, boltTriggerSourceEnum } from './bolt-automations.js';
+export { boltAutomationDataMigrations } from './bolt-automation-data-migrations.js';
 export { boltConditions, boltConditionOperatorEnum, boltConditionLogicEnum } from './bolt-conditions.js';
 export { boltActions, boltOnErrorEnum } from './bolt-actions.js';
 export { boltExecutions, boltExecutionStatusEnum } from './bolt-executions.js';
