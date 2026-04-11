@@ -1514,6 +1514,9 @@ importers:
 
   apps/bolt-api:
     dependencies:
+      '@bigbluebam/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@fastify/cookie':
         specifier: ^11.0.0
         version: 11.0.2

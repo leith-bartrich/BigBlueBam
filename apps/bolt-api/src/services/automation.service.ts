@@ -9,6 +9,7 @@ import {
 import { evaluateConditions } from './condition-engine.js';
 import { getAvailableActions } from './event-catalog.js';
 import { validateExternalUrl } from '../lib/url-validator.js';
+import { projectRowsToGraph } from './bolt-graph-compiler.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -322,6 +323,30 @@ export interface UpdateAutomationInput {
   actions?: ActionInput[];
 }
 
+/** Synthesize a graph from the full automation result for read responses. */
+function attachGraph<T extends {
+  trigger_source: string;
+  trigger_event: string;
+  trigger_filter: unknown;
+  graph?: unknown;
+  conditions: any[];
+  actions: any[];
+}>(automation: T): T & { graph: unknown } {
+  if (automation.graph != null) {
+    return automation as T & { graph: unknown };
+  }
+  const graph = projectRowsToGraph({
+    trigger: {
+      source: automation.trigger_source,
+      event: automation.trigger_event,
+      filter: (automation.trigger_filter as Record<string, unknown>) ?? {},
+    },
+    conditions: automation.conditions,
+    actions: automation.actions,
+  });
+  return { ...automation, graph };
+}
+
 export interface PatchAutomationInput {
   name?: string;
   description?: string | null;
@@ -415,7 +440,8 @@ export async function getAutomation(id: string, orgId: string) {
     .where(eq(boltActions.automation_id, id))
     .orderBy(asc(boltActions.sort_order));
 
-  return { ...automation, conditions, actions };
+  const full = { ...automation, conditions, actions };
+  return attachGraph(full);
 }
 
 export async function getAutomationById(id: string, orgId: string) {
@@ -514,6 +540,8 @@ export async function createAutomation(
   data: CreateAutomationInput,
   userId: string,
   orgId: string,
+  graphBlob?: unknown,
+  graphMode?: string | null,
 ) {
   // Defense-in-depth: validate tool allowlist at service layer
   validateActionTools(data.actions);
@@ -541,6 +569,9 @@ export async function createAutomation(
         max_executions_per_hour: data.max_executions_per_hour ?? 100,
         cooldown_seconds: data.cooldown_seconds ?? 0,
         max_chain_depth: DEFAULT_MAX_CHAIN_DEPTH,
+        graph: graphBlob ?? null,
+        graph_mode: graphMode ?? null,
+        data_version: 1,
         created_by: userId,
         updated_by: userId,
       })
@@ -605,6 +636,8 @@ export async function updateAutomation(
   data: UpdateAutomationInput,
   userId: string,
   orgId: string,
+  graphBlob?: unknown,
+  graphMode?: string | null,
 ) {
   const existing = await getAutomationById(id, orgId);
   if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
@@ -649,6 +682,11 @@ export async function updateAutomation(
     if (data.max_executions_per_hour !== undefined)
       updateValues.max_executions_per_hour = data.max_executions_per_hour;
     if (data.cooldown_seconds !== undefined) updateValues.cooldown_seconds = data.cooldown_seconds;
+    // Always persist graph state: if graphBlob is provided, store it and set
+    // graph_mode; if absent (graphBlob === undefined/null), clear both columns
+    // so the next GET re-synthesizes the graph from rows.
+    updateValues.graph = graphBlob ?? null;
+    updateValues.graph_mode = graphMode ?? null;
 
     const [automation] = await tx
       .update(boltAutomations)

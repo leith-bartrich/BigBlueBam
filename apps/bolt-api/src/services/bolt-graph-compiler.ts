@@ -121,7 +121,7 @@ export function compileGraphToRows(graph: BoltGraph): {
 
   // --- Trigger ---
   const triggerNode = ordered[0]!;
-  const triggerData = triggerNode.data as TriggerNodeData;
+  const triggerData = triggerNode.data as unknown as TriggerNodeData;
   const trigger = {
     source: triggerData.source ?? '',
     event: triggerData.event ?? '',
@@ -131,7 +131,7 @@ export function compileGraphToRows(graph: BoltGraph): {
   // --- Conditions ---
   const conditionNodes = ordered.filter((n) => n.kind === 'condition');
   const conditions: Omit<NewBoltCondition, 'automation_id'>[] = conditionNodes.map((node, idx) => {
-    const d = node.data as ConditionNodeData;
+    const d = node.data as unknown as ConditionNodeData;
     return {
       sort_order: idx,
       field: d.field ?? '',
@@ -165,7 +165,7 @@ export function compileGraphToRows(graph: BoltGraph): {
   }
 
   const actions: Omit<NewBoltAction, 'automation_id'>[] = actionNodes.map((node, idx) => {
-    const d = node.data as ActionNodeData;
+    const d = node.data as unknown as ActionNodeData;
     const baseParams: Record<string, unknown> = { ...(d.parameters ?? {}) };
 
     // Overlay data-flow edges as template strings.
