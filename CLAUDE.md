@@ -138,6 +138,58 @@ Enforced by `pnpm lint:migrations` (`scripts/lint-migrations.mjs`), run in CI by
 
 **Checksum behavior:** the runner hashes the SQL *body* only — the leading `--` comment header is stripped before hashing, so editing `-- Why:` / `-- Client impact:` text never invalidates an applied migration. Any change to executable SQL still trips the immutability guard. For the one-time rollout where headers were added to already-applied migrations, rerun the migrate container with `MIGRATE_ALLOW_HEADER_RESTAMP=1` to re-stamp stored checksums.
 
+### Applying a new migration to a long-running stack (gotchas)
+
+The "just run `docker compose up -d`" flow works on a clean boot but has two traps that have each bitten this project and produced hours of silent "column does not exist" debugging. Read these before adding a migration to an existing stack:
+
+1. **The `migrate` sidecar is cached via `service_completed_successfully`.** Once it has run to completion on the first boot, subsequent `docker compose up -d <service>` invocations see the cached completion and **do not re-run it**. Simply rebuilding `bolt-api` (or any other dependent service) will not trigger the migration, even if the new migration file is sitting in the image. You must explicitly run `docker compose run --rm migrate` yourself after a rebuild.
+
+2. **Docker Desktop's WSL2 file sync can silently drop new files from the build context.** On Windows hosts specifically, a newly-added migration file in `infra/postgres/migrations/` sometimes fails to propagate into the build context even after `touch + docker compose build --no-cache + docker builder prune -af`. The resulting image has every migration *except* the new one, and the `migrate` sidecar happily reports "N applied, N already up-to-date" without ever seeing the new file. The Drizzle schema (which IS rebuilt from host source) now expects a column that doesn't exist in the database — every `db.select().from(<table>)` crashes at the Postgres driver with `column "X" does not exist`, and any raw SQL paths that skip the missing column keep working, producing the exact "stats shows 13 / list shows nothing" class of symptom.
+
+**Safe sequence after adding a migration** (does both things explicitly):
+
+```sh
+docker compose build --no-cache api
+docker compose run --rm migrate
+docker compose up -d --force-recreate <affected-services>
+```
+
+**Verify the migration actually shipped** — don't trust the "N already up-to-date" message:
+
+```sh
+# 1. Confirm the file made it into the image
+docker compose run --rm migrate sh -c "ls /app/migrations | tail -5"
+# If your new file is missing from this list, Docker's file sync dropped it.
+
+# 2. Confirm the column actually exists in the live DB
+docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c "\d <table>"
+```
+
+**Bulletproof fallback when Docker file sync is the problem.** If the rebuild refuses to pick up the new file, bypass Docker entirely:
+
+```sh
+# Apply the migration SQL directly against the running postgres container
+cat infra/postgres/migrations/NNNN_new_migration.sql \
+  | docker compose exec -T postgres psql -U bigbluebam -d bigbluebam
+
+# Record it in schema_migrations so the next clean boot's migrate service
+# knows to skip it. The id column is the filename (with .sql extension);
+# checksum can be 'manual' — the runner only re-verifies checksums for
+# migrations it finds in /app/migrations, so an orphan row is harmless.
+docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c \
+  "INSERT INTO schema_migrations (id, checksum) VALUES ('NNNN_new_migration.sql', 'manual') ON CONFLICT (id) DO NOTHING;"
+```
+
+This is what had to happen during the Bolt `template_strict` incident — the file was on disk, `.dockerignore` didn't exclude it, `--no-cache` rebuilds ran cleanly, `docker builder prune -af` completed, and the image still didn't contain the file. Direct `psql` application was the only path that worked. The fact that the rest of the application code (Drizzle schema, migration runner code) already had the new column meant the database just needed to catch up.
+
+**When debugging "it works for stats but not for list" symptoms**, always check for schema drift FIRST:
+
+```sh
+docker compose logs --tail=50 <affected-api> 2>&1 | grep -iE "column.*does not exist|42703|PostgresError"
+```
+
+If you see `PostgresError: column "X" does not exist` (SQLSTATE `42703`), you have drift — not a query bug, not a filter bug, not an org-scoping bug. Fix the drift first, then see if the symptom remains.
+
 ## Common Commands
 
 ```bash
