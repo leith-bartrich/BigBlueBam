@@ -617,17 +617,31 @@ Verifying login... ✓`}</CodeBlock>
 
             <FaqItem q="How do I update to a new version?">
               <p>
-                Pull the latest code, rebuild, and restart. For Docker Compose:
+                The easiest way is to re-run the deploy script. It detects the existing
+                installation, pulls the latest code, forces a no-cache rebuild of the API image,
+                runs migrations explicitly, and restarts services:
+              </p>
+              <div className="mt-2">
+                <CodeBlock>{`./scripts/deploy.sh   # or deploy.ps1 on Windows`}</CodeBlock>
+              </div>
+              <p className="mt-2">
+                If you'd rather drive the update manually, use the full sequence — a plain{' '}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">docker compose up -d --build</code>{' '}
+                is <em>not</em> enough on an existing stack, because the{' '}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">migrate</code> sidecar
+                is cached as <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">service_completed_successfully</code>{' '}
+                and won't re-run, and the build cache can silently drop new migration files:
               </p>
               <div className="mt-2">
                 <CodeBlock>{`git pull origin main
-docker compose build
-docker compose up -d`}</CodeBlock>
+docker compose build --no-cache api
+docker compose up -d postgres
+docker compose run --rm migrate
+docker compose up -d --build`}</CodeBlock>
               </div>
               <p className="mt-2">
-                The migration service runs automatically on every startup, so database schema
-                changes are applied before the application services come online. No manual
-                migration step is needed.
+                The deploy script does all of this for you automatically, so you only need the
+                manual sequence if you're scripting updates yourself.
               </p>
             </FaqItem>
 

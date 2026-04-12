@@ -217,6 +217,41 @@ async function deploy(envConfig) {
   const gitCommit = (() => { try { return execSync('git rev-parse HEAD', { stdio: 'pipe', encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
   const buildDate = new Date().toISOString();
 
+  // On upgrades, we must defeat two traps that have each cost this project
+  // hours of "column does not exist" debugging (see CLAUDE.md → "Applying a
+  // new migration to a long-running stack"):
+  //
+  //   1. Docker's build cache + WSL2 file sync will silently drop new
+  //      migration files from the api image context. A plain `up -d --build`
+  //      is not enough — force `--no-cache` on the api image so buildkit
+  //      can't reuse a stale COPY layer that's missing the new SQL file.
+  //
+  //   2. The `migrate` sidecar is cached via `service_completed_successfully`
+  //      in docker-compose.yml, so `up -d` will NOT re-run it on an existing
+  //      stack even when the api image contains new migrations. We must
+  //      explicitly invoke `compose run --rm migrate` after the rebuild.
+  //
+  // Both happen automatically on the upgrade path so operators never have
+  // to know this exists.
+  if (isUpgrade) {
+    console.log('\nRebuilding api image with --no-cache (ensures new migrations are baked in)...\n');
+    await runShell(`GIT_COMMIT=${gitCommit} BUILD_DATE=${buildDate} ${dc} ${fileFlags} build --no-cache api`);
+    console.log(`\n${check} api image rebuilt`);
+
+    console.log('\nRunning database migrations (explicit sidecar invocation)...\n');
+    try {
+      // Bring postgres up first so the migrate sidecar has something to connect to.
+      await runShell(`${dc} ${fileFlags} up -d postgres`);
+      await runShell(`${dc} ${fileFlags} run --rm migrate`);
+      console.log(`\n${check} Migrations applied`);
+    } catch (err) {
+      console.log(`\n${red('Migration step failed.')} ${dim(String(err?.message || err))}`);
+      console.log(dim('  Check logs with: docker compose logs migrate'));
+      console.log(dim('  See docs/deployment-guide.md → Updating for the manual fallback.'));
+      throw err;
+    }
+  }
+
   console.log('\nBuilding and starting services...\n');
   await runShell(`GIT_COMMIT=${gitCommit} BUILD_DATE=${buildDate} ${dc} ${fileFlags} up -d --build`);
   console.log(`\n${check} All services started`);

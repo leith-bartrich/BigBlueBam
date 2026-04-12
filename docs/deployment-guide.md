@@ -240,14 +240,45 @@ Optional:
 
 ## Updating
 
-To update to a new version:
+**The recommended way to update is to re-run the deploy script.** It detects the existing installation, pulls the latest code, forces a `--no-cache` rebuild of the API image (so new migration files can't be lost to stale build cache or WSL2 file sync), runs the database migrations explicitly, and restarts services:
 
 ```bash
-git pull origin main
 ./scripts/deploy.sh  # or deploy.ps1 on Windows
 ```
 
-The deploy script detects the existing installation and offers to rebuild and restart services. Database migrations run automatically.
+That's it — you don't need to `git pull` first; the script will offer to do it for you and report how many commits you're behind.
+
+### Updating manually
+
+If you'd rather drive the update by hand, the sequence below matches what the deploy script does and avoids two traps that have bitten the project in the past (see [Migration failures](#migration-failures) for context):
+
+```bash
+# 1. Pull the new code
+git pull origin main
+
+# 2. Force a no-cache rebuild of the api image
+#    (defeats stale build cache that can drop new migration files silently)
+docker compose build --no-cache api
+
+# 3. Run migrations explicitly
+#    (the migrate sidecar is cached via service_completed_successfully
+#     and will NOT re-run on a plain `up -d`, even with new migrations)
+docker compose up -d postgres
+docker compose run --rm migrate
+
+# 4. Bring everything back up
+docker compose up -d --build
+```
+
+You can verify the migration actually shipped:
+
+```bash
+# Confirm the file is in the image
+docker compose run --rm migrate sh -c "ls /app/migrations | tail -5"
+
+# Confirm the column/table exists in the live DB
+docker compose exec postgres psql -U bigbluebam -d bigbluebam -c "\d <table_name>"
+```
 
 > **Important:** Never run `docker compose down -v` — the `-v` flag destroys all persistent data (database, uploads, cache). Use `docker compose down` (without `-v`) to stop services safely.
 
@@ -279,6 +310,20 @@ docker compose logs migrate
 ```
 
 Never edit an existing migration file — the runner tracks SHA-256 checksums and will abort on mismatch.
+
+**"Column does not exist" errors after an update.** If an API service logs `PostgresError: column "X" does not exist` (SQLSTATE `42703`) after an update, the migration file either didn't make it into the rebuilt image or the cached `migrate` sidecar didn't re-run. Re-run the update with the deploy script (`./scripts/deploy.sh`), which forces both a no-cache image rebuild and an explicit migrate invocation.
+
+**Bulletproof fallback** if Docker's build cache or WSL2 file sync refuses to pick up a new migration file, apply it directly:
+
+```bash
+# Apply the migration SQL against the running postgres container
+cat infra/postgres/migrations/NNNN_new_migration.sql \
+  | docker compose exec -T postgres psql -U bigbluebam -d bigbluebam
+
+# Record it in schema_migrations so a future clean boot skips it
+docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c \
+  "INSERT INTO schema_migrations (id, checksum) VALUES ('NNNN_new_migration.sql', 'manual') ON CONFLICT (id) DO NOTHING;"
+```
 
 ### Health check failures
 
