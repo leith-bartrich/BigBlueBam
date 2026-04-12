@@ -168,7 +168,11 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
 
           {/* Title */}
           <div>
+            <label htmlFor="beacon-editor-title" className="sr-only">
+              Title
+            </label>
             <input
+              id="beacon-editor-title"
               type="text"
               placeholder="Beacon title..."
               value={title}
@@ -179,10 +183,11 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
 
           {/* Summary */}
           <div>
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
+            <label htmlFor="beacon-editor-summary" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
               Summary
             </label>
             <textarea
+              id="beacon-editor-summary"
               placeholder="Brief description (max 500 characters)..."
               value={summary}
               onChange={(e) => {
@@ -198,10 +203,11 @@ export function BeaconEditorPage({ idOrSlug, onNavigate }: BeaconEditorPageProps
 
           {/* Body */}
           <div>
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
+            <label htmlFor="beacon-editor-body" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
               Body (Markdown)
             </label>
             <textarea
+              id="beacon-editor-body"
               placeholder="Write your knowledge article in Markdown..."
               value={body}
               onChange={(e) => setBody(e.target.value)}

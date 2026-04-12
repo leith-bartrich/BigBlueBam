@@ -156,6 +156,7 @@ function CreateGoalDialog({
     >
       <div className="space-y-4">
         <Input
+          id="bearing-goal-title"
           label="Title"
           placeholder="e.g., Increase customer retention by 15%"
           value={title}
@@ -163,8 +164,9 @@ function CreateGoalDialog({
         />
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Description (optional)</label>
+          <label htmlFor="bearing-goal-description" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Description (optional)</label>
           <textarea
+            id="bearing-goal-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Why is this goal important?"

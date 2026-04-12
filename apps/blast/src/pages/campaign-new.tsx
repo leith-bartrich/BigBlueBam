@@ -113,23 +113,23 @@ export function CampaignNewPage({ onNavigate }: CampaignNewPageProps) {
       {/* Campaign settings bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 px-6 py-3 bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
         <div>
-          <label className="block text-xs font-medium text-zinc-500 mb-1">Campaign Name *</label>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., April Product Launch" className={input} />
+          <label htmlFor="blast-campaign-name" className="block text-xs font-medium text-zinc-500 mb-1">Campaign Name *</label>
+          <input id="blast-campaign-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., April Product Launch" className={input} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-500 mb-1">Subject Line *</label>
-          <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Introducing our newest features" className={input} />
+          <label htmlFor="blast-campaign-subject" className="block text-xs font-medium text-zinc-500 mb-1">Subject Line *</label>
+          <input id="blast-campaign-subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Introducing our newest features" className={input} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-500 mb-1">From</label>
+          <label htmlFor="blast-campaign-from-name" className="block text-xs font-medium text-zinc-500 mb-1">From</label>
           <div className="flex gap-2">
-            <input type="text" value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Name" className={input} />
-            <input type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="Email" className={input} />
+            <input id="blast-campaign-from-name" type="text" value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Name" className={input} aria-label="From name" />
+            <input id="blast-campaign-from-email" type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="Email" className={input} aria-label="From email" />
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-500 mb-1">Segment</label>
-          <select value={segmentId} onChange={(e) => setSegmentId(e.target.value)} className={input}>
+          <label htmlFor="blast-campaign-segment" className="block text-xs font-medium text-zinc-500 mb-1">Segment</label>
+          <select id="blast-campaign-segment" value={segmentId} onChange={(e) => setSegmentId(e.target.value)} className={input}>
             <option value="">All contacts</option>
             {segments.map((s) => (
               <option key={s.id} value={s.id}>{s.name} ({s.cached_count ?? '?'})</option>
@@ -200,8 +200,9 @@ export function CampaignNewPage({ onNavigate }: CampaignNewPageProps) {
         ) : contentMode === 'html' ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
             <div className="p-4 overflow-auto">
-              <label className="block text-xs font-medium text-zinc-500 mb-2">HTML Body</label>
+              <label htmlFor="blast-campaign-html-body" className="block text-xs font-medium text-zinc-500 mb-2">HTML Body</label>
               <textarea
+                id="blast-campaign-html-body"
                 value={rawHtml}
                 onChange={(e) => setRawHtml(e.target.value)}
                 className="w-full h-[calc(100%-2rem)] px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"

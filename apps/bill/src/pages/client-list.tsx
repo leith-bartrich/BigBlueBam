@@ -41,8 +41,9 @@ export function ClientListPage({ onNavigate }: Props) {
         <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 space-y-3">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Name</label>
+              <label htmlFor="bill-client-name" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Name</label>
               <input
+                id="bill-client-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -51,8 +52,9 @@ export function ClientListPage({ onNavigate }: Props) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Email</label>
+              <label htmlFor="bill-client-email" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Email</label>
               <input
+                id="bill-client-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

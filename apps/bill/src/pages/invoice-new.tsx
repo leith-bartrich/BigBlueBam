@@ -67,8 +67,9 @@ export function InvoiceNewPage({ onNavigate }: Props) {
 
       {/* Client selection */}
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Client</label>
+        <label htmlFor="bill-invoice-client" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Client</label>
         <select
+          id="bill-invoice-client"
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
           className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
@@ -190,8 +191,9 @@ export function InvoiceNewPage({ onNavigate }: Props) {
 
       {/* Notes */}
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Notes (internal)</label>
+        <label htmlFor="bill-invoice-notes" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Notes (internal)</label>
         <textarea
+          id="bill-invoice-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm"

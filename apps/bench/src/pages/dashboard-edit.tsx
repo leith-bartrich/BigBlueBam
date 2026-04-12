@@ -66,8 +66,9 @@ export function DashboardEditPage({ dashboardId, onNavigate }: DashboardEditPage
       {/* Metadata */}
       <div className="space-y-4 mb-8">
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Name</label>
+          <label htmlFor="bench-dashboard-name" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Name</label>
           <input
+            id="bench-dashboard-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -75,8 +76,9 @@ export function DashboardEditPage({ dashboardId, onNavigate }: DashboardEditPage
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Description</label>
+          <label htmlFor="bench-dashboard-description" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Description</label>
           <textarea
+            id="bench-dashboard-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
@@ -84,8 +86,9 @@ export function DashboardEditPage({ dashboardId, onNavigate }: DashboardEditPage
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Visibility</label>
+          <label htmlFor="bench-dashboard-visibility" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Visibility</label>
           <select
+            id="bench-dashboard-visibility"
             value={visibility}
             onChange={(e) => setVisibility(e.target.value)}
             className="px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
