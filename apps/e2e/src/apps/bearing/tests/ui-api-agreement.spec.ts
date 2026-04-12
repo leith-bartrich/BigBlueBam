@@ -15,7 +15,7 @@ test.describe('Bearing — UI-API Agreement', () => {
     await screenshots.capture(page, 'dashboard-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/goals',
+      apiPath: '/v1/goals',
       itemTextExtractor: (item) => (item as any).title,
     });
 
@@ -38,7 +38,7 @@ test.describe('Bearing — UI-API Agreement', () => {
     await screenshots.capture(page, 'periods-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/periods',
+      apiPath: '/v1/periods',
       itemTextExtractor: (item) => (item as any).name,
     });
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as eventService from '../services/event.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import { enrichEvent, loadActor, loadOrg } from '../lib/bolt-enrich.js';
 
 const createEventSchema = z.object({
   calendar_id: z.string().uuid(),
@@ -93,14 +94,27 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         request.user!.id,
       );
-      publishBoltEvent('event.created', 'book', {
-        id: event.id,
-        title: event.title,
-        start_at: event.start_at,
-        end_at: event.end_at,
-        status: event.status,
-        created_by: request.user!.id,
-      }, request.user!.org_id);
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1)
+      Promise.all([
+        enrichEvent(event.id),
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+      ])
+        .then(([enriched, actor, org]) => {
+          publishBoltEvent(
+            'event.created',
+            'book',
+            {
+              event: enriched ?? { id: event.id, title: event.title },
+              actor,
+              org,
+            },
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          );
+        })
+        .catch(() => {});
       return reply.status(201).send({ data: event });
     },
   );
@@ -129,14 +143,28 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         body,
       );
-      publishBoltEvent('event.updated', 'book', {
-        id: event.id,
-        title: event.title,
-        start_at: event.start_at,
-        end_at: event.end_at,
-        status: event.status,
-        updated_by: request.user!.id,
-      }, request.user!.org_id);
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1)
+      Promise.all([
+        enrichEvent(event.id),
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+      ])
+        .then(([enriched, actor, org]) => {
+          publishBoltEvent(
+            'event.updated',
+            'book',
+            {
+              event: enriched ?? { id: event.id, title: event.title },
+              changes: body,
+              actor,
+              org,
+            },
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          );
+        })
+        .catch(() => {});
       return reply.send({ data: event });
     },
   );

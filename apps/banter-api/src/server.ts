@@ -21,6 +21,7 @@ import preferenceRoutes from './routes/preference.routes.js';
 import fileRoutes from './routes/file.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import userGroupRoutes from './routes/user-group.routes.js';
+import userRoutes from './routes/user.routes.js';
 import searchRoutes from './routes/search.routes.js';
 import callRoutes from './routes/call.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
@@ -59,6 +60,18 @@ fastify.setErrorHandler((error, request, reply) => {
     error: {
       code: statusCode >= 500 ? 'INTERNAL_ERROR' : 'BAD_REQUEST',
       message: statusCode >= 500 ? 'Internal server error' : error.message,
+      details: [],
+      request_id: request.id,
+    },
+  });
+});
+
+// Not found handler — standard error envelope for 404s
+fastify.setNotFoundHandler((request, reply) => {
+  return reply.status(404).send({
+    error: {
+      code: 'NOT_FOUND',
+      message: `Route ${request.method} ${request.url} not found`,
       details: [],
       request_id: request.id,
     },
@@ -176,6 +189,7 @@ await fastify.register(preferenceRoutes);
 await fastify.register(fileRoutes);
 await fastify.register(adminRoutes);
 await fastify.register(userGroupRoutes);
+await fastify.register(userRoutes);
 await fastify.register(searchRoutes);
 await fastify.register(callRoutes);
 await fastify.register(webhookRoutes);

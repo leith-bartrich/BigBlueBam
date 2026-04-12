@@ -505,18 +505,22 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
           <div className="flex items-center justify-between mb-6">
             <div>
               <input
+                id="blank-form-title"
                 type="text"
                 value={form?.name ?? ''}
                 onChange={(e) => updateMutation.mutate({ name: e.target.value })}
                 className="text-2xl font-bold bg-transparent border-none outline-none text-zinc-900 dark:text-zinc-100 w-full"
                 placeholder="Form Title"
+                aria-label="Form title"
               />
               <input
+                id="blank-form-description"
                 type="text"
                 value={form?.description ?? ''}
                 onChange={(e) => updateMutation.mutate({ description: e.target.value })}
                 className="text-sm bg-transparent border-none outline-none text-zinc-500 w-full mt-1"
                 placeholder="Add a description..."
+                aria-label="Form description"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -596,8 +600,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Field Settings</h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1">Label</label>
+              <label htmlFor={`blank-field-${selectedField.id}-label`} className="block text-xs font-medium text-zinc-500 mb-1">Label</label>
               <input
+                id={`blank-field-${selectedField.id}-label`}
                 type="text"
                 defaultValue={selectedField.label}
                 onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { label: e.target.value }).then(() => updateMutation.mutate({}))}
@@ -605,8 +610,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1">Key</label>
+              <label htmlFor={`blank-field-${selectedField.id}-key`} className="block text-xs font-medium text-zinc-500 mb-1">Key</label>
               <input
+                id={`blank-field-${selectedField.id}-key`}
                 type="text"
                 defaultValue={selectedField.field_key}
                 onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { field_key: e.target.value }).then(() => updateMutation.mutate({}))}
@@ -614,8 +620,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1">Description</label>
+              <label htmlFor={`blank-field-${selectedField.id}-description`} className="block text-xs font-medium text-zinc-500 mb-1">Description</label>
               <input
+                id={`blank-field-${selectedField.id}-description`}
                 type="text"
                 defaultValue={selectedField.description ?? ''}
                 onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { description: e.target.value || null }).then(() => updateMutation.mutate({}))}
@@ -624,8 +631,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1">Placeholder</label>
+              <label htmlFor={`blank-field-${selectedField.id}-placeholder`} className="block text-xs font-medium text-zinc-500 mb-1">Placeholder</label>
               <input
+                id={`blank-field-${selectedField.id}-placeholder`}
                 type="text"
                 defaultValue={selectedField.placeholder ?? ''}
                 onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { placeholder: e.target.value || null }).then(() => updateMutation.mutate({}))}
@@ -634,12 +642,13 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
             </div>
             <div className="flex items-center gap-2">
               <input
+                id={`blank-field-${selectedField.id}-required`}
                 type="checkbox"
                 defaultChecked={selectedField.required}
                 onChange={(e) => api.patch(`/v1/fields/${selectedField.id}`, { required: e.target.checked }).then(() => updateMutation.mutate({}))}
                 className="rounded"
               />
-              <label className="text-sm text-zinc-700 dark:text-zinc-300">Required</label>
+              <label htmlFor={`blank-field-${selectedField.id}-required`} className="text-sm text-zinc-700 dark:text-zinc-300">Required</label>
             </div>
 
             {/* Options editor for select/dropdown field types */}
@@ -658,6 +667,7 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
                           api.patch(`/v1/fields/${selectedField.id}`, { options: opts }).then(() => updateMutation.mutate({}));
                         }}
                         className="flex-1 px-2 py-1 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                        aria-label={`Option ${i + 1}`}
                       />
                       <button
                         onClick={() => {
@@ -688,8 +698,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
             {['short_text', 'long_text', 'textarea'].includes(selectedField.field_type) && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Min Length</label>
+                  <label htmlFor={`blank-field-${selectedField.id}-min-length`} className="block text-xs font-medium text-zinc-500 mb-1">Min Length</label>
                   <input
+                    id={`blank-field-${selectedField.id}-min-length`}
                     type="number"
                     min={0}
                     defaultValue={selectedField.min_length ?? ''}
@@ -698,8 +709,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Max Length</label>
+                  <label htmlFor={`blank-field-${selectedField.id}-max-length`} className="block text-xs font-medium text-zinc-500 mb-1">Max Length</label>
                   <input
+                    id={`blank-field-${selectedField.id}-max-length`}
                     type="number"
                     min={0}
                     defaultValue={selectedField.max_length ?? ''}
@@ -714,8 +726,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
             {['number', 'rating', 'scale', 'nps'].includes(selectedField.field_type) && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Min Value</label>
+                  <label htmlFor={`blank-field-${selectedField.id}-min-value`} className="block text-xs font-medium text-zinc-500 mb-1">Min Value</label>
                   <input
+                    id={`blank-field-${selectedField.id}-min-value`}
                     type="number"
                     defaultValue={selectedField.min_value ?? ''}
                     onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { min_value: e.target.value || null }).then(() => updateMutation.mutate({}))}
@@ -723,8 +736,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Max Value</label>
+                  <label htmlFor={`blank-field-${selectedField.id}-max-value`} className="block text-xs font-medium text-zinc-500 mb-1">Max Value</label>
                   <input
+                    id={`blank-field-${selectedField.id}-max-value`}
                     type="number"
                     defaultValue={selectedField.max_value ?? ''}
                     onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { max_value: e.target.value || null }).then(() => updateMutation.mutate({}))}
@@ -738,8 +752,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
             {selectedField.field_type === 'scale' && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Scale Min</label>
+                  <label htmlFor={`blank-field-${selectedField.id}-scale-min`} className="block text-xs font-medium text-zinc-500 mb-1">Scale Min</label>
                   <input
+                    id={`blank-field-${selectedField.id}-scale-min`}
                     type="number"
                     defaultValue={selectedField.scale_min ?? 1}
                     onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { scale_min: Number(e.target.value) || 1 }).then(() => updateMutation.mutate({}))}
@@ -747,8 +762,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Scale Max</label>
+                  <label htmlFor={`blank-field-${selectedField.id}-scale-max`} className="block text-xs font-medium text-zinc-500 mb-1">Scale Max</label>
                   <input
+                    id={`blank-field-${selectedField.id}-scale-max`}
                     type="number"
                     defaultValue={selectedField.scale_max ?? 10}
                     onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { scale_max: Number(e.target.value) || 10 }).then(() => updateMutation.mutate({}))}
@@ -761,8 +777,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
             {/* Regex pattern for any field */}
             {!['section_header', 'paragraph', 'hidden', 'page_break', 'file_upload'].includes(selectedField.field_type) && (
               <div>
-                <label className="block text-xs font-medium text-zinc-500 mb-1">Regex Pattern</label>
+                <label htmlFor={`blank-field-${selectedField.id}-regex`} className="block text-xs font-medium text-zinc-500 mb-1">Regex Pattern</label>
                 <input
+                  id={`blank-field-${selectedField.id}-regex`}
                   type="text"
                   defaultValue={selectedField.regex_pattern ?? ''}
                   onBlur={(e) => api.patch(`/v1/fields/${selectedField.id}`, { regex_pattern: e.target.value || null }).then(() => updateMutation.mutate({}))}
@@ -774,8 +791,9 @@ export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
 
             {/* Page number assignment */}
             <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1">Page Number</label>
+              <label htmlFor={`blank-field-${selectedField.id}-page-number`} className="block text-xs font-medium text-zinc-500 mb-1">Page Number</label>
               <input
+                id={`blank-field-${selectedField.id}-page-number`}
                 type="number"
                 min={0}
                 defaultValue={selectedField.page_number ?? 0}
@@ -939,7 +957,7 @@ function FormSettingsDialog({ form, onClose, onUpdate }: FormSettingsDialogProps
           {/* Project picker (only when visibility=project) */}
           {visibility === 'project' && (
             <div>
-              <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+              <label htmlFor="blank-form-settings-project" className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
                 Project
               </label>
               {projectsQuery.isLoading ? (
@@ -950,6 +968,7 @@ function FormSettingsDialog({ form, onClose, onUpdate }: FormSettingsDialogProps
                 </div>
               ) : (
                 <select
+                  id="blank-form-settings-project"
                   value={projectId ?? ''}
                   onChange={(e) => setProjectId(e.target.value || null)}
                   className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
@@ -967,7 +986,7 @@ function FormSettingsDialog({ form, onClose, onUpdate }: FormSettingsDialogProps
 
           {/* Expiration */}
           <div>
-            <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+            <label htmlFor="blank-form-settings-expires-at" className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
               Expires at
             </label>
             <p className="text-xs text-zinc-500 mb-2">
@@ -975,6 +994,7 @@ function FormSettingsDialog({ form, onClose, onUpdate }: FormSettingsDialogProps
             </p>
             <div className="flex items-center gap-2">
               <input
+                id="blank-form-settings-expires-at"
                 type="datetime-local"
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}

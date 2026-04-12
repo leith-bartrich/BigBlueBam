@@ -14,9 +14,11 @@ test.describe('Blank — UI-API Agreement', () => {
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'forms-for-agreement');
 
+    // Forms are returned with `name` (the Blank form entity does not have a
+    // `title` column — see apps/blank-api/src/db/schema/forms.ts).
     const result = await checker.checkListRendering({
-      apiPath: '/forms',
-      itemTextExtractor: (item) => (item as any).title,
+      apiPath: '/v1/forms',
+      itemTextExtractor: (item) => (item as any).name,
     });
 
     await screenshots.capture(page, 'form-agreement-result');
@@ -34,7 +36,7 @@ test.describe('Blank — UI-API Agreement', () => {
 
     let formId: string | undefined;
     try {
-      const forms = await api.get<any[]>('/forms');
+      const forms = await api.get<any[]>('/v1/forms');
       if (forms.length > 0) formId = forms[0].id;
     } catch {}
 
@@ -45,7 +47,7 @@ test.describe('Blank — UI-API Agreement', () => {
     await screenshots.capture(page, 'responses-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: `/forms/${formId}/submissions`,
+      apiPath: `/v1/forms/${formId}/submissions`,
       itemTextExtractor: (item) => (item as any).id,
     });
 

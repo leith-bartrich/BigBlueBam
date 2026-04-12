@@ -69,10 +69,17 @@ test.describe('Beacon — Navigation', () => {
       (p) => p.requiresAuth && !p.requiresSetup && !p.path.includes(':'),
     );
 
+    // Ensure the Beacon SPA shell is mounted before iterating pushState routes.
+    // Once <main> is present it stays mounted across client-side route changes.
+    // homePage.goto() already blocks up to 40 s waiting for <main> under load.
+    await homePage.goto();
+
     for (const pageDef of simplePages) {
       await homePage.navigate(pageDef.path);
       await screenshots.capture(page, `page-${pageDef.name}-loaded`);
-      await expect(page.locator('main, [class*="content"]').first()).toBeVisible();
+      // Layout <main> is always mounted; .first() protects against nested
+      // <main> children (dashboard, settings) from tripping strict-mode.
+      await expect(page.locator('main').first()).toBeVisible({ timeout: 10_000 });
     }
   });
 

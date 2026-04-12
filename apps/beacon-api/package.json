@@ -17,6 +17,7 @@
     "@fastify/rate-limit": "^10.0.0",
     "@qdrant/js-client-rest": "^1.12.0",
     "argon2": "^0.41.1",
+    "bullmq": "^5.0.0",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.36.0",
     "fastify": "^5.2.0",
@@ -31,7 +32,6 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@types/dompurify": "^3.2.0",
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",

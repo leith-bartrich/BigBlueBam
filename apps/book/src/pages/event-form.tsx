@@ -170,10 +170,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+          <label htmlFor="book-event-title" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
             Title <span className="text-red-500">*</span>
           </label>
           <input
+            id="book-event-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -191,13 +192,14 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
 
         {/* Calendar */}
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+          <label htmlFor="book-event-calendar" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
             Calendar <span className="text-red-500">*</span>
           </label>
           {calLoading ? (
             <div className="text-xs text-zinc-400">Loading calendars...</div>
           ) : (
             <select
+              id="book-event-calendar"
               value={calendarId}
               onChange={(e) => setCalendarId(e.target.value)}
               className={cn(
@@ -235,10 +237,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
         {/* Start / End */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            <label htmlFor="book-event-start" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
               {allDay ? 'Start Date' : 'Start'}
             </label>
             <input
+              id="book-event-start"
               type={allDay ? 'date' : 'datetime-local'}
               value={allDay ? startAt.split('T')[0] : startAt}
               onChange={(e) => {
@@ -252,10 +255,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            <label htmlFor="book-event-end" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
               {allDay ? 'End Date' : 'End'}
             </label>
             <input
+              id="book-event-end"
               type={allDay ? 'date' : 'datetime-local'}
               value={allDay ? endAt.split('T')[0] : endAt}
               onChange={(e) => {
@@ -278,10 +282,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
 
         {/* Description */}
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+          <label htmlFor="book-event-description" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
             Description
           </label>
           <textarea
+            id="book-event-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Add details, agenda, or notes..."
@@ -292,10 +297,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
 
         {/* Location */}
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+          <label htmlFor="book-event-location" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
             Location
           </label>
           <input
+            id="book-event-location"
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
@@ -307,10 +313,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
         {/* Recurrence + Visibility + Reminder row */}
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            <label htmlFor="book-event-recurrence" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
               Repeat
             </label>
             <select
+              id="book-event-recurrence"
               value={recurrence}
               onChange={(e) => setRecurrence(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -321,10 +328,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            <label htmlFor="book-event-visibility" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
               Show as
             </label>
             <select
+              id="book-event-visibility"
               value={visibility}
               onChange={(e) => setVisibility(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -336,10 +344,11 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            <label htmlFor="book-event-reminder" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
               Reminder
             </label>
             <select
+              id="book-event-reminder"
               value={reminderMinutes}
               onChange={(e) => setReminderMinutes(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -353,11 +362,12 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
 
         {/* Color */}
         <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+          <label htmlFor="book-event-color" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
             Color
           </label>
           <div className="flex items-center gap-3">
             <input
+              id="book-event-color"
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}

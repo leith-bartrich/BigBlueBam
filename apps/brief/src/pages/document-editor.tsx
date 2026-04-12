@@ -242,7 +242,11 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
+          <label htmlFor="brief-document-title" className="sr-only">
+            Title
+          </label>
           <input
+            id="brief-document-title"
             type="text"
             placeholder="Document title..."
             value={title}
@@ -279,7 +283,11 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
 
           {/* Summary (collapsed, optional) */}
           <div className="px-6 lg:px-8 pt-4 pb-2 shrink-0">
+            <label htmlFor="brief-document-summary" className="sr-only">
+              Summary
+            </label>
             <input
+              id="brief-document-summary"
               type="text"
               placeholder="Brief summary (optional)..."
               value={summary}
@@ -317,10 +325,11 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
 
             {/* Icon emoji */}
             <div>
-              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
+              <label htmlFor="brief-document-icon" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
                 Icon (emoji)
               </label>
               <input
+                id="brief-document-icon"
                 type="text"
                 placeholder="e.g. docs, notes..."
                 value={iconEmoji}
@@ -332,10 +341,11 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
 
             {/* Visibility */}
             <div>
-              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
+              <label htmlFor="brief-document-visibility" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
                 Visibility
               </label>
               <select
+                id="brief-document-visibility"
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value as DocumentVisibility)}
                 className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
@@ -349,10 +359,11 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
             {/* Project selector */}
             {!isEditMode && (
               <div>
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
+                <label htmlFor="brief-document-project" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
                   Project (optional)
                 </label>
                 <select
+                  id="brief-document-project"
                   value={projectId || '__none__'}
                   onChange={(e) => setProjectId(e.target.value === '__none__' ? '' : e.target.value)}
                   className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
@@ -375,10 +386,11 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
             {/* Template selector (new documents only) */}
             {!isEditMode && templates && templates.length > 0 && (
               <div>
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
+                <label htmlFor="brief-document-template" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5 block">
                   Start from template
                 </label>
                 <select
+                  id="brief-document-template"
                   value={selectedTemplateId || '__none__'}
                   onChange={(e) => setSelectedTemplateId(e.target.value === '__none__' ? '' : e.target.value)}
                   className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"

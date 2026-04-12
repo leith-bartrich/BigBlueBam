@@ -14,24 +14,32 @@ test.describe('Bill — Client CRUD', () => {
     await screenshots.capture(page, 'clients-before-create');
 
     await invoicesPage.clickCreateClient();
-    await screenshots.capture(page, 'create-client-dialog');
+    await screenshots.capture(page, 'create-client-form-open');
 
-    // Fill client form
-    await page.getByLabel(/client name|name/i).fill(testClientName);
+    // The Bill clients page uses an inline expand-form pattern, not a dialog.
+    // The Name and Email <label>s are NOT associated to inputs via htmlFor,
+    // so getByLabel cannot resolve them — match by placeholder instead.
+    await page.getByPlaceholder(/client name/i).fill(testClientName);
     await screenshots.capture(page, 'client-name-filled');
 
-    await page.getByLabel(/email/i).fill(testClientEmail);
+    await page.getByPlaceholder(/billing@example/i).fill(testClientEmail);
     await screenshots.capture(page, 'client-email-filled');
 
-    await page.getByRole('button', { name: /create|save/i }).click();
+    // The submit button inside the inline form is "Create Client" — scope to
+    // <main> and use an exact match so we never collide with the "New Client"
+    // toggle button that opened this form.
+    await page
+      .getByRole('main')
+      .getByRole('button', { name: /^create client$/i })
+      .click();
     await page.waitForTimeout(1000);
     await screenshots.capture(page, 'client-created');
 
-    // Verify via API
+    // Verify via API. Bill API list routes live under /v1/.
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
     const api = new DirectApiClient(request, '/bill/api', csrf || undefined);
-    const clients = await api.get<any[]>('/clients');
+    const clients = await api.get<any[]>('/v1/clients');
     const found = clients.find((c: any) => c.name === testClientName);
     expect(found).toBeTruthy();
     await screenshots.capture(page, 'client-verified-via-api');
@@ -52,15 +60,34 @@ test.describe('Bill — Client CRUD', () => {
     await invoicesPage.goto();
     await invoicesPage.navigateToClients();
     await invoicesPage.clickCreateClient();
-    await screenshots.capture(page, 'create-client-dialog-open');
+    await screenshots.capture(page, 'create-client-form-open');
 
-    // Submit without filling required fields
-    await page.getByRole('button', { name: /create|save/i }).click();
-    await screenshots.capture(page, 'client-validation-error');
+    // The Bill clients page silently no-ops on empty-name submit:
+    //   if (!name) return;
+    // It does not surface a `text-red-500` / `[role="alert"]` element.
+    // Instead, assert the observable contract: clicking "Create Client" with
+    // an empty Name input MUST NOT close the form and MUST NOT issue a POST
+    // to /v1/clients.
+    const postPromise = page
+      .waitForRequest(
+        (req) => req.url().includes('/bill/api/v1/clients') && req.method() === 'POST',
+        { timeout: 1500 },
+      )
+      .catch(() => null);
 
-    const errorEl = page.locator('.text-red-500, .text-destructive, [role="alert"]').first();
-    await expect(errorEl).toBeVisible({ timeout: 5000 });
-    await screenshots.capture(page, 'client-error-detail');
+    await page
+      .getByRole('main')
+      .getByRole('button', { name: /^create client$/i })
+      .click();
+    await screenshots.capture(page, 'client-validation-noop');
+
+    const post = await postPromise;
+    expect(post).toBeNull();
+
+    // The inline form should still be visible (its Name placeholder input
+    // is still attached to the DOM) — i.e. the form did not submit/close.
+    await expect(page.getByPlaceholder(/client name/i)).toBeVisible();
+    await screenshots.capture(page, 'client-form-still-open');
   });
 
   test('client detail page loads for existing client', async ({ page, screenshots, context, request }) => {
@@ -70,7 +97,7 @@ test.describe('Bill — Client CRUD', () => {
 
     let clientId: string | undefined;
     try {
-      const clients = await api.get<any[]>('/clients');
+      const clients = await api.get<any[]>('/v1/clients');
       if (clients.length > 0) clientId = clients[0].id;
     } catch {}
 

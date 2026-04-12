@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -35,7 +35,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler(async (error, request, reply) => {
+fastify.setErrorHandler(async (error: FastifyError, request, reply) => {
   if (error.validation) {
     return reply.status(400).send({
       error: {
@@ -60,6 +60,18 @@ fastify.setErrorHandler(async (error, request, reply) => {
   });
 });
 
+// Not found handler
+fastify.setNotFoundHandler((request, reply) => {
+  return reply.status(404).send({
+    error: {
+      code: 'NOT_FOUND',
+      message: `Route ${request.method} ${request.url} not found`,
+      details: [],
+      request_id: request.id,
+    },
+  });
+});
+
 // Plugins
 await fastify.register(cors, {
   origin: env.CORS_ORIGIN.split(','),
@@ -70,8 +82,33 @@ await fastify.register(cookie, {
   secret: env.SESSION_SECRET,
 });
 
+// BAM-RL-E2E: Loosen the global rate limit ceiling for non-production
+// environments and for explicitly opted-in test/dev stacks. Route-level
+// rate limits on sensitive endpoints still apply unchanged because they
+// override the plugin defaults via Fastify's per-route `config.rateLimit`.
+// This only relaxes the global ceiling that was throttling parallel Playwright
+// workers on /auth/login. Production stays strict unless an operator explicitly
+// sets BBB_E2E_PERMISSIVE_RATE_LIMIT=1, which is intentional and logged below.
+const permissiveRateLimit =
+  env.BBB_E2E_PERMISSIVE_RATE_LIMIT === true || env.NODE_ENV !== 'production';
+const effectiveRateLimitMax = permissiveRateLimit
+  ? env.RATE_LIMIT_MAX * env.RATE_LIMIT_E2E_MULTIPLIER
+  : env.RATE_LIMIT_MAX;
+if (permissiveRateLimit) {
+  fastify.log.warn(
+    {
+      base_max: env.RATE_LIMIT_MAX,
+      effective_max: effectiveRateLimitMax,
+      multiplier: env.RATE_LIMIT_E2E_MULTIPLIER,
+      window_ms: env.RATE_LIMIT_WINDOW_MS,
+      node_env: env.NODE_ENV,
+      explicit_flag: env.BBB_E2E_PERMISSIVE_RATE_LIMIT === true,
+    },
+    'permissive rate limit active — global helpdesk auth ceiling raised for tests',
+  );
+}
 await fastify.register(rateLimit, {
-  max: env.RATE_LIMIT_MAX,
+  max: effectiveRateLimitMax,
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
   // HB-25: prefer authenticated user id so a single customer can't bypass
   // limits by switching IPs. Falls back to IP for unauthenticated requests.
@@ -90,7 +127,13 @@ await fastify.register(csrfPlugin);
 await fastify.register(helpdeskAuthPlugin);
 
 // Health endpoints
+// Note: nginx rewrites `/helpdesk/api/*` -> `/helpdesk/*` on the upstream, so
+// external `/helpdesk/api/health` hits us at `/helpdesk/health`. Register both
+// to support direct-container checks and proxied requests.
 fastify.get('/health', async () => {
+  return { status: 'ok', timestamp: new Date().toISOString() };
+});
+fastify.get('/helpdesk/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
 

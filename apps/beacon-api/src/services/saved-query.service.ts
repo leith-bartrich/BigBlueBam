@@ -4,7 +4,7 @@
  * Per §5.5.1 (Saved Queries) of the Beacon Design Spec.
  */
 
-import { eq, and, or, inArray } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { beaconSavedQueries } from '../db/schema/index.js';
 import { BeaconError } from './beacon.service.js';

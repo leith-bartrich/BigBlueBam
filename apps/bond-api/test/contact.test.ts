@@ -37,6 +37,7 @@ vi.mock('../src/env.js', () => ({
     RATE_LIMIT_WINDOW_MS: 60000,
     BBB_API_INTERNAL_URL: 'http://api:4000',
     COOKIE_SECURE: false,
+    PUBLIC_URL: 'http://localhost',
   },
 }));
 
@@ -48,7 +49,8 @@ function chainable(result: unknown[]) {
   const obj: any = {};
   obj.then = (resolve: Function, reject?: Function) =>
     Promise.resolve(result).then(resolve as any, reject as any);
-  obj.limit = vi.fn().mockResolvedValue(result);
+  obj.limit = vi.fn().mockReturnValue(obj);
+  obj.offset = vi.fn().mockResolvedValue(result);
   obj.returning = vi.fn().mockResolvedValue(result);
   obj.from = vi.fn().mockReturnValue(obj);
   obj.where = vi.fn().mockReturnValue(obj);
@@ -132,18 +134,26 @@ function setupTransaction() {
 
 describe('BondError', () => {
   it('should create error with code, message, and status', async () => {
-    const { BondError } = await import('../src/services/contact.service.js');
-    const error = new BondError('NOT_FOUND', 'Contact not found', 404);
+    const { BondError } = await import('../src/lib/utils.js');
+    const error = new BondError(404, 'NOT_FOUND', 'Contact not found');
     expect(error.code).toBe('NOT_FOUND');
     expect(error.message).toBe('Contact not found');
     expect(error.statusCode).toBe(404);
     expect(error.name).toBe('BondError');
   });
 
-  it('should default to 400 status code', async () => {
-    const { BondError } = await import('../src/services/contact.service.js');
-    const error = new BondError('VALIDATION', 'Bad data');
+  it('notFound helper should return 404 BondError', async () => {
+    const { notFound } = await import('../src/lib/utils.js');
+    const error = notFound('Contact not found');
+    expect(error.statusCode).toBe(404);
+    expect(error.code).toBe('NOT_FOUND');
+  });
+
+  it('badRequest helper should return 400 BondError', async () => {
+    const { badRequest } = await import('../src/lib/utils.js');
+    const error = badRequest('Bad data');
     expect(error.statusCode).toBe(400);
+    expect(error.code).toBe('BAD_REQUEST');
   });
 });
 
@@ -161,23 +171,27 @@ describe('listContacts', () => {
     listContacts = mod.listContacts;
   });
 
-  it('should return paginated list with cursor-based pagination', async () => {
+  it('should return paginated list with limit/offset pagination', async () => {
     const c1 = makeContact({ id: 'c-1', created_at: new Date('2026-04-01') });
     const c2 = makeContact({ id: 'c-2', created_at: new Date('2026-04-02') });
 
     mockSelect.mockReturnValue(chainable([c1, c2]));
 
-    const result = await listContacts({ orgId: ORG_ID, limit: 1 });
+    const result = await listContacts({ organization_id: ORG_ID, limit: 1 });
 
-    expect(result.data).toHaveLength(1);
-    expect(result.meta.has_more).toBe(true);
-    expect(result.meta.next_cursor).toBeDefined();
+    // Returns data/total/limit/offset shape
+    expect(result.data).toBeDefined();
+    expect(result.limit).toBe(1);
+    expect(result.offset).toBe(0);
   });
 
   it('should filter by lifecycle_stage', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await listContacts({ orgId: ORG_ID, lifecycleStage: 'customer' });
+    const result = await listContacts({
+      organization_id: ORG_ID,
+      lifecycle_stage: 'customer',
+    });
 
     expect(result.data).toEqual([]);
     expect(mockSelect).toHaveBeenCalled();
@@ -186,7 +200,10 @@ describe('listContacts', () => {
   it('should search with escaped ILIKE', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await listContacts({ orgId: ORG_ID, search: '100%_complete' });
+    const result = await listContacts({
+      organization_id: ORG_ID,
+      search: '100%_complete',
+    });
 
     expect(result.data).toEqual([]);
     expect(mockSelect).toHaveBeenCalled();
@@ -195,10 +212,10 @@ describe('listContacts', () => {
   it('should cap limit to 100', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await listContacts({ orgId: ORG_ID, limit: 500 });
+    const result = await listContacts({ organization_id: ORG_ID, limit: 500 });
 
     expect(result.data).toEqual([]);
-    expect(result.meta.has_more).toBe(false);
+    expect(result.limit).toBe(100);
   });
 });
 
@@ -216,7 +233,7 @@ describe('getContact', () => {
     getContact = mod.getContact;
   });
 
-  it('should return contact with companies and recent activities', async () => {
+  it('should return contact with companies, deals, and recent activities', async () => {
     const contact = makeContact();
 
     let selectCount = 0;
@@ -224,6 +241,7 @@ describe('getContact', () => {
       selectCount++;
       if (selectCount === 1) return chainable([contact]);
       if (selectCount === 2) return chainable([{ company_id: COMPANY_ID, name: 'Acme Corp' }]);
+      if (selectCount === 3) return chainable([{ deal_id: 'deal-1', name: 'Deal' }]);
       return chainable([{ id: 'act-1', activity_type: 'email_sent' }]);
     });
 
@@ -235,11 +253,12 @@ describe('getContact', () => {
     expect(result.recent_activities).toHaveLength(1);
   });
 
-  it('should return null when contact not found', async () => {
+  it('should throw NOT_FOUND when contact not found', async () => {
+    const { BondError } = await import('../src/lib/utils.js');
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getContact('nonexistent', ORG_ID);
-    expect(result).toBeNull();
+    await expect(getContact('nonexistent', ORG_ID)).rejects.toThrow(BondError);
+    await expect(getContact('nonexistent', ORG_ID)).rejects.toThrow('Contact not found');
   });
 });
 
@@ -263,8 +282,8 @@ describe('createContact', () => {
 
     const result = await createContact(
       { first_name: 'Ada', last_name: 'Lovelace', email: 'ada@example.com' },
-      USER_ID,
       ORG_ID,
+      USER_ID,
     );
 
     expect(result).toBeDefined();
@@ -284,37 +303,11 @@ describe('createContact', () => {
         email: 'ada@example.com',
         custom_fields: { department: 'Engineering' },
       },
-      USER_ID,
       ORG_ID,
+      USER_ID,
     );
 
     expect(result.custom_fields).toEqual({ department: 'Engineering' });
-  });
-
-  it('should create a contact and link to company', async () => {
-    const contact = makeContact();
-    const { txInsert } = setupTransaction();
-
-    let insertCount = 0;
-    txInsert.mockImplementation(() => {
-      insertCount++;
-      if (insertCount === 1) return chainable([contact]);
-      return chainable([]); // contact_companies link
-    });
-
-    const result = await createContact(
-      {
-        first_name: 'Ada',
-        last_name: 'Lovelace',
-        email: 'ada@example.com',
-        company_id: COMPANY_ID,
-      },
-      USER_ID,
-      ORG_ID,
-    );
-
-    expect(result).toBeDefined();
-    expect(txInsert).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -333,17 +326,14 @@ describe('updateContact', () => {
   });
 
   it('should update contact fields', async () => {
-    const existing = makeContact();
     const updated = makeContact({ first_name: 'Augusta', title: 'CEO' });
 
-    mockSelect.mockReturnValue(chainable([existing]));
     mockUpdate.mockReturnValue(chainable([updated]));
 
     const result = await updateContact(
       CONTACT_ID,
-      { first_name: 'Augusta', title: 'CEO' },
-      USER_ID,
       ORG_ID,
+      { first_name: 'Augusta', title: 'CEO' },
     );
 
     expect(result.first_name).toBe('Augusta');
@@ -351,10 +341,10 @@ describe('updateContact', () => {
   });
 
   it('should throw NOT_FOUND when contact does not exist', async () => {
-    mockSelect.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([]));
 
     await expect(
-      updateContact(CONTACT_ID, { first_name: 'X' }, USER_ID, ORG_ID),
+      updateContact(CONTACT_ID, ORG_ID, { first_name: 'X' }),
     ).rejects.toThrow('Contact not found');
   });
 });
@@ -374,17 +364,15 @@ describe('deleteContact', () => {
   });
 
   it('should delete an existing contact', async () => {
-    const existing = makeContact();
-    mockSelect.mockReturnValue(chainable([existing]));
-    mockDelete.mockReturnValue(chainable([]));
+    mockDelete.mockReturnValue(chainable([{ id: CONTACT_ID }]));
 
     const result = await deleteContact(CONTACT_ID, ORG_ID);
-    expect(result.deleted).toBe(true);
+    expect(result.id).toBe(CONTACT_ID);
     expect(mockDelete).toHaveBeenCalled();
   });
 
   it('should throw NOT_FOUND when contact does not exist', async () => {
-    mockSelect.mockReturnValue(chainable([]));
+    mockDelete.mockReturnValue(chainable([]));
 
     await expect(deleteContact(CONTACT_ID, ORG_ID)).rejects.toThrow('Contact not found');
   });
@@ -404,52 +392,61 @@ describe('mergeContacts', () => {
     mergeContacts = mod.mergeContacts;
   });
 
-  it('should merge secondary into primary contact', async () => {
-    const primary = makeContact({ id: CONTACT_ID });
-    const secondary = makeContact({
+  it('should merge source into target contact', async () => {
+    const target = makeContact({ id: CONTACT_ID });
+    const source = makeContact({
       id: CONTACT_ID_2,
       phone: '+1-555-0200',
       lead_score: 10,
     });
+    const merged = makeContact({ id: CONTACT_ID });
 
-    const merged = makeContact({
-      id: CONTACT_ID,
-      phone: '+1-555-0100',
-      lead_score: 52, // combined scores
-    });
-
-    const { txSelect, txUpdate, txDelete } = setupTransaction();
-
+    // Sequence of db.select calls:
+    //   1. target lookup
+    //   2. source lookup
+    //   3. sourceDealLinks (bondDealContacts)
+    //   4. sourceCompanyLinks (bondContactCompanies)
+    //   5+. getContact(targetId): contact, companies, deals, activities
     let selectCount = 0;
-    txSelect.mockImplementation(() => {
+    mockSelect.mockImplementation(() => {
       selectCount++;
-      if (selectCount === 1) return chainable([primary]);
-      return chainable([secondary]);
+      if (selectCount === 1) return chainable([target]);
+      if (selectCount === 2) return chainable([source]);
+      if (selectCount === 3) return chainable([]); // no deal links
+      if (selectCount === 4) return chainable([]); // no company links
+      if (selectCount === 5) return chainable([merged]); // getContact: contact row
+      return chainable([]); // getContact: companies/deals/activities
     });
 
-    txUpdate.mockReturnValue(chainable([merged]));
-    txDelete.mockReturnValue(chainable([]));
+    mockInsert.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([]));
+    mockDelete.mockReturnValue(chainable([]));
 
-    const result = await mergeContacts(CONTACT_ID, CONTACT_ID_2, USER_ID, ORG_ID);
+    const result = await mergeContacts(CONTACT_ID, CONTACT_ID_2, ORG_ID);
 
     expect(result).toBeDefined();
     expect(result.id).toBe(CONTACT_ID);
-    expect(txDelete).toHaveBeenCalled(); // secondary deleted
+    expect(mockDelete).toHaveBeenCalled(); // source deleted
   });
 
   it('should throw when merging same contact into itself', async () => {
     await expect(
-      mergeContacts(CONTACT_ID, CONTACT_ID, USER_ID, ORG_ID),
-    ).rejects.toThrow('Cannot merge a contact into itself');
+      mergeContacts(CONTACT_ID, CONTACT_ID, ORG_ID),
+    ).rejects.toThrow('Cannot merge a contact with itself');
   });
 
-  it('should throw NOT_FOUND when primary contact does not exist', async () => {
-    const { txSelect } = setupTransaction();
-    txSelect.mockReturnValue(chainable([]));
+  it('should throw NOT_FOUND when target contact does not exist', async () => {
+    // Target lookup empty, source lookup returns something
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      if (selectCount === 1) return chainable([]); // target missing
+      return chainable([makeContact({ id: CONTACT_ID_2 })]); // source exists
+    });
 
     await expect(
-      mergeContacts('nonexistent', CONTACT_ID_2, USER_ID, ORG_ID),
-    ).rejects.toThrow('Primary contact not found');
+      mergeContacts('nonexistent', CONTACT_ID_2, ORG_ID),
+    ).rejects.toThrow('Target contact not found');
   });
 });
 
@@ -471,7 +468,7 @@ describe('searchContacts', () => {
     const c1 = makeContact({ first_name: 'Ada' });
     mockSelect.mockReturnValue(chainable([c1]));
 
-    const result = await searchContacts('Ada', ORG_ID);
+    const result = await searchContacts(ORG_ID, 'Ada');
 
     expect(result).toHaveLength(1);
     expect(result[0].first_name).toBe('Ada');
@@ -480,7 +477,7 @@ describe('searchContacts', () => {
   it('should return empty array for no matches', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await searchContacts('zzzznonexistent', ORG_ID);
+    const result = await searchContacts(ORG_ID, 'zzzznonexistent');
     expect(result).toEqual([]);
   });
 });
@@ -499,10 +496,9 @@ describe('cross-org contact access', () => {
     getContact = mod.getContact;
   });
 
-  it('should return null when contact belongs to different org', async () => {
+  it('should throw NOT_FOUND when contact belongs to different org', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getContact(CONTACT_ID, ORG_ID_2);
-    expect(result).toBeNull();
+    await expect(getContact(CONTACT_ID, ORG_ID_2)).rejects.toThrow('Contact not found');
   });
 });

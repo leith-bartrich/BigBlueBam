@@ -13,6 +13,13 @@ import { broadcastToChannel } from '../services/realtime.js';
 import { extractMentions } from '../services/notification-queue.js';
 import { emitNotification, threadDeepLink } from '../lib/notify.js';
 import { sanitizeContent } from '../lib/sanitize.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  loadEnrichedChannel,
+  loadEnrichedActor,
+  loadEnrichedOrg,
+  buildMessageUrl,
+} from '../lib/bolt-enrich.js';
 
 const createReplySchema = z.object({
   content: z.string().min(1).max(40000),
@@ -336,6 +343,106 @@ export default async function threadRoutes(fastify: FastifyInstance) {
           }
         } catch {
           // Non-critical
+        }
+      })();
+
+      // Bolt workflow event (fire-and-forget) — thread replies are still
+      // messages and fire message.posted / message.mentioned. Payload shape
+      // must match apps/bolt-api/src/services/event-catalog.ts banterEvents.
+      (async () => {
+        try {
+          if (!message) return;
+          const [enrichedChannel, enrichedActor, enrichedOrg] = await Promise.all([
+            loadEnrichedChannel(parent.channel_id),
+            loadEnrichedActor(user.id),
+            loadEnrichedOrg(user.org_id),
+          ]);
+
+          const mentions = extractMentions(body.content);
+          const messageUrl = buildMessageUrl(
+            enrichedChannel,
+            message.id,
+            message.thread_parent_id,
+          );
+
+          await publishBoltEvent(
+            'message.posted',
+            'banter',
+            {
+              message: {
+                id: message.id,
+                content: message.content_plain ?? message.content,
+                content_html: message.content,
+                url: messageUrl,
+                thread_parent_id: message.thread_parent_id,
+                is_reply: true,
+                mentions,
+                // TODO: include attachments — not yet attached at this point
+                attachments: [],
+                created_at: message.created_at,
+              },
+              channel: {
+                id: enrichedChannel.id,
+                name: enrichedChannel.name,
+                handle: enrichedChannel.handle,
+                type: enrichedChannel.type,
+                url: enrichedChannel.url,
+              },
+              actor: enrichedActor,
+              org: enrichedOrg,
+            },
+            user.org_id,
+            user.id,
+            'user',
+          );
+
+          if (mentions.length > 0) {
+            const mentionedUsers = await db
+              .select({
+                id: users.id,
+                display_name: users.display_name,
+                email: users.email,
+              })
+              .from(users)
+              .where(
+                and(
+                  eq(users.org_id, user.org_id),
+                  sql`lower(${users.display_name}) = ANY(${mentions.map((n) => n.toLowerCase())})`,
+                ),
+              );
+            for (const mu of mentionedUsers) {
+              await publishBoltEvent(
+                'message.mentioned',
+                'banter',
+                {
+                  message: {
+                    id: message.id,
+                    content: message.content_plain ?? message.content,
+                    url: messageUrl,
+                  },
+                  mentioned_user: {
+                    id: mu.id,
+                    name: mu.display_name,
+                    email: mu.email,
+                  },
+                  channel: {
+                    id: enrichedChannel.id,
+                    name: enrichedChannel.name,
+                    handle: enrichedChannel.handle,
+                    type: enrichedChannel.type,
+                    url: enrichedChannel.url,
+                  },
+                  actor: enrichedActor,
+                  org: enrichedOrg,
+                },
+                user.org_id,
+                user.id,
+                'user',
+              );
+            }
+          }
+        } catch {
+          // Fire-and-forget — never affect thread reply delivery
         }
       })();
 

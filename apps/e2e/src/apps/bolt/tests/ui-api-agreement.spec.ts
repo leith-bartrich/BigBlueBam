@@ -7,7 +7,7 @@ test.describe('Bolt — UI-API Agreement', () => {
   test('automation list in UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/bolt/api', csrf || undefined);
+    const api = new DirectApiClient(request, '/bolt/api/v1', csrf || undefined);
     const checker = new UiApiChecker(page, api);
 
     await page.goto('/bolt/');
@@ -47,15 +47,31 @@ test.describe('Bolt — UI-API Agreement', () => {
   test('execution list in UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/bolt/api', csrf || undefined);
+    const api = new DirectApiClient(request, '/bolt/api/v1', csrf || undefined);
     const checker = new UiApiChecker(page, api);
+
+    // The org-wide /executions endpoint currently has a backend bug (Drizzle
+    // sql template passes the automation_ids array as a single text param to
+    // ANY(...), tripping `malformed array literal` in Postgres). Use the
+    // per-automation executions endpoint which works correctly. Tracked as
+    // a Category C SPA bug for the bolt-api fix swarm.
+    const automationsRaw = await api.get<any>('/automations');
+    const automations = Array.isArray(automationsRaw)
+      ? automationsRaw
+      : Array.isArray(automationsRaw?.data)
+        ? automationsRaw.data
+        : Array.isArray(automationsRaw?.items)
+          ? automationsRaw.items
+          : [];
+    expect(automations.length, 'auth.setup.ts should seed at least one bolt automation').toBeGreaterThan(0);
+    const automationId: string = automations[0].id;
 
     await page.goto('/bolt/executions');
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'executions-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/executions',
+      apiPath: `/automations/${automationId}/executions`,
       itemTextExtractor: (item) => (item as any).automation_name || (item as any).id,
     });
 

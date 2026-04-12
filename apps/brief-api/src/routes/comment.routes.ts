@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireScope } from '../plugins/auth.js';
-import { requireDocumentAccess, requireMinOrgRole } from '../middleware/authorize.js';
+import { requireDocumentAccess } from '../middleware/authorize.js';
 import * as commentService from '../services/comment.service.js';
 
 const ROLE_HIERARCHY = ['viewer', 'member', 'admin', 'owner'] as const;

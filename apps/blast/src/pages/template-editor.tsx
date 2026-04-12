@@ -157,12 +157,13 @@ export function TemplateEditorPage({ templateId, onNavigate }: TemplateEditorPag
       {/* Meta fields */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 px-6 py-3 bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
         <div>
-          <label className="block text-xs font-medium text-zinc-500 mb-1">Template Name *</label>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Monthly Newsletter" className={input} />
+          <label htmlFor="blast-template-name" className="block text-xs font-medium text-zinc-500 mb-1">Template Name *</label>
+          <input id="blast-template-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Monthly Newsletter" className={input} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-500 mb-1">Subject Line *</label>
+          <label htmlFor="blast-template-subject" className="block text-xs font-medium text-zinc-500 mb-1">Subject Line *</label>
           <input
+            id="blast-template-subject"
             type="text"
             value={subjectTemplate}
             onChange={(e) => setSubjectTemplate(e.target.value)}
@@ -174,8 +175,8 @@ export function TemplateEditorPage({ templateId, onNavigate }: TemplateEditorPag
           )}
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-500 mb-1">Description</label>
-          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Internal note..." className={input} />
+          <label htmlFor="blast-template-description" className="block text-xs font-medium text-zinc-500 mb-1">Description</label>
+          <input id="blast-template-description" type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Internal note..." className={input} />
         </div>
       </div>
 
@@ -187,8 +188,9 @@ export function TemplateEditorPage({ templateId, onNavigate }: TemplateEditorPag
           /* HTML mode: raw editor + live preview side-by-side */
           <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
             <div className="p-4 overflow-auto">
-              <label className="block text-xs font-medium text-zinc-500 mb-2">HTML Body</label>
+              <label htmlFor="blast-template-html-body" className="block text-xs font-medium text-zinc-500 mb-2">HTML Body</label>
               <textarea
+                id="blast-template-html-body"
                 value={rawHtml}
                 onChange={(e) => setRawHtml(e.target.value)}
                 className="w-full h-[calc(100%-2rem)] px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"

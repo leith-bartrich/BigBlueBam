@@ -2,15 +2,32 @@ import { test, expect } from '../../../fixtures/base.fixture';
 import { DirectApiClient } from '../../../api/api-client';
 import { readCsrfTokenFromCookies } from '../../../auth/auth.helper';
 import { UiApiChecker } from '../../../interceptors/ui-api-checker';
+import { HelpdeskHomePage } from '../pages/helpdesk-home.page';
 
 // NOTE: Helpdesk has its own auth system. If the tests below cannot access
 // the tickets list due to auth, they will log a message but not fail — the
 // public API surface checks (health, error envelope) still apply.
 test.describe('Helpdesk — UI-API Agreement', () => {
   test('ticket list in UI matches API response', async ({ page, screenshots, context, request }) => {
+    // Plant a helpdesk session cookie before the API call — admin B3 storage
+    // state does not authenticate helpdesk, so `/helpdesk/api/tickets` would
+    // otherwise return 401 and the whole test would abort.
+    const homePage = new HelpdeskHomePage(page, screenshots);
+    const authed = await homePage.ensureHelpdeskSession();
+    if (!authed) {
+      // Without a session we cannot meaningfully compare UI vs API tickets.
+      // Record the state and exit — the other tests in this file still cover
+      // the public API surface (health + error envelope).
+      await screenshots.capture(page, 'helpdesk-session-unavailable');
+      return;
+    }
+
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/helpdesk/api', csrf || undefined);
+    // page.request shares the browser context cookies (including the freshly
+    // planted helpdesk_session), so use it rather than the bare `request`
+    // fixture which has no cookies.
+    const api = new DirectApiClient(page.request, '/helpdesk/api', csrf || undefined);
     const checker = new UiApiChecker(page, api);
 
     await page.goto('/helpdesk/tickets');

@@ -8,6 +8,7 @@ import {
 } from '../middleware/authorize.js';
 import * as automationService from '../services/automation.service.js';
 import { validateActionTools, validateActionParameters } from '../services/automation.service.js';
+import { compileGraphToRows, BoltGraphShapeError } from '../services/bolt-graph-compiler.js';
 
 const TRIGGER_SOURCES = [
   'bam',
@@ -32,6 +33,34 @@ const CONDITION_OPERATORS = [
 ] as const;
 const LOGIC_GROUPS = ['and', 'or'] as const;
 const ON_ERROR_MODES = ['stop', 'continue', 'retry'] as const;
+
+// ---------------------------------------------------------------------------
+// BoltGraph Zod schema (minimal structural validation; deep node-data
+// validation is deferred to the compiler's shape checker)
+// ---------------------------------------------------------------------------
+
+const boltGraphNodeSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['trigger', 'condition', 'action']),
+  position: z.object({ x: z.number(), y: z.number() }),
+  data: z.record(z.unknown()),
+});
+
+const boltGraphEdgeSchema = z.object({
+  id: z.string().min(1),
+  source: z.string().min(1),
+  sourceHandle: z.string().min(1),
+  target: z.string().min(1),
+  targetHandle: z.string().min(1),
+});
+
+const boltGraphSchema = z.object({
+  version: z.literal(1),
+  nodes: z.array(boltGraphNodeSchema),
+  edges: z.array(boltGraphEdgeSchema),
+});
+
+// ---------------------------------------------------------------------------
 
 const conditionSchema = z.object({
   sort_order: z.number().int().min(0).max(100),
@@ -98,7 +127,19 @@ const createAutomationSchema = z.object({
   max_executions_per_hour: z.number().int().min(1).max(10000).optional().default(100),
   cooldown_seconds: z.number().int().min(0).max(86400).optional().default(0),
   conditions: z.array(conditionSchema).max(50).optional().default([]),
-  actions: z.array(actionSchema).min(1).max(50),
+  actions: z.array(actionSchema).min(1).max(50).optional(),
+  /** Optional node-graph. When present, trigger/conditions/actions are derived
+   *  from the graph via compileGraphToRows; the graph blob is persisted too. */
+  graph: boltGraphSchema.optional(),
+}).superRefine((data, ctx) => {
+  // Must supply either graph or at least one action
+  if (!data.graph && (!data.actions || data.actions.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Must provide either "graph" or at least one "actions" entry.',
+      path: ['actions'],
+    });
+  }
 });
 
 const updateAutomationSchema = z.object({
@@ -115,6 +156,9 @@ const updateAutomationSchema = z.object({
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   conditions: z.array(conditionSchema).max(50).optional(),
   actions: z.array(actionSchema).min(1).max(50).optional(),
+  /** Optional node-graph. When present, trigger/conditions/actions are recompiled
+   *  from the graph. When absent, graph column is cleared (null). */
+  graph: boltGraphSchema.optional(),
 });
 
 const patchAutomationSchema = z.object({
@@ -166,32 +210,115 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = createAutomationSchema.parse(request.body);
 
+      // Resolve trigger/conditions/actions from graph (if provided)
+      let graphBlob: unknown = null;
+      let graphMode: string | null = null;
+      let resolvedData = data as automationService.CreateAutomationInput;
+
+      if (data.graph) {
+        try {
+          const compiled = compileGraphToRows(data.graph);
+          graphBlob = data.graph;
+          graphMode = 'advanced';
+          resolvedData = {
+            ...data,
+            trigger_source: compiled.trigger.source as automationService.TriggerSource,
+            trigger_event: compiled.trigger.event,
+            trigger_filter: compiled.trigger.filter,
+            conditions: compiled.conditions.map((c) => ({
+              sort_order: c.sort_order,
+              field: c.field,
+              operator: c.operator as automationService.ConditionOperator,
+              value: c.value,
+              logic_group: (c.logic_group ?? 'and') as automationService.LogicGroup,
+            })),
+            actions: compiled.actions.map((a) => ({
+              sort_order: a.sort_order,
+              mcp_tool: a.mcp_tool,
+              parameters: a.parameters as Record<string, unknown> | undefined,
+              on_error: (a.on_error ?? 'stop') as automationService.OnError,
+              retry_count: a.retry_count ?? 0,
+              retry_delay_ms: a.retry_delay_ms ?? 1000,
+            })),
+          };
+        } catch (err) {
+          if (err instanceof BoltGraphShapeError) {
+            return reply.status(400).send({
+              error: { code: 'GRAPH_SHAPE_ERROR', message: err.message },
+            });
+          }
+          throw err;
+        }
+      }
+
       // Validate MCP tool names against allowlist
-      validateActionTools(data.actions as automationService.ActionInput[]);
+      validateActionTools(resolvedData.actions as automationService.ActionInput[]);
 
       // Validate entity references in action parameters belong to the user's org
       await validateActionParameters(
-        data.actions as automationService.ActionInput[],
+        resolvedData.actions as automationService.ActionInput[],
         request.user!.org_id,
         'strict',
       );
 
       const automation = await automationService.createAutomation(
-        data as automationService.CreateAutomationInput,
+        resolvedData,
         request.user!.id,
         request.user!.org_id,
+        graphBlob,
+        graphMode,
       );
       return reply.status(201).send({ data: automation });
     },
   );
 
   // GET /automations/stats — Automation statistics
+  // Accepts an optional project_id query param so the stats card on the home
+  // page stays consistent with the list query underneath it. Without this,
+  // a user with an active project filter would see "13 total" but an empty
+  // list (the list filtered by project, the stats didn't).
   fastify.get(
     '/automations/stats',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      const stats = await automationService.getStats(request.user!.org_id);
+      const query = z
+        .object({ project_id: z.string().uuid().optional() })
+        .parse(request.query);
+      const stats = await automationService.getStats(
+        request.user!.org_id,
+        query.project_id,
+      );
       return reply.send({ data: stats });
+    },
+  );
+
+  // GET /automations/by-name/:name — Resolve an automation by its name.
+  // Case-insensitive exact match preferred; single-hit fuzzy fallback.
+  // Returns a resolver-friendly projection (no conditions/actions) with
+  // aggregate action_count and last_execution_at. Returns { data: null }
+  // on miss rather than 404 so the MCP resolver tool can return null
+  // directly without special-casing error envelopes.
+  fastify.get<{ Params: { name: string } }>(
+    '/automations/by-name/:name',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const rawName = request.params.name;
+      if (!rawName || rawName.trim().length === 0) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'name parameter is required',
+            details: [{ field: 'name', issue: 'required' }],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const result = await automationService.getAutomationByName(
+        rawName,
+        request.user!.org_id,
+      );
+      return reply.send({ data: result });
     },
   );
 
@@ -215,13 +342,56 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = updateAutomationSchema.parse(request.body);
 
+      // Resolve trigger/conditions/actions from graph (if provided)
+      let graphBlob: unknown | null = null;
+      let graphMode: string | null = null;
+      let resolvedData = data as automationService.UpdateAutomationInput;
+
+      if (data.graph) {
+        try {
+          const compiled = compileGraphToRows(data.graph);
+          graphBlob = data.graph;
+          graphMode = 'advanced';
+          resolvedData = {
+            ...data,
+            trigger_source: compiled.trigger.source as automationService.TriggerSource,
+            trigger_event: compiled.trigger.event,
+            trigger_filter: compiled.trigger.filter,
+            conditions: compiled.conditions.map((c) => ({
+              sort_order: c.sort_order,
+              field: c.field,
+              operator: c.operator as automationService.ConditionOperator,
+              value: c.value,
+              logic_group: (c.logic_group ?? 'and') as automationService.LogicGroup,
+            })),
+            actions: compiled.actions.map((a) => ({
+              sort_order: a.sort_order,
+              mcp_tool: a.mcp_tool,
+              parameters: a.parameters as Record<string, unknown> | undefined,
+              on_error: (a.on_error ?? 'stop') as automationService.OnError,
+              retry_count: a.retry_count ?? 0,
+              retry_delay_ms: a.retry_delay_ms ?? 1000,
+            })),
+          };
+        } catch (err) {
+          if (err instanceof BoltGraphShapeError) {
+            return reply.status(400).send({
+              error: { code: 'GRAPH_SHAPE_ERROR', message: err.message },
+            });
+          }
+          throw err;
+        }
+      }
+      // If no graph, clear the graph column so the next GET re-synthesizes it.
+      // graphBlob stays null, graphMode stays null.
+
       // Validate MCP tool names against allowlist (if actions provided)
-      if (data.actions && data.actions.length > 0) {
-        validateActionTools(data.actions as automationService.ActionInput[]);
+      if (resolvedData.actions && resolvedData.actions.length > 0) {
+        validateActionTools(resolvedData.actions as automationService.ActionInput[]);
 
         // Lenient mode for updates: warn but allow (don't break existing automations)
         const paramResult = await validateActionParameters(
-          data.actions as automationService.ActionInput[],
+          resolvedData.actions as automationService.ActionInput[],
           request.user!.org_id,
           'lenient',
         );
@@ -235,9 +405,11 @@ export default async function automationRoutes(fastify: FastifyInstance) {
 
       const automation = await automationService.updateAutomation(
         (request as any).automation.id,
-        data as automationService.UpdateAutomationInput,
+        resolvedData,
         request.user!.id,
         request.user!.org_id,
+        graphBlob,
+        graphMode,
       );
       return reply.send({ data: automation });
     },

@@ -15,7 +15,7 @@ test.describe('Blast — UI-API Agreement', () => {
     await screenshots.capture(page, 'campaigns-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/campaigns',
+      apiPath: '/v1/campaigns',
       itemTextExtractor: (item) => (item as any).name,
     });
 
@@ -37,7 +37,7 @@ test.describe('Blast — UI-API Agreement', () => {
     await screenshots.capture(page, 'templates-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/templates',
+      apiPath: '/v1/templates',
       itemTextExtractor: (item) => (item as any).name,
     });
 
@@ -59,7 +59,7 @@ test.describe('Blast — UI-API Agreement', () => {
     await screenshots.capture(page, 'segments-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/segments',
+      apiPath: '/v1/segments',
       itemTextExtractor: (item) => (item as any).name,
     });
 

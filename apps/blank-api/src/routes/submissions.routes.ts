@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireAuth, requireMinRole } from '../plugins/auth.js';
 import * as submissionService from '../services/submission.service.js';
 
 // ---------------------------------------------------------------------------

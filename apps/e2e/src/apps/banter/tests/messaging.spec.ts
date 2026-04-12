@@ -18,7 +18,7 @@ test.describe('Banter — Messaging', () => {
 
     let channelSlug: string | undefined;
     try {
-      const channels = await api.get<any[]>('/channels');
+      const channels = await api.get<any[]>('/v1/channels');
       if (channels.length > 0) channelSlug = channels[0].slug;
     } catch {}
 
@@ -40,7 +40,7 @@ test.describe('Banter — Messaging', () => {
 
     let channelSlug: string | undefined;
     try {
-      const channels = await api.get<any[]>('/channels');
+      const channels = await api.get<any[]>('/v1/channels');
       if (channels.length > 0) channelSlug = channels[0].slug;
     } catch {}
 
@@ -78,7 +78,7 @@ test.describe('Banter — Messaging', () => {
     let channelId: string | undefined;
     let channelSlug: string | undefined;
     try {
-      const channels = await api.get<any[]>('/channels');
+      const channels = await api.get<any[]>('/v1/channels');
       if (channels.length > 0) {
         channelId = channels[0].id;
         channelSlug = channels[0].slug;

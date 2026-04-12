@@ -23,7 +23,10 @@ export class CampaignsPage extends BasePage {
   }
 
   async clickCreateCampaign(): Promise<void> {
-    await this.page.getByRole('button', { name: /create campaign|new campaign/i }).click();
+    await this.page
+      .getByRole('main')
+      .getByRole('button', { name: /create campaign|new campaign/i })
+      .click();
   }
 
   async expectCampaignVisible(name: string): Promise<void> {
@@ -68,7 +71,10 @@ export class CampaignsPage extends BasePage {
   }
 
   async clickCreateTemplate(): Promise<void> {
-    await this.page.getByRole('button', { name: /create template|new template/i }).click();
+    await this.page
+      .getByRole('main')
+      .getByRole('button', { name: /create template|new template/i })
+      .click();
   }
 
   async clickCreateSegment(): Promise<void> {

@@ -29,7 +29,7 @@ apps/
   banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
   banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (BETA)
   mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 238 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond + 14 Blast + 9 Bench), 10+ resources, 8 prompts, 21 tool modules
-  worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
+  worker/       — BullMQ background job processor (no exposed port) — 15 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention, bond-stale-deals, …)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
   beacon-api/   — Beacon Fastify API (internal :4004, proxied at /beacon/api/) — knowledge base, search, graph, policies
@@ -105,6 +105,21 @@ Application containers (api, banter-api, beacon-api, brief-api, bolt-api, bearin
 
 The test database contains seeded projects, users, tickets, and conversations that are time-consuming to recreate.
 
+## IMPORTANT: "Pre-existing" is not a dismissal
+
+When running `typecheck`, `test`, `lint`, `db:check`, or any other verification and you encounter errors/warnings/failures that already existed before your current task, **do not wave them away** with "all remaining errors are pre-existing" or "not a regression from this work." The fact that an error existed already is not a reason to leave it alone — it is a reason it has been festering, and every pass that ignores it lets it rot further.
+
+When you find pre-existing issues during a task:
+
+1. **Always record them.** Add each one as a task via `TaskCreate` with enough detail (file, line, exact error message, rough hypothesis) that you or a future agent can pick it up without reconstruction. If you're running under a human's supervision, surface them in your response — do not bury them.
+2. **Fix them if the fix is small and obviously safe** (unused imports, missing type narrowing, straightforward `null` vs `undefined` mismatches). Touch nothing beyond the minimum needed and mention what you fixed.
+3. **If a fix is non-trivial** (would expand scope, change behavior, or requires design decisions), leave it in the task list and flag it loudly in your final response. Non-trivial fixes still get recorded — they just don't get silently bundled into the current PR.
+4. **Never report a "clean" build when errors remain.** If `tsc --noEmit` exits non-zero, the build is not clean. Say "N errors remain, M are pre-existing and now tracked in tasks X/Y/Z, K are from this work and fixed in commit abc123" rather than "typecheck is clean modulo pre-existing noise."
+
+This rule applies to all verification commands, not just typecheck. Pre-existing test failures, pre-existing lint warnings, pre-existing `db:check` drift, pre-existing CI job failures — record and investigate all of them.
+
+The cost of tracking an existing error is a one-line TaskCreate call. The cost of dismissing it is that it will still be there six months from now, and every future change has to navigate around it.
+
 ## Database Schema & Migrations
 
 **Single source of truth:** `infra/postgres/migrations/NNNN_*.sql` — append-only, idempotent numbered migration files. `0000_init.sql` is the canonical baseline; subsequent files layer schema evolution on top. There is no `init.sql` — the postgres container boots with an empty DB and the `migrate` service creates everything.
@@ -115,7 +130,7 @@ The `migrate` service (reuses the api image, runs `node dist/migrate.js`) is a `
 
 1. Update the Drizzle schema file in `apps/*/src/db/schema/`.
 2. Add a **new** numbered file in `infra/postgres/migrations/` that applies the change idempotently (use `ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP TRIGGER IF EXISTS ... ; CREATE TRIGGER ...`, or guarded `DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` blocks). **Never edit an existing migration** — the runner records a SHA-256 checksum per file and aborts on mismatch.
-3. Rebuild the api image (`docker compose build api`) so the new migration is baked in, then `docker compose up -d` — the migrate service will apply it before app services start.
+3. Run `docker compose run --rm migrate` to apply it. The `migrate` service bind-mounts `./infra/postgres/migrations` into `/app/migrations` at runtime, so the new file is picked up instantly — **no rebuild is required** on developer hosts. Then rebuild and restart whichever app container now depends on the new schema (`docker compose build <app> && docker compose up -d --force-recreate <app>`). Production deployments (k8s/Helm) still bake the migrations into the image via `apps/api/Dockerfile`, so `docker compose build api` is only needed when shipping.
 
 Every migration must be idempotent so the same migration file is safe to run against both empty DBs and DBs that may already have the object (e.g., from the historical init.sql bootstrap).
 
@@ -137,6 +152,60 @@ Every file in `infra/postgres/migrations/` MUST:
 Enforced by `pnpm lint:migrations` (`scripts/lint-migrations.mjs`), run in CI by `.github/workflows/db-drift.yml` (job `migration-lint`). Rare exceptions may be silenced per-line with an inline `-- noqa: <rule-name>` comment.
 
 **Checksum behavior:** the runner hashes the SQL *body* only — the leading `--` comment header is stripped before hashing, so editing `-- Why:` / `-- Client impact:` text never invalidates an applied migration. Any change to executable SQL still trips the immutability guard. For the one-time rollout where headers were added to already-applied migrations, rerun the migrate container with `MIGRATE_ALLOW_HEADER_RESTAMP=1` to re-stamp stored checksums.
+
+### Applying a new migration to a long-running stack (gotchas)
+
+The "just run `docker compose up -d`" flow has one trap that still bites, plus one trap that used to bite but has been mitigated. Read this before adding a migration to an existing stack:
+
+1. **The `migrate` sidecar is cached via `service_completed_successfully`.** Once it has run to completion on the first boot, subsequent `docker compose up -d <service>` invocations see the cached completion and **do not re-run it**. Simply rebuilding `bolt-api` (or any other dependent service) will not trigger the migration, even if the new migration file is present. You must explicitly run `docker compose run --rm migrate` yourself after adding a new migration file.
+
+2. **(Fixed, historical context only.)** Docker Desktop's WSL2 file sync used to silently drop newly-added migration files from the build context on Windows hosts, so a `docker compose build api` would produce an image that had every migration *except* the new one, and the `migrate` sidecar happily reported "N applied, N already up-to-date" without ever seeing the new file. This produced hours of confusing "column does not exist" / "stats shows 13 / list shows nothing" debugging across the Bolt `template_strict`, `bolt_graph_column`, and `bond_deal_rotting_alerted` incidents. **The fix is in `docker-compose.yml`**: the `migrate` service now bind-mounts `./infra/postgres/migrations:/app/migrations:ro` at runtime, so the host directory is read live every time the container starts. New migration files are visible to the runner instantly, without a rebuild and without going through any COPY / BuildKit / WSL2 sync layers. The `apps/api/Dockerfile` still `COPY`s the migrations into the production image as a fallback for Helm/k8s deployments where no compose bind mount exists.
+
+**Standard sequence after adding a migration** (no rebuild of the api image needed unless you are shipping to prod):
+
+```sh
+docker compose run --rm migrate                            # applies the new migration
+docker compose build <app-that-uses-the-new-column>         # rebuild the affected app
+docker compose up -d --force-recreate <app-that-uses-it>    # restart it
+```
+
+**Verify the migration actually applied:**
+
+```sh
+# 1. Confirm the runner sees the new file (bind mount makes this instant)
+docker compose run --rm migrate sh -c "ls /app/migrations | tail -5"
+
+# 2. Confirm the column/table actually exists in the live DB
+docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c "\d <table>"
+
+# 3. Confirm schema_migrations has the new row
+docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c \
+  "SELECT id FROM schema_migrations ORDER BY id DESC LIMIT 5;"
+```
+
+**Manual psql fallback (should no longer be necessary, retained for emergencies).** If something does go wrong and the migrate runner refuses to apply a file that's clearly present, you can still bypass it:
+
+```sh
+# Apply the migration SQL directly against the running postgres container
+cat infra/postgres/migrations/NNNN_new_migration.sql \
+  | docker compose exec -T postgres psql -U bigbluebam -d bigbluebam
+
+# Record it in schema_migrations so the next clean boot's migrate service
+# knows to skip it. The id column is the filename (with .sql extension);
+# the runner re-verifies checksums against on-disk files, so use a real
+# SHA-256 of the SQL body (post-header) or, if you just need to get
+# unblocked, 'manual' and accept you'll have to fix it on the next boot.
+docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c \
+  "INSERT INTO schema_migrations (id, checksum) VALUES ('NNNN_new_migration.sql', 'manual') ON CONFLICT (id) DO NOTHING;"
+```
+
+**When debugging "it works for stats but not for list" symptoms**, always check for schema drift FIRST:
+
+```sh
+docker compose logs --tail=50 <affected-api> 2>&1 | grep -iE "column.*does not exist|42703|PostgresError"
+```
+
+If you see `PostgresError: column "X" does not exist` (SQLSTATE `42703`), you have drift — not a query bug, not a filter bug, not an org-scoping bug. Fix the drift first, then see if the symptom remains.
 
 ## Common Commands
 
@@ -203,6 +272,7 @@ pnpm --filter @bigbluebam/banter test        # Banter frontend component tests (
 - **WebSocket realtime** uses Redis PubSub for cross-instance broadcasting; rooms are scoped to org, project, and user levels.
 - **Keyboard shortcuts** and a **command palette** (Cmd+K) are built into the frontend for power-user navigation.
 - **User and member management** is consolidated at `/b3/people` (org admins/owners) and `/b3/superuser/people` (platform SuperUsers) — not under Settings — with tabbed user-detail pages covering profile, projects, access (API keys/sessions/passwords), and activity.
+- **Bond stale-deal detection** runs as a daily 2 AM UTC worker job that finds deals where `days_in_stage > rotting_days` and emits `bond.deal.rotting` events to Bolt ingest; `bond_deals.rotting_alerted_at` is the per-stage-entry idempotency marker (reset naturally when `stage_entered_at` changes).
 
 ## Error Response Envelope
 
@@ -221,6 +291,8 @@ All API errors follow this structure:
 ## Environment Configuration
 
 Required env vars: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `SESSION_SECRET`. See `.env.example` for the full list including optional OAuth, SMTP, and port overrides.
+
+Optional test/dev knobs on the Bam api: set `BBB_E2E_PERMISSIVE_RATE_LIMIT=1` to multiply the global Fastify rate limit ceiling by `RATE_LIMIT_E2E_MULTIPLIER` (default 100x), unblocking parallel Playwright workers on `/auth/login`. Already on by default in `docker-compose.dev.yml` and any non-production `NODE_ENV`; production stays strict unless the flag is set explicitly. Per-route rate limits (org admin, llm-provider, change-password, switch-org, guest-invite) are unaffected.
 
 ## Development Phases
 

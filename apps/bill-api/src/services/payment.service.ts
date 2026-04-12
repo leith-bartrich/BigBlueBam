@@ -4,6 +4,14 @@ import { billPayments, billInvoices } from '../db/schema/index.js';
 import { notFound, badRequest } from '../lib/utils.js';
 import { recalculateInvoiceTotals } from './invoice.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  buildInvoiceUrl,
+  buildInvoicePdfUrl,
+  countLineItems,
+  loadActor,
+  loadCustomer,
+  loadOrg,
+} from '../lib/bolt-event-enrich.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,16 +78,50 @@ export async function recordPayment(
     .limit(1);
 
   if (updated && updated.amount_paid >= updated.total) {
+    const paidAt = new Date();
     await db
       .update(billInvoices)
-      .set({ status: 'paid', paid_at: new Date(), updated_at: new Date() })
+      .set({ status: 'paid', paid_at: paidAt, updated_at: paidAt })
       .where(eq(billInvoices.id, invoiceId));
-    publishBoltEvent('invoice.paid', 'bill', {
-      id: invoiceId,
-      invoice_number: updated.invoice_number,
-      total: updated.total,
-      amount_paid: updated.amount_paid,
-    }, orgId);
+    // Fetch related entities in parallel for enriched event payload.
+    const [actor, org, customer, lineItemCount] = await Promise.all([
+      loadActor(userId),
+      loadOrg(orgId),
+      loadCustomer(updated.client_id, orgId),
+      countLineItems(invoiceId),
+    ]);
+    publishBoltEvent(
+      'invoice.paid',
+      'bill',
+      {
+        invoice: {
+          id: invoiceId,
+          number: updated.invoice_number,
+          status: 'paid',
+          customer_id: updated.client_id,
+          customer_name: customer.name,
+          customer_email: customer.email,
+          company_id: customer.company_id,
+          company_name: customer.name,
+          project_id: updated.project_id,
+          deal_id: updated.bond_deal_id,
+          total: updated.total,
+          amount_paid: updated.amount_paid,
+          currency: updated.currency,
+          issue_date: updated.invoice_date,
+          due_date: updated.due_date,
+          line_item_count: lineItemCount,
+          url: buildInvoiceUrl(invoiceId),
+          pdf_url: buildInvoicePdfUrl(updated.public_view_token),
+          paid_at: paidAt.toISOString(),
+        },
+        actor: { id: actor.id, name: actor.name, email: actor.email },
+        org: { id: org.id, name: org.name, slug: org.slug },
+      },
+      orgId,
+      userId,
+      'user',
+    );
   } else if (updated && updated.amount_paid > 0) {
     await db
       .update(billInvoices)

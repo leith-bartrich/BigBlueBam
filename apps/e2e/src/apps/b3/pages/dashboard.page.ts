@@ -11,6 +11,25 @@ export class DashboardPage extends BasePage {
 
   async goto(): Promise<void> {
     await super.goto('/');
+    // Defensive: when sibling tests are hammering /auth/login the global
+    // rate limiter can cause GET /auth/me to return 429 on first load.
+    // The SPA treats that as unauthenticated and renders the login form,
+    // which has no <main> and breaks every downstream assertion. The
+    // session cookie is still valid — back off and reload until /auth/me
+    // succeeds. We try up to 3 times with progressively longer waits.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const showsLogin = await this.page
+        .getByRole('heading', { name: /welcome back/i })
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (!showsLogin) return;
+      // Back off — the rate limiter window is 60 s but most blips clear
+      // in seconds. Wait 5 / 10 / 20 s.
+      const waitMs = 5000 * Math.pow(2, attempt);
+      await this.page.waitForTimeout(waitMs);
+      await this.page.reload();
+      await this.waitForAppReady();
+    }
   }
 
   async expectDashboardLoaded(): Promise<void> {
@@ -29,7 +48,14 @@ export class DashboardPage extends BasePage {
   }
 
   async clickCreateProject(): Promise<void> {
-    await this.page.getByRole('button', { name: /create project|new project/i }).click();
+    // Two buttons can match here: the sidebar "+ Create project" icon-button
+    // (aria-label="Create project") and the main "+ New Project" / "Create
+    // Project" CTA on the projects panel. Prefer the visible CTA inside main
+    // to avoid strict-mode violations and to actually open the dialog.
+    const cta = this.page
+      .locator('main')
+      .getByRole('button', { name: /^(new project|create project)$/i });
+    await cta.first().click();
   }
 
   async expectProjectVisible(name: string): Promise<void> {

@@ -91,7 +91,9 @@ describe('Widget Service', () => {
   describe('getWidget', () => {
     it('returns a widget by id', async () => {
       const widget = makeWidget();
-      mockSelect.mockReturnValue(chainable([widget]));
+      // getWidget selects { widget: benchWidgets } + innerJoin on benchDashboards,
+      // so rows come back shaped as { widget }.
+      mockSelect.mockReturnValue(chainable([{ widget }]));
 
       const { getWidget } = await import('../src/services/widget.service.js');
       const result = await getWidget(WIDGET_ID);

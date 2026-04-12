@@ -37,6 +37,7 @@ vi.mock('../src/env.js', () => ({
     RATE_LIMIT_WINDOW_MS: 60000,
     BBB_API_INTERNAL_URL: 'http://api:4000',
     COOKIE_SECURE: false,
+    PUBLIC_URL: 'http://localhost',
   },
 }));
 
@@ -48,7 +49,8 @@ function chainable(result: unknown[]) {
   const obj: any = {};
   obj.then = (resolve: Function, reject?: Function) =>
     Promise.resolve(result).then(resolve as any, reject as any);
-  obj.limit = vi.fn().mockResolvedValue(result);
+  obj.limit = vi.fn().mockReturnValue(obj);
+  obj.offset = vi.fn().mockResolvedValue(result);
   obj.returning = vi.fn().mockResolvedValue(result);
   obj.from = vi.fn().mockReturnValue(obj);
   obj.where = vi.fn().mockReturnValue(obj);
@@ -201,11 +203,10 @@ describe('getPipeline', () => {
     expect(result.stages).toHaveLength(2);
   });
 
-  it('should return null for cross-org access', async () => {
+  it('should throw NOT_FOUND for cross-org access', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getPipeline(PIPELINE_ID, ORG_ID_2);
-    expect(result).toBeNull();
+    await expect(getPipeline(PIPELINE_ID, ORG_ID_2)).rejects.toThrow('Pipeline not found');
   });
 });
 
@@ -223,19 +224,25 @@ describe('createPipeline', () => {
     createPipeline = mod.createPipeline;
   });
 
-  it('should create pipeline with stages in transaction', async () => {
+  it('should create pipeline with stages', async () => {
     const pipeline = makePipeline();
     const stages = [
       makeStage({ sort_order: 0 }),
       makeStage({ id: STAGE_ID_2, sort_order: 1, name: 'Proposal' }),
     ];
 
-    const { txInsert } = setupTransaction();
-
     let insertCount = 0;
-    txInsert.mockImplementation(() => {
+    mockInsert.mockImplementation(() => {
       insertCount++;
       if (insertCount === 1) return chainable([pipeline]);
+      return chainable(stages);
+    });
+
+    // getPipeline(id, orgId) at the end: 1) pipeline lookup, 2) stages lookup
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      if (selectCount === 1) return chainable([pipeline]);
       return chainable(stages);
     });
 
@@ -247,13 +254,13 @@ describe('createPipeline', () => {
           { name: 'Proposal', sort_order: 1, stage_type: 'active', probability_pct: 50 },
         ],
       },
-      USER_ID,
       ORG_ID,
+      USER_ID,
     );
 
     expect(result).toBeDefined();
     expect(result.name).toBe('Sales Pipeline');
-    expect(txInsert).toHaveBeenCalledTimes(2); // pipeline + stages batch
+    expect(mockInsert).toHaveBeenCalledTimes(2); // pipeline + stages batch
   });
 });
 
@@ -272,27 +279,31 @@ describe('updatePipeline', () => {
   });
 
   it('should update pipeline name and description', async () => {
-    const existing = makePipeline();
     const updated = makePipeline({ name: 'Renamed Pipeline', description: 'New desc' });
 
-    mockSelect.mockReturnValue(chainable([existing]));
     mockUpdate.mockReturnValue(chainable([updated]));
+    // getPipeline(id, orgId) at the end: 1) pipeline, 2) stages
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      if (selectCount === 1) return chainable([updated]);
+      return chainable([]);
+    });
 
     const result = await updatePipeline(
       PIPELINE_ID,
-      { name: 'Renamed Pipeline', description: 'New desc' },
-      USER_ID,
       ORG_ID,
+      { name: 'Renamed Pipeline', description: 'New desc' },
     );
 
     expect(result.name).toBe('Renamed Pipeline');
   });
 
   it('should throw NOT_FOUND when pipeline does not exist', async () => {
-    mockSelect.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([]));
 
     await expect(
-      updatePipeline(PIPELINE_ID, { name: 'X' }, USER_ID, ORG_ID),
+      updatePipeline(PIPELINE_ID, ORG_ID, { name: 'X' }),
     ).rejects.toThrow('Pipeline not found');
   });
 });
@@ -313,30 +324,36 @@ describe('reorderStages', () => {
 
   it('should update sort_order for all stages', async () => {
     const pipeline = makePipeline();
-    const { txSelect, txUpdate } = setupTransaction();
+    const stages = [
+      makeStage({ id: STAGE_ID_2, sort_order: 0 }),
+      makeStage({ id: STAGE_ID_1, sort_order: 1 }),
+    ];
 
-    txSelect.mockReturnValue(chainable([pipeline]));
-    txUpdate.mockReturnValue(chainable([]));
+    // getPipeline -> 2 selects (pipeline + stages)
+    // listStages -> getPipeline (2 selects) + 1 stages select
+    mockSelect.mockReturnValue(chainable([pipeline]));
+    // Fallback to always return pipeline/stages
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      // Every other call is a pipeline lookup, others are stages
+      if (selectCount % 2 === 1) return chainable([pipeline]);
+      return chainable(stages);
+    });
 
-    const result = await reorderStages(
-      PIPELINE_ID,
-      [
-        { id: STAGE_ID_2, sort_order: 0 },
-        { id: STAGE_ID_1, sort_order: 1 },
-      ],
-      ORG_ID,
-    );
+    mockUpdate.mockReturnValue(chainable([]));
 
-    expect(result.reordered).toBe(true);
-    expect(txUpdate).toHaveBeenCalled();
+    const result = await reorderStages(PIPELINE_ID, ORG_ID, [STAGE_ID_2, STAGE_ID_1]);
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(mockUpdate).toHaveBeenCalled();
   });
 
   it('should throw NOT_FOUND when pipeline does not exist', async () => {
-    const { txSelect } = setupTransaction();
-    txSelect.mockReturnValue(chainable([]));
+    mockSelect.mockReturnValue(chainable([]));
 
     await expect(
-      reorderStages(PIPELINE_ID, [{ id: STAGE_ID_1, sort_order: 0 }], ORG_ID),
+      reorderStages(PIPELINE_ID, ORG_ID, [STAGE_ID_1]),
     ).rejects.toThrow('Pipeline not found');
   });
 });
@@ -356,30 +373,17 @@ describe('deletePipeline', () => {
   });
 
   it('should delete pipeline when no deals reference it', async () => {
-    const existing = makePipeline({ is_default: false });
-
-    let selectCount = 0;
-    mockSelect.mockImplementation(() => {
-      selectCount++;
-      if (selectCount === 1) return chainable([existing]); // pipeline lookup
-      return chainable([]); // no deals reference this pipeline
-    });
-    mockDelete.mockReturnValue(chainable([]));
+    // deletePipeline first selects count of deals referencing this pipeline
+    mockSelect.mockReturnValue(chainable([{ count: 0 }]));
+    mockDelete.mockReturnValue(chainable([{ id: PIPELINE_ID }]));
 
     const result = await deletePipeline(PIPELINE_ID, ORG_ID);
-    expect(result.deleted).toBe(true);
+    expect(result.id).toBe(PIPELINE_ID);
   });
 
   it('should throw when pipeline has existing deals', async () => {
-    const existing = makePipeline({ is_default: false });
-    const deal = { id: 'deal-1', pipeline_id: PIPELINE_ID };
-
-    let selectCount = 0;
-    mockSelect.mockImplementation(() => {
-      selectCount++;
-      if (selectCount === 1) return chainable([existing]);
-      return chainable([deal]); // deals reference this pipeline
-    });
+    // deletePipeline selects count from bondDeals where pipeline_id = id
+    mockSelect.mockReturnValue(chainable([{ count: 3 }]));
 
     await expect(deletePipeline(PIPELINE_ID, ORG_ID)).rejects.toThrow(
       'Cannot delete pipeline with existing deals',

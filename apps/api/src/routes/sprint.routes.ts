@@ -10,6 +10,8 @@ import { requireAuth, requireScope, requireMinRole } from '../plugins/auth.js';
 import { requireProjectRole, requireProjectAccess, requireProjectAccessForEntity } from '../middleware/authorize.js';
 import { postToSlack } from '../services/slack-notify.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import { loadActor, loadOrg, loadProjectContext } from '../services/bolt-event-enricher.service.js';
+import { sprintUrl } from '../lib/urls.js';
 
 export default async function sprintRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
@@ -188,7 +190,49 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         }).catch(() => {});
 
         // Bolt workflow event (fire-and-forget)
-        publishBoltEvent('sprint.started', 'bam', { sprint: result.data }, request.user!.org_id).catch(() => {});
+        const startedSprint = result.data;
+        (async () => {
+          try {
+            // Count tasks in the sprint at start time
+            const taskCountRows = await db
+              .select({ count: sql<number>`count(*)::int` })
+              .from(tasks)
+              .where(eq(tasks.sprint_id, startedSprint.id));
+            const taskCount = Number(taskCountRows[0]?.count ?? 0);
+
+            const [actor, org, project] = await Promise.all([
+              loadActor(request.user!.id),
+              loadOrg(request.user!.org_id),
+              loadProjectContext(startedSprint.project_id),
+            ]);
+
+            await publishBoltEvent(
+              'sprint.started',
+              'bam',
+              {
+                sprint: {
+                  id: startedSprint.id,
+                  name: startedSprint.name,
+                  project_id: startedSprint.project_id,
+                  goal: startedSprint.goal,
+                  start_date: startedSprint.start_date,
+                  end_date: startedSprint.end_date,
+                  status: startedSprint.status,
+                  task_count: taskCount,
+                  url: sprintUrl(startedSprint.project_id, startedSprint.id),
+                },
+                project,
+                actor,
+                org,
+              },
+              request.user!.org_id,
+              request.user!.id,
+              'user',
+            );
+          } catch {
+            // fire-and-forget
+          }
+        })();
       }
 
       return reply.send({ data: result.data });
@@ -294,6 +338,23 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
           (sum, t) => sum + (t.story_points ?? 0),
           0,
         );
+        const tasksCompletedCount = closedTasksResult.length;
+
+        // Total tasks + committed story points across the whole sprint
+        const allSprintTasks = await tx
+          .select({ story_points: tasks.story_points })
+          .from(tasks)
+          .where(eq(tasks.sprint_id, request.params.id));
+        const tasksTotal = allSprintTasks.length;
+        const storyPointsCommitted = allSprintTasks.reduce(
+          (sum, t) => sum + (t.story_points ?? 0),
+          0,
+        );
+
+        // Carry-forward count from the request payload
+        const carriedForwardCount = data.carry_forward.tasks.filter(
+          (t) => t.action === 'carry_forward',
+        ).length;
 
         // Complete the sprint with velocity
         const [completed] = await tx
@@ -308,7 +369,16 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
           .where(eq(sprints.id, request.params.id))
           .returning();
 
-        return { data: completed };
+        return {
+          data: completed,
+          stats: {
+            tasks_completed: tasksCompletedCount,
+            tasks_total: tasksTotal,
+            tasks_carried_forward: carriedForwardCount,
+            story_points_completed: velocity,
+            story_points_committed: storyPointsCommitted,
+          },
+        };
       });
 
       if (result.error === 'NOT_FOUND') {
@@ -341,7 +411,48 @@ export default async function sprintRoutes(fastify: FastifyInstance) {
         }).catch(() => {});
 
         // Bolt workflow event (fire-and-forget)
-        publishBoltEvent('sprint.completed', 'bam', { sprint: result.data }, request.user!.org_id).catch(() => {});
+        const completedSprint = result.data;
+        const stats = result.stats!;
+        (async () => {
+          try {
+            const [actor, org, project] = await Promise.all([
+              loadActor(request.user!.id),
+              loadOrg(request.user!.org_id),
+              loadProjectContext(completedSprint.project_id),
+            ]);
+
+            await publishBoltEvent(
+              'sprint.completed',
+              'bam',
+              {
+                sprint: {
+                  id: completedSprint.id,
+                  name: completedSprint.name,
+                  project_id: completedSprint.project_id,
+                  goal: completedSprint.goal,
+                  start_date: completedSprint.start_date,
+                  end_date: completedSprint.end_date,
+                  velocity: completedSprint.velocity,
+                  status: completedSprint.status,
+                  url: sprintUrl(completedSprint.project_id, completedSprint.id),
+                },
+                tasks_completed: stats.tasks_completed,
+                tasks_carried_forward: stats.tasks_carried_forward,
+                tasks_total: stats.tasks_total,
+                story_points_completed: stats.story_points_completed,
+                story_points_committed: stats.story_points_committed,
+                project,
+                actor,
+                org,
+              },
+              request.user!.org_id,
+              request.user!.id,
+              'user',
+            );
+          } catch {
+            // fire-and-forget
+          }
+        })();
       }
 
       return reply.send({ data: result.data });

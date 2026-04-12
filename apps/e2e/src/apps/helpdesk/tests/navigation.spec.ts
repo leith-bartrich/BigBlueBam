@@ -89,7 +89,12 @@ test.describe('Helpdesk — Navigation', () => {
     for (const pageDef of publicPages) {
       await homePage.navigate(pageDef.path);
       await screenshots.capture(page, `page-${pageDef.name}-loaded`);
-      await expect(page.locator('main, [class*="content"], form').first()).toBeVisible();
+      // Helpdesk public pages (login/register/verify) each render inside a
+      // top-level `min-h-screen` wrapper rather than a `<main>` element. Match
+      // any of: main, form, or the wrapper class shared by all helpdesk pages.
+      await expect(
+        page.locator('main, form, [class*="min-h-screen"]').first(),
+      ).toBeVisible();
     }
   });
 });

@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { requireAuth } from '../plugins/auth.js';
 import { requireBeaconReadAccess } from '../middleware/authorize.js';
 import * as versionService from '../services/version.service.js';

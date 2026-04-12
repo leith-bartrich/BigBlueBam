@@ -41,7 +41,7 @@ test.describe('Brief — Search', () => {
     await homePage.navigateToStarred();
     await screenshots.capture(page, 'starred-loaded');
 
-    await expect(page.locator('main')).toBeVisible();
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
     await screenshots.capture(page, 'starred-visible');
   });
 });

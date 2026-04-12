@@ -56,7 +56,7 @@ export function GoalCard({ goal, onNavigate }: GoalCardProps) {
 
       {/* Progress */}
       <div className="mb-3">
-        <ProgressBar value={Number(goal.progress ?? 0) * 100} expected={(goal.expected_progress ?? 0) * 100} size="sm" />
+        <ProgressBar value={Number(goal.progress ?? 0)} expected={goal.expected_progress != null ? Number(goal.expected_progress) : undefined} size="sm" />
       </div>
 
       {/* Footer */}

@@ -60,6 +60,12 @@ export const sessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
     data: jsonb('data').default({}).notNull(),
+    // The organization the user has switched into for THIS session. Set by
+    // /b3/api/auth/switch-org in the Bam API. Bolt-api must honor this when
+    // resolving request.user.org_id, otherwise multi-org users get the
+    // is_default membership instead of the org they actually want to act on
+    // and see "13 total automations / No automations found" symptoms.
+    active_org_id: uuid('active_org_id'),
   },
   (table) => [
     index('sessions_user_id_idx').on(table.user_id),

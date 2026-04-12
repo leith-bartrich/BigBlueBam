@@ -9,6 +9,16 @@ import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole, requireGoalAccess } from '../middleware/authorize.js';
 import * as krService from '../services/key-result.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  buildGoalUrl,
+  buildKeyResultUrl,
+  loadActor,
+  loadGoalById,
+  loadKeyResultById,
+  loadOrg,
+  loadOwner,
+  loadPeriod,
+} from '../lib/bolt-event-enrich.js';
 
 const METRIC_TYPES = BearingMetricType.options;
 const DIRECTIONS = BearingDirection.options;
@@ -75,6 +85,119 @@ const addLinkSchema = z.object({
 });
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Publish an enriched `key_result.updated` Bolt event.
+ *
+ * @param updated   the row returned from the service after the update
+ * @param previous  the row fetched before the update (for previous_progress/delta)
+ * @param orgId     caller's org id (for org-context fetch + publish routing)
+ * @param actorId   user id that performed the action
+ */
+async function publishKeyResultUpdated(
+  updated: {
+    id: string;
+    goal_id: string;
+    title: string;
+    description: string | null;
+    target_value: string | number;
+    current_value: string | number;
+    start_value: string | number;
+    unit: string | null;
+    progress: string | number;
+    owner_id: string | null;
+    updated_at: Date;
+  },
+  previous: {
+    current_value: string | number;
+    progress: string | number;
+  } | null,
+  orgId: string,
+  actorId: string,
+) {
+  try {
+    const goal = await loadGoalById(updated.goal_id);
+
+    const [actor, org, owner, period] = await Promise.all([
+      loadActor(actorId),
+      loadOrg(orgId),
+      loadOwner(updated.owner_id ?? null),
+      goal ? loadPeriod(goal.period_id) : Promise.resolve({ id: '', name: null }),
+    ]);
+
+    const currentProgress = Number(updated.progress);
+    const previousProgress = previous ? Number(previous.progress) : null;
+    const delta =
+      previousProgress !== null && Number.isFinite(previousProgress)
+        ? Number((currentProgress - previousProgress).toFixed(2))
+        : null;
+
+    publishBoltEvent(
+      'key_result.updated',
+      'bearing',
+      {
+        key_result: {
+          id: updated.id,
+          goal_id: updated.goal_id,
+          title: updated.title,
+          description: updated.description,
+          target: Number(updated.target_value),
+          current_value: Number(updated.current_value),
+          start_value: Number(updated.start_value),
+          unit: updated.unit,
+          progress_percent: currentProgress,
+          previous_progress: previousProgress,
+          delta,
+          owner_id: updated.owner_id,
+          url: buildKeyResultUrl(updated.goal_id, updated.id),
+          updated_at: updated.updated_at,
+        },
+        goal: goal
+          ? {
+              id: goal.id,
+              title: goal.title,
+              description: goal.description,
+              status: goal.status,
+              progress_percent: Number(goal.progress),
+              period_id: goal.period_id,
+              owner_id: goal.owner_id,
+              project_id: goal.project_id,
+              // TODO: parent_goal_id — not yet modeled in bearing_goals schema
+              url: buildGoalUrl(goal.id),
+            }
+          : null,
+        period: goal
+          ? { id: period.id, name: period.name }
+          : null,
+        owner: owner
+          ? { id: owner.id, name: owner.name, email: owner.email }
+          : null,
+        actor: {
+          id: actor.id,
+          name: actor.name,
+          email: actor.email,
+        },
+        org: {
+          id: org.id,
+          name: org.name,
+          slug: org.slug,
+        },
+        // Legacy flat fields (backwards compat with any existing rules)
+        id: updated.id,
+        title: updated.title,
+        goal_id: updated.goal_id,
+        current_value: Number(updated.current_value),
+        target_value: Number(updated.target_value),
+        updated_by: actorId,
+      },
+      orgId,
+      actorId,
+      'user',
+    );
+  } catch {
+    // Fire-and-forget — never break the caller if enrichment fails.
+  }
+}
 
 export default async function keyResultRoutes(fastify: FastifyInstance) {
   // GET /goals/:id/key-results — List KRs for goal
@@ -144,15 +267,17 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params;
       const data = updateKeyResultSchema.parse(request.body);
+      // Capture pre-update snapshot so we can emit previous_progress/delta
+      const previousKr = await loadKeyResultById(id);
       const kr = await krService.updateKeyResult(id, data, request.user!.org_id, fastify.redis);
-      publishBoltEvent('key_result.updated', 'bearing', {
-        id: kr.id,
-        title: kr.title,
-        goal_id: kr.goal_id,
-        current_value: kr.current_value,
-        target_value: kr.target_value,
-        updated_by: request.user!.id,
-      }, request.user!.org_id);
+      await publishKeyResultUpdated(
+        kr,
+        previousKr
+          ? { current_value: previousKr.current_value, progress: previousKr.progress }
+          : null,
+        request.user!.org_id,
+        request.user!.id,
+      );
       return reply.send({ data: kr });
     },
   );
@@ -179,15 +304,16 @@ export default async function keyResultRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { value } = setValueSchema.parse(request.body);
+      const previousKr = await loadKeyResultById(request.params.id);
       const kr = await krService.setCurrentValue(request.params.id, value, request.user!.org_id, fastify.redis);
-      publishBoltEvent('key_result.updated', 'bearing', {
-        id: kr.id,
-        title: kr.title,
-        goal_id: kr.goal_id,
-        current_value: kr.current_value,
-        target_value: kr.target_value,
-        updated_by: request.user!.id,
-      }, request.user!.org_id);
+      await publishKeyResultUpdated(
+        kr,
+        previousKr
+          ? { current_value: previousKr.current_value, progress: previousKr.progress }
+          : null,
+        request.user!.org_id,
+        request.user!.id,
+      );
       return reply.send({ data: kr });
     },
   );

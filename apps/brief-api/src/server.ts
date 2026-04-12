@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -21,7 +21,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler((error, request, reply) => {
+fastify.setErrorHandler((error: FastifyError, request, reply) => {
   // Zod validation errors
   if (error.name === 'ZodError') {
     return reply.status(400).send({
@@ -58,6 +58,18 @@ fastify.setErrorHandler((error, request, reply) => {
     error: {
       code: statusCode >= 500 ? 'INTERNAL_ERROR' : (error as any).code ?? 'BAD_REQUEST',
       message,
+      details: [],
+      request_id: request.id,
+    },
+  });
+});
+
+// Not found handler
+fastify.setNotFoundHandler((request, reply) => {
+  return reply.status(404).send({
+    error: {
+      code: 'NOT_FOUND',
+      message: `Route ${request.method} ${request.url} not found`,
       details: [],
       request_id: request.id,
     },

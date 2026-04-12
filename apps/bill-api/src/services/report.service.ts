@@ -1,6 +1,6 @@
-import { eq, and, sql, gte, lte, ne, notInArray } from 'drizzle-orm';
+import { eq, and, sql, gte, lte, notInArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { billInvoices, billExpenses, billPayments } from '../db/schema/index.js';
+import { billInvoices, billExpenses } from '../db/schema/index.js';
 
 // ---------------------------------------------------------------------------
 // Revenue summary

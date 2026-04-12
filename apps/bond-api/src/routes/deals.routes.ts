@@ -131,6 +131,7 @@ export default async function dealRoutes(fastify: FastifyInstance) {
         request.params.id,
         request.user!.org_id,
         body,
+        request.user!.id,
       );
       return reply.send({ data: deal });
     },

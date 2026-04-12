@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { BoltGraph } from '@/types/bolt-graph';
 import { api } from '@/lib/api';
 import { useProjectStore } from '@/stores/project.store';
 
@@ -63,6 +64,7 @@ export interface BoltAutomation {
   trigger_event: string;
   trigger_filter: Record<string, unknown> | null;
   cron_expression: string | null;
+  cron_timezone: string | null;
   conditions: BoltCondition[];
   actions: BoltAction[];
   max_executions_per_hour: number;
@@ -72,6 +74,7 @@ export interface BoltAutomation {
   project_name: string | null;
   created_by: string;
   creator_name: string | null;
+  graph: BoltGraph | null;
   created_at: string;
   updated_at: string;
 }
@@ -113,8 +116,11 @@ export function useAutomationList(filters?: {
     queryFn: () =>
       api.get<ListResponse>('/automations', {
         project_id: projectId ?? undefined,
-        'filter[trigger_source]': filters?.source,
-        'filter[enabled]': filters?.enabled != null ? String(filters.enabled) : undefined,
+        // The API's Zod schema uses flat keys, NOT filter[...] brackets.
+        // Unknown keys are stripped silently, so the bracket form was a no-op
+        // and the source/enabled chips never reached the server.
+        trigger_source: filters?.source,
+        enabled: filters?.enabled != null ? String(filters.enabled) : undefined,
         search: filters?.search,
         cursor: filters?.cursor,
       }),
@@ -159,7 +165,7 @@ export function useUpdateAutomation() {
 
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<BoltAutomation> & { id: string }) =>
-      api.patch<SingleResponse>(`/automations/${id}`, data),
+      api.put<SingleResponse>(`/automations/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['automations'] });
     },

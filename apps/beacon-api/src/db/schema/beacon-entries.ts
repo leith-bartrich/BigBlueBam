@@ -9,7 +9,6 @@ import {
   jsonb,
   index,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 import { users, organizations, projects } from './bbb-refs.js';
 
 export const beaconStatusEnum = pgEnum('beacon_status', [

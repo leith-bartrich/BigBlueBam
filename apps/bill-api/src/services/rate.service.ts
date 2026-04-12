@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull, lte, or, gte, sql } from 'drizzle-orm';
+import { eq, and, desc, isNull, lte, or, gte } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { billRates } from '../db/schema/index.js';
 import { notFound } from '../lib/utils.js';

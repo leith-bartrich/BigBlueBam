@@ -15,7 +15,7 @@ test.describe('Book — UI-API Agreement', () => {
     await screenshots.capture(page, 'calendar-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/events',
+      apiPath: '/v1/events',
       itemTextExtractor: (item) => (item as any).title,
     });
 
@@ -37,7 +37,7 @@ test.describe('Book — UI-API Agreement', () => {
     await screenshots.capture(page, 'booking-pages-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/booking-pages',
+      apiPath: '/v1/booking-pages',
       itemTextExtractor: (item) => (item as any).name,
     });
 

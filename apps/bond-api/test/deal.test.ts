@@ -37,6 +37,7 @@ vi.mock('../src/env.js', () => ({
     RATE_LIMIT_WINDOW_MS: 60000,
     BBB_API_INTERNAL_URL: 'http://api:4000',
     COOKIE_SECURE: false,
+    PUBLIC_URL: 'http://localhost',
   },
 }));
 
@@ -48,7 +49,8 @@ function chainable(result: unknown[]) {
   const obj: any = {};
   obj.then = (resolve: Function, reject?: Function) =>
     Promise.resolve(result).then(resolve as any, reject as any);
-  obj.limit = vi.fn().mockResolvedValue(result);
+  obj.limit = vi.fn().mockReturnValue(obj);
+  obj.offset = vi.fn().mockResolvedValue(result);
   obj.returning = vi.fn().mockResolvedValue(result);
   obj.from = vi.fn().mockReturnValue(obj);
   obj.where = vi.fn().mockReturnValue(obj);
@@ -158,23 +160,26 @@ describe('listDeals', () => {
     listDeals = mod.listDeals;
   });
 
-  it('should return paginated deals with cursor', async () => {
+  it('should return paginated deals with limit/offset pagination', async () => {
     const d1 = makeDeal({ id: 'd-1', created_at: new Date('2026-04-01') });
     const d2 = makeDeal({ id: 'd-2', created_at: new Date('2026-04-02') });
 
     mockSelect.mockReturnValue(chainable([d1, d2]));
 
-    const result = await listDeals({ orgId: ORG_ID, limit: 1 });
+    const result = await listDeals({ organization_id: ORG_ID, limit: 1 });
 
-    expect(result.data).toHaveLength(1);
-    expect(result.meta.has_more).toBe(true);
-    expect(result.meta.next_cursor).toBeDefined();
+    expect(result.data).toBeDefined();
+    expect(result.limit).toBe(1);
+    expect(result.offset).toBe(0);
   });
 
   it('should filter by pipeline_id', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await listDeals({ orgId: ORG_ID, pipelineId: PIPELINE_ID });
+    const result = await listDeals({
+      organization_id: ORG_ID,
+      pipeline_id: PIPELINE_ID,
+    });
 
     expect(result.data).toEqual([]);
     expect(mockSelect).toHaveBeenCalled();
@@ -183,7 +188,10 @@ describe('listDeals', () => {
   it('should filter by stage_id', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await listDeals({ orgId: ORG_ID, stageId: STAGE_ID_1 });
+    const result = await listDeals({
+      organization_id: ORG_ID,
+      stage_id: STAGE_ID_1,
+    });
 
     expect(result.data).toEqual([]);
     expect(mockSelect).toHaveBeenCalled();
@@ -192,7 +200,10 @@ describe('listDeals', () => {
   it('should filter by owner_id', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await listDeals({ orgId: ORG_ID, ownerId: USER_ID });
+    const result = await listDeals({
+      organization_id: ORG_ID,
+      owner_id: USER_ID,
+    });
 
     expect(result.data).toEqual([]);
     expect(mockSelect).toHaveBeenCalled();
@@ -201,10 +212,10 @@ describe('listDeals', () => {
   it('should cap limit to 100', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await listDeals({ orgId: ORG_ID, limit: 500 });
+    const result = await listDeals({ organization_id: ORG_ID, limit: 500 });
 
     expect(result.data).toEqual([]);
-    expect(result.meta.has_more).toBe(false);
+    expect(result.limit).toBe(100);
   });
 });
 
@@ -223,16 +234,18 @@ describe('getDeal', () => {
   });
 
   it('should return deal with stage, contacts, and activities', async () => {
-    const deal = makeDeal();
+    const deal = makeDeal({ company_id: null });
     const stage = makeStage();
 
+    // Sequence: 1) deal, 2) contacts, 3) stage_history, 4) activities, 5) stage
     let selectCount = 0;
     mockSelect.mockImplementation(() => {
       selectCount++;
       if (selectCount === 1) return chainable([deal]);
-      if (selectCount === 2) return chainable([stage]);
-      if (selectCount === 3) return chainable([{ contact_id: 'c-1', first_name: 'Ada' }]);
-      return chainable([{ id: 'act-1', activity_type: 'note' }]);
+      if (selectCount === 2) return chainable([{ contact_id: 'c-1', first_name: 'Ada' }]);
+      if (selectCount === 3) return chainable([]); // stage_history
+      if (selectCount === 4) return chainable([{ id: 'act-1', activity_type: 'note' }]);
+      return chainable([stage]);
     });
 
     const result = await getDeal(DEAL_ID, ORG_ID);
@@ -244,18 +257,16 @@ describe('getDeal', () => {
     expect(result.recent_activities).toHaveLength(1);
   });
 
-  it('should return null when deal not found', async () => {
+  it('should throw NOT_FOUND when deal not found', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getDeal('nonexistent', ORG_ID);
-    expect(result).toBeNull();
+    await expect(getDeal('nonexistent', ORG_ID)).rejects.toThrow('Deal not found');
   });
 
-  it('should return null for cross-org access', async () => {
+  it('should throw NOT_FOUND for cross-org access', async () => {
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getDeal(DEAL_ID, ORG_ID_2);
-    expect(result).toBeNull();
+    await expect(getDeal(DEAL_ID, ORG_ID_2)).rejects.toThrow('Deal not found');
   });
 });
 
@@ -275,16 +286,16 @@ describe('createDeal', () => {
 
   it('should create a deal and record initial stage history', async () => {
     const deal = makeDeal();
-    const { txInsert, txSelect } = setupTransaction();
+    const pipeline = { id: PIPELINE_ID, currency: 'USD' };
 
-    txSelect.mockReturnValue(chainable([makeStage()])); // validate stage belongs to pipeline
-
-    let insertCount = 0;
-    txInsert.mockImplementation(() => {
-      insertCount++;
-      if (insertCount === 1) return chainable([deal]); // deal insert
-      return chainable([]); // stage history + activity
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      if (selectCount === 1) return chainable([pipeline]); // pipeline lookup
+      return chainable([makeStage()]); // stage lookup
     });
+
+    mockInsert.mockReturnValue(chainable([deal]));
 
     const result = await createDeal(
       {
@@ -293,81 +304,83 @@ describe('createDeal', () => {
         stage_id: STAGE_ID_1,
         value: 50000_00,
       },
-      USER_ID,
       ORG_ID,
+      USER_ID,
     );
 
     expect(result).toBeDefined();
     expect(result.name).toBe('Enterprise License Deal');
-    expect(txInsert).toHaveBeenCalled();
+    expect(mockInsert).toHaveBeenCalled();
   });
 
   it('should reject when stage does not belong to pipeline', async () => {
-    const { txSelect } = setupTransaction();
-    txSelect.mockReturnValue(chainable([])); // stage not found in pipeline
+    const pipeline = { id: PIPELINE_ID, currency: 'USD' };
+
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      if (selectCount === 1) return chainable([pipeline]); // pipeline lookup
+      return chainable([]); // stage not found in pipeline
+    });
 
     await expect(
       createDeal(
         { name: 'Bad Deal', pipeline_id: PIPELINE_ID, stage_id: 'wrong-stage' },
-        USER_ID,
         ORG_ID,
+        USER_ID,
       ),
-    ).rejects.toThrow('Stage does not belong to pipeline');
+    ).rejects.toThrow('Stage not found in this pipeline');
   });
 });
 
 // ---------------------------------------------------------------------------
-// moveDealToStage (stage transition)
+// moveDealStage (stage transition)
 // ---------------------------------------------------------------------------
 
-describe('moveDealToStage', () => {
-  let moveDealToStage: Function;
+describe('moveDealStage', () => {
+  let moveDealStage: Function;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
     const mod = await import('../src/services/deal.service.js');
-    moveDealToStage = mod.moveDealToStage;
+    moveDealStage = mod.moveDealStage;
   });
 
   it('should move deal to new stage and log history', async () => {
     const existing = makeDeal({ stage_id: STAGE_ID_1 });
     const moved = makeDeal({ stage_id: STAGE_ID_2, stage_entered_at: new Date() });
 
-    const { txSelect, txUpdate, txInsert } = setupTransaction();
-
+    // Sequence: 1) deal lookup, 2) new stage lookup
     let selectCount = 0;
-    txSelect.mockImplementation(() => {
+    mockSelect.mockImplementation(() => {
       selectCount++;
-      if (selectCount === 1) return chainable([existing]); // deal lookup
-      return chainable([makeStage({ id: STAGE_ID_2, sort_order: 1 })]); // target stage
+      if (selectCount === 1) return chainable([existing]);
+      return chainable([makeStage({ id: STAGE_ID_2, sort_order: 1 })]);
     });
 
-    txUpdate.mockReturnValue(chainable([moved]));
-    txInsert.mockReturnValue(chainable([])); // stage history
+    mockInsert.mockReturnValue(chainable([])); // stage_history + activity
+    mockUpdate.mockReturnValue(chainable([moved]));
 
-    const result = await moveDealToStage(DEAL_ID, STAGE_ID_2, USER_ID, ORG_ID);
+    const result = await moveDealStage(DEAL_ID, ORG_ID, STAGE_ID_2, USER_ID);
 
     expect(result.stage_id).toBe(STAGE_ID_2);
-    expect(txInsert).toHaveBeenCalled(); // stage history recorded
+    expect(mockInsert).toHaveBeenCalled(); // stage history recorded
   });
 
-  it('should throw when deal is already closed', async () => {
-    const closed = makeDeal({ closed_at: new Date() });
-    const { txSelect } = setupTransaction();
-    txSelect.mockReturnValue(chainable([closed]));
+  it('should return deal unchanged when new stage equals current stage', async () => {
+    const existing = makeDeal({ stage_id: STAGE_ID_1 });
+    mockSelect.mockReturnValue(chainable([existing]));
 
-    await expect(
-      moveDealToStage(DEAL_ID, STAGE_ID_2, USER_ID, ORG_ID),
-    ).rejects.toThrow('Cannot move a closed deal');
+    const result = await moveDealStage(DEAL_ID, ORG_ID, STAGE_ID_1, USER_ID);
+    expect(result.stage_id).toBe(STAGE_ID_1);
   });
 
   it('should throw NOT_FOUND for nonexistent deal', async () => {
-    const { txSelect } = setupTransaction();
-    txSelect.mockReturnValue(chainable([]));
+    mockSelect.mockReturnValue(chainable([]));
 
     await expect(
-      moveDealToStage('nonexistent', STAGE_ID_2, USER_ID, ORG_ID),
+      moveDealStage('nonexistent', ORG_ID, STAGE_ID_2, USER_ID),
     ).rejects.toThrow('Deal not found');
   });
 });
@@ -387,23 +400,25 @@ describe('closeDealWon', () => {
   });
 
   it('should mark deal as won with closed_at timestamp', async () => {
-    const existing = makeDeal();
+    const existing = makeDeal({ stage_id: STAGE_ID_1 });
     const won = makeDeal({
       stage_id: STAGE_ID_WON,
       closed_at: new Date(),
       probability_pct: 100,
     });
 
-    const { txSelect, txUpdate, txInsert } = setupTransaction();
-
-    txSelect.mockImplementation(() => {
-      return chainable([existing]);
+    // Sequence: 1) deal lookup, 2) won stage lookup
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      if (selectCount === 1) return chainable([existing]);
+      return chainable([makeStage({ id: STAGE_ID_WON, stage_type: 'won' })]);
     });
 
-    txUpdate.mockReturnValue(chainable([won]));
-    txInsert.mockReturnValue(chainable([])); // history + activity
+    mockInsert.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([won]));
 
-    const result = await closeDealWon(DEAL_ID, { close_reason: 'Great fit' }, USER_ID, ORG_ID);
+    const result = await closeDealWon(DEAL_ID, ORG_ID, USER_ID, 'Great fit');
 
     expect(result.closed_at).toBeDefined();
     expect(result.probability_pct).toBe(100);
@@ -411,11 +426,10 @@ describe('closeDealWon', () => {
 
   it('should throw when deal is already closed', async () => {
     const closed = makeDeal({ closed_at: new Date() });
-    const { txSelect } = setupTransaction();
-    txSelect.mockReturnValue(chainable([closed]));
+    mockSelect.mockReturnValue(chainable([closed]));
 
     await expect(
-      closeDealWon(DEAL_ID, {}, USER_ID, ORG_ID),
+      closeDealWon(DEAL_ID, ORG_ID, USER_ID),
     ).rejects.toThrow('Deal is already closed');
   });
 });
@@ -431,7 +445,7 @@ describe('closeDealLost', () => {
   });
 
   it('should mark deal as lost with reason and competitor', async () => {
-    const existing = makeDeal();
+    const existing = makeDeal({ stage_id: STAGE_ID_1 });
     const lost = makeDeal({
       stage_id: STAGE_ID_LOST,
       closed_at: new Date(),
@@ -440,16 +454,23 @@ describe('closeDealLost', () => {
       lost_to_competitor: 'CompetitorCo',
     });
 
-    const { txSelect, txUpdate, txInsert } = setupTransaction();
-    txSelect.mockReturnValue(chainable([existing]));
-    txUpdate.mockReturnValue(chainable([lost]));
-    txInsert.mockReturnValue(chainable([]));
+    // Sequence: 1) deal lookup, 2) lost stage lookup
+    let selectCount = 0;
+    mockSelect.mockImplementation(() => {
+      selectCount++;
+      if (selectCount === 1) return chainable([existing]);
+      return chainable([makeStage({ id: STAGE_ID_LOST, stage_type: 'lost' })]);
+    });
+
+    mockInsert.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([lost]));
 
     const result = await closeDealLost(
       DEAL_ID,
-      { close_reason: 'Budget cuts', lost_to_competitor: 'CompetitorCo' },
-      USER_ID,
       ORG_ID,
+      USER_ID,
+      'Budget cuts',
+      'CompetitorCo',
     );
 
     expect(result.closed_at).toBeDefined();
@@ -510,17 +531,15 @@ describe('updateDeal', () => {
   });
 
   it('should update deal fields', async () => {
-    const existing = makeDeal();
     const updated = makeDeal({ name: 'Updated Deal', value: 75000_00 });
 
-    mockSelect.mockReturnValue(chainable([existing]));
     mockUpdate.mockReturnValue(chainable([updated]));
 
     const result = await updateDeal(
       DEAL_ID,
+      ORG_ID,
       { name: 'Updated Deal', value: 75000_00 },
       USER_ID,
-      ORG_ID,
     );
 
     expect(result.name).toBe('Updated Deal');
@@ -528,10 +547,10 @@ describe('updateDeal', () => {
   });
 
   it('should throw NOT_FOUND when deal does not exist', async () => {
-    mockSelect.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([]));
 
     await expect(
-      updateDeal(DEAL_ID, { name: 'X' }, USER_ID, ORG_ID),
+      updateDeal(DEAL_ID, ORG_ID, { name: 'X' }, USER_ID),
     ).rejects.toThrow('Deal not found');
   });
 });
@@ -551,16 +570,14 @@ describe('deleteDeal', () => {
   });
 
   it('should delete an existing deal', async () => {
-    const existing = makeDeal();
-    mockSelect.mockReturnValue(chainable([existing]));
-    mockDelete.mockReturnValue(chainable([]));
+    mockDelete.mockReturnValue(chainable([{ id: DEAL_ID }]));
 
     const result = await deleteDeal(DEAL_ID, ORG_ID);
-    expect(result.deleted).toBe(true);
+    expect(result.id).toBe(DEAL_ID);
   });
 
   it('should throw NOT_FOUND when deal does not exist', async () => {
-    mockSelect.mockReturnValue(chainable([]));
+    mockDelete.mockReturnValue(chainable([]));
 
     await expect(deleteDeal(DEAL_ID, ORG_ID)).rejects.toThrow('Deal not found');
   });

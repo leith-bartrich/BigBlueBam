@@ -201,11 +201,13 @@ export function ActionEditor({
                     {param.name}
                   </span>
                   {param.required && (
-                    <span className="text-red-500 text-xs" title="Required">*</span>
+                    <span className="text-zinc-400 text-xs" title="Required">*</span>
                   )}
                 </div>
                 <div className="text-[10px] text-zinc-400 truncate" title={param.description}>
-                  {param.format ?? param.type}
+                  {param.format === 'uuid' && param.description?.toLowerCase().includes('name')
+                    ? 'uuid or name'
+                    : (param.format ?? param.type)}
                   {param.nullable ? ' • nullable' : ''}
                 </div>
               </div>

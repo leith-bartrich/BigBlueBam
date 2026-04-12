@@ -24,13 +24,7 @@ test.describe('Bond — Contact CRUD', () => {
 
     const firstName = `E2EContact${Date.now()}`;
     const email = `e2e-${Date.now()}@test.example.com`;
-    let contact: any;
-    try {
-      contact = await api.post('/contacts', { first_name: firstName, email });
-    } catch {
-      test.skip(true, 'Could not create contact via API');
-      return;
-    }
+    const contact = await api.post<any>('/v1/contacts', { first_name: firstName, email });
     await screenshots.capture(page, 'contact-created-via-api');
 
     await contactsPage.goto();
@@ -41,7 +35,7 @@ test.describe('Bond — Contact CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/contacts/${contact.id}`);
+      await api.delete(`/v1/contacts/${contact.id}`);
     } catch {}
   });
 
@@ -52,7 +46,7 @@ test.describe('Bond — Contact CRUD', () => {
 
     let contact: any;
     try {
-      const contacts = await api.get<any[]>('/contacts');
+      const contacts = await api.get<any[]>('/v1/contacts');
       if (contacts.length > 0) contact = contacts[0];
     } catch {}
 
@@ -76,21 +70,10 @@ test.describe('Bond — Contact CRUD', () => {
 
     const firstName = `E2EUpdate${Date.now()}`;
     const email = `e2e-update-${Date.now()}@test.example.com`;
-    let contact: any;
-    try {
-      contact = await api.post('/contacts', { first_name: firstName, email });
-    } catch {
-      test.skip(true, 'Could not create contact via API');
-      return;
-    }
+    const contact = await api.post<any>('/v1/contacts', { first_name: firstName, email });
 
     const updatedName = `${firstName}Updated`;
-    try {
-      await api.patch(`/contacts/${contact.id}`, { first_name: updatedName });
-    } catch {
-      test.skip(true, 'Could not update contact via API');
-      return;
-    }
+    await api.patch(`/v1/contacts/${contact.id}`, { first_name: updatedName });
 
     await contactsPage.goto();
     await page.waitForTimeout(2000);
@@ -100,7 +83,7 @@ test.describe('Bond — Contact CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/contacts/${contact.id}`);
+      await api.delete(`/v1/contacts/${contact.id}`);
     } catch {}
   });
 
@@ -111,20 +94,9 @@ test.describe('Bond — Contact CRUD', () => {
 
     const firstName = `E2EDelete${Date.now()}`;
     const email = `e2e-delete-${Date.now()}@test.example.com`;
-    let contact: any;
-    try {
-      contact = await api.post('/contacts', { first_name: firstName, email });
-    } catch {
-      test.skip(true, 'Could not create contact via API');
-      return;
-    }
+    const contact = await api.post<any>('/v1/contacts', { first_name: firstName, email });
 
-    try {
-      await api.delete(`/contacts/${contact.id}`);
-    } catch {
-      test.skip(true, 'Could not delete contact via API');
-      return;
-    }
+    await api.delete(`/v1/contacts/${contact.id}`);
 
     await contactsPage.goto();
     await page.waitForTimeout(2000);
@@ -140,7 +112,7 @@ test.describe('Bond — Contact CRUD', () => {
 
     let contacts: any[] = [];
     try {
-      contacts = await api.get<any[]>('/contacts');
+      contacts = await api.get<any[]>('/v1/contacts');
     } catch {}
 
     test.skip(contacts.length === 0, 'No contacts available');

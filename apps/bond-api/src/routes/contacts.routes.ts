@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
-import { requireMinOrgRole } from '../middleware/authorize.js';
 import * as contactService from '../services/contact.service.js';
 
 // ---------------------------------------------------------------------------

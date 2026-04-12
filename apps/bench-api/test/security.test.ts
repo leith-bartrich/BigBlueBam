@@ -19,62 +19,98 @@ vi.mock('../src/env.js', () => ({
   },
 }));
 
+const ORG_ID = '00000000-0000-0000-0000-000000000001';
+
 describe('Query Security', () => {
   it('rejects identifiers with spaces', async () => {
     const { buildQuery } = await import('../src/services/query.service.js');
     expect(() =>
-      buildQuery('bam', 'tasks', {
-        measures: [{ field: 'id name', agg: 'count' }],
-      }),
+      buildQuery(
+        'bam',
+        'tasks',
+        {
+          measures: [{ field: 'id name', agg: 'count' }],
+        },
+        ORG_ID,
+      ),
     ).toThrow('Invalid identifier');
   });
 
   it('rejects identifiers with semicolons', async () => {
     const { buildQuery } = await import('../src/services/query.service.js');
     expect(() =>
-      buildQuery('bam', 'tasks', {
-        measures: [{ field: 'id;', agg: 'count' }],
-      }),
+      buildQuery(
+        'bam',
+        'tasks',
+        {
+          measures: [{ field: 'id;', agg: 'count' }],
+        },
+        ORG_ID,
+      ),
     ).toThrow('Invalid identifier');
   });
 
   it('rejects identifiers starting with numbers', async () => {
     const { buildQuery } = await import('../src/services/query.service.js');
     expect(() =>
-      buildQuery('bam', 'tasks', {
-        measures: [{ field: '1invalid', agg: 'count' }],
-      }),
+      buildQuery(
+        'bam',
+        'tasks',
+        {
+          measures: [{ field: '1invalid', agg: 'count' }],
+        },
+        ORG_ID,
+      ),
     ).toThrow('Invalid identifier');
   });
 
-  it('escapes single quotes in filter values', async () => {
+  it('parameterizes filter values containing single quotes', async () => {
     const { buildQuery } = await import('../src/services/query.service.js');
-    const sql = buildQuery('bam', 'tasks', {
-      measures: [{ field: 'id', agg: 'count' }],
-      filters: [{ field: 'state', op: 'eq', value: "it's" }],
-    });
+    const pq = buildQuery(
+      'bam',
+      'tasks',
+      {
+        measures: [{ field: 'id', agg: 'count' }],
+        filters: [{ field: 'state', op: 'eq', value: "it's" }],
+      },
+      ORG_ID,
+    );
 
-    expect(sql).toContain("state = 'it''s'");
-    expect(sql).not.toContain("it's'");
+    // Value must be carried as a positional parameter, never inlined into SQL.
+    expect(pq.text).toMatch(/state = \$\d+/);
+    expect(pq.text).not.toContain("it's");
+    expect(pq.params).toContain("it's");
   });
 
-  it('builds IN filter with array values', async () => {
+  it('builds IN filter with array values as parameters', async () => {
     const { buildQuery } = await import('../src/services/query.service.js');
-    const sql = buildQuery('bam', 'tasks', {
-      measures: [{ field: 'id', agg: 'count' }],
-      filters: [{ field: 'priority', op: 'in', value: ['high', 'critical'] }],
-    });
+    const pq = buildQuery(
+      'bam',
+      'tasks',
+      {
+        measures: [{ field: 'id', agg: 'count' }],
+        filters: [{ field: 'priority', op: 'in', value: ['high', 'critical'] }],
+      },
+      ORG_ID,
+    );
 
-    expect(sql).toContain("priority IN ('high','critical')");
+    expect(pq.text).toMatch(/priority IN \(\$\d+, \$\d+\)/);
+    expect(pq.params).toContain('high');
+    expect(pq.params).toContain('critical');
   });
 
   it('rejects IN filter with non-array value', async () => {
     const { buildQuery } = await import('../src/services/query.service.js');
     expect(() =>
-      buildQuery('bam', 'tasks', {
-        measures: [{ field: 'id', agg: 'count' }],
-        filters: [{ field: 'priority', op: 'in', value: 'high' }],
-      }),
+      buildQuery(
+        'bam',
+        'tasks',
+        {
+          measures: [{ field: 'id', agg: 'count' }],
+          filters: [{ field: 'priority', op: 'in', value: 'high' }],
+        },
+        ORG_ID,
+      ),
     ).toThrow('IN filter requires an array value');
   });
 });

@@ -7,7 +7,7 @@ import {
   requireBoardEditAccess,
 } from '../middleware/authorize.js';
 import * as boardService from '../services/board.service.js';
-import { publishBoltEvent } from '../lib/bolt-events.js';
+import { publishBoltEvent, buildBoardEventPayload } from '../lib/bolt-events.js';
 
 const BACKGROUNDS = ['dots', 'grid', 'lines', 'plain'] as const;
 const VISIBILITIES = ['private', 'project', 'organization'] as const;
@@ -84,12 +84,23 @@ export default async function boardRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
-      publishBoltEvent('board.created', 'board', {
-        id: board.id,
-        name: board.name,
-        visibility: board.visibility,
-        created_by: request.user!.id,
-      }, request.user!.org_id);
+      try {
+        const payload = await buildBoardEventPayload(
+          board.id,
+          request.user!.org_id,
+          request.user!.id,
+        );
+        publishBoltEvent(
+          'board.created',
+          'board',
+          payload,
+          request.user!.org_id,
+          request.user!.id,
+          'user',
+        );
+      } catch {
+        // Enrichment failure must never block board creation — drop the event.
+      }
       return reply.status(201).send({ data: board });
     },
   );
@@ -189,12 +200,31 @@ export default async function boardRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
-      publishBoltEvent('board.updated', 'board', {
-        id: board.id,
-        name: board.name,
-        visibility: board.visibility,
-        updated_by: request.user!.id,
-      }, request.user!.org_id);
+      try {
+        // `data` is the PATCH body — surface the exact subset of fields the
+        // caller changed, with their new values, so Bolt rules can key off
+        // specific transitions (e.g. visibility → "organization").
+        const changes: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(data)) {
+          if (value !== undefined) changes[key] = value;
+        }
+        const payload = await buildBoardEventPayload(
+          board.id,
+          request.user!.org_id,
+          request.user!.id,
+          changes,
+        );
+        publishBoltEvent(
+          'board.updated',
+          'board',
+          payload,
+          request.user!.org_id,
+          request.user!.id,
+          'user',
+        );
+      } catch {
+        // Enrichment failure must never block the update — drop the event.
+      }
       return reply.send({ data: board });
     },
   );

@@ -11,10 +11,21 @@ export class BriefHomePage extends BasePage {
 
   async goto(): Promise<void> {
     await super.goto('/');
+    // Under heavy parallel load (this suite runs alongside 5 sibling
+    // clusters hammering the same stack) the Brief SPA's initial auth
+    // check (/b3/api/auth/me) can take 20-30 s to return. The base
+    // waitForAppReady only waits for the loader spinner to hide, which
+    // resolves before <main> exists in the DOM. Explicitly wait for the
+    // BriefLayout <main> with a generous budget so downstream assertions
+    // are stable.
+    await this.page
+      .locator('main')
+      .first()
+      .waitFor({ state: 'visible', timeout: 40_000 });
   }
 
   async expectHomeLoaded(): Promise<void> {
-    await expect(this.page.locator('main')).toBeVisible();
+    await expect(this.page.locator('main').first()).toBeVisible({ timeout: 15_000 });
   }
 
   async navigateToDocuments(): Promise<void> {

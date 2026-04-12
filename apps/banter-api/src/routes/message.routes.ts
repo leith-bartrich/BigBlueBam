@@ -20,6 +20,12 @@ import {
 } from '../lib/notify.js';
 import { sanitizeContent } from '../lib/sanitize.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  loadEnrichedChannel,
+  loadEnrichedActor,
+  loadEnrichedOrg,
+  buildMessageUrl,
+} from '../lib/bolt-enrich.js';
 
 const createMessageSchema = z.object({
   content: z.string().min(1).max(40000),
@@ -347,12 +353,112 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         }
       })();
 
-      // Bolt workflow event (fire-and-forget)
-      publishBoltEvent('message.posted', 'banter', {
-        message,
-        channel_id: id,
-        author_id: user.id,
-      }, user.org_id).catch(() => {});
+      // Bolt workflow event (fire-and-forget) — payload shape must match the
+      // catalog declared in apps/bolt-api/src/services/event-catalog.ts so that
+      // rule templates like {{ event.channel.handle }} or
+      // {{ event.actor.email }} resolve correctly.
+      (async () => {
+        try {
+          if (!message) return;
+          const [enrichedChannel, enrichedActor, enrichedOrg] = await Promise.all([
+            loadEnrichedChannel(id),
+            loadEnrichedActor(user.id),
+            loadEnrichedOrg(user.org_id),
+          ]);
+
+          const mentions = extractMentions(body.content);
+          const messageUrl = buildMessageUrl(
+            enrichedChannel,
+            message.id,
+            message.thread_parent_id,
+          );
+
+          await publishBoltEvent(
+            'message.posted',
+            'banter',
+            {
+              message: {
+                id: message.id,
+                content: message.content_plain ?? message.content,
+                content_html: message.content,
+                url: messageUrl,
+                thread_parent_id: message.thread_parent_id,
+                is_reply: !!message.thread_parent_id,
+                mentions,
+                // TODO: include attachments — banterMessageAttachments are
+                // written separately after the message insert, so they
+                // aren't yet attached when this producer fires.
+                attachments: [],
+                created_at: message.created_at,
+              },
+              channel: {
+                id: enrichedChannel.id,
+                name: enrichedChannel.name,
+                handle: enrichedChannel.handle,
+                type: enrichedChannel.type,
+                url: enrichedChannel.url,
+              },
+              actor: enrichedActor,
+              org: enrichedOrg,
+            },
+            user.org_id,
+            user.id,
+            'user',
+          );
+
+          // Fan out message.mentioned — once per successfully-resolved
+          // mentioned user. We reuse the same extractMentions() names and
+          // resolve them against users.display_name (same matching the
+          // notification path uses above).
+          if (mentions.length > 0) {
+            const mentionedUsers = await db
+              .select({
+                id: users.id,
+                display_name: users.display_name,
+                email: users.email,
+              })
+              .from(users)
+              .where(
+                and(
+                  eq(users.org_id, user.org_id),
+                  sql`lower(${users.display_name}) = ANY(${mentions.map((n) => n.toLowerCase())})`,
+                ),
+              );
+            for (const mu of mentionedUsers) {
+              await publishBoltEvent(
+                'message.mentioned',
+                'banter',
+                {
+                  message: {
+                    id: message.id,
+                    content: message.content_plain ?? message.content,
+                    url: messageUrl,
+                  },
+                  mentioned_user: {
+                    id: mu.id,
+                    name: mu.display_name,
+                    email: mu.email,
+                  },
+                  channel: {
+                    id: enrichedChannel.id,
+                    name: enrichedChannel.name,
+                    handle: enrichedChannel.handle,
+                    type: enrichedChannel.type,
+                    url: enrichedChannel.url,
+                  },
+                  actor: enrichedActor,
+                  org: enrichedOrg,
+                },
+                user.org_id,
+                user.id,
+                'user',
+              );
+            }
+          }
+        } catch {
+          // Fire-and-forget — never affect message delivery
+        }
+      })();
 
       return reply.status(201).send({ data: message });
     },
@@ -503,12 +609,52 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
-      // Bolt workflow event (fire-and-forget)
-      publishBoltEvent('message.edited', 'banter', {
-        message: updated,
-        channel_id: existing.channel_id,
-        author_id: user.id,
-      }, user.org_id).catch(() => {});
+      // Bolt workflow event (fire-and-forget) — payload shape must match the
+      // catalog declared in apps/bolt-api/src/services/event-catalog.ts.
+      (async () => {
+        try {
+          if (!updated) return;
+          const [enrichedChannel, enrichedActor, enrichedOrg] = await Promise.all([
+            loadEnrichedChannel(existing.channel_id),
+            loadEnrichedActor(user.id),
+            loadEnrichedOrg(user.org_id),
+          ]);
+          const messageUrl = buildMessageUrl(
+            enrichedChannel,
+            updated.id,
+            updated.thread_parent_id,
+          );
+          await publishBoltEvent(
+            'message.edited',
+            'banter',
+            {
+              message: {
+                id: updated.id,
+                content: updated.content_plain ?? updated.content,
+                content_html: updated.content,
+                previous_content: existing.content_plain ?? existing.content,
+                url: messageUrl,
+                is_edited: updated.is_edited,
+                edited_at: updated.edited_at,
+              },
+              channel: {
+                id: enrichedChannel.id,
+                name: enrichedChannel.name,
+                handle: enrichedChannel.handle,
+                type: enrichedChannel.type,
+                url: enrichedChannel.url,
+              },
+              actor: enrichedActor,
+              org: enrichedOrg,
+            },
+            user.org_id,
+            user.id,
+            'user',
+          );
+        } catch {
+          // Fire-and-forget — never affect message edit
+        }
+      })();
 
       return reply.send({ data: updated });
     },

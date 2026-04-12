@@ -109,11 +109,25 @@ function stubUpdateLastUsed() {
 }
 
 // Fake chain for the tickets list fetch that runs AFTER auth passes:
-// db.select().from(tickets).orderBy(...) → [].
+// db.select().from(tickets).innerJoin(projects).where(...).orderBy(...) → [].
 function makeTicketsSelectChain() {
   return {
     from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockResolvedValue([]),
+  };
+}
+
+// Fake chain for the org-id resolution in resolveAgentOrgId (HB-6):
+// db.select({ org_id }).from(users).where(...).limit(1) → [{ org_id }].
+// Sits between the agent-key lookup and the tickets list in the select-call
+// sequence of any GET /tickets request that passes auth.
+function makeOrgLookupChain(orgId: string = '33333333-3333-3333-3333-333333333333') {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue([{ org_id: orgId }]),
   };
 }
 
@@ -165,7 +179,8 @@ describe('HB-28 + HB-49: per-agent X-Agent-Key authentication', () => {
     dbMock.execute.mockResolvedValue({ rows: [] });
     dbMock.select
       .mockReturnValueOnce(authChain) // 1st call: agent key lookup
-      .mockReturnValueOnce(makeTicketsSelectChain()); // 2nd call: tickets list
+      .mockReturnValueOnce(makeOrgLookupChain()) // 2nd call: resolveAgentOrgId
+      .mockReturnValueOnce(makeTicketsSelectChain()); // 3rd call: tickets list
 
     const res = await app.inject({
       method: 'GET',
@@ -276,6 +291,7 @@ describe('HB-28 + HB-49: per-agent X-Agent-Key authentication', () => {
       .mockReturnValueOnce(
         makeAgentKeySelectChain([makeCandidate({ expires_at: tomorrow })]),
       )
+      .mockReturnValueOnce(makeOrgLookupChain())
       .mockReturnValueOnce(makeTicketsSelectChain());
 
     const res = await app.inject({
@@ -327,6 +343,7 @@ describe('HB-28 + HB-49: per-agent X-Agent-Key authentication', () => {
     dbMock.execute.mockResolvedValue({ rows: [] });
     dbMock.select
       .mockReturnValueOnce(makeAgentKeySelectChain(candidates))
+      .mockReturnValueOnce(makeOrgLookupChain())
       .mockReturnValueOnce(makeTicketsSelectChain());
 
     const res = await app.inject({
@@ -350,6 +367,7 @@ describe('HB-28 + HB-49: per-agent X-Agent-Key authentication', () => {
     dbMock.execute.mockResolvedValue({ rows: [] });
     dbMock.select
       .mockReturnValueOnce(makeAgentKeySelectChain(candidates))
+      .mockReturnValueOnce(makeOrgLookupChain())
       .mockReturnValueOnce(makeTicketsSelectChain());
 
     const res = await app.inject({

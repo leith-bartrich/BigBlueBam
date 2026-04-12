@@ -64,7 +64,25 @@ const updateWidgetSchema = createWidgetSchema.partial();
 // Routes
 // ---------------------------------------------------------------------------
 
+const listWidgetsQuerySchema = z.object({
+  dashboard_id: z.string().uuid().optional(),
+});
+
 export default async function widgetRoutes(fastify: FastifyInstance) {
+  // GET /widgets — List widgets across the org (optionally filtered by dashboard)
+  fastify.get(
+    '/widgets',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const query = listWidgetsQuerySchema.parse(request.query);
+      const widgets = await widgetService.listWidgets(
+        request.user!.org_id,
+        query.dashboard_id,
+      );
+      return reply.send({ data: widgets });
+    },
+  );
+
   // POST /dashboards/:id/widgets — Add widget
   fastify.post<{ Params: { id: string } }>(
     '/dashboards/:id/widgets',

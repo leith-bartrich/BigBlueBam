@@ -2,11 +2,9 @@ import { eq, and, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bookEvents,
-  bookEventAttendees,
   bookWorkingHours,
   bookExternalEvents,
 } from '../db/schema/index.js';
-import { notFound } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // Types

@@ -79,10 +79,35 @@ test.describe('B3 — Navigation', () => {
       (p) => p.requiresAuth && !p.requiresSetup && !p.path.includes(':'),
     );
 
+    // Land on the dashboard first so the SPA picks up the admin session
+    // before we start hopping between routes via pushState. If the very
+    // first GET /auth/me happens to be rate-limited (sibling tests, CI
+    // contention) the SPA renders the login form. In that case the
+    // session cookie is still valid — we just need to wait for the rate
+    // limiter to clear and reload.
+    await dashboardPage.goto();
+    const loginFormVisible = await page
+      .getByRole('heading', { name: /welcome back/i })
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
+    if (loginFormVisible) {
+      // Back off, then reload — the SPA will retry /auth/me with the
+      // existing cookie and render the dashboard.
+      await page.waitForTimeout(2000);
+      await page.reload();
+      await dashboardPage.waitForAppReady();
+    }
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
+
     for (const pageDef of simplePages) {
       await dashboardPage.navigate(pageDef.path);
       await screenshots.capture(page, `page-${pageDef.name}-loaded`);
-      await expect(page.locator('main, [class*="content"]').first()).toBeVisible();
+      // The SuperUser console redirects non-superusers back to the
+      // dashboard via useEffect, so we just check that *some* layout
+      // surface (main element or layout content wrapper) is visible.
+      await expect(page.locator('main, [class*="content"]').first()).toBeVisible({
+        timeout: 15_000,
+      });
     }
   });
 });

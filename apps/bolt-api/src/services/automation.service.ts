@@ -1,4 +1,4 @@
-import { eq, and, or, sql, asc, desc, gt, ilike } from 'drizzle-orm';
+import { eq, and, or, sql, asc, gt, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   boltAutomations,
@@ -9,6 +9,7 @@ import {
 import { evaluateConditions } from './condition-engine.js';
 import { getAvailableActions } from './event-catalog.js';
 import { validateExternalUrl } from '../lib/url-validator.js';
+import { projectRowsToGraph } from './bolt-graph-compiler.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,7 +40,7 @@ export class BoltError extends Error {
 // Validation: MCP tool allowlist
 // ---------------------------------------------------------------------------
 
-const allowedToolsCache = new Set(getAvailableActions().map((a) => a.tool));
+const allowedToolsCache = new Set(getAvailableActions().map((a) => a.mcp_tool));
 
 /**
  * Validate that every action references a tool on the allowlist.
@@ -322,6 +323,30 @@ export interface UpdateAutomationInput {
   actions?: ActionInput[];
 }
 
+/** Synthesize a graph from the full automation result for read responses. */
+function attachGraph<T extends {
+  trigger_source: string;
+  trigger_event: string;
+  trigger_filter: unknown;
+  graph?: unknown;
+  conditions: any[];
+  actions: any[];
+}>(automation: T): T & { graph: unknown } {
+  if (automation.graph != null) {
+    return automation as T & { graph: unknown };
+  }
+  const graph = projectRowsToGraph({
+    trigger: {
+      source: automation.trigger_source,
+      event: automation.trigger_event,
+      filter: (automation.trigger_filter as Record<string, unknown>) ?? {},
+    },
+    conditions: automation.conditions,
+    actions: automation.actions,
+  });
+  return { ...automation, graph };
+}
+
 export interface PatchAutomationInput {
   name?: string;
   description?: string | null;
@@ -415,7 +440,8 @@ export async function getAutomation(id: string, orgId: string) {
     .where(eq(boltActions.automation_id, id))
     .orderBy(asc(boltActions.sort_order));
 
-  return { ...automation, conditions, actions };
+  const full = { ...automation, conditions, actions };
+  return attachGraph(full);
 }
 
 export async function getAutomationById(id: string, orgId: string) {
@@ -427,10 +453,95 @@ export async function getAutomationById(id: string, orgId: string) {
   return automation ?? null;
 }
 
+/**
+ * Resolve an automation by its name within an org. Prefers an exact
+ * case-insensitive match; falls back to a single ILIKE "%name%" hit when
+ * exactly one row contains the query as a substring. Returns null if no
+ * match is found or the fuzzy fallback is ambiguous (>1 row).
+ *
+ * Result shape is resolver-friendly and excludes conditions/actions; it
+ * includes an `action_count` aggregate and the automation's
+ * `last_executed_at` (aliased as `last_execution_at` for external callers).
+ */
+export async function getAutomationByName(
+  name: string,
+  orgId: string,
+): Promise<
+  | {
+      id: string;
+      name: string;
+      description: string | null;
+      trigger_source: string;
+      trigger_event: string;
+      enabled: boolean;
+      action_count: number;
+      last_execution_at: Date | null;
+    }
+  | null
+> {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return null;
+
+  // 1) Exact case-insensitive match first.
+  const exactRows = await db
+    .select()
+    .from(boltAutomations)
+    .where(
+      and(
+        eq(boltAutomations.org_id, orgId),
+        ilike(boltAutomations.name, trimmed),
+      ),
+    )
+    .limit(2);
+
+  let row = exactRows[0];
+
+  // 2) Fuzzy fallback: single-hit ILIKE %trimmed%.
+  if (!row) {
+    const escaped = escapeLike(trimmed);
+    const fuzzyRows = await db
+      .select()
+      .from(boltAutomations)
+      .where(
+        and(
+          eq(boltAutomations.org_id, orgId),
+          ilike(boltAutomations.name, `%${escaped}%`),
+        ),
+      )
+      .orderBy(asc(boltAutomations.created_at))
+      .limit(2);
+
+    // Only accept the fuzzy hit if it's unambiguous.
+    if (fuzzyRows.length === 1) {
+      row = fuzzyRows[0];
+    }
+  }
+
+  if (!row) return null;
+
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(boltActions)
+    .where(eq(boltActions.automation_id, row.id));
+
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    trigger_source: row.trigger_source,
+    trigger_event: row.trigger_event,
+    enabled: row.enabled,
+    action_count: Number(countRow?.count ?? 0),
+    last_execution_at: row.last_executed_at,
+  };
+}
+
 export async function createAutomation(
   data: CreateAutomationInput,
   userId: string,
   orgId: string,
+  graphBlob?: unknown,
+  graphMode?: string | null,
 ) {
   // Defense-in-depth: validate tool allowlist at service layer
   validateActionTools(data.actions);
@@ -458,6 +569,9 @@ export async function createAutomation(
         max_executions_per_hour: data.max_executions_per_hour ?? 100,
         cooldown_seconds: data.cooldown_seconds ?? 0,
         max_chain_depth: DEFAULT_MAX_CHAIN_DEPTH,
+        graph: graphBlob ?? null,
+        graph_mode: graphMode ?? null,
+        data_version: 1,
         created_by: userId,
         updated_by: userId,
       })
@@ -522,6 +636,8 @@ export async function updateAutomation(
   data: UpdateAutomationInput,
   userId: string,
   orgId: string,
+  graphBlob?: unknown,
+  graphMode?: string | null,
 ) {
   const existing = await getAutomationById(id, orgId);
   if (!existing) throw new BoltError('NOT_FOUND', 'Automation not found', 404);
@@ -566,6 +682,11 @@ export async function updateAutomation(
     if (data.max_executions_per_hour !== undefined)
       updateValues.max_executions_per_hour = data.max_executions_per_hour;
     if (data.cooldown_seconds !== undefined) updateValues.cooldown_seconds = data.cooldown_seconds;
+    // Always persist graph state: if graphBlob is provided, store it and set
+    // graph_mode; if absent (graphBlob === undefined/null), clear both columns
+    // so the next GET re-synthesizes the graph from rows.
+    updateValues.graph = graphBlob ?? null;
+    updateValues.graph_mode = graphMode ?? null;
 
     const [automation] = await tx
       .update(boltAutomations)
@@ -801,7 +922,91 @@ export async function testAutomation(
   };
 }
 
-export async function getStats(orgId: string) {
+// ---------------------------------------------------------------------------
+// Internal worker helper — no org-scoped auth
+// ---------------------------------------------------------------------------
+
+/**
+ * Lean fetch used by the BullMQ `bolt-execute` worker on every execution.
+ *
+ * This function intentionally bypasses request-scoped org auth because the
+ * worker has no Fastify request context — it receives an `automation_id`
+ * directly from the BullMQ job payload, which was already validated at
+ * enqueue time by the bolt-api route that created the execution record.
+ *
+ * Returns exactly the fields the worker needs — automation metadata plus
+ * the ordered action list — and nothing else (no conditions, no schedules).
+ * Keeping the query surface small matters because this is called on every
+ * `bolt:execute` job, making it a hot path.
+ *
+ * Do NOT use this function from Fastify request handlers; prefer
+ * `getAutomation(id, orgId)` there to enforce org isolation.
+ */
+export async function getAutomationForExecution(id: string): Promise<{
+  automation: {
+    id: string;
+    org_id: string;
+    name: string;
+    max_chain_depth: number;
+    created_by: string;
+    template_strict: boolean;
+  };
+  actions: Array<{
+    id: string;
+    automation_id: string;
+    sort_order: number;
+    mcp_tool: string;
+    parameters: Record<string, unknown> | null;
+    on_error: string;
+    retry_count: number;
+    retry_delay_ms: number;
+  }>;
+} | null> {
+  const [automation] = await db
+    .select({
+      id: boltAutomations.id,
+      org_id: boltAutomations.org_id,
+      name: boltAutomations.name,
+      max_chain_depth: boltAutomations.max_chain_depth,
+      created_by: boltAutomations.created_by,
+      template_strict: boltAutomations.template_strict,
+    })
+    .from(boltAutomations)
+    .where(eq(boltAutomations.id, id))
+    .limit(1);
+
+  if (!automation) return null;
+
+  const actions = await db
+    .select({
+      id: boltActions.id,
+      automation_id: boltActions.automation_id,
+      sort_order: boltActions.sort_order,
+      mcp_tool: boltActions.mcp_tool,
+      parameters: boltActions.parameters,
+      on_error: boltActions.on_error,
+      retry_count: boltActions.retry_count,
+      retry_delay_ms: boltActions.retry_delay_ms,
+    })
+    .from(boltActions)
+    .where(eq(boltActions.automation_id, id))
+    .orderBy(asc(boltActions.sort_order));
+
+  return {
+    automation,
+    actions: actions.map((a) => ({
+      ...a,
+      parameters: (a.parameters as Record<string, unknown> | null) ?? null,
+      on_error: a.on_error as string,
+    })),
+  };
+}
+
+export async function getStats(orgId: string, projectId?: string) {
+  // Mirror the list endpoint's filtering: when the caller passes a
+  // project_id (e.g. the home page sourcing it from the active-project
+  // store), scope the counts to that project so the stats card and the
+  // list view stay in sync.
   const rows: any[] = await db.execute(sql`
     SELECT
       COUNT(*)::int AS total,
@@ -823,6 +1028,7 @@ export async function getStats(orgId: string) {
       COUNT(*) FILTER (WHERE trigger_source = 'blank')::int AS source_blank
     FROM bolt_automations
     WHERE org_id = ${orgId}
+      AND (${projectId ?? null}::uuid IS NULL OR project_id = ${projectId ?? null}::uuid)
   `);
 
   const row = rows[0] ?? {

@@ -1,9 +1,8 @@
 import { Target, TrendingUp, AlertTriangle, Trophy } from 'lucide-react';
-import type { BearingGoal } from '@/hooks/useGoals';
+import { usePeriodReport } from '@/hooks/useProgress';
 
 interface ProgressSummaryProps {
-  goals: BearingGoal[];
-  isLoading?: boolean;
+  periodId?: string;
 }
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: string | number; icon: typeof Target; color: string }) {
@@ -20,7 +19,9 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: s
   );
 }
 
-export function ProgressSummary({ goals, isLoading }: ProgressSummaryProps) {
+export function ProgressSummary({ periodId }: ProgressSummaryProps) {
+  const { data, isLoading } = usePeriodReport(periodId);
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -31,12 +32,11 @@ export function ProgressSummary({ goals, isLoading }: ProgressSummaryProps) {
     );
   }
 
-  const total = goals.length;
-  const avgProgress = total > 0
-    ? Math.round((goals.reduce((sum, g) => sum + Number(g.progress ?? 0), 0) / total) * 100)
-    : 0;
-  const atRisk = goals.filter((g) => g.status === 'at_risk' || g.status === 'behind').length;
-  const achieved = goals.filter((g) => g.status === 'achieved').length;
+  const report = data?.data;
+  const total = report?.total_goals ?? 0;
+  const avgProgress = Math.round(Number(report?.avg_progress ?? 0));
+  const atRisk = (report?.at_risk ?? 0) + (report?.behind ?? 0);
+  const achieved = report?.achieved ?? 0;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

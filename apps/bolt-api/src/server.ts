@@ -21,7 +21,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler((error, request, reply) => {
+fastify.setErrorHandler((error: Error, request, reply) => {
   // Zod validation errors
   if (error.name === 'ZodError') {
     return reply.status(400).send({
@@ -36,7 +36,7 @@ fastify.setErrorHandler((error, request, reply) => {
 
   fastify.log.error(error);
 
-  const statusCode = error.statusCode ?? 500;
+  const statusCode = (error as { statusCode?: number }).statusCode ?? 500;
   // Only expose error message for known app errors; sanitize everything else
   const isAppError =
     error.name === 'BoltError' ||
@@ -52,6 +52,18 @@ fastify.setErrorHandler((error, request, reply) => {
     error: {
       code: statusCode >= 500 ? 'INTERNAL_ERROR' : (error as any).code ?? 'BAD_REQUEST',
       message,
+      details: [],
+      request_id: request.id,
+    },
+  });
+});
+
+// Not found handler — standard error envelope for unknown routes
+fastify.setNotFoundHandler((request, reply) => {
+  return reply.status(404).send({
+    error: {
+      code: 'NOT_FOUND',
+      message: `Route ${request.method} ${request.url} not found`,
       details: [],
       request_id: request.id,
     },

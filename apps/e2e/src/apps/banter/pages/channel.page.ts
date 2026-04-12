@@ -15,14 +15,19 @@ export class ChannelPage extends BasePage {
     } else {
       await super.goto('/');
     }
+    // Wait for the Banter SPA shell to fully mount (may be slow under load)
+    await this.page.locator('main, [class*="message"], [class*="channel"]').first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .catch(() => {});
   }
 
   async expectChannelLoaded(): Promise<void> {
-    await expect(this.page.locator('main, [class*="message"], [class*="channel"]').first()).toBeVisible();
+    await expect(this.page.locator('main, [class*="message"], [class*="channel"]').first()).toBeVisible({ timeout: 30_000 });
   }
 
   async sendMessage(content: string): Promise<void> {
     const composer = this.page.locator('[class*="compose"], [class*="editor"], textarea, [contenteditable]').last();
+    await composer.waitFor({ state: 'visible', timeout: 30_000 });
     await composer.click();
     await this.page.keyboard.type(content);
     await this.page.keyboard.press('Enter');

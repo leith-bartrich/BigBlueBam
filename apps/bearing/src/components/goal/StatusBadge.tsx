@@ -34,7 +34,10 @@ const statusConfig: Record<GoalStatus, { label: string; classes: string }> = {
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const config = statusConfig[status] ?? { label: status, classes: 'bg-zinc-100 text-zinc-500' };
+  const config = statusConfig[status] ?? {
+    label: status ? status.charAt(0).toUpperCase() + status.slice(1) : status,
+    classes: 'bg-zinc-100 text-zinc-500',
+  };
 
   return (
     <span

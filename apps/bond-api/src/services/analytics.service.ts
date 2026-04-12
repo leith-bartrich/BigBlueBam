@@ -1,8 +1,7 @@
-import { eq, and, sql, desc, asc, isNull, isNotNull, gte, lte } from 'drizzle-orm';
+import { eq, and, sql, asc, isNull, isNotNull, gte, lte } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bondDeals,
-  bondPipelines,
   bondPipelineStages,
   bondDealStageHistory,
 } from '../db/schema/index.js';
@@ -106,8 +105,10 @@ export async function conversionRates(
   `);
 
   // Build stage-to-stage conversion map
-  const stageMap = new Map(stages.map((s) => [s.id, s]));
-  const conversions = (transitions.rows ?? transitions) as Array<{
+  const transitionRows = Array.isArray(transitions)
+    ? transitions
+    : ((transitions as { rows?: unknown[] }).rows ?? []);
+  const conversions = transitionRows as Array<{
     from_stage_id: string;
     to_stage_id: string;
     transition_count: number;
@@ -142,7 +143,10 @@ export async function dealVelocity(orgId: string, pipelineId: string) {
     ORDER BY s.sort_order
   `);
 
-  const stages = (result.rows ?? result) as Array<{
+  const resultRows = Array.isArray(result)
+    ? result
+    : ((result as { rows?: unknown[] }).rows ?? []);
+  const stages = resultRows as Array<{
     stage_id: string;
     stage_name: string;
     sort_order: number;

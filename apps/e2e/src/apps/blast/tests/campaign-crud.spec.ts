@@ -12,25 +12,34 @@ test.describe('Blast — Campaign CRUD', () => {
     await campaignsPage.goto();
     await screenshots.capture(page, 'campaigns-before-create');
 
+    // Blast's "New Campaign" button does NOT open a dialog — it navigates the
+    // user to /campaigns/new (a full editor page). The Name/Subject <label>s
+    // on that page are not associated to inputs via htmlFor, so getByLabel
+    // does not resolve them. Match by placeholder instead.
     await campaignsPage.clickCreateCampaign();
-    await screenshots.capture(page, 'create-campaign-dialog');
+    await page.waitForURL(/\/blast\/campaigns\/new/, { timeout: 10_000 });
+    await screenshots.capture(page, 'campaign-new-page');
 
-    // Fill campaign form
-    await page.getByLabel(/campaign name|name/i).fill(testCampaignName);
+    await page.getByPlaceholder(/April Product Launch/i).fill(testCampaignName);
     await screenshots.capture(page, 'campaign-name-filled');
 
-    await page.getByLabel(/subject/i).fill(testCampaignSubject);
+    await page.getByPlaceholder(/Introducing our newest features/i).fill(testCampaignSubject);
     await screenshots.capture(page, 'campaign-subject-filled');
 
-    await page.getByRole('button', { name: /create|save/i }).click();
+    // Submit button label is "Create Campaign" — scope to the page header
+    // so we don't accidentally re-match the list page's "New Campaign"
+    // button if navigation is mid-flight.
+    const createBtn = page.getByRole('button', { name: /^create campaign$/i });
+    await expect(createBtn).toBeEnabled();
+    await createBtn.click();
     await page.waitForTimeout(1000);
     await screenshots.capture(page, 'campaign-created');
 
-    // Verify via API
+    // Verify via API. Blast API list routes live under /v1/.
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
     const api = new DirectApiClient(request, '/blast/api', csrf || undefined);
-    const campaigns = await api.get<any[]>('/campaigns');
+    const campaigns = await api.get<any[]>('/v1/campaigns');
     const found = campaigns.find((c: any) => c.name === testCampaignName);
     expect(found).toBeTruthy();
     await screenshots.capture(page, 'campaign-verified-via-api');
@@ -49,15 +58,18 @@ test.describe('Blast — Campaign CRUD', () => {
     const campaignsPage = new CampaignsPage(page, screenshots);
     await campaignsPage.goto();
     await campaignsPage.clickCreateCampaign();
-    await screenshots.capture(page, 'create-dialog-open');
+    await page.waitForURL(/\/blast\/campaigns\/new/, { timeout: 10_000 });
+    await screenshots.capture(page, 'campaign-new-page-open');
 
-    // Submit without filling required fields
-    await page.getByRole('button', { name: /create|save/i }).click();
-    await screenshots.capture(page, 'validation-error-shown');
-
-    const errorEl = page.locator('.text-red-500, .text-destructive, [role="alert"]').first();
-    await expect(errorEl).toBeVisible({ timeout: 5000 });
-    await screenshots.capture(page, 'error-detail-visible');
+    // Blast's new-campaign editor does not surface a `text-red-500` /
+    // `[role="alert"]` validation message. It disables the "Create Campaign"
+    // submit button until both Name and Subject Line are filled (and the SPA
+    // also short-circuits with `if (!name || !subject) return;`).
+    // Assert the disabled state — the SPA's actual contract.
+    const createBtn = page.getByRole('button', { name: /^create campaign$/i });
+    await expect(createBtn).toBeVisible();
+    await expect(createBtn).toBeDisabled();
+    await screenshots.capture(page, 'create-button-disabled-empty');
   });
 
   test('campaign detail page loads for existing campaign', async ({ page, screenshots, context, request }) => {
@@ -67,7 +79,7 @@ test.describe('Blast — Campaign CRUD', () => {
 
     let campaignId: string | undefined;
     try {
-      const campaigns = await api.get<any[]>('/campaigns');
+      const campaigns = await api.get<any[]>('/v1/campaigns');
       if (campaigns.length > 0) campaignId = campaigns[0].id;
     } catch {}
 

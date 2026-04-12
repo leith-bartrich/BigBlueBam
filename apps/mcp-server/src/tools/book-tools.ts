@@ -1,6 +1,8 @@
+import { registerTool } from '../lib/register-tool.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
+import { isUuid } from '../middleware/resolve-helpers.js';
 
 function createBookClient(bookApiUrl: string, api: ApiClient) {
   const baseUrl = bookApiUrl.replace(/\/$/, '');
@@ -27,6 +29,85 @@ function createBookClient(bookApiUrl: string, api: ApiClient) {
   return { request };
 }
 
+type BookClient = ReturnType<typeof createBookClient>;
+
+/**
+ * Resolve a Book calendar identifier that may be either a UUID or a calendar
+ * name. We list the caller's calendars (already org/visibility-scoped by the
+ * Book API) and pick the first case-insensitive exact name match. Returns
+ * `null` on miss so callers can surface a clean "Calendar not found" error.
+ */
+async function resolveCalendarId(
+  book: BookClient,
+  nameOrId: string,
+): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  const result = await book.request('GET', '/calendars');
+  if (!result.ok) return null;
+  const calendars =
+    (result.data as { data?: Array<{ id: string; name: string }> } | null)?.data ?? [];
+  const target = nameOrId.toLowerCase();
+  const match = calendars.find((c) => c.name.toLowerCase() === target);
+  return match?.id ?? null;
+}
+
+/**
+ * Resolve a Book event identifier that may be either a UUID or an event
+ * title. The Book API has no title-search endpoint, so we list events via
+ * `GET /events` (optionally scoped to a calendar) and pick a unique exact or
+ * single fuzzy match. Requires the caller to provide a window (or we widen
+ * to a generous +/- 1 year default) so the list stays bounded.
+ *
+ * Returns `null` when no match, more than one exact match, or the list call
+ * fails. Callers should surface a clean "Event not found" error.
+ */
+async function resolveEventId(
+  book: BookClient,
+  nameOrId: string,
+  calendarId?: string,
+): Promise<string | null> {
+  if (isUuid(nameOrId)) return nameOrId;
+  // Bound the search window so listEvents stays cheap. One year on either
+  // side of "now" is more than enough for resolving an event by title.
+  const now = Date.now();
+  const oneYear = 365 * 24 * 60 * 60 * 1000;
+  const params = new URLSearchParams({
+    start_after: new Date(now - oneYear).toISOString(),
+    start_before: new Date(now + oneYear).toISOString(),
+    limit: '500',
+  });
+  if (calendarId) params.set('calendar_ids', calendarId);
+  const result = await book.request('GET', `/events?${params.toString()}`);
+  if (!result.ok) return null;
+  const events =
+    (result.data as { data?: Array<{ id: string; title: string }> } | null)?.data ?? [];
+  const target = nameOrId.toLowerCase();
+  const exact = events.filter((e) => e.title.toLowerCase() === target);
+  if (exact.length === 1) return exact[0]!.id;
+  if (exact.length > 1) return null;
+  const fuzzy = events.filter((e) => e.title.toLowerCase().includes(target));
+  if (fuzzy.length === 1) return fuzzy[0]!.id;
+  return null;
+}
+
+/**
+ * Resolve a user identifier to a UUID. Accepts a UUID (short-circuit) or an
+ * email address via the shared Bam `/users/by-email` endpoint which is
+ * org-scoped to the caller. Returns `null` when the input looks like neither,
+ * or when the email does not resolve to a user.
+ */
+async function resolveUserIdByEmail(
+  api: ApiClient,
+  idOrEmail: string,
+): Promise<string | null> {
+  if (isUuid(idOrEmail)) return idOrEmail;
+  if (!idOrEmail.includes('@')) return null;
+  const result = await api.get(`/users/by-email?email=${encodeURIComponent(idOrEmail)}`);
+  if (!result.ok) return null;
+  const envelope = result.data as { data?: { id?: string } | null } | null;
+  return envelope?.data?.id ?? null;
+}
+
 function ok(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
@@ -47,31 +128,45 @@ function buildQs(params: Record<string, unknown>): string {
   return qs ? `?${qs}` : '';
 }
 
+const eventShape = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  start_at: z.string(),
+  end_at: z.string(),
+  calendar_id: z.string().uuid().optional(),
+  status: z.string().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
+const slotShape = z.object({ start: z.string(), end: z.string() });
+
 export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl: string): void {
   const client = createBookClient(bookApiUrl, api);
 
   // ===== 1. book_list_events =====
-  server.tool(
-    'book_list_events',
-    'List calendar events in a date range, optionally filtered by calendar IDs.',
-    {
+  registerTool(server, {
+    name: 'book_list_events',
+    description: 'List calendar events in a date range, optionally filtered by calendar IDs.',
+    input: {
       start_after: z.string().describe('ISO 8601 date — events ending after this time'),
       start_before: z.string().describe('ISO 8601 date — events starting before this time'),
       calendar_ids: z.string().optional().describe('Comma-separated calendar UUIDs'),
       limit: z.number().int().positive().max(500).optional().describe('Page size (default 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(eventShape) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/events${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing events', result.data);
     },
-  );
+  });
 
   // ===== 2. book_create_event =====
-  server.tool(
-    'book_create_event',
-    'Create a calendar event with optional attendees.',
-    {
-      calendar_id: z.string().uuid().describe('Calendar to create the event in'),
+  registerTool(server, {
+    name: 'book_create_event',
+    description: 'Create a calendar event with optional attendees. `calendar_id` accepts either a UUID or a calendar name (case-insensitive). Each attendee `user_id` accepts either a UUID or an email address.',
+    input: {
+      calendar_id: z.string().describe('Calendar UUID or name to create the event in'),
       title: z.string().min(1).max(500).describe('Event title'),
       start_at: z.string().describe('ISO 8601 start time'),
       end_at: z.string().describe('ISO 8601 end time'),
@@ -82,21 +177,51 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       attendees: z.array(z.object({
         email: z.string().email(),
         name: z.string().optional(),
-        user_id: z.string().uuid().optional(),
+        user_id: z.string().optional().describe('User UUID or email (falls back to the attendee email)'),
       })).optional().describe('List of attendees'),
     },
-    async (params) => {
-      const result = await client.request('POST', '/events', params);
+    returns: eventShape,
+    handler: async (params) => {
+      const resolvedCalendarId = await resolveCalendarId(client, params.calendar_id);
+      if (!resolvedCalendarId) {
+        return err('creating event', {
+          error: `Calendar not found: ${params.calendar_id}`,
+        });
+      }
+
+      // Resolve each attendee.user_id (UUID or email) in parallel. Attendees
+      // that pass an email-only user_id are looked up via the Bam user store;
+      // if resolution fails we drop the user_id rather than fail the whole
+      // create — the calendar invite still works via the email field alone.
+      let resolvedAttendees: typeof params.attendees = params.attendees;
+      if (params.attendees && params.attendees.length > 0) {
+        resolvedAttendees = await Promise.all(
+          params.attendees.map(async (attendee) => {
+            if (!attendee.user_id) return attendee;
+            const resolved = await resolveUserIdByEmail(api, attendee.user_id);
+            return resolved
+              ? { ...attendee, user_id: resolved }
+              : { ...attendee, user_id: undefined };
+          }),
+        );
+      }
+
+      const body = {
+        ...params,
+        calendar_id: resolvedCalendarId,
+        attendees: resolvedAttendees,
+      };
+      const result = await client.request('POST', '/events', body);
       return result.ok ? ok(result.data) : err('creating event', result.data);
     },
-  );
+  });
 
   // ===== 3. book_update_event =====
-  server.tool(
-    'book_update_event',
-    'Update an existing calendar event.',
-    {
-      id: z.string().uuid().describe('Event ID'),
+  registerTool(server, {
+    name: 'book_update_event',
+    description: 'Update an existing calendar event. `id` accepts either a UUID or an event title (case-insensitive exact or single fuzzy match within +/- 1 year of now).',
+    input: {
+      id: z.string().describe('Event UUID or title'),
       title: z.string().optional().describe('New title'),
       start_at: z.string().optional().describe('New start time'),
       end_at: z.string().optional().describe('New end time'),
@@ -104,71 +229,114 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       location: z.string().optional().describe('New location'),
       status: z.enum(['tentative', 'confirmed', 'cancelled']).optional(),
     },
-    async ({ id, ...body }) => {
-      const result = await client.request('PATCH', `/events/${id}`, body);
+    returns: eventShape,
+    handler: async ({ id, ...body }) => {
+      const resolvedId = await resolveEventId(client, id);
+      if (!resolvedId) {
+        return err('updating event', {
+          error: `Event not found (no unique match for): ${id}`,
+        });
+      }
+      const result = await client.request('PATCH', `/events/${resolvedId}`, body);
       return result.ok ? ok(result.data) : err('updating event', result.data);
     },
-  );
+  });
 
   // ===== 4. book_cancel_event =====
-  server.tool(
-    'book_cancel_event',
-    'Cancel a calendar event (sets status to cancelled).',
-    {
-      id: z.string().uuid().describe('Event ID to cancel'),
+  registerTool(server, {
+    name: 'book_cancel_event',
+    description: 'Cancel a calendar event (sets status to cancelled). `id` accepts either a UUID or an event title.',
+    input: {
+      id: z.string().describe('Event UUID or title to cancel'),
     },
-    async ({ id }) => {
-      const result = await client.request('DELETE', `/events/${id}`);
+    returns: z.object({ ok: z.boolean() }),
+    handler: async ({ id }) => {
+      const resolvedId = await resolveEventId(client, id);
+      if (!resolvedId) {
+        return err('cancelling event', {
+          error: `Event not found (no unique match for): ${id}`,
+        });
+      }
+      const result = await client.request('DELETE', `/events/${resolvedId}`);
       return result.ok ? ok(result.data) : err('cancelling event', result.data);
     },
-  );
+  });
 
   // ===== 5. book_get_availability =====
-  server.tool(
-    'book_get_availability',
-    'Get available time slots for a user in a date range.',
-    {
-      user_id: z.string().uuid().describe('User ID to check availability for'),
+  registerTool(server, {
+    name: 'book_get_availability',
+    description: 'Get available time slots for a user in a date range. `user_id` accepts either a UUID or an email address.',
+    input: {
+      user_id: z.string().describe('User UUID or email to check availability for'),
       start_date: z.string().describe('ISO 8601 range start'),
       end_date: z.string().describe('ISO 8601 range end'),
     },
-    async ({ user_id, ...params }) => {
-      const result = await client.request('GET', `/availability/${user_id}${buildQs(params)}`);
+    returns: z.object({ user_id: z.string().uuid(), slots: z.array(slotShape) }).passthrough(),
+    handler: async ({ user_id, ...params }) => {
+      const resolvedUserId = await resolveUserIdByEmail(api, user_id);
+      if (!resolvedUserId) {
+        return err('getting availability', {
+          error: `User not found: ${user_id}`,
+        });
+      }
+      const result = await client.request('GET', `/availability/${resolvedUserId}${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('getting availability', result.data);
     },
-  );
+  });
 
   // ===== 6. book_get_team_availability =====
-  server.tool(
-    'book_get_team_availability',
-    'Get available time slots for multiple users to find common free times.',
-    {
-      user_ids: z.array(z.string().uuid()).min(2).describe('Array of user IDs'),
+  registerTool(server, {
+    name: 'book_get_team_availability',
+    description: 'Get available time slots for multiple users to find common free times. Each entry in `user_ids` accepts either a UUID or an email address. Fails cleanly if any input cannot be resolved.',
+    input: {
+      user_ids: z.array(z.string()).min(2).describe('Array of user UUIDs or emails'),
       start_date: z.string().describe('ISO 8601 range start'),
       end_date: z.string().describe('ISO 8601 range end'),
     },
-    async ({ user_ids, ...params }) => {
-      const result = await client.request('GET', `/availability/team${buildQs({ user_ids: user_ids.join(','), ...params })}`);
+    returns: z.object({ data: z.record(z.array(slotShape)) }).passthrough(),
+    handler: async ({ user_ids, ...params }) => {
+      const resolved = await Promise.all(
+        user_ids.map(async (u) => ({ input: u, id: await resolveUserIdByEmail(api, u) })),
+      );
+      const unresolved = resolved.filter((r) => !r.id).map((r) => r.input);
+      if (unresolved.length > 0) {
+        return err('getting team availability', {
+          error: `Unresolved user(s): ${unresolved.join(', ')}`,
+        });
+      }
+      const ids = resolved.map((r) => r.id!);
+      const result = await client.request('GET', `/availability/team${buildQs({ user_ids: ids.join(','), ...params })}`);
       return result.ok ? ok(result.data) : err('getting team availability', result.data);
     },
-  );
+  });
 
   // ===== 7. book_find_meeting_time =====
-  server.tool(
-    'book_find_meeting_time',
-    'AI-assisted: find optimal meeting times for a set of attendees. Returns up to 3 suggested slots.',
-    {
-      user_ids: z.array(z.string().uuid()).min(2).describe('Attendee user IDs'),
+  registerTool(server, {
+    name: 'book_find_meeting_time',
+    description: 'AI-assisted: find optimal meeting times for a set of attendees. Returns up to 3 suggested slots. Each entry in `user_ids` accepts either a UUID or an email address.',
+    input: {
+      user_ids: z.array(z.string()).min(2).describe('Attendee user UUIDs or emails'),
       duration_minutes: z.number().int().min(5).max(480).describe('Meeting duration in minutes'),
       start_date: z.string().describe('Earliest date to consider'),
       end_date: z.string().describe('Latest date to consider'),
     },
-    async ({ user_ids, duration_minutes, start_date, end_date }) => {
+    returns: z.object({ suggestions: z.array(slotShape) }),
+    handler: async ({ user_ids, duration_minutes, start_date, end_date }) => {
+      const resolved = await Promise.all(
+        user_ids.map(async (u) => ({ input: u, id: await resolveUserIdByEmail(api, u) })),
+      );
+      const unresolved = resolved.filter((r) => !r.id).map((r) => r.input);
+      if (unresolved.length > 0) {
+        return err('finding meeting time', {
+          error: `Unresolved user(s): ${unresolved.join(', ')}`,
+        });
+      }
+      const ids = resolved.map((r) => r.id!);
       // Get team availability and find common slots
-      const result = await client.request('GET', `/availability/team${buildQs({ user_ids: user_ids.join(','), start_date, end_date })}`);
+      const result = await client.request('GET', `/availability/team${buildQs({ user_ids: ids.join(','), start_date, end_date })}`);
       if (!result.ok) return err('getting team availability', result.data);
 
-      const allSlots: Record<string, Array<{ start: string; end: string }>> = result.data.data;
+      const allSlots: Record<string, Array<{ start: string; end: string }>> = (result.data as { data: Record<string, Array<{ start: string; end: string }>> }).data;
       const durationMs = duration_minutes * 60 * 1000;
 
       // Find intersecting free slots
@@ -193,51 +361,60 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
 
       return ok({ suggestions: candidates });
     },
-  );
+  });
 
   // ===== 8. book_create_booking_page =====
-  server.tool(
-    'book_create_booking_page',
-    'Create a public booking page (scheduling link).',
-    {
+  registerTool(server, {
+    name: 'book_create_booking_page',
+    description: 'Create a public booking page (scheduling link).',
+    input: {
       slug: z.string().describe('URL slug for /meet/:slug'),
       title: z.string().describe('Page title shown to visitors'),
       description: z.string().optional().describe('Description'),
       duration_minutes: z.number().int().optional().describe('Meeting duration (default 30)'),
     },
-    async (params) => {
+    returns: z.object({ id: z.string().uuid(), slug: z.string(), url: z.string().optional() }).passthrough(),
+    handler: async (params) => {
       const result = await client.request('POST', '/booking-pages', params);
       return result.ok ? ok(result.data) : err('creating booking page', result.data);
     },
-  );
+  });
 
   // ===== 9. book_get_timeline =====
-  server.tool(
-    'book_get_timeline',
-    'Get aggregated cross-product timeline with Book events, Bam tasks, sprints, and more.',
-    {
+  registerTool(server, {
+    name: 'book_get_timeline',
+    description: 'Get aggregated cross-product timeline with Book events, Bam tasks, sprints, and more.',
+    input: {
       start_date: z.string().describe('ISO 8601 range start'),
       end_date: z.string().describe('ISO 8601 range end'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(z.object({ type: z.string(), id: z.string(), title: z.string(), start_at: z.string() }).passthrough()) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/timeline${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('getting timeline', result.data);
     },
-  );
+  });
 
   // ===== 10. book_rsvp_event =====
-  server.tool(
-    'book_rsvp_event',
-    'Accept, decline, or mark tentative for a calendar event on behalf of the current user.',
-    {
-      event_id: z.string().uuid().describe('Event ID'),
+  registerTool(server, {
+    name: 'book_rsvp_event',
+    description: 'Accept, decline, or mark tentative for a calendar event on behalf of the current user. `event_id` accepts either a UUID or an event title.',
+    input: {
+      event_id: z.string().describe('Event UUID or title'),
       response_status: z.enum(['accepted', 'declined', 'tentative']).describe('RSVP response'),
     },
-    async ({ event_id, response_status }) => {
-      const result = await client.request('POST', `/events/${event_id}/rsvp`, { response_status });
+    returns: z.object({ event_id: z.string().uuid(), response_status: z.string(), updated_at: z.string().optional() }).passthrough(),
+    handler: async ({ event_id, response_status }) => {
+      const resolvedId = await resolveEventId(client, event_id);
+      if (!resolvedId) {
+        return err('RSVPing to event', {
+          error: `Event not found (no unique match for): ${event_id}`,
+        });
+      }
+      const result = await client.request('POST', `/events/${resolvedId}/rsvp`, { response_status });
       return result.ok ? ok(result.data) : err('RSVPing to event', result.data);
     },
-  );
+  });
 }
 
 // Helper: intersect two lists of time slots

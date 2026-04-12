@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, and, sql, desc, ne, isNull, inArray } from 'drizzle-orm';
+import { eq, and, sql, desc, ne, isNull, inArray, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   banterChannels,
@@ -13,6 +13,9 @@ import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireChannelMember, requireChannelAdmin, requireChannelOwner } from '../middleware/channel-auth.js';
 import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
 import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
+import { loadEnrichedActor, loadEnrichedOrg } from '../lib/bolt-enrich.js';
+import { channelDeepLink, dmDeepLink } from '../lib/notify.js';
 
 /**
  * Derive a coarse presence label from the user's last_seen_at timestamp.
@@ -401,6 +404,42 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
+      // Bolt workflow event (fire-and-forget) — payload shape must match
+      // the catalog declared in apps/bolt-api/src/services/event-catalog.ts.
+      (async () => {
+        try {
+          if (!channel) return;
+          const [enrichedActor, enrichedOrg] = await Promise.all([
+            loadEnrichedActor(user.id),
+            loadEnrichedOrg(user.org_id),
+          ]);
+          const isDm = channel.type === 'dm' || channel.type === 'group_dm';
+          const channelUrl = isDm ? dmDeepLink(channel.id) : channelDeepLink(channel.slug);
+          await publishBoltEvent(
+            'channel.created',
+            'banter',
+            {
+              channel: {
+                id: channel.id,
+                name: channel.name,
+                handle: channel.slug,
+                type: channel.type,
+                description: channel.description,
+                member_count: channel.member_count,
+                url: channelUrl,
+              },
+              actor: enrichedActor,
+              org: enrichedOrg,
+            },
+            user.org_id,
+            user.id,
+            'user',
+          );
+        } catch {
+          // Fire-and-forget — never affect channel creation
+        }
+      })();
+
       return reply.status(201).send({ data: channel });
     },
   );
@@ -425,6 +464,78 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         .orderBy(banterChannels.name);
 
       return reply.send({ data: channels });
+    },
+  );
+
+  // GET /v1/channels/by-name/:name — resolve channel by name, slug, or handle
+  //
+  // Read-only "resolver" endpoint used by MCP tooling so callers can
+  // translate a human-friendly handle (general, #general, some-slug)
+  // into a stable channel id without having to guess between name/slug
+  // or scan the list endpoint. The caller is expected to strip any
+  // leading '#'. Scoped to the authenticated user's active org; returns
+  // `{ data: null }` for private channels the user cannot see.
+  fastify.get(
+    '/v1/channels/by-name/:name',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { name } = request.params as { name: string };
+      const user = request.user!;
+
+      // Normalize: strip a leading '#' if present, lowercase for slug match.
+      const cleaned = (name ?? '').replace(/^#/, '').trim();
+      if (!cleaned || cleaned.length > 80) {
+        return reply.send({ data: null });
+      }
+      const slugCandidate = cleaned.toLowerCase();
+
+      // Try slug first (canonical), then name (case-insensitive fallback).
+      const [channel] = await db
+        .select()
+        .from(banterChannels)
+        .where(
+          and(
+            eq(banterChannels.org_id, user.org_id),
+            or(
+              eq(banterChannels.slug, slugCandidate),
+              sql`lower(${banterChannels.name}) = ${slugCandidate}`,
+            ),
+          ),
+        )
+        .limit(1);
+
+      if (!channel) {
+        return reply.send({ data: null });
+      }
+
+      // Private channel isolation: hide membership-less hits (treat as null).
+      if (channel.type === 'private') {
+        const [membership] = await db
+          .select({ id: banterChannelMemberships.id })
+          .from(banterChannelMemberships)
+          .where(
+            and(
+              eq(banterChannelMemberships.channel_id, channel.id),
+              eq(banterChannelMemberships.user_id, user.id),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          return reply.send({ data: null });
+        }
+      }
+
+      // Shape the payload to match the MCP resolver contract.
+      return reply.send({
+        data: {
+          id: channel.id,
+          name: channel.name,
+          handle: channel.slug,
+          type: channel.type,
+          description: channel.description,
+        },
+      });
     },
   );
 

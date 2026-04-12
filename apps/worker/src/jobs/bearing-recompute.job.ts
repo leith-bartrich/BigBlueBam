@@ -287,7 +287,7 @@ export async function processBearingRecomputeJob(
     logger.warn({ err }, 'Failed to invalidate Redis cache (non-fatal)');
   } finally {
     if (cacheRedis) {
-      await cacheRedis.disconnect().catch(() => {});
+      await cacheRedis.quit().catch(() => {});
     }
   }
 

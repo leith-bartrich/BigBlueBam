@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { benchWidgets, benchDashboards } from '../db/schema/index.js';
 import { notFound, badRequest } from '../lib/utils.js';
@@ -81,6 +81,37 @@ export async function createWidget(
     .returning();
 
   return widget!;
+}
+
+// ---------------------------------------------------------------------------
+// List widgets (optionally scoped to a dashboard)
+// ---------------------------------------------------------------------------
+
+export async function listWidgets(orgId: string, dashboardId?: string) {
+  const conditions = [eq(benchDashboards.organization_id, orgId)];
+  if (dashboardId) {
+    conditions.push(eq(benchWidgets.dashboard_id, dashboardId));
+  }
+
+  const rows = await db
+    .select({
+      id: benchWidgets.id,
+      name: benchWidgets.name,
+      widget_type: benchWidgets.widget_type,
+      data_source: benchWidgets.data_source,
+      entity: benchWidgets.entity,
+      query_config: benchWidgets.query_config,
+      dashboard_id: benchWidgets.dashboard_id,
+      dashboard_name: benchDashboards.name,
+      created_at: benchWidgets.created_at,
+      updated_at: benchWidgets.updated_at,
+    })
+    .from(benchWidgets)
+    .innerJoin(benchDashboards, eq(benchWidgets.dashboard_id, benchDashboards.id))
+    .where(and(...conditions))
+    .orderBy(asc(benchDashboards.name), asc(benchWidgets.created_at));
+
+  return rows;
 }
 
 // ---------------------------------------------------------------------------

@@ -32,7 +32,7 @@ test.describe('Book — Event CRUD', () => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
     const apiClient = new DirectApiClient(request, '/book/api', csrf || undefined);
-    const { status, body } = await apiClient.getRaw('/events');
+    const { status, body } = await apiClient.getRaw('/v1/events');
     if (status === 200) {
       const events = (body as any)?.data || body;
       const found = Array.isArray(events)
@@ -58,8 +58,15 @@ test.describe('Book — Event CRUD', () => {
     await calendar.navigateToNewEvent();
     await screenshots.capture(page, 'new-event-form-open');
 
-    await calendar.clickSaveEvent();
-    await screenshots.capture(page, 'validation-error-shown');
+    // The Book event form renders inline validation (`<p class="text-red-500">
+    // Title is required</p>`) whenever the title is empty, and its submit
+    // button is disabled until validation passes. Rather than clicking a
+    // disabled button, assert the disabled state and the inline error text.
+    const submitButton = page.getByRole('button', {
+      name: /create event|update event|save event/i,
+    });
+    await expect(submitButton).toBeDisabled();
+    await screenshots.capture(page, 'submit-disabled');
 
     const errorEl = page.locator('.text-red-500, .text-destructive, [role="alert"]').first();
     await expect(errorEl).toBeVisible({ timeout: 5000 });

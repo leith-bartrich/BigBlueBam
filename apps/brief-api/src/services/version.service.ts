@@ -1,4 +1,4 @@
-import { eq, and, asc, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { briefVersions, briefDocuments } from '../db/schema/index.js';
 

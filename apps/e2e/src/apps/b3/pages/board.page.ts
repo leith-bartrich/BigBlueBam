@@ -22,18 +22,18 @@ export class BoardPage extends BasePage {
   // --- Phase Columns ---
 
   getPhaseColumns(): Locator {
-    return this.page.locator('[class*="column"], [data-phase]');
+    return this.page.locator('[data-testid="phase-column"]');
   }
 
   async getPhaseColumnNames(): Promise<string[]> {
-    const headers = this.page.locator('[class*="column"] h2, [class*="column"] h3, [class*="phase"] h2, [class*="phase"] h3');
+    const headers = this.page.locator('[data-testid="phase-column"] h3');
     return headers.allTextContents();
   }
 
   // --- Tasks ---
 
   getTaskCards(): Locator {
-    return this.page.locator('[class*="task-card"], [class*="card"]').filter({ hasText: /.+/ });
+    return this.page.locator('[data-testid="task-card"]');
   }
 
   async getTaskCount(): Promise<number> {
@@ -73,7 +73,7 @@ export class BoardPage extends BasePage {
 
   async editTaskTitle(newTitle: string): Promise<void> {
     const drawer = this.getTaskDrawer();
-    const titleEl = drawer.locator('h1, h2, [class*="title"]').first();
+    const titleEl = drawer.locator('h1:not(.sr-only), h2:not(.sr-only), [class*="title"]:not(.sr-only)').first();
     await titleEl.dblclick();
     await this.page.keyboard.press('Meta+a');
     await this.page.keyboard.type(newTitle);

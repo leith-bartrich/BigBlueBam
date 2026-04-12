@@ -53,7 +53,9 @@ export class LoginPage extends BasePage {
   }
 
   async expectErrorMessage(message?: string): Promise<void> {
-    const errorEl = this.page.locator('[role="alert"], .text-red-500, .text-destructive').first();
+    const errorEl = this.page
+      .locator('[role="alert"], .bg-red-50, .text-red-700, .text-red-500, .text-destructive')
+      .first();
     await expect(errorEl).toBeVisible();
     if (message) {
       await expect(errorEl).toContainText(message);

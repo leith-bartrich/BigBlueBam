@@ -245,10 +245,12 @@ describe('getHubs', () => {
 
     const result = await getHubs('project', PROJECT_ID, ORG_ID, 20);
 
-    expect(result).toHaveLength(3);
+    expect(result.nodes).toHaveLength(3);
     // DB returns them pre-sorted, verify first has highest authority
-    expect(result[0].inbound_link_count + result[0].verification_count).toBeGreaterThanOrEqual(
-      result[1].inbound_link_count + result[1].verification_count,
+    expect(
+      result.nodes[0].inbound_link_count + result.nodes[0].verification_count,
+    ).toBeGreaterThanOrEqual(
+      result.nodes[1].inbound_link_count + result.nodes[1].verification_count,
     );
   });
 
@@ -259,7 +261,7 @@ describe('getHubs', () => {
     ]);
 
     const result = await getHubs('project', PROJECT_ID, ORG_ID, 2);
-    expect(result).toHaveLength(2);
+    expect(result.nodes).toHaveLength(2);
   });
 
   it('scopes to organization when scope=organization', async () => {
@@ -268,7 +270,7 @@ describe('getHubs', () => {
     ]);
 
     const result = await getHubs('organization', null, ORG_ID, 10);
-    expect(result).toHaveLength(1);
+    expect(result.nodes).toHaveLength(1);
     expect(mockExecute).toHaveBeenCalled();
   });
 });

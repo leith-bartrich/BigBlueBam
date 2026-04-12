@@ -10,7 +10,7 @@
  * - Format response per §5.3
  */
 
-import { eq, and, or, inArray, ilike, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, ilike } from 'drizzle-orm';
 import { escapeLike } from './beacon.service.js';
 import { db } from '../db/index.js';
 import {
@@ -19,7 +19,7 @@ import {
   beaconLinks,
   projectMemberships,
 } from '../db/schema/index.js';
-import { searchChunks, type QdrantSearchFilters, type QdrantSearchResult } from './qdrant.service.js';
+import { searchChunks, type QdrantSearchFilters } from './qdrant.service.js';
 import { embedTexts } from './embedding.service.js';
 
 // ---------------------------------------------------------------------------

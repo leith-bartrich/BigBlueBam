@@ -11,10 +11,15 @@ export class CalendarPage extends BasePage {
 
   async goto(): Promise<void> {
     await super.goto('/');
+    // BookLayout renders <main> only after the Book auth-check finishes. The
+    // shared `waitForAppReady` waits for .animate-spin to hide, but there is
+    // a short window between the spinner hiding and BookLayout mounting
+    // <main>. Wait explicitly so downstream locators are stable.
+    await this.page.locator('main').first().waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
   }
 
   async expectCalendarLoaded(): Promise<void> {
-    await expect(this.page.locator('main')).toBeVisible();
+    await expect(this.page.locator('main').first()).toBeVisible();
   }
 
   async navigateToWeekView(): Promise<void> {
@@ -39,6 +44,14 @@ export class CalendarPage extends BasePage {
 
   async navigateToNewEvent(): Promise<void> {
     await this.navigate('/events/new');
+    // Wait for the EventFormPage to mount — both the title placeholder and
+    // the action button ("Create Event") are reliable signals, the button
+    // appears last once calendar auto-provisioning has resolved.
+    await this.page
+      .getByRole('button', { name: /create event|update event|save event/i })
+      .first()
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .catch(() => {});
   }
 
   async navigateToEventDetail(id: string): Promise<void> {
@@ -71,25 +84,35 @@ export class CalendarPage extends BasePage {
   }
 
   async fillEventTitle(title: string): Promise<void> {
-    await this.page.getByLabel(/title|name/i).first().fill(title);
+    // The Book event-form.tsx page renders `<label>Title</label>` as a
+    // sibling of the input (no `htmlFor`), so `getByLabel` cannot resolve it.
+    // The title input has placeholder="Team standup" and autoFocus.
+    await this.page.getByPlaceholder(/team standup/i).first().fill(title);
   }
 
   async fillEventStartTime(value: string): Promise<void> {
-    const field = this.page.getByLabel(/start/i).first();
+    // Start/End inputs are `datetime-local` siblings of plain `<label>`s.
+    // Locate them positionally within the form grid instead.
+    const field = this.page.locator('input[type="datetime-local"]').nth(0);
     if (await field.isVisible({ timeout: 3000 }).catch(() => false)) {
       await field.fill(value);
     }
   }
 
   async fillEventEndTime(value: string): Promise<void> {
-    const field = this.page.getByLabel(/end/i).first();
+    const field = this.page.locator('input[type="datetime-local"]').nth(1);
     if (await field.isVisible({ timeout: 3000 }).catch(() => false)) {
       await field.fill(value);
     }
   }
 
   async clickSaveEvent(): Promise<void> {
-    await this.page.getByRole('button', { name: /save|create|confirm/i }).first().click();
+    // Submit the event form via its submit button. The button label is
+    // "Create Event" (or "Update Event" when editing).
+    await this.page
+      .getByRole('button', { name: /create event|update event|save event/i })
+      .first()
+      .click();
   }
 
   async expectEventVisible(title: string): Promise<void> {

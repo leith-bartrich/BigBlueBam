@@ -14,8 +14,9 @@ test.describe('Beacon — UI-API Agreement', () => {
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'list-for-agreement');
 
+    // beacon-api mounts beacon routes under /v1; the list endpoint is /v1/beacons
     const result = await checker.checkListRendering({
-      apiPath: '/articles',
+      apiPath: '/v1/beacons',
       itemTextExtractor: (item) => (item as any).title,
     });
 

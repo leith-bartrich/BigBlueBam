@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { beaconEntries, organizationMemberships, projectMemberships, users, projects } from '../db/schema/index.js';
+import { beaconEntries, projectMemberships, users, projects } from '../db/schema/index.js';
 
 /**
  * Role hierarchy for Beacon authorization.

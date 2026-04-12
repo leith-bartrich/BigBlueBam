@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, inArray, gte, lte, isNull, ilike } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, gte, lte, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bondDeals,
@@ -12,6 +12,16 @@ import {
 } from '../db/schema/index.js';
 import { escapeLike, notFound, badRequest } from '../lib/utils.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import {
+  loadDealEnrichment,
+  loadActor,
+  loadOrg,
+  loadStageById,
+  contactDisplayName,
+  dealUrl,
+  contactUrl,
+  companyUrl,
+} from '../lib/bolt-enrichment.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,7 +68,7 @@ export interface UpdateDealInput {
   expected_close_date?: string;
   probability_pct?: number;
   owner_id?: string;
-  company_id?: string;
+  company_id?: string | null;
   custom_fields?: Record<string, unknown>;
 }
 
@@ -281,14 +291,74 @@ export async function createDeal(
     performed_by: userId,
   });
 
-  // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.created', {
-    deal_id: deal!.id,
-    pipeline_id: input.pipeline_id,
-    stage_id: input.stage_id,
-    value: deal!.value,
-    owner_id: deal!.owner_id,
-  }, orgId);
+  // Emit Bolt event (fire-and-forget) — enriched payload (Phase B / Tier 1)
+  void (async () => {
+    const enrichment = await loadDealEnrichment(deal!.id);
+    const actor = await loadActor(userId);
+    const org = await loadOrg(orgId);
+    const d = enrichment?.deal ?? deal!;
+    const contact = enrichment?.primaryContact ?? null;
+    const company = enrichment?.company ?? null;
+    const owner = enrichment?.owner ?? null;
+    await publishBoltEvent(
+      'deal.created',
+      {
+        deal: {
+          id: d.id,
+          title: d.name,
+          url: dealUrl(d.id),
+          pipeline_id: d.pipeline_id,
+          pipeline_name: enrichment?.pipeline?.name ?? null,
+          stage_id: d.stage_id,
+          stage_name: enrichment?.stage?.name ?? null,
+          stage: enrichment?.stage?.name ?? null, // legacy alias
+          amount: d.value,
+          currency: d.currency,
+          probability: d.probability_pct,
+          close_date: d.expected_close_date,
+          owner_id: d.owner_id,
+          owner_name: owner?.name ?? null,
+          owner_email: owner?.email ?? null,
+          company_id: d.company_id,
+          company_name: company?.name ?? null,
+          contact_id: contact?.id ?? null,
+          contact_name: contactDisplayName(contact),
+          contact_email: contact?.email ?? null,
+        },
+        owner: owner
+          ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email,
+              avatar_url: owner.avatar_url,
+            }
+          : null,
+        contact: contact
+          ? {
+              id: contact.id,
+              name: contactDisplayName(contact),
+              email: contact.email,
+              url: contactUrl(contact.id),
+            }
+          : null,
+        company: company
+          ? { id: company.id, name: company.name, url: companyUrl(company.id) }
+          : null,
+        actor: actor
+          ? {
+              id: actor.id,
+              name: actor.name,
+              email: actor.email,
+              avatar_url: actor.avatar_url,
+            }
+          : { id: userId },
+        org: org ? { id: org.id, name: org.name, slug: org.slug } : { id: orgId },
+      },
+      orgId,
+      userId,
+      'user',
+    );
+  })();
 
   return deal!;
 }
@@ -301,6 +371,7 @@ export async function updateDeal(
   id: string,
   orgId: string,
   input: UpdateDealInput,
+  userId?: string,
 ) {
   const [updated] = await db
     .update(bondDeals)
@@ -313,13 +384,65 @@ export async function updateDeal(
 
   if (!updated) throw notFound('Deal not found');
 
-  // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.updated', {
-    deal_id: id,
-    changes: Object.keys(input),
-    value: updated.value,
-    owner_id: updated.owner_id,
-  }, orgId);
+  // Emit Bolt event (fire-and-forget) — enriched payload (Phase B / Tier 1)
+  void (async () => {
+    const enrichment = await loadDealEnrichment(id);
+    const actor = await loadActor(userId);
+    const org = await loadOrg(orgId);
+    const d = enrichment?.deal ?? updated;
+    const contact = enrichment?.primaryContact ?? null;
+    const company = enrichment?.company ?? null;
+    const owner = enrichment?.owner ?? null;
+    await publishBoltEvent(
+      'deal.updated',
+      {
+        deal: {
+          id: d.id,
+          title: d.name,
+          url: dealUrl(d.id),
+          pipeline_id: d.pipeline_id,
+          pipeline_name: enrichment?.pipeline?.name ?? null,
+          stage_id: d.stage_id,
+          stage_name: enrichment?.stage?.name ?? null,
+          amount: d.value,
+          currency: d.currency,
+          probability: d.probability_pct,
+          close_date: d.expected_close_date,
+          owner_id: d.owner_id,
+          owner_name: owner?.name ?? null,
+          owner_email: owner?.email ?? null,
+          company_id: d.company_id,
+          company_name: company?.name ?? null,
+          contact_id: contact?.id ?? null,
+          contact_name: contactDisplayName(contact),
+          contact_email: contact?.email ?? null,
+        },
+        changes: Object.keys(input),
+        owner: owner
+          ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email,
+              avatar_url: owner.avatar_url,
+            }
+          : null,
+        actor: actor
+          ? {
+              id: actor.id,
+              name: actor.name,
+              email: actor.email,
+              avatar_url: actor.avatar_url,
+            }
+          : userId
+            ? { id: userId }
+            : null,
+        org: org ? { id: org.id, name: org.name, slug: org.slug } : { id: orgId },
+      },
+      orgId,
+      userId,
+      userId ? 'user' : 'system',
+    );
+  })();
 
   return updated;
 }
@@ -412,14 +535,72 @@ export async function moveDealStage(
     performed_by: userId,
   });
 
-  // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.stage_changed', {
-    deal_id: id,
-    from_stage_id: deal.stage_id,
-    to_stage_id: newStageId,
-    value: deal.value,
-    days_in_previous_stage: Math.floor(durationSeconds / 86400),
-  }, orgId);
+  // Emit Bolt event (fire-and-forget) — enriched payload (Phase B / Tier 1)
+  const previousStageId = deal.stage_id;
+  void (async () => {
+    const enrichment = await loadDealEnrichment(id);
+    const previousStage = await loadStageById(previousStageId);
+    const actor = await loadActor(userId);
+    const org = await loadOrg(orgId);
+    const d = enrichment?.deal ?? updated!;
+    const contact = enrichment?.primaryContact ?? null;
+    const company = enrichment?.company ?? null;
+    const owner = enrichment?.owner ?? null;
+    await publishBoltEvent(
+      'deal.stage_changed',
+      {
+        deal: {
+          id: d.id,
+          title: d.name,
+          url: dealUrl(d.id),
+          pipeline_id: d.pipeline_id,
+          pipeline_name: enrichment?.pipeline?.name ?? null,
+          stage_id: d.stage_id,
+          stage_name: enrichment?.stage?.name ?? newStage.name,
+          amount: d.value,
+          currency: d.currency,
+          probability: d.probability_pct,
+          close_date: d.expected_close_date,
+          owner_id: d.owner_id,
+          owner_name: owner?.name ?? null,
+          owner_email: owner?.email ?? null,
+          company_id: d.company_id,
+          company_name: company?.name ?? null,
+          contact_id: contact?.id ?? null,
+          contact_name: contactDisplayName(contact),
+          contact_email: contact?.email ?? null,
+        },
+        previous_stage_id: previousStageId,
+        previous_stage_name: previousStage?.name ?? null,
+        previous_stage: previousStage?.name ?? null, // legacy alias
+        new_stage_id: newStageId,
+        new_stage_name: newStage.name,
+        new_stage: newStage.name, // legacy alias
+        days_in_previous_stage: Math.floor(durationSeconds / 86400),
+        seconds_in_previous_stage: durationSeconds,
+        owner: owner
+          ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email,
+              avatar_url: owner.avatar_url,
+            }
+          : null,
+        actor: actor
+          ? {
+              id: actor.id,
+              name: actor.name,
+              email: actor.email,
+              avatar_url: actor.avatar_url,
+            }
+          : { id: userId },
+        org: org ? { id: org.id, name: org.name, slug: org.slug } : { id: orgId },
+      },
+      orgId,
+      userId,
+      'user',
+    );
+  })();
 
   return updated!;
 }
@@ -493,16 +674,78 @@ export async function closeDealWon(
     performed_by: userId,
   });
 
-  // Emit Bolt event (fire-and-forget)
+  // Emit Bolt event (fire-and-forget) — enriched payload (Phase B / Tier 1)
   const cycleDays = Math.floor(
     (now.getTime() - new Date(deal.created_at).getTime()) / 86400000,
   );
-  publishBoltEvent('bond.deal.won', {
-    deal_id: id,
-    value: deal.value,
-    pipeline_id: deal.pipeline_id,
-    cycle_days: cycleDays,
-  }, orgId);
+  void (async () => {
+    const enrichment = await loadDealEnrichment(id);
+    const actor = await loadActor(userId);
+    const org = await loadOrg(orgId);
+    const d = enrichment?.deal ?? updated!;
+    const contact = enrichment?.primaryContact ?? null;
+    const company = enrichment?.company ?? null;
+    const owner = enrichment?.owner ?? null;
+    await publishBoltEvent(
+      'deal.won',
+      {
+        deal: {
+          id: d.id,
+          title: d.name,
+          url: dealUrl(d.id),
+          pipeline_id: d.pipeline_id,
+          pipeline_name: enrichment?.pipeline?.name ?? null,
+          stage_id: d.stage_id,
+          stage_name: enrichment?.stage?.name ?? null,
+          amount: d.value,
+          currency: d.currency,
+          probability: d.probability_pct,
+          close_date: d.closed_at,
+          close_reason: closeReason,
+          owner_id: d.owner_id,
+          owner_name: owner?.name ?? null,
+          owner_email: owner?.email ?? null,
+          company_id: d.company_id,
+          company_name: company?.name ?? null,
+          contact_id: contact?.id ?? null,
+          contact_name: contactDisplayName(contact),
+          contact_email: contact?.email ?? null,
+        },
+        cycle_days: cycleDays,
+        owner: owner
+          ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email,
+              avatar_url: owner.avatar_url,
+            }
+          : null,
+        contact: contact
+          ? {
+              id: contact.id,
+              name: contactDisplayName(contact),
+              email: contact.email,
+              url: contactUrl(contact.id),
+            }
+          : null,
+        company: company
+          ? { id: company.id, name: company.name, url: companyUrl(company.id) }
+          : null,
+        actor: actor
+          ? {
+              id: actor.id,
+              name: actor.name,
+              email: actor.email,
+              avatar_url: actor.avatar_url,
+            }
+          : { id: userId },
+        org: org ? { id: org.id, name: org.name, slug: org.slug } : { id: orgId },
+      },
+      orgId,
+      userId,
+      'user',
+    );
+  })();
 
   return updated!;
 }
@@ -577,13 +820,76 @@ export async function closeDealLost(
     performed_by: userId,
   });
 
-  // Emit Bolt event (fire-and-forget)
-  publishBoltEvent('bond.deal.lost', {
-    deal_id: id,
-    value: deal.value,
-    close_reason: closeReason,
-    lost_to_competitor: lostToCompetitor,
-  }, orgId);
+  // Emit Bolt event (fire-and-forget) — enriched payload (Phase B / Tier 1)
+  void (async () => {
+    const enrichment = await loadDealEnrichment(id);
+    const actor = await loadActor(userId);
+    const org = await loadOrg(orgId);
+    const d = enrichment?.deal ?? updated!;
+    const contact = enrichment?.primaryContact ?? null;
+    const company = enrichment?.company ?? null;
+    const owner = enrichment?.owner ?? null;
+    await publishBoltEvent(
+      'deal.lost',
+      {
+        deal: {
+          id: d.id,
+          title: d.name,
+          url: dealUrl(d.id),
+          pipeline_id: d.pipeline_id,
+          pipeline_name: enrichment?.pipeline?.name ?? null,
+          stage_id: d.stage_id,
+          stage_name: enrichment?.stage?.name ?? null,
+          amount: d.value,
+          currency: d.currency,
+          probability: d.probability_pct,
+          close_date: d.closed_at,
+          close_reason: closeReason,
+          lost_reason: closeReason,
+          lost_to_competitor: lostToCompetitor,
+          owner_id: d.owner_id,
+          owner_name: owner?.name ?? null,
+          owner_email: owner?.email ?? null,
+          company_id: d.company_id,
+          company_name: company?.name ?? null,
+          contact_id: contact?.id ?? null,
+          contact_name: contactDisplayName(contact),
+          contact_email: contact?.email ?? null,
+        },
+        owner: owner
+          ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email,
+              avatar_url: owner.avatar_url,
+            }
+          : null,
+        contact: contact
+          ? {
+              id: contact.id,
+              name: contactDisplayName(contact),
+              email: contact.email,
+              url: contactUrl(contact.id),
+            }
+          : null,
+        company: company
+          ? { id: company.id, name: company.name, url: companyUrl(company.id) }
+          : null,
+        actor: actor
+          ? {
+              id: actor.id,
+              name: actor.name,
+              email: actor.email,
+              avatar_url: actor.avatar_url,
+            }
+          : { id: userId },
+        org: org ? { id: org.id, name: org.name, slug: org.slug } : { id: orgId },
+      },
+      orgId,
+      userId,
+      'user',
+    );
+  })();
 
   return updated!;
 }
@@ -764,4 +1070,41 @@ export async function getDealStageHistory(dealId: string, orgId: string) {
     .from(bondDealStageHistory)
     .where(eq(bondDealStageHistory.deal_id, dealId))
     .orderBy(desc(bondDealStageHistory.changed_at));
+}
+
+// ---------------------------------------------------------------------------
+// Detect stale deals (BullMQ job surface)
+// ---------------------------------------------------------------------------
+//
+// Returns open deals whose time-in-stage has exceeded their stage's
+// `rotting_days` threshold. This is the worker-facing detector used by the
+// stale-deals BullMQ job: it returns a flat array of deal rows enriched with
+// `stage_name`, `rotting_days`, and a computed `days_in_stage` so the job can
+// emit per-deal notifications without re-querying.
+//
+// NOTE: do NOT collapse this with `analyticsService.staleDeals` in
+// analytics.service.ts. That function powers the HTTP endpoint
+// `GET /bond/api/analytics/stale-deals`, the MCP tool `bond_get_stale_deals`,
+// and the dashboard widget — it returns a `{ stale_deals, count }` envelope
+// with a slimmer projection. The two are intentionally separate surfaces.
+export async function detectStaleDeals(orgId: string) {
+  const rows = await db.execute(sql`
+    SELECT
+      d.*,
+      s.name AS stage_name,
+      s.rotting_days AS rotting_days,
+      FLOOR(EXTRACT(EPOCH FROM (NOW() - d.stage_entered_at)) / 86400)::int AS days_in_stage
+    FROM bond_deals d
+    INNER JOIN bond_pipeline_stages s ON s.id = d.stage_id
+    WHERE d.organization_id = ${orgId}
+      AND d.closed_at IS NULL
+      AND s.rotting_days IS NOT NULL
+      AND EXTRACT(EPOCH FROM (NOW() - d.stage_entered_at)) / 86400 > s.rotting_days
+    ORDER BY days_in_stage DESC
+  `);
+
+  // drizzle's db.execute returns the raw driver result; in tests it is mocked
+  // as a plain array. In production (postgres-js / node-postgres) it is also
+  // an array-like of row objects, so this normalises both.
+  return Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []);
 }

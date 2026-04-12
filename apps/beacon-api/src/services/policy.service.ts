@@ -136,7 +136,7 @@ export async function validatePolicySave(
   newPolicy: PolicyInput,
   scope: PolicyScope,
   orgId?: string,
-  projectId?: string,
+  _projectId?: string,
 ): Promise<PolicyValidationWarning[]> {
   const warnings: PolicyValidationWarning[] = [];
 

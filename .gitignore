@@ -14,6 +14,7 @@ Thumbs.db
 e2e-*.png
 test-*.png
 .claude/
+.claire/
 .deploy-state.json
 apps/e2e/test-results
 apps/e2e/reports

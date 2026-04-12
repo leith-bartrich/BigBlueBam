@@ -12,6 +12,7 @@ import { postToSlack, taskDeepLink } from './slack-notify.service.js';
 import { env } from '../env.js';
 import { escapeLike } from '../lib/escape-like.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import { enrichTask, loadActor, loadOrg, loadPhase } from './bolt-event-enricher.service.js';
 
 /** Look up org_id for a project (used for Bolt event publishing). */
 async function getProjectOrgId(projectId: string): Promise<string | null> {
@@ -122,8 +123,31 @@ export async function createTask(
   }).catch(() => {});
 
   // Bolt workflow event (fire-and-forget)
-  getProjectOrgId(projectId).then((orgId) => {
-    if (orgId) publishBoltEvent('task.created', 'bam', { task }, orgId);
+  getProjectOrgId(projectId).then(async (orgId) => {
+    if (!orgId) return;
+    const [enriched, actor, org] = await Promise.all([
+      enrichTask(task!),
+      loadActor(reporterId),
+      loadOrg(orgId),
+    ]);
+    publishBoltEvent(
+      'task.created',
+      'bam',
+      {
+        task: enriched.task,
+        project: enriched.project,
+        phase: enriched.phase,
+        sprint: enriched.sprint,
+        epic: enriched.epic,
+        assignee: enriched.assignee,
+        reporter: enriched.reporter,
+        actor,
+        org,
+      },
+      orgId,
+      reporterId,
+      'user',
+    );
   }).catch(() => {});
 
   return task!;
@@ -207,8 +231,33 @@ export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?
     }
 
     // Bolt workflow event (fire-and-forget)
-    getProjectOrgId(task.project_id).then((orgId) => {
-      if (orgId) publishBoltEvent('task.updated', 'bam', { task, changed_fields: changedFields }, orgId);
+    getProjectOrgId(task.project_id).then(async (orgId) => {
+      if (!orgId) return;
+      const [enriched, actor, org] = await Promise.all([
+        enrichTask(task),
+        loadActor(actorId),
+        loadOrg(orgId),
+      ]);
+      publishBoltEvent(
+        'task.updated',
+        'bam',
+        {
+          task: enriched.task,
+          changes: data,
+          changed_fields: changedFields,
+          project: enriched.project,
+          phase: enriched.phase,
+          sprint: enriched.sprint,
+          epic: enriched.epic,
+          assignee: enriched.assignee,
+          reporter: enriched.reporter,
+          actor,
+          org,
+        },
+        orgId,
+        actorId,
+        actorId ? 'user' : 'system',
+      );
     }).catch(() => {});
   }
 
@@ -249,8 +298,29 @@ export async function deleteTask(taskId: string, actorId?: string, impersonatorI
     }
 
     // Bolt workflow event (fire-and-forget)
-    getProjectOrgId(deleted.project_id).then((orgId) => {
-      if (orgId) publishBoltEvent('task.deleted', 'bam', { task_id: taskId, task: deleted }, orgId);
+    getProjectOrgId(deleted.project_id).then(async (orgId) => {
+      if (!orgId) return;
+      const [enriched, actor, org] = await Promise.all([
+        enrichTask(deleted),
+        loadActor(actorId),
+        loadOrg(orgId),
+      ]);
+      publishBoltEvent(
+        'task.deleted',
+        'bam',
+        {
+          task_id: taskId,
+          task: enriched.task,
+          project: enriched.project,
+          assignee: enriched.assignee,
+          reporter: enriched.reporter,
+          actor,
+          org,
+        },
+        orgId,
+        actorId,
+        actorId ? 'user' : 'system',
+      );
     }).catch(() => {});
   }
 
@@ -422,12 +492,34 @@ export async function moveTask(taskId: string, data: MoveTaskInput, actorId?: st
     }
 
     // Bolt workflow event (fire-and-forget)
-    getProjectOrgId(task.project_id).then((orgId) => {
-      if (orgId) publishBoltEvent('task.moved', 'bam', {
-        task,
-        from_phase_id: existingTask?.phase_id ?? null,
-        to_phase_id: data.phase_id,
-      }, orgId);
+    getProjectOrgId(task.project_id).then(async (orgId) => {
+      if (!orgId) return;
+      const [enriched, actor, org, fromPhase, toPhase] = await Promise.all([
+        enrichTask(task),
+        loadActor(actorId),
+        loadOrg(orgId),
+        loadPhase(existingTask?.phase_id ?? null),
+        loadPhase(data.phase_id),
+      ]);
+      publishBoltEvent(
+        'task.moved',
+        'bam',
+        {
+          task: enriched.task,
+          from_phase_id: existingTask?.phase_id ?? null,
+          to_phase_id: data.phase_id,
+          from_phase_name: fromPhase?.name ?? null,
+          to_phase_name: toPhase?.name ?? null,
+          project: enriched.project,
+          sprint: enriched.sprint,
+          assignee: enriched.assignee,
+          actor,
+          org,
+        },
+        orgId,
+        actorId,
+        actorId ? 'user' : 'system',
+      );
     }).catch(() => {});
   }
 

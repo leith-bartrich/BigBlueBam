@@ -6,6 +6,7 @@ import * as beaconService from '../services/beacon.service.js';
 import * as verificationService from '../services/verification.service.js';
 import { transitionBeacon } from '../services/lifecycle.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import { buildBeaconEventPayload } from '../lib/enrich-beacon-event.js';
 
 const createBeaconSchema = z.object({
   title: z.string().min(1).max(512),
@@ -55,13 +56,20 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
-      publishBoltEvent('beacon.created', 'beacon', {
-        id: beacon.id,
-        title: beacon.title,
-        visibility: beacon.visibility,
-        status: beacon.status,
-        created_by: request.user!.id,
-      }, request.user!.org_id);
+      // Fire-and-forget Bolt event emission. Enrichment requires a DB
+      // round-trip for actor/owner/org joins — kick it off but do not
+      // await so we never block the HTTP response.
+      buildBeaconEventPayload(beacon, request.user!.id)
+        .then((payload) =>
+          publishBoltEvent(
+            'beacon.created',
+            'beacon',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+          ),
+        )
+        .catch(() => {});
       return reply.status(201).send({ data: beacon });
     },
   );
@@ -107,6 +115,30 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /beacons/by-slug/:slug — Resolve a slug to a beacon (mirror of GET
+  // /beacons/:id but scoped exclusively to slug lookups so MCP resolvers
+  // never have to guess). Declared before the parametric /beacons/:id route
+  // so Fastify matches the literal `/by-slug/` segment first.
+  fastify.get<{ Params: { slug: string } }>(
+    '/beacons/by-slug/:slug',
+    {
+      // Pass the slug through as the `:id` param that the existing
+      // middleware expects. `requireBeaconReadAccess` already accepts a
+      // UUID *or* a slug and loads the row onto `request.beacon`, so
+      // reusing it keeps the auth rules in sync.
+      preHandler: [
+        requireAuth,
+        async (request, _reply) => {
+          (request.params as { id?: string }).id = (request.params as { slug: string }).slug;
+        },
+        requireBeaconReadAccess(),
+      ],
+    },
+    async (request, reply) => {
+      return reply.send({ data: (request as any).beacon });
+    },
+  );
+
   // GET /beacons/:id — Get a single beacon by UUID or slug
   fastify.get<{ Params: { id: string } }>(
     '/beacons/:id',
@@ -129,12 +161,30 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
-      publishBoltEvent('beacon.updated', 'beacon', {
-        id: beacon.id,
-        title: beacon.title,
-        status: beacon.status,
-        updated_by: request.user!.id,
-      }, request.user!.org_id);
+      // Build a coarse `changes` object from the request body so rule
+      // authors can discriminate "title renamed" from "summary edited".
+      // TODO: upgrade to a proper old/new-value diff once updateBeacon
+      // returns the pre-update snapshot alongside the new row.
+      const changes: Record<string, { new: unknown }> = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== undefined && key !== 'change_note') {
+          changes[key] = { new: value };
+        }
+      }
+      buildBeaconEventPayload(beacon, request.user!.id, {
+        changes,
+        change_note: data.change_note ?? null,
+      })
+        .then((payload) =>
+          publishBoltEvent(
+            'beacon.updated',
+            'beacon',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+          ),
+        )
+        .catch(() => {});
       return reply.send({ data: beacon });
     },
   );
@@ -149,11 +199,25 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
-      publishBoltEvent('beacon.expired', 'beacon', {
-        id: beacon.id,
-        title: beacon.title,
+      // NOTE: the DELETE endpoint currently emits `beacon.expired` to keep
+      // parity with the legacy producer. Strictly speaking this is a
+      // *retirement*, not an expiry — see TODO below.
+      // TODO: split into a dedicated `beacon.retired` event once the
+      // catalog grows one; until then Bolt rule authors should match
+      // `beacon.expired` with `beacon.status === 'Retired'`.
+      buildBeaconEventPayload(beacon, request.user!.id, {
         retired_by: request.user!.id,
-      }, request.user!.org_id);
+      })
+        .then((payload) =>
+          publishBoltEvent(
+            'beacon.expired',
+            'beacon',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+          ),
+        )
+        .catch(() => {});
       return reply.send({ data: beacon });
     },
   );
@@ -168,12 +232,19 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         request.user!.id,
         request.user!.org_id,
       );
-      publishBoltEvent('beacon.published', 'beacon', {
-        id: beacon.id,
-        title: beacon.title,
-        visibility: beacon.visibility,
+      buildBeaconEventPayload(beacon, request.user!.id, {
         published_by: request.user!.id,
-      }, request.user!.org_id);
+      })
+        .then((payload) =>
+          publishBoltEvent(
+            'beacon.published',
+            'beacon',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+          ),
+        )
+        .catch(() => {});
       return reply.send({ data: beacon });
     },
   );
@@ -216,6 +287,30 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         },
         request.user!.org_id,
       );
+      // Emit `beacon.verified` on any successful verification submission,
+      // regardless of outcome, so rule authors can react to every review
+      // decision (Confirmed / Updated / Challenged / Retired). Rules that
+      // only care about the happy path can filter on
+      // `verification.outcome === 'Confirmed'`.
+      buildBeaconEventPayload(result.beacon, request.user!.id, {
+        verification: {
+          id: result.verification.id,
+          type: data.verification_type,
+          outcome: data.outcome,
+          confidence_score: data.confidence_score ?? null,
+          notes: data.notes ?? null,
+        },
+      })
+        .then((payload) =>
+          publishBoltEvent(
+            'beacon.verified',
+            'beacon',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+          ),
+        )
+        .catch(() => {});
       return reply.send({ data: result });
     },
   );
@@ -237,6 +332,22 @@ export default async function beaconRoutes(fastify: FastifyInstance) {
         { reason: data.reason },
         request.user!.org_id,
       );
+      buildBeaconEventPayload(beacon, request.user!.id, {
+        challenge: {
+          reason: data.reason ?? null,
+          challenged_by: request.user!.id,
+        },
+      })
+        .then((payload) =>
+          publishBoltEvent(
+            'beacon.challenged',
+            'beacon',
+            payload,
+            request.user!.org_id,
+            request.user!.id,
+          ),
+        )
+        .catch(() => {});
       return reply.send({ data: beacon });
     },
   );

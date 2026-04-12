@@ -9,37 +9,49 @@ test.describe('Bill — Invoice CRUD', () => {
     await invoicesPage.goto();
     await screenshots.capture(page, 'invoices-before-create');
 
+    // The Bill /invoices/new page is a full page (not a dialog) and only
+    // requires a client selection — there is no separate due-date input,
+    // and the submit button is "Create Draft Invoice".
     await invoicesPage.clickCreateInvoice();
-    await screenshots.capture(page, 'create-invoice-dialog');
+    await page.waitForURL(/\/bill\/invoices\/new/);
+    await screenshots.capture(page, 'invoice-new-page');
 
-    // Fill invoice form — select client and due date
-    const clientSelect = page.locator('select, [role="combobox"]').first();
-    if (await clientSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await clientSelect.click();
-      await page.waitForTimeout(300);
-      // Select first available option
-      const option = page.locator('[role="option"], option').first();
-      if (await option.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await option.click();
-      }
-    }
-    await screenshots.capture(page, 'client-selected');
-
-    const dueDateInput = page.getByLabel(/due date/i);
-    if (await dueDateInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await dueDateInput.fill('2026-12-31');
-    }
-    await screenshots.capture(page, 'due-date-filled');
-
-    await page.getByRole('button', { name: /create|save/i }).click();
-    await page.waitForTimeout(1000);
-    await screenshots.capture(page, 'invoice-created');
-
-    // Verify via API
+    // Pre-seed a client via API so the <select> always has at least one option.
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
     const api = new DirectApiClient(request, '/bill/api', csrf || undefined);
-    const { status } = await api.getRaw('/invoices');
+
+    let clients = await api.get<any[]>('/v1/clients').catch(() => [] as any[]);
+    if (!clients.length) {
+      await api.post('/v1/clients', { name: `E2E Seed Client ${Date.now()}` });
+      // Bill list pages cache via TanStack Query — reload so the SPA picks
+      // it up before we touch the <select>.
+      await page.reload();
+      await page.waitForURL(/\/bill\/invoices\/new/);
+      clients = await api.get<any[]>('/v1/clients').catch(() => [] as any[]);
+    }
+
+    const clientSelect = page.getByRole('main').locator('select').first();
+    await expect(clientSelect).toBeVisible();
+    // The first <option> is the placeholder ("Select a client..."), so we
+    // pick by index 1 to ensure a real client value is chosen.
+    await clientSelect.selectOption({ index: 1 });
+    await screenshots.capture(page, 'client-selected');
+
+    // Submit
+    const createBtn = page
+      .getByRole('main')
+      .getByRole('button', { name: /create draft invoice/i });
+    await expect(createBtn).toBeEnabled();
+    await createBtn.click();
+    await screenshots.capture(page, 'invoice-create-clicked');
+
+    // After a successful create the SPA navigates to /invoices/:id
+    await page.waitForURL(/\/bill\/invoices\/[0-9a-f-]{36}/, { timeout: 5000 });
+    await screenshots.capture(page, 'invoice-created');
+
+    // Verify via API
+    const { status } = await api.getRaw('/v1/invoices');
     expect(status).toBe(200);
     await screenshots.capture(page, 'invoice-verified-via-api');
   });
@@ -57,15 +69,20 @@ test.describe('Bill — Invoice CRUD', () => {
     const invoicesPage = new InvoicesPage(page, screenshots);
     await invoicesPage.goto();
     await invoicesPage.clickCreateInvoice();
-    await screenshots.capture(page, 'create-dialog-open');
+    await page.waitForURL(/\/bill\/invoices\/new/);
+    await screenshots.capture(page, 'invoice-new-page-open');
 
-    // Submit without filling required fields
-    await page.getByRole('button', { name: /create|save/i }).click();
-    await screenshots.capture(page, 'validation-error-shown');
-
-    const errorEl = page.locator('.text-red-500, .text-destructive, [role="alert"]').first();
-    await expect(errorEl).toBeVisible({ timeout: 5000 });
-    await screenshots.capture(page, 'error-detail-visible');
+    // The Bill new-invoice page does not surface a `text-red-500` /
+    // `[role="alert"]` validation message — instead it disables the
+    // "Create Draft Invoice" submit button until a client is selected
+    // (the SPA also short-circuits with `if (!clientId) return;`).
+    // Assert that disabled state, which is the SPA's actual contract.
+    const createBtn = page
+      .getByRole('main')
+      .getByRole('button', { name: /create draft invoice/i });
+    await expect(createBtn).toBeVisible();
+    await expect(createBtn).toBeDisabled();
+    await screenshots.capture(page, 'create-button-disabled-no-client');
   });
 
   test('invoice detail page loads for existing invoice', async ({ page, screenshots, context, request }) => {
@@ -75,7 +92,7 @@ test.describe('Bill — Invoice CRUD', () => {
 
     let invoiceId: string | undefined;
     try {
-      const invoices = await api.get<any[]>('/invoices');
+      const invoices = await api.get<any[]>('/v1/invoices');
       if (invoices.length > 0) invoiceId = invoices[0].id;
     } catch {}
 

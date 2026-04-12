@@ -9,9 +9,12 @@ export async function publishBoltEvent(
   source: string,
   payload: Record<string, unknown>,
   orgId: string,
+  actorId?: string,
+  actorType?: 'user' | 'agent' | 'system',
 ) {
   try {
     const url = `${env.BOLT_API_INTERNAL_URL}/v1/events/ingest`;
+    const resolvedActorType = actorType ?? (actorId ? 'user' : 'system');
     await fetch(url, {
       method: 'POST',
       headers: {
@@ -23,6 +26,8 @@ export async function publishBoltEvent(
         source,
         payload,
         org_id: orgId,
+        actor_id: actorId,
+        actor_type: resolvedActorType,
       }),
     });
   } catch {

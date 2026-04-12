@@ -56,6 +56,7 @@ export const bondDeals = pgTable(
     // Stage tracking
     stage_entered_at: timestamp('stage_entered_at', { withTimezone: true }).defaultNow().notNull(),
     last_activity_at: timestamp('last_activity_at', { withTimezone: true }),
+    rotting_alerted_at: timestamp('rotting_alerted_at', { withTimezone: true }),
 
     // Metadata
     created_by: uuid('created_by')

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Loader2, Zap, Play, Save, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader2, Zap, Play, Save, Settings2, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import {
   useAutomation,
   useCreateAutomation,
@@ -10,12 +10,18 @@ import {
   type BoltAction,
 } from '@/hooks/use-automations';
 import { useProjectStore } from '@/stores/project.store';
+import { useGraphEditorStore } from '@/stores/graph-editor.store';
 import { TriggerSelector } from '@/components/builder/trigger-selector';
 import { ConditionList } from '@/components/builder/condition-list';
 import { ActionList } from '@/components/builder/action-list';
 import { CronEditor } from '@/components/builder/cron-editor';
+import { TriggerFilterList } from '@/components/builder/trigger-filter-list';
+import { GraphEditorView } from '@/components/graph/graph-editor-view';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
+import { validateAutomationForm } from '@/lib/automation-validation';
+import { validateGraph, type GraphValidationError } from '@/lib/graph-validation';
+import { cn } from '@/lib/utils';
 
 interface AutomationEditorPageProps {
   id?: string;
@@ -39,12 +45,23 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
   const [triggerEvent, setTriggerEvent] = useState('');
   const [triggerFilter, setTriggerFilter] = useState<Record<string, unknown>>({});
   const [cronExpression, setCronExpression] = useState('');
+  const [cronTimezone, setCronTimezone] = useState(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+  });
   const [conditions, setConditions] = useState<BoltCondition[]>([]);
   const [actions, setActions] = useState<BoltAction[]>([]);
   const [maxExecutionsPerHour, setMaxExecutionsPerHour] = useState(60);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
   const [showFilterEditor, setShowFilterEditor] = useState(false);
+
+  // Editor mode: simple (form) or visual (graph canvas)
+  const [editorMode, setEditorMode] = useState<'simple' | 'visual'>('simple');
+  const [graphErrors, setGraphErrors] = useState<GraphValidationError[]>([]);
+
+  // Validation state
+  // Only show errors after a save attempt (not on initial load)
+  const [hasSubmitAttempt, setHasSubmitAttempt] = useState(false);
+  const errorBannerRef = useRef<HTMLDivElement>(null);
 
   // Populate from existing automation
   useEffect(() => {
@@ -57,12 +74,37 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
       setTriggerEvent(a.trigger_event);
       setTriggerFilter(a.trigger_filter ?? {});
       setCronExpression(a.cron_expression ?? '');
+      if (a.cron_timezone) setCronTimezone(a.cron_timezone);
       setConditions(a.conditions);
       setActions(a.actions);
       setMaxExecutionsPerHour(a.max_executions_per_hour);
       setCooldownSeconds(a.cooldown_seconds);
+
+      // If the automation has a saved graph, load it and default to visual mode
+      if (a.graph) {
+        useGraphEditorStore.getState().loadFromGraph(a.graph);
+        setEditorMode('visual');
+      }
     }
   }, [existing]);
+
+  const validationErrors = useMemo(
+    () =>
+      validateAutomationForm({
+        name,
+        description: description || null,
+        trigger_source: triggerSource as TriggerSource,
+        trigger_event: triggerEvent,
+        cron_timezone: cronTimezone,
+        max_executions_per_hour: maxExecutionsPerHour,
+        cooldown_seconds: cooldownSeconds,
+      }),
+    [name, description, triggerSource, triggerEvent, cronTimezone, maxExecutionsPerHour, cooldownSeconds],
+  );
+
+  const hasFormErrors = Object.keys(validationErrors).length > 0;
+  const hasErrors = editorMode === 'visual' ? (hasFormErrors || graphErrors.length > 0) : hasFormErrors;
+  const showErrors = hasSubmitAttempt && hasErrors;
 
   if (!isNew && isLoading) {
     return (
@@ -73,7 +115,23 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
   }
 
   const handleSave = async (enableOnSave = false) => {
-    const payload = {
+    setHasSubmitAttempt(true);
+
+    // Run graph validation when in visual mode
+    if (editorMode === 'visual') {
+      const store = useGraphEditorStore.getState();
+      const gErrors = validateGraph(store.nodes, store.edges);
+      setGraphErrors(gErrors);
+      if (gErrors.length > 0 || hasFormErrors) {
+        errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+    } else if (hasFormErrors) {
+      errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
       name,
       description: description || null,
       enabled: enableOnSave ? true : enabled,
@@ -81,6 +139,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
       trigger_event: triggerEvent,
       trigger_filter: Object.keys(triggerFilter).length > 0 ? triggerFilter : null,
       cron_expression: cronExpression || null,
+      cron_timezone: cronTimezone,
       conditions,
       actions,
       max_executions_per_hour: maxExecutionsPerHour,
@@ -88,11 +147,21 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
       project_id: projectId,
     };
 
+    // Include graph payload when in visual mode
+    if (editorMode === 'visual') {
+      payload.graph = useGraphEditorStore.getState().toGraph();
+    }
+
     if (isNew) {
-      const result = await createMutation.mutateAsync(payload);
+      const result = await createMutation.mutateAsync(payload as Parameters<typeof createMutation.mutateAsync>[0]);
       onNavigate(`/automations/${result.data.id}`);
     } else {
-      await updateMutation.mutateAsync({ id: id!, ...payload });
+      await updateMutation.mutateAsync({ id: id!, ...payload } as Parameters<typeof updateMutation.mutateAsync>[0]);
+    }
+
+    // Mark graph clean after successful save
+    if (editorMode === 'visual') {
+      useGraphEditorStore.getState().markClean();
     }
   };
 
@@ -104,31 +173,123 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  // Filter key-value pairs
-  const filterEntries = Object.entries(triggerFilter);
-  const addFilterPair = () => setTriggerFilter({ ...triggerFilter, '': '' });
-  const updateFilterKey = (oldKey: string, newKey: string) => {
-    const entries = Object.entries(triggerFilter);
-    const newFilter: Record<string, unknown> = {};
-    for (const [k, v] of entries) {
-      newFilter[k === oldKey ? newKey : k] = v;
+  // Build a minimal linear graph from current simple-form state
+  const buildGraphFromFormState = () => {
+    const store = useGraphEditorStore.getState();
+    store.reset();
+
+    const yStep = 150;
+    let y = 50;
+
+    // Trigger node
+    if (triggerSource) {
+      store.addNode('trigger', { x: 250, y });
+      y += yStep;
     }
-    setTriggerFilter(newFilter);
+
+    // Condition nodes
+    for (const _cond of conditions) {
+      store.addNode('condition', { x: 250, y });
+      y += yStep;
+    }
+
+    // Action nodes
+    for (const _act of actions) {
+      store.addNode('action', { x: 250, y });
+      y += yStep;
+    }
+
+    // Wire linearly
+    const nodes = useGraphEditorStore.getState().nodes;
+    for (let i = 0; i < nodes.length - 1; i++) {
+      store.onConnect({
+        source: nodes[i]!.id,
+        target: nodes[i + 1]!.id,
+        sourceHandle: null,
+        targetHandle: null,
+      });
+    }
+
+    // Populate trigger node data from form
+    if (triggerSource && nodes.length > 0) {
+      store.updateNodeData(nodes[0]!.id, {
+        kind: 'trigger',
+        source: triggerSource,
+        event: triggerEvent,
+        filter: triggerFilter,
+      });
+    }
+
+    // Populate condition node data
+    const conditionNodes = nodes.filter((n) => n.data?.kind === 'condition');
+    conditionNodes.forEach((node, i) => {
+      const cond = conditions[i];
+      if (cond) {
+        store.updateNodeData(node.id, {
+          kind: 'condition',
+          field: cond.field,
+          operator: cond.operator,
+          value: cond.value,
+          logicGroup: cond.logic_group ?? 'and',
+        });
+      }
+    });
+
+    // Populate action node data
+    const actionNodes = nodes.filter((n) => n.data?.kind === 'action');
+    actionNodes.forEach((node, i) => {
+      const act = actions[i];
+      if (act) {
+        store.updateNodeData(node.id, {
+          kind: 'action',
+          mcpTool: act.mcp_tool,
+          parameters: act.parameters,
+          onError: act.on_error ?? 'fail',
+          retryCount: act.retry_count ?? 0,
+          retryDelayMs: 1000,
+        });
+      }
+    });
   };
-  const updateFilterValue = (key: string, value: string) => {
-    setTriggerFilter({ ...triggerFilter, [key]: value });
-  };
-  const removeFilterPair = (key: string) => {
-    const next = { ...triggerFilter };
-    delete next[key];
-    setTriggerFilter(next);
-  };
+
+  // Filter entry count for the toggle label
+  const filterEntryCount = Object.keys(triggerFilter).length;
 
   return (
     <div className="flex h-full">
       {/* Main editor area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        <div className="max-w-3xl mx-auto space-y-6">
+      <div className={cn('flex-1 overflow-y-auto p-6', editorMode === 'visual' ? 'flex flex-col' : 'space-y-6')}>
+        <div className={cn('space-y-6', editorMode === 'simple' && 'max-w-3xl mx-auto', editorMode === 'visual' && 'flex flex-col flex-1 min-h-0')}>
+
+          {/* A7: Validation error banner */}
+          {showErrors && (
+            <div
+              ref={errorBannerRef}
+              className="rounded-xl border-2 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-4"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+                    Please fix the following errors before saving:
+                  </p>
+                  <ul className="mt-1.5 space-y-0.5">
+                    {Object.entries(validationErrors).map(([field, message]) => (
+                      <li key={field} className="text-xs text-red-600 dark:text-red-400">
+                        • {message}
+                      </li>
+                    ))}
+                    {editorMode === 'visual' && graphErrors.map((err, i) => (
+                      <li key={`graph-${i}`} className="text-xs text-red-600 dark:text-red-400">
+                        • {err.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Title */}
           <div>
             <input
@@ -136,8 +297,16 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               placeholder="Automation name..."
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full text-2xl font-bold text-zinc-900 dark:text-zinc-100 bg-transparent border-none outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600"
+              className={cn(
+                'w-full text-2xl font-bold text-zinc-900 dark:text-zinc-100 bg-transparent border-b outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600 pb-1 transition-colors',
+                showErrors && validationErrors['name']
+                  ? 'border-red-500'
+                  : 'border-transparent',
+              )}
             />
+            {showErrors && validationErrors['name'] && (
+              <p className="text-xs text-red-500 mt-1">{validationErrors['name']}</p>
+            )}
             <input
               type="text"
               placeholder="Add a description..."
@@ -147,15 +316,97 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
             />
           </div>
 
-          {/* WHEN section (blue) */}
-          <div className="rounded-xl border-2 border-blue-200 dark:border-blue-800/50 overflow-hidden">
-            <div className="bg-blue-50 dark:bg-blue-900/20 px-5 py-3 border-b border-blue-200 dark:border-blue-800/50">
-              <h2 className="text-sm font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
+          {/* Editor mode toggle */}
+          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5 w-fit">
+            <button
+              type="button"
+              onClick={() => {
+                if (editorMode === 'visual') {
+                  const store = useGraphEditorStore.getState();
+                  if (store.isDirty && !window.confirm('Unsaved graph changes may be lost. Switch to Simple mode?')) {
+                    return;
+                  }
+                }
+                setEditorMode('simple');
+                setGraphErrors([]);
+              }}
+              className={cn(
+                'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                editorMode === 'simple'
+                  ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300',
+              )}
+            >
+              Simple
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (editorMode === 'simple') {
+                  // Load existing graph if available, otherwise build a minimal one from form state
+                  const store = useGraphEditorStore.getState();
+                  if (store.nodes.length === 0 && existing?.data?.graph) {
+                    store.loadFromGraph(existing.data.graph);
+                  } else if (store.nodes.length === 0) {
+                    // Build a simple linear graph from form state
+                    buildGraphFromFormState();
+                  }
+                }
+                setEditorMode('visual');
+              }}
+              className={cn(
+                'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                editorMode === 'visual'
+                  ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300',
+              )}
+            >
+              Visual
+            </button>
+          </div>
+
+          {/* Visual graph editor — fills remaining viewport height */}
+          {editorMode === 'visual' && (
+            <div className="rounded-xl border-2 border-zinc-200 dark:border-zinc-700 overflow-hidden flex-1" style={{ minHeight: 500 }}>
+              <GraphEditorView />
+            </div>
+          )}
+
+          {/* WHEN / IF / THEN sections — simple mode only */}
+          {editorMode === 'simple' && (<>
+          <div className={cn(
+            'rounded-xl border-2',
+            showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event'])
+              ? 'border-red-400 dark:border-red-700'
+              : 'border-blue-200 dark:border-blue-800/50',
+          )}>
+            <div className={cn(
+              'px-5 py-3 border-b',
+              showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event'])
+                ? 'bg-red-50 dark:bg-red-900/10 border-red-300 dark:border-red-700'
+                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50',
+            )}>
+              <h2 className={cn(
+                'text-sm font-semibold flex items-center gap-2',
+                showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event'])
+                  ? 'text-red-700 dark:text-red-400'
+                  : 'text-blue-700 dark:text-blue-400',
+              )}>
                 <Zap className="h-4 w-4" />
                 WHEN — Trigger
+                {showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event']) && (
+                  <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                )}
               </h2>
-              <p className="text-xs text-blue-500 dark:text-blue-400/70 mt-0.5">
-                Define what event starts this automation.
+              <p className={cn(
+                'text-xs mt-0.5',
+                showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event'])
+                  ? 'text-red-500 dark:text-red-400/70'
+                  : 'text-blue-500 dark:text-blue-400/70',
+              )}>
+                {showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event'])
+                  ? (validationErrors['trigger_source'] || validationErrors['trigger_event'])
+                  : 'Define what event starts this automation.'}
               </p>
             </div>
             <div className="p-5 bg-white dark:bg-zinc-900 space-y-4">
@@ -173,6 +424,8 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
                   <CronEditor
                     value={cronExpression}
                     onChange={setCronExpression}
+                    timezone={cronTimezone}
+                    onTimezoneChange={setCronTimezone}
                   />
                 </div>
               )}
@@ -185,46 +438,18 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
                   className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
                 >
                   {showFilterEditor ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  {filterEntries.length > 0
-                    ? `Filter (${filterEntries.length} ${filterEntries.length === 1 ? 'rule' : 'rules'})`
+                  {filterEntryCount > 0
+                    ? `Filter (${filterEntryCount} ${filterEntryCount === 1 ? 'rule' : 'rules'})`
                     : 'Add trigger filter'}
                 </button>
 
                 {showFilterEditor && (
-                  <div className="mt-2 space-y-2">
-                    {filterEntries.map(([key, value], i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="key"
-                          value={key}
-                          onChange={(e) => updateFilterKey(key, e.target.value)}
-                          className="w-40 shrink-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-                        />
-                        <input
-                          type="text"
-                          placeholder="value"
-                          value={String(value ?? '')}
-                          onChange={(e) => updateFilterValue(key, e.target.value)}
-                          className="flex-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeFilterPair(key)}
-                          className="text-xs text-red-500 hover:text-red-600"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addFilterPair}
-                      className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400"
-                    >
-                      + Add filter pair
-                    </button>
-                  </div>
+                  <TriggerFilterList
+                    value={triggerFilter}
+                    onChange={setTriggerFilter}
+                    triggerSource={triggerSource}
+                    triggerEvent={triggerEvent}
+                  />
                 )}
               </div>
             </div>
@@ -267,6 +492,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               />
             </div>
           </div>
+          </>)}
         </div>
       </div>
 
@@ -302,6 +528,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               max={1000}
               value={maxExecutionsPerHour}
               onChange={(e) => setMaxExecutionsPerHour(Number(e.target.value) || 60)}
+              error={showErrors ? validationErrors['max_executions_per_hour'] : undefined}
             />
             <Input
               label="Cooldown (seconds)"
@@ -310,6 +537,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               max={3600}
               value={cooldownSeconds}
               onChange={(e) => setCooldownSeconds(Number(e.target.value) || 0)}
+              error={showErrors ? validationErrors['cooldown_seconds'] : undefined}
             />
           </div>
 
@@ -345,13 +573,13 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               </div>
             )}
 
+            {/* A7: buttons stay enabled; validation runs on click */}
             <Button
               variant="secondary"
               size="sm"
               className="w-full"
               onClick={() => handleSave(false)}
               loading={isSaving}
-              disabled={!name || !triggerSource || !triggerEvent}
             >
               <Save className="h-4 w-4" />
               Save Draft
@@ -362,7 +590,6 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               className="w-full"
               onClick={() => handleSave(true)}
               loading={isSaving}
-              disabled={!name || !triggerSource || !triggerEvent || actions.length === 0}
             >
               <Zap className="h-4 w-4" />
               Save & Enable

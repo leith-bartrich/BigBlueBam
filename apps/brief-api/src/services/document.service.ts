@@ -3,9 +3,7 @@ import { eq, and, or, sql, asc, desc, gt, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   briefDocuments,
-  briefVersions,
   briefStars,
-  briefCollaborators,
   briefTemplates,
   projectMemberships,
   users,
@@ -14,6 +12,7 @@ import {
 } from '../db/schema/index.js';
 import { sanitizeHtml } from '../lib/sanitize.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
+import { enrichDocumentEventPayload } from '../lib/enrich-document-event.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -182,7 +181,9 @@ export async function createDocument(
     .returning();
 
   // Bolt workflow event (fire-and-forget)
-  publishBoltEvent('document.created', 'brief', { document: doc }, orgId).catch(() => {});
+  enrichDocumentEventPayload(doc!, userId)
+    .then((payload) => publishBoltEvent('document.created', 'brief', payload, orgId, userId, 'user'))
+    .catch(() => {});
 
   return doc!;
 }
@@ -347,11 +348,20 @@ export async function updateDocument(
     .returning();
 
   // Bolt workflow events (fire-and-forget)
-  publishBoltEvent('document.updated', 'brief', { document: doc, changed_fields: Object.keys(updateValues) }, orgId).catch(() => {});
+  const changedFields = Object.keys(updateValues).filter(
+    (f) => f !== 'updated_at' && f !== 'updated_by',
+  );
+  enrichDocumentEventPayload(doc!, userId, { changed_fields: changedFields })
+    .then((payload) => publishBoltEvent('document.updated', 'brief', payload, orgId, userId, 'user'))
+    .catch(() => {});
 
   // Emit document.published when status transitions to approved
   if (data.status === 'approved' && existing.status !== 'approved') {
-    publishBoltEvent('document.published', 'brief', { document: doc }, orgId).catch(() => {});
+    enrichDocumentEventPayload(doc!, userId, { previous_status: existing.status })
+      .then((payload) =>
+        publishBoltEvent('document.published', 'brief', payload, orgId, userId, 'user'),
+      )
+      .catch(() => {});
   }
 
   return doc!;

@@ -13,8 +13,9 @@
 
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
-import { sql } from 'drizzle-orm';
+import { eq, asc, sql } from 'drizzle-orm';
 import { getDb } from '../utils/db.js';
+import { boltAutomations, boltActions } from '../utils/bolt-schema.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,13 @@ export interface BoltExecuteJobData {
   actor_id?: string;
   actor_type: string;
   chain_depth: number;
+  template_strict?: boolean;
+}
+
+export interface TemplateWarning {
+  path: string;
+  expression: string;
+  reason: 'unresolved' | 'coerced_complex_value';
 }
 
 interface ActionRow {
@@ -41,14 +49,6 @@ interface ActionRow {
   on_error: string;
   retry_count: number;
   retry_delay_ms: number;
-}
-
-interface AutomationRow {
-  id: string;
-  org_id: string;
-  name: string;
-  max_chain_depth: number;
-  created_by: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,8 +72,62 @@ function resolvePath(obj: Record<string, unknown>, path: string): unknown {
   return current;
 }
 
+interface TemplateContext {
+  event: Record<string, unknown>;
+  actor: Record<string, unknown>;
+  automation: Record<string, unknown>;
+  stepResults: Record<string, unknown>[];
+}
+
+// Matches a string that is EXACTLY one {{ ... }} expression with no surrounding text.
+// Uses a non-greedy inner match and anchors at start/end so `foo {{bar}} baz` is NOT a match.
+const WHOLE_TEMPLATE_RE = /^\{\{\s*(.+?)\s*\}\}$/;
+
 /**
- * Resolve all {{ ... }} template variables in a string.
+ * Resolve a single {{ ... }} expression against the template context.
+ * Returns the raw value (undefined if unresolved). Does NOT coerce to string.
+ */
+function resolveExpression(
+  expr: string,
+  context: TemplateContext,
+): unknown {
+  // {{ now }}
+  if (expr === 'now') {
+    return new Date().toISOString();
+  }
+
+  // {{ step[N].result.path }}
+  const stepMatch = expr.match(/^step\[(\d+)\]\.result\.(.+)$/);
+  if (stepMatch) {
+    const stepIndex = parseInt(stepMatch[1]!, 10);
+    const fieldPath = stepMatch[2]!;
+    const stepResult = context.stepResults[stepIndex];
+    if (!stepResult) return undefined;
+    return resolvePath(stepResult as Record<string, unknown>, fieldPath);
+  }
+
+  // {{ event.path }}, {{ actor.path }}, {{ automation.path }}
+  const dotIndex = expr.indexOf('.');
+  if (dotIndex > 0) {
+    const prefix = expr.slice(0, dotIndex);
+    const fieldPath = expr.slice(dotIndex + 1);
+
+    let source: Record<string, unknown> | undefined;
+    if (prefix === 'event') source = context.event;
+    else if (prefix === 'actor') source = context.actor;
+    else if (prefix === 'automation') source = context.automation;
+
+    if (source) {
+      return resolvePath(source, fieldPath);
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolve all {{ ... }} template variables in a string, emitting a warning
+ * for each path that fails to resolve or is coerced from a non-scalar value.
  *
  * Supported variable prefixes:
  *   - {{ event.* }}        -> event payload fields
@@ -81,87 +135,114 @@ function resolvePath(obj: Record<string, unknown>, path: string): unknown {
  *   - {{ automation.* }}   -> automation metadata
  *   - {{ now }}            -> current ISO timestamp
  *   - {{ step[N].result.* }} -> response from a previous action step
+ *
+ * NOTE: this function is only called for embedded templates (template mixed
+ * with surrounding literal text). The "whole template" case is handled by
+ * `resolveStringValue` below and may return a non-string value as-is.
  */
 function resolveTemplateString(
   template: string,
-  context: {
-    event: Record<string, unknown>;
-    actor: Record<string, unknown>;
-    automation: Record<string, unknown>;
-    stepResults: Record<string, unknown>[];
-  },
+  context: TemplateContext,
+  paramPath: string,
+  warnings: TemplateWarning[],
 ): string {
   return template.replace(/\{\{\s*(.+?)\s*\}\}/g, (_match, expr: string) => {
-    // {{ now }}
-    if (expr === 'now') {
-      return new Date().toISOString();
+    const value = resolveExpression(expr, context);
+
+    if (value === undefined || value === null) {
+      warnings.push({ path: paramPath, expression: expr, reason: 'unresolved' });
+      return '';
     }
 
-    // {{ step[N].result.path }}
-    const stepMatch = expr.match(/^step\[(\d+)\]\.result\.(.+)$/);
-    if (stepMatch) {
-      const stepIndex = parseInt(stepMatch[1]!, 10);
-      const fieldPath = stepMatch[2]!;
-      const stepResult = context.stepResults[stepIndex];
-      if (!stepResult) return '';
-      const value = resolvePath(stepResult as Record<string, unknown>, fieldPath);
-      return value !== undefined ? String(value) : '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
     }
 
-    // {{ event.path }}, {{ actor.path }}, {{ automation.path }}
-    const dotIndex = expr.indexOf('.');
-    if (dotIndex > 0) {
-      const prefix = expr.slice(0, dotIndex);
-      const fieldPath = expr.slice(dotIndex + 1);
-
-      let source: Record<string, unknown> | undefined;
-      if (prefix === 'event') source = context.event;
-      else if (prefix === 'actor') source = context.actor;
-      else if (prefix === 'automation') source = context.automation;
-
-      if (source) {
-        const value = resolvePath(source, fieldPath);
-        return value !== undefined ? String(value) : '';
-      }
+    // Non-scalar value embedded inside a larger string. JSON-stringify it so
+    // the user gets `["a","b"]` rather than `"a,b"` or `"[object Object]"`,
+    // and flag it as a probable rule-author bug.
+    warnings.push({ path: paramPath, expression: expr, reason: 'coerced_complex_value' });
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '';
     }
-
-    return '';
   });
 }
 
 /**
+ * Resolve a string value that may be either:
+ *   - A "whole template" — the entire string is a single {{ ... }} expression,
+ *     in which case the raw resolved value is returned (preserving arrays/objects).
+ *   - An embedded template — interpolate each {{ ... }} expression into the string.
+ */
+function resolveStringValue(
+  value: string,
+  context: TemplateContext,
+  paramPath: string,
+  warnings: TemplateWarning[],
+): unknown {
+  const wholeMatch = value.match(WHOLE_TEMPLATE_RE);
+  if (wholeMatch) {
+    const expr = wholeMatch[1]!;
+    const resolved = resolveExpression(expr, context);
+    if (resolved === undefined) {
+      warnings.push({ path: paramPath, expression: expr, reason: 'unresolved' });
+      return undefined;
+    }
+    return resolved;
+  }
+  return resolveTemplateString(value, context, paramPath, warnings);
+}
+
+/**
  * Recursively resolve template variables in parameters (object values, arrays, strings).
+ * Returns the resolved object plus any template warnings encountered.
  */
 function resolveParameters(
   params: Record<string, unknown>,
-  context: {
-    event: Record<string, unknown>;
-    actor: Record<string, unknown>;
-    automation: Record<string, unknown>;
-    stepResults: Record<string, unknown>[];
-  },
-): Record<string, unknown> {
+  context: TemplateContext,
+  parentPath = '',
+  warnings: TemplateWarning[] = [],
+): { resolved: Record<string, unknown>; warnings: TemplateWarning[] } {
   const resolved: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(params)) {
+    const currentPath = parentPath ? `${parentPath}.${key}` : key;
+
     if (typeof value === 'string') {
-      resolved[key] = resolveTemplateString(value, context);
+      resolved[key] = resolveStringValue(value, context, currentPath, warnings);
     } else if (Array.isArray(value)) {
-      resolved[key] = value.map((item) => {
-        if (typeof item === 'string') return resolveTemplateString(item, context);
+      resolved[key] = value.map((item, idx) => {
+        const itemPath = `${currentPath}[${idx}]`;
+        if (typeof item === 'string') {
+          return resolveStringValue(item, context, itemPath, warnings);
+        }
         if (item !== null && typeof item === 'object') {
-          return resolveParameters(item as Record<string, unknown>, context);
+          const nested = resolveParameters(
+            item as Record<string, unknown>,
+            context,
+            itemPath,
+            warnings,
+          );
+          return nested.resolved;
         }
         return item;
       });
     } else if (value !== null && typeof value === 'object') {
-      resolved[key] = resolveParameters(value as Record<string, unknown>, context);
+      const nested = resolveParameters(
+        value as Record<string, unknown>,
+        context,
+        currentPath,
+        warnings,
+      );
+      resolved[key] = nested.resolved;
     } else {
       resolved[key] = value;
     }
   }
 
-  return resolved;
+  return { resolved, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -256,12 +337,10 @@ export async function processBoltExecuteJob(
     execution_id,
     automation_id,
     event_payload,
-    event_source,
     event_type,
     org_id,
     actor_id,
     actor_type,
-    chain_depth,
   } = job.data;
 
   logger.info(
@@ -273,15 +352,22 @@ export async function processBoltExecuteJob(
   const mcpUrl = process.env.MCP_INTERNAL_URL ?? 'http://mcp-server:3001';
   const startTime = Date.now();
 
-  // 1. Load automation
-  const automationRows = await db.execute(sql`
-    SELECT id, org_id, name, max_chain_depth, created_by
-    FROM bolt_automations
-    WHERE id = ${automation_id}
-    LIMIT 1
-  `);
-
-  const automation = automationRows[0] as AutomationRow | undefined;
+  // 1. Load automation — uses typed Drizzle query via bolt-schema stubs so the
+  //    read path mirrors apps/bolt-api/src/services/automation.service.ts
+  //    (getAutomationForExecution).  No request-scoped org auth needed here;
+  //    the automation_id was validated at enqueue time by the bolt-api route.
+  const [automation] = await db
+    .select({
+      id: boltAutomations.id,
+      org_id: boltAutomations.org_id,
+      name: boltAutomations.name,
+      max_chain_depth: boltAutomations.max_chain_depth,
+      created_by: boltAutomations.created_by,
+      template_strict: boltAutomations.template_strict,
+    })
+    .from(boltAutomations)
+    .where(eq(boltAutomations.id, automation_id))
+    .limit(1);
   if (!automation) {
     logger.error({ automation_id }, 'Automation not found, marking execution as failed');
     await db.execute(sql`
@@ -295,13 +381,27 @@ export async function processBoltExecuteJob(
     return;
   }
 
-  // 2. Load actions sorted by sort_order
-  const actionRows = (await db.execute(sql`
-    SELECT id, automation_id, sort_order, mcp_tool, parameters, on_error, retry_count, retry_delay_ms
-    FROM bolt_actions
-    WHERE automation_id = ${automation_id}
-    ORDER BY sort_order ASC
-  `)) as ActionRow[];
+  // 2. Load actions sorted by sort_order — typed Drizzle query, mirroring the
+  //    action fetch in getAutomationForExecution in automation.service.ts.
+  const actionRows: ActionRow[] = (
+    await db
+      .select({
+        id: boltActions.id,
+        automation_id: boltActions.automation_id,
+        sort_order: boltActions.sort_order,
+        mcp_tool: boltActions.mcp_tool,
+        parameters: boltActions.parameters,
+        on_error: boltActions.on_error,
+        retry_count: boltActions.retry_count,
+        retry_delay_ms: boltActions.retry_delay_ms,
+      })
+      .from(boltActions)
+      .where(eq(boltActions.automation_id, automation_id))
+      .orderBy(asc(boltActions.sort_order))
+  ).map((row) => ({
+    ...row,
+    parameters: (row.parameters as Record<string, unknown> | null) ?? null,
+  }));
 
   if (actionRows.length === 0) {
     logger.warn({ automation_id }, 'Automation has no actions, marking execution as success');
@@ -335,16 +435,49 @@ export async function processBoltExecuteJob(
   let failedStepIndex: number | null = null;
   let failureMessage: string | null = null;
 
+  // `template_strict` can come either from the job payload (newer bolt-api)
+  // or from the automation row itself (older bolt-api versions still in-flight).
+  // The row value is authoritative; job payload is a convenience copy.
+  const templateStrict = automation.template_strict === true || job.data.template_strict === true;
+
   for (let i = 0; i < actionRows.length; i++) {
     const action = actionRows[i]!;
     const stepStartTime = Date.now();
 
     // Resolve template variables in parameters
     const rawParams = (action.parameters ?? {}) as Record<string, unknown>;
-    const resolvedParams = resolveParameters(rawParams, templateContext);
+    const { resolved: resolvedParams, warnings: templateWarnings } = resolveParameters(
+      rawParams,
+      templateContext,
+    );
+
+    // Log every warning so they show up in container logs.
+    for (const w of templateWarnings) {
+      logger.warn(
+        {
+          execution_id,
+          step: i,
+          mcp_tool: action.mcp_tool,
+          param_path: w.path,
+          expression: w.expression,
+          reason: w.reason,
+        },
+        w.reason === 'unresolved'
+          ? 'Template path did not resolve'
+          : 'Template coerced a non-scalar value embedded in a string',
+      );
+    }
+
+    // Stash warnings alongside the resolved parameters so post-mortem tools can
+    // surface them in the execution-step UI. We piggy-back on parameters_resolved
+    // rather than adding a new column so no schema migration is needed here.
+    const parametersResolvedForStorage: Record<string, unknown> =
+      templateWarnings.length > 0
+        ? { ...resolvedParams, _template_warnings: templateWarnings }
+        : resolvedParams;
 
     logger.info(
-      { execution_id, step: i, mcp_tool: action.mcp_tool },
+      { execution_id, step: i, mcp_tool: action.mcp_tool, warnings: templateWarnings.length },
       'Executing action step',
     );
 
@@ -352,29 +485,40 @@ export async function processBoltExecuteJob(
     let stepSuccess = false;
     let stepResponse: unknown = null;
     let stepError: string | undefined;
-    let stepDurationMs = 0;
-    const maxAttempts = action.on_error === 'retry' ? Math.max(1, action.retry_count + 1) : 1;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (attempt > 0) {
-        logger.info(
-          { execution_id, step: i, attempt, mcp_tool: action.mcp_tool },
-          'Retrying action step',
-        );
-        await sleep(action.retry_delay_ms);
+    // Strict mode: if ANY template warning occurred, abort this step before
+    // calling the MCP tool. The step is recorded as failed with a clear error.
+    if (templateStrict && templateWarnings.length > 0) {
+      const firstUnresolved =
+        templateWarnings.find((w) => w.reason === 'unresolved') ?? templateWarnings[0]!;
+      stepError = `Template resolution failed: {{ ${firstUnresolved.expression} }} did not resolve (param "${firstUnresolved.path}"). Strict mode is enabled; either disable strict mode or fix the template.`;
+      logger.warn(
+        { execution_id, step: i, mcp_tool: action.mcp_tool, warnings: templateWarnings },
+        'Aborting step: strict template mode and unresolved template(s)',
+      );
+    } else {
+      const maxAttempts = action.on_error === 'retry' ? Math.max(1, action.retry_count + 1) : 1;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (attempt > 0) {
+          logger.info(
+            { execution_id, step: i, attempt, mcp_tool: action.mcp_tool },
+            'Retrying action step',
+          );
+          await sleep(action.retry_delay_ms);
+        }
+
+        const result = await callMcpTool(mcpUrl, action.mcp_tool, resolvedParams, org_id, logger);
+        stepResponse = result.response;
+
+        if (result.success) {
+          stepSuccess = true;
+          stepError = undefined;
+          break;
+        }
+
+        stepError = result.error;
       }
-
-      const result = await callMcpTool(mcpUrl, action.mcp_tool, resolvedParams, org_id, logger);
-      stepDurationMs = result.durationMs;
-      stepResponse = result.response;
-
-      if (result.success) {
-        stepSuccess = true;
-        stepError = undefined;
-        break;
-      }
-
-      stepError = result.error;
     }
 
     const totalStepDuration = Date.now() - stepStartTime;
@@ -387,7 +531,7 @@ export async function processBoltExecuteJob(
         ${action.id},
         ${i},
         ${action.mcp_tool},
-        ${JSON.stringify(resolvedParams)}::jsonb,
+        ${JSON.stringify(parametersResolvedForStorage)}::jsonb,
         ${stepSuccess ? 'success' : 'failed'},
         ${stepResponse ? JSON.stringify(stepResponse) : null}::jsonb,
         ${stepError ?? null},
@@ -404,7 +548,13 @@ export async function processBoltExecuteJob(
         'Action step failed',
       );
 
-      if (action.on_error === 'stop' || action.on_error === 'retry') {
+      // Strict-mode template failures always halt execution regardless of on_error,
+      // because the failure is a configuration error rather than a runtime MCP error.
+      if (
+        (templateStrict && templateWarnings.length > 0) ||
+        action.on_error === 'stop' ||
+        action.on_error === 'retry'
+      ) {
         // stop: halt execution immediately
         // retry: retries already exhausted above, so halt
         hasFailure = true;
@@ -428,7 +578,6 @@ export async function processBoltExecuteJob(
     finalStatus = 'success';
   } else if (failedStepIndex !== null && failedStepIndex < actionRows.length - 1) {
     // Stopped early or some steps failed with continue
-    const completedSteps = actionRows.length;
     const executedAll = !failureMessage || failedStepIndex === actionRows.length - 1;
     finalStatus = executedAll ? 'partial' : 'failed';
   } else {

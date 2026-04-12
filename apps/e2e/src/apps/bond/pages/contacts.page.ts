@@ -11,6 +11,12 @@ export class ContactsPage extends BasePage {
 
   async goto(): Promise<void> {
     await super.goto('/contacts');
+    // Wait for the contacts list to finish loading (table renders or empty state text appears)
+    await this.page
+      .locator('table tbody tr, h3:has-text("No contacts found")')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .catch(() => {});
   }
 
   async expectContactsLoaded(): Promise<void> {

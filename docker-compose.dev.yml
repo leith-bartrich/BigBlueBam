@@ -11,6 +11,25 @@ services:
       - "4000:4000"
     environment:
       NODE_ENV: development
+      # BAM-RL-E2E: dev stacks always run permissive so Playwright workers
+      # can run in parallel without hitting HTTP 429.
+      BBB_E2E_PERMISSIVE_RATE_LIMIT: "1"
+
+  helpdesk-api:
+    build:
+      context: .
+      dockerfile: apps/helpdesk-api/Dockerfile
+      target: dev
+    command: ["npx", "tsx", "watch", "src/server.ts"]
+    volumes:
+      - ./apps/helpdesk-api/src:/app/apps/helpdesk-api/src
+    ports:
+      - "4001:4001"
+    environment:
+      NODE_ENV: development
+      # BAM-RL-E2E: dev stacks always run permissive so Playwright workers
+      # can run in parallel without hitting HTTP 429.
+      BBB_E2E_PERMISSIVE_RATE_LIMIT: "1"
 
   frontend:
     build:

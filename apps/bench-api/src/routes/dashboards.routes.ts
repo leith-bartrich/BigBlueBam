@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
+import { requireAuth, requireScope } from '../plugins/auth.js';
 import * as dashboardService from '../services/dashboard.service.js';
 
 // ---------------------------------------------------------------------------

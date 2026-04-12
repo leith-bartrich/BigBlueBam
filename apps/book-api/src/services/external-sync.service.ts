@@ -1,7 +1,7 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { bookExternalConnections, bookExternalEvents } from '../db/schema/index.js';
-import { notFound, badRequest } from '../lib/utils.js';
+import { bookExternalConnections } from '../db/schema/index.js';
+import { notFound } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // List connections

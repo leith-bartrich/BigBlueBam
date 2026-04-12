@@ -14,8 +14,9 @@ test.describe('Brief — UI-API Agreement', () => {
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'documents-for-agreement');
 
+    // brief-api mounts document routes under /v1; the list endpoint is /v1/documents
     const result = await checker.checkListRendering({
-      apiPath: '/documents',
+      apiPath: '/v1/documents',
       itemTextExtractor: (item) => (item as any).title,
     });
 
@@ -36,8 +37,9 @@ test.describe('Brief — UI-API Agreement', () => {
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'templates-for-agreement');
 
+    // brief-api mounts template routes under /v1; the list endpoint is /v1/templates
     const result = await checker.checkListRendering({
-      apiPath: '/templates',
+      apiPath: '/v1/templates',
       itemTextExtractor: (item) => (item as any).name,
     });
 

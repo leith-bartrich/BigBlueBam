@@ -379,7 +379,9 @@ describe('addReaction', () => {
   });
 
   it('should add a reaction to a comment', async () => {
+    const existing = makeComment();
     const reaction = { id: 'r1', comment_id: COMMENT_ID, user_id: USER_ID, emoji: '👍' };
+    mockSelect.mockReturnValue(chainable([existing]));
     mockInsert.mockReturnValue(chainable([reaction]));
 
     const result = await addReaction(COMMENT_ID, USER_ID, '👍');
@@ -388,6 +390,8 @@ describe('addReaction', () => {
   });
 
   it('should return null when duplicate reaction (conflict)', async () => {
+    const existing = makeComment();
+    mockSelect.mockReturnValue(chainable([existing]));
     mockInsert.mockReturnValue(chainable([]));
 
     const result = await addReaction(COMMENT_ID, USER_ID, '👍');
@@ -406,7 +410,9 @@ describe('removeReaction', () => {
   });
 
   it('should remove a reaction', async () => {
+    const existing = makeComment();
     const reaction = { id: 'r1', comment_id: COMMENT_ID, user_id: USER_ID, emoji: '👍' };
+    mockSelect.mockReturnValue(chainable([existing]));
     mockDelete.mockReturnValue(chainable([reaction]));
 
     const result = await removeReaction(COMMENT_ID, USER_ID, '👍');
@@ -415,6 +421,8 @@ describe('removeReaction', () => {
   });
 
   it('should return null when reaction not found', async () => {
+    const existing = makeComment();
+    mockSelect.mockReturnValue(chainable([existing]));
     mockDelete.mockReturnValue(chainable([]));
 
     const result = await removeReaction(COMMENT_ID, USER_ID, '🎉');
