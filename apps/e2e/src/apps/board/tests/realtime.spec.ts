@@ -11,7 +11,7 @@ test.describe('Board — Realtime', () => {
 
     let boardId: string | undefined;
     try {
-      const boards = await api.get<any[]>('/boards');
+      const boards = await api.get<any[]>('/v1/boards');
       if (boards.length > 0) boardId = boards[0].id;
     } catch {}
 
@@ -34,7 +34,7 @@ test.describe('Board — Realtime', () => {
 
     let boardId: string | undefined;
     try {
-      const boards = await api.get<any[]>('/boards');
+      const boards = await api.get<any[]>('/v1/boards');
       if (boards.length > 0) boardId = boards[0].id;
     } catch {}
 
@@ -66,7 +66,7 @@ test.describe('Board — Realtime', () => {
 
     let boardId: string | undefined;
     try {
-      const boards = await api.get<any[]>('/boards');
+      const boards = await api.get<any[]>('/v1/boards');
       if (boards.length > 0) boardId = boards[0].id;
     } catch {}
 

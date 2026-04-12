@@ -15,7 +15,7 @@ test.describe('Board — Canvas Interactions', () => {
       const cookies = await context.cookies();
       const csrf = readCsrfTokenFromCookies(cookies);
       const api = new DirectApiClient(request, '/board/api', csrf || undefined);
-      const boards = await api.get<any[]>('/boards');
+      const boards = await api.get<any[]>('/v1/boards');
       if (boards.length > 0) {
         boardId = boards[0].id;
       }

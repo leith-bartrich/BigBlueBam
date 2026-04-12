@@ -54,7 +54,7 @@ test.describe('Board — UI-API Agreement', () => {
     let boardId: string | undefined;
     let boardName: string | undefined;
     try {
-      const boards = await api.get<any[]>('/boards');
+      const boards = await api.get<any[]>('/v1/boards');
       if (boards.length > 0) {
         boardId = boards[0].id;
         boardName = boards[0].name;

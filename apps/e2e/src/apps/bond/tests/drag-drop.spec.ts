@@ -9,15 +9,28 @@ test.describe('Bond — Drag and Drop', () => {
   test.beforeEach(async ({ page, screenshots, context, request }) => {
     pipelinePage = new PipelinePage(page, screenshots);
 
+    // KNOWN BOND-API BUG: /v1/pipelines 500s with `malformed array literal`
+    // (22P02) whenever any pipeline exists. Work around by reading the
+    // deal list and extracting pipeline_id from the first row — the
+    // bond.seed step creates a seed deal so this almost always succeeds.
     try {
       const { DirectApiClient } = await import('../../../api/api-client');
       const { readCsrfTokenFromCookies } = await import('../../../auth/auth.helper');
       const cookies = await context.cookies();
       const csrf = readCsrfTokenFromCookies(cookies);
       const api = new DirectApiClient(request, '/bond/api', csrf || undefined);
-      const pipelines = await api.get<any[]>('/pipelines');
-      if (pipelines.length > 0) {
-        pipelineId = pipelines[0].id;
+      try {
+        const raw = await api.get<any>('/v1/deals');
+        const deals = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+        if (deals.length > 0 && deals[0].pipeline_id) {
+          pipelineId = deals[0].pipeline_id;
+        }
+      } catch {
+        // Fallback to pipelines list in case the bug gets fixed.
+        const pipelines = await api.get<any[]>('/v1/pipelines');
+        if (pipelines.length > 0) {
+          pipelineId = pipelines[0].id;
+        }
       }
     } catch {}
   });

@@ -28,7 +28,7 @@ test.describe('Bolt — Execution Log', () => {
 
     let executions: any[] = [];
     try {
-      executions = await api.get<any[]>('/executions');
+      executions = await api.get<any[]>('/v1/executions');
     } catch {}
 
     await homePage.goto();
@@ -49,11 +49,24 @@ test.describe('Bolt — Execution Log', () => {
 
     let executionId: string | undefined;
     try {
-      const executions = await api.get<any[]>('/executions');
-      if (executions.length > 0) executionId = executions[0].id;
+      const raw = await api.get<unknown>('/v1/executions');
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as { data?: unknown[] })?.data)
+          ? (raw as { data: any[] }).data
+          : Array.isArray((raw as { items?: unknown[] })?.items)
+            ? (raw as { items: any[] }).items
+            : [];
+      if (list.length > 0) executionId = list[0].id;
     } catch {}
 
-    test.skip(!executionId, 'No executions available');
+    // TODO: Executions are only created when an automation actually runs
+    // (Redis event pipeline in bolt-api's event.processor). The e2e seed
+    // creates an automation but does not trigger it, so a fresh db has no
+    // rows in bolt_executions. When we add a seed-time trigger (e.g. POST
+    // /v1/automations/:id/test) this block should force-create one and
+    // drop the skip entirely.
+    test.skip(!executionId, 'No executions available — fresh db has no runs yet.');
 
     await page.goto(`/bolt/executions/${executionId}`);
     await homePage.waitForAppReady();
@@ -71,7 +84,7 @@ test.describe('Bolt — Execution Log', () => {
 
     let automationId: string | undefined;
     try {
-      const automations = await api.get<any[]>('/automations');
+      const automations = await api.get<any[]>('/v1/automations');
       if (automations.length > 0) automationId = automations[0].id;
     } catch {}
 

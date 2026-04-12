@@ -16,13 +16,16 @@ test.describe('Bolt — Automation CRUD', () => {
     const api = new DirectApiClient(request, '/bolt/api', csrf || undefined);
 
     const automationName = `E2E Automation ${Date.now()}`;
-    let automation: any;
-    try {
-      automation = await api.post('/automations', { name: automationName, trigger_type: 'manual' });
-    } catch {
-      test.skip(true, 'Could not create automation via API');
-      return;
-    }
+    // Bolt automations require a full trigger_source + trigger_event +
+    // actions (or graph) shape. Use trigger_source:'bam' with a benign
+    // event so the test exercises the real POST contract.
+    const automation = await api.post<any>('/v1/automations', {
+      name: automationName,
+      enabled: false,
+      trigger_source: 'bam',
+      trigger_event: 'task.created',
+      actions: [{ sort_order: 0, mcp_tool: 'create_task', parameters: {} }],
+    });
     await screenshots.capture(page, 'automation-created-via-api');
 
     await homePage.goto();
@@ -33,7 +36,7 @@ test.describe('Bolt — Automation CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/automations/${automation.id}`);
+      await api.delete(`/v1/automations/${automation.id}`);
     } catch {}
   });
 
@@ -44,7 +47,7 @@ test.describe('Bolt — Automation CRUD', () => {
 
     let automation: any;
     try {
-      const automations = await api.get<any[]>('/automations');
+      const automations = await api.get<any[]>('/v1/automations');
       if (automations.length > 0) automation = automations[0];
     } catch {}
 
@@ -66,21 +69,17 @@ test.describe('Bolt — Automation CRUD', () => {
     const api = new DirectApiClient(request, '/bolt/api', csrf || undefined);
 
     const automationName = `E2E Automation Update ${Date.now()}`;
-    let automation: any;
-    try {
-      automation = await api.post('/automations', { name: automationName, trigger_type: 'event' });
-    } catch {
-      test.skip(true, 'Could not create automation via API');
-      return;
-    }
+    const automation = await api.post<any>('/v1/automations', {
+      name: automationName,
+      enabled: false,
+      trigger_source: 'bam',
+      trigger_event: 'task.created',
+      actions: [{ sort_order: 0, mcp_tool: 'create_task', parameters: {} }],
+    });
 
     const updatedName = `${automationName} Updated`;
-    try {
-      await api.patch(`/automations/${automation.id}`, { name: updatedName });
-    } catch {
-      test.skip(true, 'Could not update automation via API');
-      return;
-    }
+    // PATCH endpoint only accepts a small subset (name/description/enabled).
+    await api.patch(`/v1/automations/${automation.id}`, { name: updatedName });
 
     await homePage.goto();
     await page.waitForTimeout(2000);
@@ -90,7 +89,7 @@ test.describe('Bolt — Automation CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/automations/${automation.id}`);
+      await api.delete(`/v1/automations/${automation.id}`);
     } catch {}
   });
 
@@ -100,20 +99,15 @@ test.describe('Bolt — Automation CRUD', () => {
     const api = new DirectApiClient(request, '/bolt/api', csrf || undefined);
 
     const automationName = `E2E Automation Delete ${Date.now()}`;
-    let automation: any;
-    try {
-      automation = await api.post('/automations', { name: automationName, trigger_type: 'manual' });
-    } catch {
-      test.skip(true, 'Could not create automation via API');
-      return;
-    }
+    const automation = await api.post<any>('/v1/automations', {
+      name: automationName,
+      enabled: false,
+      trigger_source: 'bam',
+      trigger_event: 'task.created',
+      actions: [{ sort_order: 0, mcp_tool: 'create_task', parameters: {} }],
+    });
 
-    try {
-      await api.delete(`/automations/${automation.id}`);
-    } catch {
-      test.skip(true, 'Could not delete automation via API');
-      return;
-    }
+    await api.delete(`/v1/automations/${automation.id}`);
 
     await homePage.goto();
     await page.waitForTimeout(2000);

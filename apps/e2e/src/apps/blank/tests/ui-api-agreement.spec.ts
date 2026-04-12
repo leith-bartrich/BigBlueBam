@@ -36,7 +36,7 @@ test.describe('Blank — UI-API Agreement', () => {
 
     let formId: string | undefined;
     try {
-      const forms = await api.get<any[]>('/forms');
+      const forms = await api.get<any[]>('/v1/forms');
       if (forms.length > 0) formId = forms[0].id;
     } catch {}
 

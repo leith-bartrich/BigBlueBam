@@ -14,9 +14,15 @@ export class CanvasPage extends BasePage {
   }
 
   async expectCanvasLoaded(): Promise<void> {
-    await expect(
-      this.page.locator('main, canvas, [class*="canvas"], [class*="whiteboard"]').first(),
-    ).toBeVisible();
+    // Excalidraw renders a `<div class="excalidraw__canvas-wrapper">` with
+    // `visibility: hidden` until its inner <canvas> paints, and the Board
+    // SPA deliberately does NOT render a `<main>` landmark (the entire
+    // Excalidraw root occupies <body>). The stable contract for "canvas
+    // has mounted" is that the excalidraw root element is attached.
+    await this.page
+      .locator('.excalidraw, [class*="excalidraw"]')
+      .first()
+      .waitFor({ state: 'attached', timeout: 10_000 });
     await this.waitForAppReady();
   }
 

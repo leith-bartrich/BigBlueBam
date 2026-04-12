@@ -42,7 +42,7 @@ test.describe('Helpdesk — Ticket CRUD', () => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
     const apiClient = new DirectApiClient(request, '/helpdesk/api', csrf || undefined);
-    const { status, body } = await apiClient.getRaw('/tickets');
+    const { status, body } = await apiClient.getRaw('/helpdesk/tickets');
     if (status === 200) {
       const tickets = (body as any)?.data || body;
       const found = Array.isArray(tickets)
@@ -93,7 +93,7 @@ test.describe('Helpdesk — Ticket CRUD', () => {
 
     let ticketId: string | undefined;
     try {
-      const { status, body } = await api.getRaw('/tickets');
+      const { status, body } = await api.getRaw('/helpdesk/tickets');
       if (status === 200) {
         const tickets = (body as any)?.data || body;
         if (Array.isArray(tickets) && tickets.length > 0) {

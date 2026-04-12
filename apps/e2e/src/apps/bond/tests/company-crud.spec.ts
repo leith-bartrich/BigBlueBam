@@ -14,7 +14,7 @@ test.describe('Bond — Company CRUD', () => {
     await contactsPage.goto();
     await contactsPage.navigateToCompanies();
     await screenshots.capture(page, 'companies-loaded');
-    await contactsPage.expectPath('/companies');
+    await contactsPage.expectPath('/v1/companies');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'companies-content-visible');
   });
@@ -25,13 +25,7 @@ test.describe('Bond — Company CRUD', () => {
     const api = new DirectApiClient(request, '/bond/api', csrf || undefined);
 
     const companyName = `E2E Company ${Date.now()}`;
-    let company: any;
-    try {
-      company = await api.post('/companies', { name: companyName });
-    } catch {
-      test.skip(true, 'Could not create company via API');
-      return;
-    }
+    const company = await api.post<any>('/v1/companies', { name: companyName });
     await screenshots.capture(page, 'company-created-via-api');
 
     await contactsPage.goto();
@@ -44,7 +38,7 @@ test.describe('Bond — Company CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/companies/${company.id}`);
+      await api.delete(`/v1/companies/${company.id}`);
     } catch {}
   });
 
@@ -55,7 +49,7 @@ test.describe('Bond — Company CRUD', () => {
 
     let company: any;
     try {
-      const companies = await api.get<any[]>('/companies');
+      const companies = await api.get<any[]>('/v1/companies');
       if (companies.length > 0) company = companies[0];
     } catch {}
 
@@ -79,21 +73,10 @@ test.describe('Bond — Company CRUD', () => {
     const api = new DirectApiClient(request, '/bond/api', csrf || undefined);
 
     const companyName = `E2E Company Update ${Date.now()}`;
-    let company: any;
-    try {
-      company = await api.post('/companies', { name: companyName });
-    } catch {
-      test.skip(true, 'Could not create company via API');
-      return;
-    }
+    const company = await api.post<any>('/v1/companies', { name: companyName });
 
     const updatedName = `${companyName} Updated`;
-    try {
-      await api.patch(`/companies/${company.id}`, { name: updatedName });
-    } catch {
-      test.skip(true, 'Could not update company via API');
-      return;
-    }
+    await api.patch(`/v1/companies/${company.id}`, { name: updatedName });
 
     await contactsPage.goto();
     await contactsPage.navigateToCompanies();
@@ -105,7 +88,7 @@ test.describe('Bond — Company CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/companies/${company.id}`);
+      await api.delete(`/v1/companies/${company.id}`);
     } catch {}
   });
 
@@ -115,20 +98,9 @@ test.describe('Bond — Company CRUD', () => {
     const api = new DirectApiClient(request, '/bond/api', csrf || undefined);
 
     const companyName = `E2E Company Delete ${Date.now()}`;
-    let company: any;
-    try {
-      company = await api.post('/companies', { name: companyName });
-    } catch {
-      test.skip(true, 'Could not create company via API');
-      return;
-    }
+    const company = await api.post<any>('/v1/companies', { name: companyName });
 
-    try {
-      await api.delete(`/companies/${company.id}`);
-    } catch {
-      test.skip(true, 'Could not delete company via API');
-      return;
-    }
+    await api.delete(`/v1/companies/${company.id}`);
 
     await contactsPage.goto();
     await contactsPage.navigateToCompanies();

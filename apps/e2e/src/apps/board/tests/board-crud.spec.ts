@@ -18,7 +18,7 @@ test.describe('Board — CRUD', () => {
     const boardName = `E2E Board ${Date.now()}`;
     let board: any;
     try {
-      board = await api.post('/boards', { name: boardName });
+      board = await api.post('/v1/boards', { name: boardName, visibility: 'organization' });
     } catch {
       test.skip(true, 'Could not create board via API');
       return;
@@ -33,7 +33,7 @@ test.describe('Board — CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/boards/${board.id}`);
+      await api.delete(`/v1/boards/${board.id}`);
     } catch {}
   });
 
@@ -44,7 +44,7 @@ test.describe('Board — CRUD', () => {
 
     let board: any;
     try {
-      const boards = await api.get<any[]>('/boards');
+      const boards = await api.get<any[]>('/v1/boards');
       if (boards.length > 0) board = boards[0];
     } catch {}
 
@@ -56,7 +56,13 @@ test.describe('Board — CRUD', () => {
 
     await homePage.clickBoard(board.name);
     await screenshots.capture(page, 'board-canvas-opened');
-    await expect(page.locator('main, canvas, [class*="canvas"]').first()).toBeVisible();
+    // Board SPA uses Excalidraw as its root (no <main> landmark), and the
+    // excalidraw canvas wrapper is `visibility: hidden` until painted.
+    // Assert the excalidraw root is attached instead of visible.
+    await page
+      .locator('.excalidraw, [class*="excalidraw"]')
+      .first()
+      .waitFor({ state: 'attached', timeout: 10_000 });
     await screenshots.capture(page, 'canvas-visible');
   });
 
@@ -68,7 +74,7 @@ test.describe('Board — CRUD', () => {
     const boardName = `E2E Board Update ${Date.now()}`;
     let board: any;
     try {
-      board = await api.post('/boards', { name: boardName });
+      board = await api.post('/v1/boards', { name: boardName, visibility: 'organization' });
     } catch {
       test.skip(true, 'Could not create board via API');
       return;
@@ -76,7 +82,7 @@ test.describe('Board — CRUD', () => {
 
     const updatedName = `${boardName} Updated`;
     try {
-      await api.patch(`/boards/${board.id}`, { name: updatedName });
+      await api.patch(`/v1/boards/${board.id}`, { name: updatedName });
     } catch {
       test.skip(true, 'Could not update board via API');
       return;
@@ -90,7 +96,7 @@ test.describe('Board — CRUD', () => {
 
     // Cleanup
     try {
-      await api.delete(`/boards/${board.id}`);
+      await api.delete(`/v1/boards/${board.id}`);
     } catch {}
   });
 
@@ -102,14 +108,14 @@ test.describe('Board — CRUD', () => {
     const boardName = `E2E Board Delete ${Date.now()}`;
     let board: any;
     try {
-      board = await api.post('/boards', { name: boardName });
+      board = await api.post('/v1/boards', { name: boardName, visibility: 'organization' });
     } catch {
       test.skip(true, 'Could not create board via API');
       return;
     }
 
     try {
-      await api.delete(`/boards/${board.id}`);
+      await api.delete(`/v1/boards/${board.id}`);
     } catch {
       test.skip(true, 'Could not delete board via API');
       return;
