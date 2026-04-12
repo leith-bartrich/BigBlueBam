@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -12,6 +12,7 @@ import '@xyflow/react/dist/style.css';
 import './graph-canvas.css';
 
 import { nodeTypes } from './nodes';
+import { GraphHelpOverlay } from './graph-help-overlay';
 import { useGraphEditorStore } from '@/stores/graph-editor.store';
 
 // ─── Allowed connection matrix ───
@@ -71,23 +72,44 @@ export function GraphCanvas({ className }: GraphCanvasProps) {
     selectNode(null);
   }, [selectNode]);
 
+  const [helpOpen, setHelpOpen] = useState(false);
+
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      // Avoid interfering with text inputs
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        // Avoid interfering with text inputs
-        const target = event.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-          return;
-        }
         removeSelected();
+      } else if (event.key === 'Escape') {
+        if (helpOpen) {
+          setHelpOpen(false);
+        } else {
+          selectNode(null);
+        }
+      } else if (event.key === '?') {
+        setHelpOpen((prev) => !prev);
+      } else if (event.key === 'a' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        const allNodes = useGraphEditorStore.getState().nodes;
+        const selectChanges = allNodes.map((n) => ({
+          id: n.id,
+          type: 'select' as const,
+          selected: true,
+        }));
+        useGraphEditorStore.getState().onNodesChange(selectChanges);
       }
     },
-    [removeSelected],
+    [removeSelected, selectNode, helpOpen],
   );
 
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className={className ?? 'w-full h-full'} onKeyDown={onKeyDown} tabIndex={-1}>
+      <GraphHelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
       <ReactFlow
         nodes={nodes}
         edges={edges}

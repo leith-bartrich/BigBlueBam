@@ -89,6 +89,7 @@ export function NodePalette() {
             <button
               type="button"
               draggable={!isDisabled}
+              aria-label={`Add ${item.label} node`}
               onDragStart={(e) => {
                 if (isDisabled) {
                   e.preventDefault();
@@ -98,6 +99,9 @@ export function NodePalette() {
               }}
               onClick={() => {
                 if (!isDisabled) handleClick(item.kind, index);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isDisabled) handleClick(item.kind, index);
               }}
               disabled={isDisabled}
               className={`flex w-full flex-col items-center justify-center gap-0.5 rounded-md border-l-2 px-1 py-2 transition-colors ${

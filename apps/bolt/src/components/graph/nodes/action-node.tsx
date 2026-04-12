@@ -18,6 +18,9 @@ function ActionNodeComponent({ data, selected }: NodeProps<ActionNode>) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Action: ${data.mcpTool || 'Not configured'}`}
       className={`group w-[180px] rounded-lg border bg-green-50 dark:bg-green-900/20 ${
         selected
           ? 'ring-2 ring-green-500 border-green-400 dark:border-green-500'

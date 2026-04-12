@@ -19,6 +19,9 @@ function ConditionNodeComponent({ data, selected }: NodeProps<ConditionNode>) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Condition: ${summary}`}
       className={`group relative w-[180px] rounded-lg border bg-amber-50 dark:bg-amber-900/20 ${
         selected
           ? 'ring-2 ring-amber-500 border-amber-400 dark:border-amber-500'

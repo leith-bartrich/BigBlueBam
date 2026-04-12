@@ -11,6 +11,9 @@ function TriggerNodeComponent({ data, selected }: NodeProps<TriggerNode>) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Trigger node: ${data.source && data.event ? `${data.source} / ${data.event}` : 'Not configured'}`}
       className={`group w-[180px] rounded-lg border bg-blue-50 dark:bg-blue-900/20 ${
         selected
           ? 'ring-2 ring-blue-500 border-blue-400 dark:border-blue-500'

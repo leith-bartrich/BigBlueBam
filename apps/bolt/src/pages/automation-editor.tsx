@@ -10,14 +10,17 @@ import {
   type BoltAction,
 } from '@/hooks/use-automations';
 import { useProjectStore } from '@/stores/project.store';
+import { useGraphEditorStore } from '@/stores/graph-editor.store';
 import { TriggerSelector } from '@/components/builder/trigger-selector';
 import { ConditionList } from '@/components/builder/condition-list';
 import { ActionList } from '@/components/builder/action-list';
 import { CronEditor } from '@/components/builder/cron-editor';
 import { TriggerFilterList } from '@/components/builder/trigger-filter-list';
+import { GraphEditorView } from '@/components/graph/graph-editor-view';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { validateAutomationForm } from '@/lib/automation-validation';
+import { validateGraph, type GraphValidationError } from '@/lib/graph-validation';
 import { cn } from '@/lib/utils';
 
 interface AutomationEditorPageProps {
@@ -51,6 +54,10 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [showFilterEditor, setShowFilterEditor] = useState(false);
 
+  // Editor mode: simple (form) or visual (graph canvas)
+  const [editorMode, setEditorMode] = useState<'simple' | 'visual'>('simple');
+  const [graphErrors, setGraphErrors] = useState<GraphValidationError[]>([]);
+
   // Validation state
   // Only show errors after a save attempt (not on initial load)
   const [hasSubmitAttempt, setHasSubmitAttempt] = useState(false);
@@ -72,6 +79,12 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
       setActions(a.actions);
       setMaxExecutionsPerHour(a.max_executions_per_hour);
       setCooldownSeconds(a.cooldown_seconds);
+
+      // If the automation has a saved graph, load it and default to visual mode
+      if (a.graph) {
+        useGraphEditorStore.getState().loadFromGraph(a.graph);
+        setEditorMode('visual');
+      }
     }
   }, [existing]);
 
@@ -89,7 +102,8 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
     [name, description, triggerSource, triggerEvent, cronTimezone, maxExecutionsPerHour, cooldownSeconds],
   );
 
-  const hasErrors = Object.keys(validationErrors).length > 0;
+  const hasFormErrors = Object.keys(validationErrors).length > 0;
+  const hasErrors = editorMode === 'visual' ? (hasFormErrors || graphErrors.length > 0) : hasFormErrors;
   const showErrors = hasSubmitAttempt && hasErrors;
 
   if (!isNew && isLoading) {
@@ -102,13 +116,22 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
 
   const handleSave = async (enableOnSave = false) => {
     setHasSubmitAttempt(true);
-    if (hasErrors) {
-      // Scroll to the error banner
+
+    // Run graph validation when in visual mode
+    if (editorMode === 'visual') {
+      const store = useGraphEditorStore.getState();
+      const gErrors = validateGraph(store.nodes, store.edges);
+      setGraphErrors(gErrors);
+      if (gErrors.length > 0 || hasFormErrors) {
+        errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+    } else if (hasFormErrors) {
       errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       name,
       description: description || null,
       enabled: enableOnSave ? true : enabled,
@@ -124,11 +147,21 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
       project_id: projectId,
     };
 
+    // Include graph payload when in visual mode
+    if (editorMode === 'visual') {
+      payload.graph = useGraphEditorStore.getState().toGraph();
+    }
+
     if (isNew) {
-      const result = await createMutation.mutateAsync(payload);
+      const result = await createMutation.mutateAsync(payload as Parameters<typeof createMutation.mutateAsync>[0]);
       onNavigate(`/automations/${result.data.id}`);
     } else {
-      await updateMutation.mutateAsync({ id: id!, ...payload });
+      await updateMutation.mutateAsync({ id: id!, ...payload } as Parameters<typeof updateMutation.mutateAsync>[0]);
+    }
+
+    // Mark graph clean after successful save
+    if (editorMode === 'visual') {
+      useGraphEditorStore.getState().markClean();
     }
   };
 
@@ -139,6 +172,85 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
+
+  // Build a minimal linear graph from current simple-form state
+  const buildGraphFromFormState = () => {
+    const store = useGraphEditorStore.getState();
+    store.reset();
+
+    const yStep = 150;
+    let y = 50;
+
+    // Trigger node
+    if (triggerSource) {
+      store.addNode('trigger', { x: 250, y });
+      y += yStep;
+    }
+
+    // Condition nodes
+    for (const _cond of conditions) {
+      store.addNode('condition', { x: 250, y });
+      y += yStep;
+    }
+
+    // Action nodes
+    for (const _act of actions) {
+      store.addNode('action', { x: 250, y });
+      y += yStep;
+    }
+
+    // Wire linearly
+    const nodes = useGraphEditorStore.getState().nodes;
+    for (let i = 0; i < nodes.length - 1; i++) {
+      store.onConnect({
+        source: nodes[i]!.id,
+        target: nodes[i + 1]!.id,
+        sourceHandle: null,
+        targetHandle: null,
+      });
+    }
+
+    // Populate trigger node data from form
+    if (triggerSource && nodes.length > 0) {
+      store.updateNodeData(nodes[0]!.id, {
+        kind: 'trigger',
+        source: triggerSource,
+        event: triggerEvent,
+        filter: triggerFilter,
+      });
+    }
+
+    // Populate condition node data
+    const conditionNodes = nodes.filter((n) => n.data?.kind === 'condition');
+    conditionNodes.forEach((node, i) => {
+      const cond = conditions[i];
+      if (cond) {
+        store.updateNodeData(node.id, {
+          kind: 'condition',
+          field: cond.field,
+          operator: cond.operator,
+          value: cond.value,
+          logicGroup: cond.logic_group ?? 'and',
+        });
+      }
+    });
+
+    // Populate action node data
+    const actionNodes = nodes.filter((n) => n.data?.kind === 'action');
+    actionNodes.forEach((node, i) => {
+      const act = actions[i];
+      if (act) {
+        store.updateNodeData(node.id, {
+          kind: 'action',
+          mcpTool: act.mcp_tool,
+          parameters: act.parameters,
+          onError: act.on_error ?? 'fail',
+          retryCount: act.retry_count ?? 0,
+          retryDelayMs: 1000,
+        });
+      }
+    });
+  };
 
   // Filter entry count for the toggle label
   const filterEntryCount = Object.keys(triggerFilter).length;
@@ -165,6 +277,11 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
                     {Object.entries(validationErrors).map(([field, message]) => (
                       <li key={field} className="text-xs text-red-600 dark:text-red-400">
                         • {message}
+                      </li>
+                    ))}
+                    {editorMode === 'visual' && graphErrors.map((err, i) => (
+                      <li key={`graph-${i}`} className="text-xs text-red-600 dark:text-red-400">
+                        • {err.message}
                       </li>
                     ))}
                   </ul>
@@ -199,7 +316,64 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
             />
           </div>
 
-          {/* WHEN section (blue) */}
+          {/* Editor mode toggle */}
+          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5 w-fit">
+            <button
+              type="button"
+              onClick={() => {
+                if (editorMode === 'visual') {
+                  const store = useGraphEditorStore.getState();
+                  if (store.isDirty && !window.confirm('Unsaved graph changes may be lost. Switch to Simple mode?')) {
+                    return;
+                  }
+                }
+                setEditorMode('simple');
+                setGraphErrors([]);
+              }}
+              className={cn(
+                'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                editorMode === 'simple'
+                  ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300',
+              )}
+            >
+              Simple
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (editorMode === 'simple') {
+                  // Load existing graph if available, otherwise build a minimal one from form state
+                  const store = useGraphEditorStore.getState();
+                  if (store.nodes.length === 0 && existing?.data?.graph) {
+                    store.loadFromGraph(existing.data.graph);
+                  } else if (store.nodes.length === 0) {
+                    // Build a simple linear graph from form state
+                    buildGraphFromFormState();
+                  }
+                }
+                setEditorMode('visual');
+              }}
+              className={cn(
+                'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                editorMode === 'visual'
+                  ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300',
+              )}
+            >
+              Visual
+            </button>
+          </div>
+
+          {/* Visual graph editor */}
+          {editorMode === 'visual' && (
+            <div className="rounded-xl border-2 border-zinc-200 dark:border-zinc-700 overflow-hidden" style={{ height: 560 }}>
+              <GraphEditorView />
+            </div>
+          )}
+
+          {/* WHEN / IF / THEN sections — simple mode only */}
+          {editorMode === 'simple' && (<>
           <div className={cn(
             'rounded-xl border-2',
             showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event'])
@@ -318,6 +492,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
               />
             </div>
           </div>
+          </>)}
         </div>
       </div>
 
