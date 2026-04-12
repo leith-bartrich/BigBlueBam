@@ -258,8 +258,8 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
   return (
     <div className="flex h-full">
       {/* Main editor area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        <div className="max-w-3xl mx-auto space-y-6">
+      <div className={cn('flex-1 overflow-y-auto p-6', editorMode === 'visual' ? 'flex flex-col' : 'space-y-6')}>
+        <div className={cn('space-y-6', editorMode === 'simple' && 'max-w-3xl mx-auto', editorMode === 'visual' && 'flex flex-col flex-1 min-h-0')}>
 
           {/* A7: Validation error banner */}
           {showErrors && (
@@ -365,9 +365,9 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
             </button>
           </div>
 
-          {/* Visual graph editor */}
+          {/* Visual graph editor — fills remaining viewport height */}
           {editorMode === 'visual' && (
-            <div className="rounded-xl border-2 border-zinc-200 dark:border-zinc-700 overflow-hidden" style={{ height: 560 }}>
+            <div className="rounded-xl border-2 border-zinc-200 dark:border-zinc-700 overflow-hidden flex-1" style={{ minHeight: 500 }}>
               <GraphEditorView />
             </div>
           )}
