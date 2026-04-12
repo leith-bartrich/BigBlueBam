@@ -1,4 +1,4 @@
-import { eq, and, asc, desc, gt, sql } from 'drizzle-orm';
+import { eq, and, asc, desc, gt, sql, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   boltExecutions,
@@ -138,7 +138,7 @@ export async function listOrgExecutions(filters: ListOrgExecutionFilters) {
   const automationIds = automationRows.map((r) => r.id);
 
   const conditions: any[] = [
-    sql`${boltExecutions.automation_id} = ANY(${automationIds})`,
+    inArray(boltExecutions.automation_id, automationIds),
   ];
 
   if (filters.status) {
