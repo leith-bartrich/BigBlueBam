@@ -73,7 +73,7 @@ export class BoardPage extends BasePage {
 
   async editTaskTitle(newTitle: string): Promise<void> {
     const drawer = this.getTaskDrawer();
-    const titleEl = drawer.locator('h1, h2, [class*="title"]').first();
+    const titleEl = drawer.locator('h1:not(.sr-only), h2:not(.sr-only), [class*="title"]:not(.sr-only)').first();
     await titleEl.dblclick();
     await this.page.keyboard.press('Meta+a');
     await this.page.keyboard.type(newTitle);

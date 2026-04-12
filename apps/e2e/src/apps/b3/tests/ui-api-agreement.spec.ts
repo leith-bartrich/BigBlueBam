@@ -4,6 +4,30 @@ import { readCsrfTokenFromCookies } from '../../../auth/auth.helper';
 import { UiApiChecker } from '../../../interceptors/ui-api-checker';
 
 test.describe('B3 — UI-API Agreement', () => {
+  test('API health endpoint returns expected structure', async ({ request }) => {
+    const api = new DirectApiClient(request, '/b3/api');
+    // Retry up to 5 times if rate-limited (429) from cumulative test traffic
+    let result: { status: number; body: unknown } = { status: 0, body: null };
+    for (let attempt = 0; attempt < 5; attempt++) {
+      result = await api.getRaw('/health');
+      if (result.status !== 429) break;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    expect(result.status).toBe(200);
+    expect(result.body).toHaveProperty('status');
+  });
+
+  test('API error envelope matches expected format', async ({ request }) => {
+    const api = new DirectApiClient(request, '/b3/api');
+    const { status, body } = await api.getRaw('/nonexistent-endpoint');
+    expect(status).toBeGreaterThanOrEqual(400);
+    if (body) {
+      expect(body).toHaveProperty('error');
+      expect((body as any).error).toHaveProperty('code');
+      expect((body as any).error).toHaveProperty('message');
+    }
+  });
+
   test('project list in UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
@@ -54,24 +78,6 @@ test.describe('B3 — UI-API Agreement', () => {
 
     if (!result.passed) {
       console.log('Task UI-API mismatches:', result.mismatches);
-    }
-  });
-
-  test('API health endpoint returns expected structure', async ({ request }) => {
-    const api = new DirectApiClient(request, '/b3/api');
-    const { status, body } = await api.getRaw('/health');
-    expect(status).toBe(200);
-    expect(body).toHaveProperty('status');
-  });
-
-  test('API error envelope matches expected format', async ({ request }) => {
-    const api = new DirectApiClient(request, '/b3/api');
-    const { status, body } = await api.getRaw('/nonexistent-endpoint');
-    expect(status).toBeGreaterThanOrEqual(400);
-    if (body) {
-      expect(body).toHaveProperty('error');
-      expect((body as any).error).toHaveProperty('code');
-      expect((body as any).error).toHaveProperty('message');
     }
   });
 });
