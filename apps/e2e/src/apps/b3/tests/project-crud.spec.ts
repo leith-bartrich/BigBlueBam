@@ -5,7 +5,9 @@ import { readCsrfTokenFromCookies } from '../../../auth/auth.helper';
 
 test.describe('B3 — Project CRUD', () => {
   const testProjectName = `E2E Test Project ${Date.now()}`;
-  const testProjectKey = `E2E${Date.now().toString().slice(-4)}`;
+  // task_id_prefix must match ^[A-Z]{2,6}$ — uppercase letters only,
+  // no digits allowed.
+  const testProjectKey = 'EEAA';
 
   test('create a new project via UI', async ({ page, screenshots, context, request }) => {
     const dashboard = new DashboardPage(page, screenshots);
@@ -15,14 +17,17 @@ test.describe('B3 — Project CRUD', () => {
     await dashboard.clickCreateProject();
     await screenshots.capture(page, 'create-project-dialog');
 
-    // Fill project form
-    await page.getByLabel(/project name|name/i).fill(testProjectName);
+    // Fill project form. Project Name is a unique label inside the dialog;
+    // Task ID Prefix replaced the older "Key" label. Scope to the dialog so
+    // we don't accidentally match other inputs on the page.
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Project Name').fill(testProjectName);
     await screenshots.capture(page, 'project-name-filled');
 
-    await page.getByLabel(/key/i).fill(testProjectKey);
+    await dialog.getByLabel('Task ID Prefix').fill(testProjectKey);
     await screenshots.capture(page, 'project-key-filled');
 
-    await page.getByRole('button', { name: /create|save/i }).click();
+    await dialog.getByRole('button', { name: /create project/i }).click();
     await page.waitForTimeout(1000);
     await screenshots.capture(page, 'project-created');
 
@@ -52,12 +57,14 @@ test.describe('B3 — Project CRUD', () => {
     await dashboard.clickCreateProject();
     await screenshots.capture(page, 'create-dialog-open');
 
-    // Submit without filling required fields
-    await page.getByRole('button', { name: /create|save/i }).click();
+    // Submit without filling required fields — scope to the dialog so we
+    // hit the form's "Create Project" submit, not the empty-state CTA.
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: /create project/i }).click();
     await screenshots.capture(page, 'validation-error-shown');
 
     // Should show some form of error
-    const errorEl = page.locator('.text-red-500, .text-destructive, [role="alert"]').first();
+    const errorEl = dialog.locator('.text-red-500, .text-red-600, .text-destructive, [role="alert"]').first();
     await expect(errorEl).toBeVisible({ timeout: 5000 });
     await screenshots.capture(page, 'error-detail-visible');
   });

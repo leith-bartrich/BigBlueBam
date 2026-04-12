@@ -3,9 +3,15 @@ import { DashboardPage } from '../pages/dashboard.page';
 import { LoginPage } from '../../../page-objects/login.page';
 import { expectFormValidationError } from '../../../helpers/interactions';
 
+// b3 project config sets storageState: '.auth/admin.json' for every context,
+// including those created via browser.newContext(). To exercise the login
+// form we need an explicitly unauthenticated context — empty cookies +
+// empty origins.
+const EMPTY_STORAGE = { cookies: [], origins: [] } as const;
+
 test.describe('B3 — Form Validation', () => {
   test('login form requires email and password', async ({ browser, screenshots }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ storageState: EMPTY_STORAGE });
     const page = await context.newPage();
     const loginPage = new LoginPage(page, screenshots);
     await loginPage.goto();
@@ -24,14 +30,17 @@ test.describe('B3 — Form Validation', () => {
   });
 
   test('login form shows error for invalid credentials', async ({ browser, screenshots }) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ storageState: EMPTY_STORAGE });
     const page = await context.newPage();
     const loginPage = new LoginPage(page, screenshots);
     await loginPage.goto();
     await loginPage.login('invalid@email.com', 'wrongpassword');
     await screenshots.capture(page, 'invalid-credentials-submitted');
 
-    await loginPage.expectErrorMessage();
+    // LoginPage.expectErrorMessage uses legacy selectors that don't match
+    // the b3 login form's red error block — assert against the real markup.
+    const errorBox = page.locator('div.bg-red-50.text-red-700, [role="alert"]').first();
+    await expect(errorBox).toBeVisible({ timeout: 10_000 });
     await screenshots.capture(page, 'error-message-displayed');
     await context.close();
   });
@@ -44,14 +53,16 @@ test.describe('B3 — Form Validation', () => {
     await dashboard.clickCreateProject();
     await screenshots.capture(page, 'create-project-dialog-open');
 
-    // Submit without name
-    await page.getByRole('button', { name: /create|save/i }).click();
+    // Submit without name. Scope to the dialog so we don't accidentally
+    // match the sidebar/empty-state CTAs that share the same label.
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: /create project/i }).click();
     await page.waitForTimeout(500);
     await screenshots.capture(page, 'project-form-submitted-empty');
 
-    // Should show validation error
-    const errorVisible = await page
-      .locator('.text-red-500, .text-destructive, [role="alert"]')
+    // Should show validation error inside the dialog
+    const errorVisible = await dialog
+      .locator('.text-red-500, .text-red-600, .text-destructive, [role="alert"]')
       .first()
       .isVisible({ timeout: 3000 })
       .catch(() => false);
@@ -86,9 +97,10 @@ test.describe('B3 — Form Validation', () => {
     });
 
     await dashboard.clickCreateProject();
-    await page.getByLabel(/project name|name/i).fill('Test');
-    await page.getByLabel(/key/i).fill('TST');
-    await page.getByRole('button', { name: /create|save/i }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Project Name').fill('Test');
+    await dialog.getByLabel('Task ID Prefix').fill('TST');
+    await dialog.getByRole('button', { name: /create project/i }).click();
     await page.waitForTimeout(500);
     await screenshots.capture(page, 'api-validation-error-rendered');
   });

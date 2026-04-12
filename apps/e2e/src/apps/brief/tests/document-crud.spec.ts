@@ -15,8 +15,11 @@ test.describe('Brief — Document CRUD', () => {
     await screenshots.capture(page, 'home-before-create');
 
     await homePage.navigateToNewDocument();
+    await editor.expectEditorLoaded();
     await screenshots.capture(page, 'new-document-loaded');
 
+    // Fill title first — the Save Draft / Publish buttons are disabled until
+    // the title has non-whitespace content.
     await editor.fillTitle(testDocTitle);
     await screenshots.capture(page, 'title-filled');
 
@@ -27,10 +30,11 @@ test.describe('Brief — Document CRUD', () => {
     await page.waitForTimeout(1000);
     await screenshots.capture(page, 'document-created');
 
+    // brief-api mounts document routes under /v1
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
     const apiClient = new DirectApiClient(request, '/brief/api', csrf || undefined);
-    const { status, body } = await apiClient.getRaw('/documents');
+    const { status, body } = await apiClient.getRaw('/v1/documents');
     if (status === 200) {
       const docs = (body as any)?.data || body;
       const found = Array.isArray(docs)
@@ -47,7 +51,7 @@ test.describe('Brief — Document CRUD', () => {
     await homePage.navigateToDocuments();
     await screenshots.capture(page, 'documents-list');
 
-    await expect(page.locator('main')).toBeVisible();
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
     await screenshots.capture(page, 'documents-visible');
   });
 
@@ -57,15 +61,13 @@ test.describe('Brief — Document CRUD', () => {
 
     await homePage.goto();
     await homePage.navigateToNewDocument();
+    await editor.expectEditorLoaded();
     await screenshots.capture(page, 'new-document-open');
 
-    await editor.clickSave();
+    // Brief disables Save Draft / Publish while the title is empty — the
+    // disabled submit button IS the validation feedback for an empty form.
+    await editor.assertSaveDisabled();
     await screenshots.capture(page, 'validation-error-shown');
-
-    const errorEl = page.locator('.text-red-500, .text-destructive, [role="alert"]').first();
-    if (await errorEl.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await screenshots.capture(page, 'error-detail-visible');
-    }
   });
 
   test('document detail page loads for existing document', async ({ page, screenshots, context, request }) => {
@@ -75,7 +77,7 @@ test.describe('Brief — Document CRUD', () => {
 
     let docId: string | undefined;
     try {
-      const { status, body } = await api.getRaw('/documents');
+      const { status, body } = await api.getRaw('/v1/documents');
       if (status === 200) {
         const docs = (body as any)?.data || body;
         if (Array.isArray(docs) && docs.length > 0) {
@@ -91,7 +93,7 @@ test.describe('Brief — Document CRUD', () => {
     await homePage.navigateToDocumentDetail(docId!);
     await screenshots.capture(page, 'document-detail-loaded');
 
-    await expect(page.locator('main')).toBeVisible();
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
     await screenshots.capture(page, 'document-detail-visible');
   });
 });

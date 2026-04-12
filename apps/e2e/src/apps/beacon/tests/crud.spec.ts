@@ -14,31 +14,33 @@ test.describe('Beacon — Article CRUD', () => {
     await homePage.navigateToCreate();
     await screenshots.capture(page, 'create-page-loaded');
 
-    // Fill article form
-    await page.getByLabel(/title/i).fill(testArticleTitle);
+    // Beacon editor uses a borderless input with placeholder, not a <label>
+    await page.getByPlaceholder(/beacon title|title/i).first().fill(testArticleTitle);
     await screenshots.capture(page, 'title-filled');
 
-    // Fill content in rich-text editor
-    const editor = page.locator('[contenteditable], [class*="editor"], textarea').first();
-    if (await editor.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await editor.click();
-      await page.keyboard.type('This is an E2E test article with some content.');
+    // Body is a Markdown <textarea>
+    const bodyArea = page.getByPlaceholder(/markdown|body/i).first();
+    if (await bodyArea.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await bodyArea.fill('This is an E2E test article with some content.');
       await screenshots.capture(page, 'content-filled');
     }
 
-    await page.getByRole('button', { name: /create|save|publish/i }).click();
+    // Button names are "Save as Draft" / "Publish" — they enable once title has content
+    const saveBtn = page.getByRole('button', { name: /save as draft|publish/i }).first();
+    await expect(saveBtn).toBeEnabled({ timeout: 5000 });
+    await saveBtn.click();
     await page.waitForTimeout(1000);
     await screenshots.capture(page, 'article-created');
 
-    // Verify via API
+    // Verify via API — beacon-api exposes beacons at /v1/beacons
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
     const apiClient = new DirectApiClient(request, '/beacon/api', csrf || undefined);
-    const { status, body } = await apiClient.getRaw('/articles');
+    const { status, body } = await apiClient.getRaw('/v1/beacons');
     if (status === 200) {
-      const articles = (body as any)?.data || body;
-      const found = Array.isArray(articles)
-        ? articles.find((a: any) => a.title === testArticleTitle)
+      const beacons = (body as any)?.data || body;
+      const found = Array.isArray(beacons)
+        ? beacons.find((a: any) => a.title === testArticleTitle)
         : null;
       expect(found).toBeTruthy();
     }
@@ -47,11 +49,14 @@ test.describe('Beacon — Article CRUD', () => {
 
   test('article list page shows articles', async ({ page, screenshots }) => {
     const homePage = new BeaconHomePage(page, screenshots);
+    // homePage.goto() already waits up to 40 s for <main> to mount before
+    // returning, and navigate() uses pushState so <main> is still mounted
+    // on the list route. A short assertion here is enough to confirm.
     await homePage.goto();
     await homePage.navigateToList();
     await screenshots.capture(page, 'article-list');
 
-    await expect(page.locator('main')).toBeVisible();
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 10_000 });
     await screenshots.capture(page, 'articles-visible');
   });
 
@@ -61,12 +66,14 @@ test.describe('Beacon — Article CRUD', () => {
     await homePage.navigateToCreate();
     await screenshots.capture(page, 'create-page-open');
 
-    // Submit without filling required fields
-    await page.getByRole('button', { name: /create|save|publish/i }).click();
+    // Beacon disables both "Save as Draft" and "Publish" until the title has
+    // non-whitespace content. Disabled submit buttons are the validation UI —
+    // there is no inline error message when the form has never been touched.
+    const saveBtn = page.getByRole('button', { name: /save as draft/i }).first();
+    const publishBtn = page.getByRole('button', { name: /^publish$/i }).first();
+    await expect(saveBtn).toBeVisible({ timeout: 5000 });
+    await expect(saveBtn).toBeDisabled();
+    await expect(publishBtn).toBeDisabled();
     await screenshots.capture(page, 'validation-error-shown');
-
-    const errorEl = page.locator('.text-red-500, .text-destructive, [role="alert"]').first();
-    await expect(errorEl).toBeVisible({ timeout: 5000 });
-    await screenshots.capture(page, 'error-detail-visible');
   });
 });

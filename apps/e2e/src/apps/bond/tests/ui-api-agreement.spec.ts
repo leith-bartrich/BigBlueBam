@@ -7,7 +7,7 @@ test.describe('Bond — UI-API Agreement', () => {
   test('deal list in pipeline UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/bond/api', csrf || undefined);
+    const api = new DirectApiClient(request, '/bond/api/v1', csrf || undefined);
     const checker = new UiApiChecker(page, api);
 
     await page.goto('/bond/');
@@ -29,7 +29,7 @@ test.describe('Bond — UI-API Agreement', () => {
   test('contact list in UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/bond/api', csrf || undefined);
+    const api = new DirectApiClient(request, '/bond/api/v1', csrf || undefined);
     const checker = new UiApiChecker(page, api);
 
     await page.goto('/bond/contacts');
@@ -51,7 +51,7 @@ test.describe('Bond — UI-API Agreement', () => {
   test('company list in UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/bond/api', csrf || undefined);
+    const api = new DirectApiClient(request, '/bond/api/v1', csrf || undefined);
     const checker = new UiApiChecker(page, api);
 
     await page.goto('/bond/companies');

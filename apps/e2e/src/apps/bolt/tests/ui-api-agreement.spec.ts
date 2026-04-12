@@ -7,7 +7,7 @@ test.describe('Bolt — UI-API Agreement', () => {
   test('automation list in UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/bolt/api', csrf || undefined);
+    const api = new DirectApiClient(request, '/bolt/api/v1', csrf || undefined);
     const checker = new UiApiChecker(page, api);
 
     await page.goto('/bolt/');
@@ -47,7 +47,7 @@ test.describe('Bolt — UI-API Agreement', () => {
   test('execution list in UI matches API response', async ({ page, screenshots, context, request }) => {
     const cookies = await context.cookies();
     const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/bolt/api', csrf || undefined);
+    const api = new DirectApiClient(request, '/bolt/api/v1', csrf || undefined);
     const checker = new UiApiChecker(page, api);
 
     await page.goto('/bolt/executions');

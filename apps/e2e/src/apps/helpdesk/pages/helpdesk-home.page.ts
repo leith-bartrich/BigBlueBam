@@ -93,6 +93,45 @@ export class HelpdeskHomePage extends BasePage {
     await this.waitForAppReady();
   }
 
+  // Establish a helpdesk API session cookie on the current browser context
+  // by calling the helpdesk API directly (login-or-register). The admin B3
+  // storage state does not authenticate helpdesk — the two apps have
+  // completely separate auth — so UI tests that need to create/list tickets
+  // must first plant a `helpdesk_session` cookie via this helper.
+  //
+  // Returns true if a session was established, false if the API refused
+  // (e.g. signup disabled and user does not already exist). Tests should
+  // treat `false` as "running unauthenticated" rather than failing hard.
+  async ensureHelpdeskSession(
+    email = 'e2e-helpdesk@bigbluebam.test',
+    password = 'E2eHelpdesk!Pass123',
+    displayName = 'E2E Helpdesk User',
+  ): Promise<boolean> {
+    const request = this.page.request;
+    // Try login first
+    const loginRes = await request.post('/helpdesk/api/auth/login', {
+      data: { email, password },
+      headers: { 'Content-Type': 'application/json' },
+      failOnStatusCode: false,
+    });
+    if (loginRes.ok()) {
+      return true;
+    }
+    // Not registered yet (or invalid password). Try register.
+    const registerRes = await request.post('/helpdesk/api/auth/register', {
+      data: { email, display_name: displayName, password },
+      headers: { 'Content-Type': 'application/json' },
+      failOnStatusCode: false,
+    });
+    if (registerRes.ok()) {
+      return true;
+    }
+    // If register says EMAIL_TAKEN, the original login failure was a bad
+    // password — most likely a stale DB row from a previous run with
+    // different credentials. Nothing we can do from inside the test.
+    return false;
+  }
+
   async expectLoginPage(): Promise<void> {
     await expect(this.page.getByLabel(/email/i).first()).toBeVisible({ timeout: 10_000 });
     await expect(this.page.getByLabel(/password/i).first()).toBeVisible();

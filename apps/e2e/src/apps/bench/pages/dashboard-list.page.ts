@@ -30,7 +30,10 @@ export class BenchDashboardListPage extends BasePage {
   }
 
   async clickCreateDashboard(): Promise<void> {
-    await this.page.getByRole('button', { name: /create|new dashboard|add/i }).click();
+    await this.page
+      .getByRole('main')
+      .getByRole('button', { name: /new dashboard/i })
+      .click();
   }
 
   async expectDashboardVisible(name: string): Promise<void> {

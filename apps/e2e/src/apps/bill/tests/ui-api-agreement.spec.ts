@@ -15,8 +15,8 @@ test.describe('Bill — UI-API Agreement', () => {
     await screenshots.capture(page, 'invoices-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/invoices',
-      itemTextExtractor: (item) => (item as any).number || (item as any).id,
+      apiPath: '/v1/invoices',
+      itemTextExtractor: (item) => (item as any).invoice_number || (item as any).number || (item as any).id,
     });
 
     await screenshots.capture(page, 'invoice-agreement-result');
@@ -37,7 +37,7 @@ test.describe('Bill — UI-API Agreement', () => {
     await screenshots.capture(page, 'clients-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: '/clients',
+      apiPath: '/v1/clients',
       itemTextExtractor: (item) => (item as any).name,
     });
 

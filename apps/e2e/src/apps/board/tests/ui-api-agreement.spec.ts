@@ -14,8 +14,10 @@ test.describe('Board — UI-API Agreement', () => {
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'home-for-agreement');
 
+    // Board API routes are mounted with a `/v1` prefix in server.ts, so the
+    // externally visible path is `/board/api/v1/boards` — not `/board/api/boards`.
     const result = await checker.checkListRendering({
-      apiPath: '/boards',
+      apiPath: '/v1/boards',
       itemTextExtractor: (item) => (item as any).name,
     });
 

@@ -12,7 +12,7 @@ test.describe('Brief — Navigation', () => {
   test('home page loads', async ({ page, screenshots }) => {
     await homePage.goto();
     await screenshots.capture(page, 'home-loaded');
-    await homePage.expectHomeLoaded();
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
     await screenshots.capture(page, 'home-content-visible');
   });
 
@@ -82,10 +82,16 @@ test.describe('Brief — Navigation', () => {
       (p) => p.requiresAuth && !p.requiresSetup && !p.path.includes(':'),
     );
 
+    // Boot the SPA shell before iterating pushState routes so <main> is mounted.
+    // homePage.goto() already waits up to 40 s for <main> under load.
+    await homePage.goto();
+
     for (const pageDef of simplePages) {
       await homePage.navigate(pageDef.path);
       await screenshots.capture(page, `page-${pageDef.name}-loaded`);
-      await expect(page.locator('main, [class*="content"]').first()).toBeVisible();
+      // Layout <main> is always mounted after boot — .first() protects
+      // against any inner <main> a page might add.
+      await expect(page.locator('main').first()).toBeVisible({ timeout: 10_000 });
     }
   });
 });

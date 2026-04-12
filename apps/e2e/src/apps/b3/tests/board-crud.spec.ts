@@ -7,28 +7,26 @@ test.describe('B3 — Board Task CRUD', () => {
   let boardPage: BoardPage;
   let projectId: string;
 
-  test.beforeAll(async ({ request, context }: any) => {
-    // Create or find a test project
-    const cookies = await context?.cookies?.() || [];
-    const csrf = readCsrfTokenFromCookies(cookies);
-    const api = new DirectApiClient(request, '/b3/api', csrf || undefined);
+  test.beforeEach(async ({ page, screenshots, request, context }) => {
+    boardPage = new BoardPage(page, screenshots);
 
-    try {
-      const projects = await api.get<any[]>('/projects');
-      if (projects.length > 0) {
-        projectId = projects[0].id;
-      }
-    } catch {
-      // Will be handled in tests
+    if (!projectId) {
+      // Lazily look up a test project on first test. Cannot do this in
+      // beforeAll because Playwright's `request`/`context` fixtures are
+      // per-test and cannot be used there. The 'seed e2e admin project'
+      // step in auth.setup.ts guarantees at least one project exists for
+      // the admin, so this must succeed — any failure here is a real bug
+      // and should surface as a hard failure rather than be swallowed.
+      const cookies = await context.cookies();
+      const csrf = readCsrfTokenFromCookies(cookies);
+      const api = new DirectApiClient(request, '/b3/api', csrf || undefined);
+
+      const projects = await api.get<Array<{ id: string }>>('/projects');
+      projectId = projects[0].id;
     }
   });
 
-  test.beforeEach(async ({ page, screenshots }) => {
-    boardPage = new BoardPage(page, screenshots);
-  });
-
   test('board page loads with phase columns', async ({ page, screenshots }) => {
-    test.skip(!projectId, 'No project available');
     await boardPage.gotoProject(projectId);
     await screenshots.capture(page, 'board-loaded');
     await boardPage.expectBoardLoaded();
@@ -36,7 +34,6 @@ test.describe('B3 — Board Task CRUD', () => {
   });
 
   test('create task via inline input', async ({ page, screenshots, context, request }) => {
-    test.skip(!projectId, 'No project available');
     await boardPage.gotoProject(projectId);
     await screenshots.capture(page, 'board-before-create');
 
@@ -58,7 +55,6 @@ test.describe('B3 — Board Task CRUD', () => {
   });
 
   test('open task detail drawer', async ({ page, screenshots }) => {
-    test.skip(!projectId, 'No project available');
     await boardPage.gotoProject(projectId);
     await screenshots.capture(page, 'board-before-open-task');
 
@@ -79,7 +75,6 @@ test.describe('B3 — Board Task CRUD', () => {
   });
 
   test('edit task title in detail drawer', async ({ page, screenshots }) => {
-    test.skip(!projectId, 'No project available');
     await boardPage.gotoProject(projectId);
 
     const taskCard = boardPage.getTaskCards().first();

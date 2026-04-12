@@ -69,6 +69,18 @@ const fastify = Fastify({
 // Error handler
 fastify.setErrorHandler(errorHandler);
 
+// 404 handler — return the canonical error envelope for unknown routes
+fastify.setNotFoundHandler((request, reply) => {
+  return reply.status(404).send({
+    error: {
+      code: 'NOT_FOUND',
+      message: `Route ${request.method} ${request.url} not found`,
+      details: [],
+      request_id: request.id,
+    },
+  });
+});
+
 // Plugins
 await fastify.register(cors, {
   origin: env.CORS_ORIGIN.split(','),

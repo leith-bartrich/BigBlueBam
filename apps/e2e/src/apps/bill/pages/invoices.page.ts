@@ -23,7 +23,12 @@ export class InvoicesPage extends BasePage {
   }
 
   async clickCreateInvoice(): Promise<void> {
-    await this.page.getByRole('button', { name: /create invoice|new invoice/i }).click();
+    // Both the sidebar and the page header expose a "New Invoice" button —
+    // scope to the page's <main> region to avoid a strict-mode violation.
+    await this.page
+      .getByRole('main')
+      .getByRole('button', { name: /create invoice|new invoice/i })
+      .click();
   }
 
   async expectInvoiceVisible(text: string): Promise<void> {
@@ -59,7 +64,13 @@ export class InvoicesPage extends BasePage {
   }
 
   async clickCreateClient(): Promise<void> {
-    await this.page.getByRole('button', { name: /create client|new client|add client/i }).click();
+    // Bill's Clients page uses an inline form toggle, so the same page contains
+    // both a "New Client" toggle button and (after expansion) a "Create Client"
+    // submit button. Click only the toggle to open the form.
+    await this.page
+      .getByRole('main')
+      .getByRole('button', { name: /^new client$/i })
+      .click();
   }
 
   async clickCreateExpense(): Promise<void> {

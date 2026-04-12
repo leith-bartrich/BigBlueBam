@@ -30,7 +30,12 @@ export class BearingDashboardPage extends BasePage {
   }
 
   async clickCreateGoal(): Promise<void> {
-    await this.page.getByRole('button', { name: /create|new goal|add goal/i }).click();
+    // The Bearing dashboard can render two buttons that open the same
+    // CreateGoalDialog: the header's "New Goal" button (always visible) and
+    // the empty-state's "Create First Goal" button (only when `goals.length
+    // === 0`). Use the header button so the locator stays unique regardless
+    // of dataset state.
+    await this.page.getByRole('button', { name: /^new goal$/i }).first().click();
   }
 
   async expectGoalVisible(title: string): Promise<void> {
