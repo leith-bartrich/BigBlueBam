@@ -62,6 +62,8 @@ export function TaskCard({ task, onClick, isDragOverlay = false }: TaskCardProps
 
   return (
     <motion.div
+      data-testid="task-card"
+      data-task-id={task.id}
       ref={!isDragOverlay ? sortable.setNodeRef : undefined}
       style={style}
       {...(!isDragOverlay ? { ...sortable.attributes, ...sortable.listeners } : {})}

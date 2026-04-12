@@ -47,7 +47,7 @@ test.describe('Blank — UI-API Agreement', () => {
     await screenshots.capture(page, 'responses-for-agreement');
 
     const result = await checker.checkListRendering({
-      apiPath: `/forms/${formId}/submissions`,
+      apiPath: `/v1/forms/${formId}/submissions`,
       itemTextExtractor: (item) => (item as any).id,
     });
 

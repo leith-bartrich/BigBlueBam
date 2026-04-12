@@ -32,7 +32,7 @@ test.describe('B3 — Drag and Drop', () => {
     const columnCount = await columns.count();
     test.skip(columnCount < 2, 'Need at least 2 columns for drag test');
 
-    const firstColumnTasks = columns.first().locator('[class*="task-card"], [class*="card"]').filter({ hasText: /.+/ });
+    const firstColumnTasks = columns.first().locator('[data-testid="task-card"]');
     const taskCount = await firstColumnTasks.count();
     test.skip(taskCount === 0, 'Need at least 1 task in first column');
 
@@ -61,7 +61,7 @@ test.describe('B3 — Drag and Drop', () => {
 
     const columns = boardPage.getPhaseColumns();
     const firstColumn = columns.first();
-    const tasks = firstColumn.locator('[class*="task-card"], [class*="card"]').filter({ hasText: /.+/ });
+    const tasks = firstColumn.locator('[data-testid="task-card"]');
     const taskCount = await tasks.count();
     test.skip(taskCount < 2, 'Need at least 2 tasks for reorder test');
 

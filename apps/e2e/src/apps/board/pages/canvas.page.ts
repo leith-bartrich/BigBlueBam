@@ -29,17 +29,29 @@ export class CanvasPage extends BasePage {
   // --- Canvas ---
 
   getCanvas(): Locator {
-    return this.page.locator('canvas, [class*="canvas"], [class*="whiteboard"]').first();
+    // Excalidraw mounts the actual canvas inside `.excalidraw__canvas-wrapper`
+    // — but that wrapper has `visibility: hidden` set on its computed style
+    // until the canvas paints, which causes Playwright's actionability check
+    // (`element is not visible`) to fail any click/dblclick on it. The inner
+    // <canvas> element has its own bounding box and IS visible to the
+    // browser; prefer that. Fall back to the wrapper for boards that haven't
+    // mounted Excalidraw yet (e.g. legacy whiteboard divs).
+    return this.page.locator('.excalidraw canvas, canvas, [class*="whiteboard"]').first();
   }
 
   async clickOnCanvas(x: number, y: number): Promise<void> {
     const canvas = this.getCanvas();
-    await canvas.click({ position: { x, y } });
+    // Excalidraw's canvas wrapper sometimes still reports `visibility: hidden`
+    // on the wrapper element even once the inner <canvas> has painted, so
+    // bypass actionability with `force: true`. Excalidraw listens to native
+    // pointer events on the canvas itself and dispatches to its internal
+    // event system, so a forced Playwright click is sufficient to register.
+    await canvas.click({ position: { x, y }, force: true });
   }
 
   async doubleClickOnCanvas(x: number, y: number): Promise<void> {
     const canvas = this.getCanvas();
-    await canvas.dblclick({ position: { x, y } });
+    await canvas.dblclick({ position: { x, y }, force: true });
   }
 
   // --- Elements ---

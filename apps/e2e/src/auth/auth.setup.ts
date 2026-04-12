@@ -669,3 +669,113 @@ setup('seed e2e admin blast template + campaign', async ({ baseURL }) => {
     await dispose();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Helpdesk — register a helpdesk user and create at least one ticket.
+// Helpdesk has its own auth system separate from B3 (its own users table,
+// sessions, etc.). Public registration is often disabled via
+// platform_settings.public_signup_disabled.  We temporarily enable it via
+// the B3 superuser endpoint, register the user, seed a ticket, then restore
+// the original setting.
+// ---------------------------------------------------------------------------
+setup('seed e2e helpdesk user + ticket', async ({ baseURL }) => {
+  const { api: b3Api, dispose: disposeB3 } = await makeAdminApi(baseURL!, '/b3/api');
+
+  // 1. Read current platform signup setting
+  let wasDisabled = false;
+  try {
+    const raw = await b3Api.get<Record<string, unknown>>('/superuser/platform-settings');
+    wasDisabled = (raw as any)?.public_signup_disabled === true
+      || (raw as any)?.data?.public_signup_disabled === true;
+  } catch {
+    // SuperUser endpoint may not be reachable; proceed optimistically.
+  }
+
+  // 2. Temporarily enable public signup if it was disabled
+  if (wasDisabled) {
+    try {
+      await b3Api.patch('/superuser/platform-settings', { public_signup_disabled: false });
+      console.log('[seed] helpdesk: temporarily enabled public signup.');
+    } catch (err) {
+      console.warn('[seed] helpdesk: could not enable signup —', err instanceof ApiClientError ? `${err.status}` : String(err));
+    }
+  }
+
+  // 3. Register a helpdesk user (idempotent: login first, register only on failure)
+  const email = 'e2e-helpdesk@bigbluebam.test';
+  const password = 'E2eHelpdesk!Pass123';
+  const displayName = 'E2E Helpdesk User';
+  // nginx proxies /helpdesk/api/* → helpdesk-api:4001/helpdesk/*
+  // So /helpdesk/api/auth/login → helpdesk-api:4001/helpdesk/auth/login
+  // which matches the route definition at /helpdesk/auth/login.
+  const helpdeskBase = (baseURL ?? 'http://localhost') + '/helpdesk/api';
+
+  const helpdeskCtx = await playwrightRequest.newContext({ baseURL: helpdeskBase });
+  let helpdeskSessionOk = false;
+  try {
+    const loginRes = await helpdeskCtx.post('/auth/login', {
+      data: { email, password },
+      headers: { 'Content-Type': 'application/json' },
+      failOnStatusCode: false,
+    });
+    if (loginRes.ok()) {
+      helpdeskSessionOk = true;
+      console.log('[seed] helpdesk: user logged in successfully.');
+    } else {
+      const regRes = await helpdeskCtx.post('/auth/register', {
+        data: { email, display_name: displayName, password },
+        headers: { 'Content-Type': 'application/json' },
+        failOnStatusCode: false,
+      });
+      if (regRes.ok()) {
+        helpdeskSessionOk = true;
+        console.log('[seed] helpdesk: user registered successfully.');
+      } else {
+        const body = await regRes.json().catch(() => null);
+        console.warn(`[seed] helpdesk: register failed (${regRes.status()}) —`, body?.error?.message ?? 'unknown');
+      }
+    }
+
+    // 4. Create a ticket if session OK and none exist
+    // nginx proxies /helpdesk/api/tickets → helpdesk-api:4001/helpdesk/tickets
+    // which matches the route /helpdesk/tickets.
+    if (helpdeskSessionOk) {
+      const ticketListRes = await helpdeskCtx.get('/tickets', { failOnStatusCode: false });
+      let hasTickets = false;
+      if (ticketListRes.ok()) {
+        const body = await ticketListRes.json().catch(() => null);
+        const list = body?.data ?? body;
+        hasTickets = Array.isArray(list) && list.length > 0;
+      }
+      if (!hasTickets) {
+        const createRes = await helpdeskCtx.post('/tickets', {
+          data: {
+            subject: 'E2E Seed Ticket',
+            description: 'Created by e2e auth setup for helpdesk tests.',
+          },
+          headers: { 'Content-Type': 'application/json' },
+          failOnStatusCode: false,
+        });
+        if (createRes.ok()) {
+          console.log('[seed] helpdesk: seeded ticket.');
+        } else {
+          console.warn(`[seed] helpdesk: ticket create failed (${createRes.status()}).`);
+        }
+      } else {
+        console.log('[seed] helpdesk: ticket(s) already exist.');
+      }
+    }
+  } finally {
+    await helpdeskCtx.dispose();
+  }
+
+  // 5. Restore public signup setting if we changed it
+  if (wasDisabled) {
+    try {
+      await b3Api.patch('/superuser/platform-settings', { public_signup_disabled: true });
+      console.log('[seed] helpdesk: restored public signup disabled.');
+    } catch {}
+  }
+
+  await disposeB3();
+});

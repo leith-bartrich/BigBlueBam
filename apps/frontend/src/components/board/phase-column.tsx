@@ -38,6 +38,8 @@ export function PhaseColumn({ phase, onTaskClick, onAddTask, onInlineCreate }: P
 
   return (
     <div
+      data-testid="phase-column"
+      data-phase-id={phase.id}
       className={cn(
         'flex flex-col w-72 shrink-0 rounded-xl bg-zinc-100/80 dark:bg-zinc-900/50 transition-all duration-150',
         isOver && 'ring-2 ring-primary-400 bg-primary-50/50 dark:bg-zinc-800/20 scale-[1.005]',
