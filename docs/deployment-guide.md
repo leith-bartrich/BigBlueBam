@@ -8,7 +8,7 @@ Deploy BigBlueBam from zero to running in about 10 minutes. No IT department req
 
 Before you start, here's what the setup wizard will configure for you:
 
-- **A place to run it** — any machine with Docker today; Railway one-click deploy coming soon
+- **A place to run it** — any machine with Docker, or a Railway account for managed cloud
 - **A database** — PostgreSQL and Redis, automatically provisioned
 - **An admin account** — you'll create this during setup
 - **Optional**: file storage (S3/MinIO), AI features (Anthropic/OpenAI), voice/video (LiveKit)
@@ -25,16 +25,9 @@ Run on any machine with Docker. The fastest path to a running stack today, and t
 - Migrations apply automatically before app services start
 - Requires Docker Desktop or Docker Engine
 
-### Option 2: Railway (Preview — one-click deploy coming soon)
+### Option 2: Railway (Managed cloud)
 
-Cloud-hosted, managed containers with managed PostgreSQL and Redis. The pieces are landing in stages: every service already ships a `railway/<name>.json` config-as-code manifest, the frontend image bakes in a Railway-flavored nginx config that uses `*.railway.internal` upstreams, and `railway/env-vars.md` lists every variable you'll need to set per service. **What's still in flight**: wiring Railway's GitHub auto-deploy so the whole 19-service stack provisions in one action.
-
-For now, the deploy script's "Railway (Preview)" option:
-- Logs in and creates a Railway project
-- Provisions the managed Postgres + Redis plugins
-- Prints a per-service checklist of what to create in the Railway dashboard, pointing each service at its `railway/*.json` config and `railway/env-vars.md` entry
-
-You can follow that checklist today; the one-click experience is on the roadmap.
+Cloud-hosted, managed containers with managed PostgreSQL and Redis. Best for teams that want to skip server administration. The deploy script handles everything: it creates the Railway project, prompts you to add the managed Postgres and Redis plugins (one click each in the dashboard — the only manual step), then walks the service catalog and creates all 19 services via Railway's public GraphQL API, configures each one's source repo, Dockerfile, healthcheck, and environment variables, and triggers the initial deploys. Total time: about 5–10 minutes from `./scripts/deploy.sh` to a running stack.
 
 ---
 
@@ -66,7 +59,7 @@ The script checks for Node.js and Docker, installing them if needed.
 scripts\deploy.bat
 ```
 
-> **Note:** Docker is required for the recommended Docker Compose path. The Railway preview option runs entirely in the cloud and doesn't need Docker locally.
+> **Note:** Docker is required for the recommended Docker Compose path. The Railway option runs entirely in the cloud and doesn't need Docker locally.
 
 ### Step 3: Pick your platform
 
@@ -76,7 +69,7 @@ The script presents an interactive menu:
 Where are you deploying?
 
   1. Docker Compose — Run locally or on any server with Docker (recommended)
-  2. Railway (Preview) — Cloud containers; one-click deploy coming soon
+  2. Railway — Managed cloud containers, fully automated
 ```
 
 ### Step 4: Configure your services
@@ -97,9 +90,9 @@ Similar prompts for vector search (Beacon knowledge base) and voice/video (Bante
 ### Step 5: Deploy
 
 - **Docker Compose**: Builds all containers locally, starts everything with `docker compose up`. Migrations run automatically before app services start.
-- **Railway (Preview)**: Logs in to your Railway account, creates the project, provisions managed PostgreSQL + Redis, then prints a per-service checklist (with paths to `railway/*.json` and `railway/env-vars.md`) for the dashboard steps that aren't yet automated.
+- **Railway**: Logs in to your Railway account, creates the project, provisions managed PostgreSQL + Redis, then creates all 19 services via Railway's GraphQL API — setting source repo, Dockerfile, healthcheck, and environment variables on each, and triggering the initial deploys.
 
-This takes 3–5 minutes on first run for Docker Compose; the Railway preview path is mostly waiting for you to click through the dashboard.
+This takes 3–5 minutes on first run for Docker Compose; the Railway path runs unattended after you generate a Personal Access Token and click two buttons to add the managed Postgres and Redis plugins.
 
 ### Step 6: Create your admin account
 
@@ -308,8 +301,8 @@ docker compose down -v
 
 ## FAQ
 
-**When will the one-click Railway deploy be ready?**
-The pieces are landing in stages. Already in the repo: per-service `railway/*.json` manifests for all 19 services, a Railway-flavored nginx ingress that uses `*.railway.internal` upstreams baked into the frontend image, and an env-var reference at `railway/env-vars.md` showing exactly what to set per service. What's still in flight: wiring Railway's GitHub auto-deploy so the whole stack provisions in one action. Until that ships, the deploy script's "Railway (Preview)" option walks you through the dashboard steps.
+**How does the Railway deploy work?**
+The deploy script's Railway path uses Railway's public GraphQL API to provision and configure every service in the stack. You generate a Personal Access Token at https://railway.com/account/tokens, paste it into the script, and it handles the rest: project creation, service creation (linked to the GitHub repo), per-service Dockerfile + healthcheck + environment variable configuration, and triggering the initial deploys. The only manual step is clicking "Add Postgres" and "Add Redis" in the Railway dashboard once, because Railway's public API doesn't expose plugin creation. Total run time: about 5–10 minutes from start to all services queued.
 
 **How much will Railway cost?**
 Railway offers a free Starter plan that includes $5 of usage per month. With 19 services + managed Postgres + Redis, expect to land in the Developer plan ($5/month + usage). Most small teams spend $20–40/month total once everything's running.

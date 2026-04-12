@@ -1,36 +1,31 @@
 // Railway platform adapter — managed container deployment.
 //
-// PREVIEW: This adapter sets up the Railway project, provisions the managed
-// Postgres + Redis plugins, and walks the user through the manual dashboard
-// steps required to bring all 19 BigBlueBam services online with the
-// config-as-code manifests under `railway/` and the env-var reference under
-// `railway/env-vars.md`. A fully automated one-click "deploy from GitHub"
-// experience is on the roadmap — for now this adapter prints a clear
-// checklist instead of pretending it can do `railway up` across the whole
-// stack.
+// This adapter sets up the Railway project and drives Railway's public
+// GraphQL API to create and configure every BigBlueBam service end to end:
+// source repo, Dockerfile, healthcheck, env vars, and initial deploy. The
+// only manual step is adding the managed Postgres and Redis plugins from the
+// Railway dashboard, because Railway's public API doesn't expose plugin
+// creation.
 //
 // Zero dependencies (node:child_process, node:fs only).
 
 import { execSync, spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { bold, check, cross, dim, green, yellow, cyan, red, warn } from '../shared/colors.mjs';
 import { ask, confirm } from '../shared/prompt.mjs';
-import {
-  APP_SERVICES,
-  INFRA_SERVICES,
-  JOB_SERVICES,
-  getManagedInfra,
-  getSelfHostedInfra,
-} from '../shared/services.mjs';
+import { RailwayClient, RailwayApiError } from '../shared/railway-api.mjs';
+import { RailwayOrchestrator } from '../shared/railway-orchestrator.mjs';
 
-const name = 'Railway (Preview)';
-const description = 'Managed containers on Railway.app — config-as-code ready, one-click deploy coming soon';
+const name = 'Railway';
+const description = 'Managed cloud containers on Railway.app — fully automated';
 
-/**
- * Escape a string for safe interpolation into a shell command.
- */
-function shellEscape(s) {
-  return "'" + String(s).replace(/'/g, "'\\''") + "'";
-}
+// Module-level state so checkPrerequisites() can hand a validated client
+// off to deploy() without re-prompting the user for the PAT.
+let cachedClient = null;
+let cachedToken = null;
+
+const ENV_FILE = path.resolve(process.cwd(), '.env');
 
 /**
  * Run a shell command, optionally capturing stdout.
@@ -57,54 +52,117 @@ function runShell(cmd, opts = {}) {
 }
 
 /**
- * Check if Railway CLI is installed and authenticated.
+ * Read RAILWAY_TOKEN from the .env file at repo root. Returns null if the
+ * file doesn't exist or the key isn't set. We deliberately avoid pulling in
+ * a dotenv dependency — a simple line-based regex is enough.
+ */
+function readTokenFromEnvFile() {
+  try {
+    if (!fs.existsSync(ENV_FILE)) return null;
+    const text = fs.readFileSync(ENV_FILE, 'utf8');
+    const m = text.match(/^RAILWAY_TOKEN=(.*)$/m);
+    if (!m) return null;
+    // Strip surrounding quotes if present.
+    return m[1].trim().replace(/^['"]|['"]$/g, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist RAILWAY_TOKEN in the .env file so future runs pick it up
+ * automatically. Replaces an existing RAILWAY_TOKEN= line if present,
+ * otherwise appends. Creates .env if it doesn't exist.
+ */
+function writeTokenToEnvFile(token) {
+  try {
+    const line = `RAILWAY_TOKEN=${token}`;
+    let text = '';
+    if (fs.existsSync(ENV_FILE)) {
+      text = fs.readFileSync(ENV_FILE, 'utf8');
+      if (/^RAILWAY_TOKEN=.*$/m.test(text)) {
+        text = text.replace(/^RAILWAY_TOKEN=.*$/m, line);
+      } else {
+        if (text.length > 0 && !text.endsWith('\n')) text += '\n';
+        text += line + '\n';
+      }
+    } else {
+      text = line + '\n';
+    }
+    fs.writeFileSync(ENV_FILE, text, 'utf8');
+    return true;
+  } catch (err) {
+    console.log(`  ${warn} Could not write RAILWAY_TOKEN to .env: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Prompt the user to paste a PAT, validate it, and return a RailwayClient.
+ * On success, persists the token to .env and caches the client at module
+ * scope. Throws on repeated failure.
+ */
+async function promptForToken() {
+  console.log('');
+  console.log('  Generate a Personal Access Token:');
+  console.log(cyan('    https://railway.com/account/tokens'));
+  console.log('');
+  const token = await ask('Paste your Railway PAT:');
+  if (!token) throw new Error('Railway PAT is required.');
+  const client = new RailwayClient(token);
+  try {
+    const me = await client.whoami();
+    console.log(`  ${check} Authenticated as ${me.email ?? me.name ?? 'unknown user'}`);
+    writeTokenToEnvFile(token);
+    cachedClient = client;
+    cachedToken = token;
+    return client;
+  } catch (err) {
+    if (err instanceof RailwayApiError && err.kind === 'auth') {
+      throw new Error('Railway rejected the token. Generate a new one at https://railway.com/account/tokens and try again.');
+    }
+    throw new Error(`Railway token validation failed: ${err.message}`);
+  }
+}
+
+/**
+ * Validate a Railway Personal Access Token and (optionally) check for the
+ * Railway CLI. The CLI isn't required for the deploy path — it's only used
+ * later by runCommand() for the admin-user bootstrap step.
  */
 async function checkPrerequisites() {
   console.log(bold('Checking Railway setup...\n'));
 
-  // Railway CLI
-  let cliInstalled = false;
-  try {
-    const ver = execSync('railway version', { stdio: 'pipe', encoding: 'utf8' }).trim();
-    console.log(`  ${check} Railway CLI installed  (${ver})`);
-    cliInstalled = true;
-  } catch {
-    console.log(`  ${cross} Railway CLI not found`);
-    console.log('');
-    console.log('  Install the Railway CLI:');
-    console.log(cyan('    npm install -g @railway/cli'));
-    console.log('');
-    console.log('  Or see: https://docs.railway.app/guides/cli');
+  // 1. Look for a PAT: env var first, then .env file.
+  let token = process.env.RAILWAY_TOKEN || readTokenFromEnvFile();
 
-    if (await confirm('\nWould you like to install it now?', true)) {
-      try {
-        await runShell('npm install -g @railway/cli');
-        console.log(`  ${check} Railway CLI installed`);
-        cliInstalled = true;
-      } catch {
-        console.log(`  ${cross} Installation failed. Please install manually.`);
-        throw new Error('Railway CLI is required.');
+  if (token) {
+    const client = new RailwayClient(token);
+    try {
+      const me = await client.whoami();
+      console.log(`  ${check} Authenticated as ${me.email ?? me.name ?? 'unknown user'}`);
+      cachedClient = client;
+      cachedToken = token;
+    } catch (err) {
+      if (err instanceof RailwayApiError && err.kind === 'auth') {
+        console.log(`  ${cross} Token rejected — generate a new one`);
+        await promptForToken();
+      } else {
+        // Network/unknown — don't burn the token, but still let the user retry.
+        console.log(`  ${warn} Could not verify token: ${err.message}`);
+        await promptForToken();
       }
-    } else {
-      throw new Error('Railway CLI is required. Install it with: npm install -g @railway/cli');
     }
+  } else {
+    console.log(`  ${warn} No RAILWAY_TOKEN found in environment or .env`);
+    await promptForToken();
   }
 
-  // Authenticated
+  // 2. Best-effort CLI detection — only needed later for createSuperUser.
   try {
-    execSync('railway whoami', { stdio: 'pipe' });
-    console.log(`  ${check} Authenticated with Railway`);
+    execSync('railway version', { stdio: 'pipe' });
   } catch {
-    console.log(`  ${warn} Not logged in to Railway`);
-    console.log('');
-    console.log('  Logging in...');
-    await runShell('railway login');
-    try {
-      const who = execSync('railway whoami', { stdio: 'pipe', encoding: 'utf8' }).trim();
-      console.log(`  ${check} Logged in as ${who}`);
-    } catch {
-      throw new Error('Railway login failed. Please run: railway login');
-    }
+    console.log(`  ${warn} Railway CLI not detected — admin auto-creation will print manual instructions instead`);
   }
 
   console.log('');
@@ -112,139 +170,288 @@ async function checkPrerequisites() {
 }
 
 /**
- * Print the preview banner explaining the current state of Railway support.
+ * Print the welcome banner explaining what the Railway adapter will do.
  */
-function printPreviewBanner() {
+function printWelcomeBanner() {
   console.log('');
-  console.log(yellow(bold('  ▲ Railway deployment is in PREVIEW')));
+  console.log(cyan(bold('  ▲ Railway deployment')));
   console.log(dim('  ─────────────────────────────────────────────────────────────'));
-  console.log(dim('  Config-as-code is ready: every service has its own railway/'));
-  console.log(dim('  *.json manifest and the frontend image bakes in a Railway-'));
-  console.log(dim('  flavored nginx config that uses *.railway.internal upstreams.'));
+  console.log(dim('  This will create a Railway project and provision all 19'));
+  console.log(dim("  BigBlueBam services via Railway's public GraphQL API:"));
   console.log('');
-  console.log(dim('  Full automation (one-click "deploy from GitHub") is coming.'));
-  console.log(dim('  For now, this script handles the project + plugin setup,'));
-  console.log(dim('  then walks you through the dashboard steps for each service.'));
+  console.log(dim('    1. Validate your Railway PAT'));
+  console.log(dim('    2. Create the project'));
+  console.log(dim('    3. Prompt to add Postgres + Redis plugins (one click each)'));
+  console.log(dim('    4. Create + configure every service (source, Dockerfile,'));
+  console.log(dim('       healthcheck, env vars)'));
+  console.log(dim('    5. Trigger initial deploys'));
   console.log('');
-  console.log(dim('  See:'));
-  console.log(dim('    railway/README.md     — config-as-code overview'));
-  console.log(dim('    railway/env-vars.md   — full env-var reference'));
+  console.log(dim('  Reference: railway/env-vars.md'));
   console.log(dim('  ─────────────────────────────────────────────────────────────'));
   console.log('');
 }
 
 /**
- * Set up the Railway project, provision managed plugins, and walk through
- * the manual dashboard steps for each app service. Returns false (deploy
- * not "complete") so the orchestrator marks the phase as needing user
- * action — re-running picks up from this point.
+ * Extract the generated-secrets bundle the orchestrator expects from the
+ * envConfig produced by buildEnvConfig(). Missing keys fall through as empty
+ * strings so the orchestrator's `secret` branch can SKIP cleanly.
+ */
+function extractSecretsFromEnvConfig(envConfig = {}) {
+  return {
+    SESSION_SECRET: envConfig.SESSION_SECRET ?? '',
+    INTERNAL_HELPDESK_SECRET: envConfig.INTERNAL_HELPDESK_SECRET ?? '',
+    INTERNAL_SERVICE_SECRET: envConfig.INTERNAL_SERVICE_SECRET ?? envConfig.INTERNAL_HELPDESK_SECRET ?? '',
+    MINIO_ROOT_USER: envConfig.MINIO_ROOT_USER ?? '',
+    MINIO_ROOT_PASSWORD: envConfig.MINIO_ROOT_PASSWORD ?? '',
+    LIVEKIT_API_KEY: envConfig.LIVEKIT_API_KEY ?? '',
+    LIVEKIT_API_SECRET: envConfig.LIVEKIT_API_SECRET ?? '',
+  };
+}
+
+/**
+ * Extract the user-integrations bundle the orchestrator expects from the
+ * envConfig. Empty strings are fine — the orchestrator silently skips
+ * optional user integrations that aren't set.
+ */
+function extractUserIntegrationsFromEnvConfig(envConfig = {}) {
+  const keys = [
+    'OAUTH_GITHUB_CLIENT_ID',
+    'OAUTH_GITHUB_CLIENT_SECRET',
+    'OAUTH_GOOGLE_CLIENT_ID',
+    'OAUTH_GOOGLE_CLIENT_SECRET',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
+    'MICROSOFT_CLIENT_ID',
+    'MICROSOFT_CLIENT_SECRET',
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_USER',
+    'SMTP_PASS',
+    'SMTP_FROM',
+    'SMTP_FROM_EMAIL',
+    'SMTP_FROM_NAME',
+    'EMAIL_FROM',
+  ];
+  const out = {};
+  for (const k of keys) {
+    out[k] = envConfig[k] ?? '';
+  }
+  return out;
+}
+
+/**
+ * Detect the "owner/repo" slug from the local git remote named `origin`.
+ * Supports both HTTPS (https://github.com/owner/repo.git) and SSH
+ * (git@github.com:owner/repo.git) URLs. Returns null if detection fails.
+ */
+function detectGithubRepo() {
+  try {
+    const url = execSync('git remote get-url origin', { stdio: 'pipe', encoding: 'utf8' }).trim();
+    let m = url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/i);
+    if (m) return m[1];
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/**
+ * Detect the current git branch. Defaults to 'main' on failure.
+ */
+function detectGitBranch() {
+  try {
+    const b = execSync('git rev-parse --abbrev-ref HEAD', { stdio: 'pipe', encoding: 'utf8' }).trim();
+    if (b && b !== 'HEAD') return b;
+  } catch {
+    // fall through
+  }
+  return 'main';
+}
+
+/**
+ * Provision the full BigBlueBam stack on Railway: validate the PAT, create
+ * (or reuse) the project, prompt once for the managed Postgres + Redis
+ * plugins, then create and configure every service via Railway's public
+ * GraphQL API and trigger the initial deploys.
  */
 async function deploy(envConfig) {
-  printPreviewBanner();
+  printWelcomeBanner();
 
-  // Step 1: project
-  console.log(bold('Step 1: Railway project\n'));
+  // 1. Get a validated RailwayClient — reuse the one checkPrerequisites
+  //    cached, or re-run the PAT flow if we're being called directly.
+  let client = cachedClient;
+  if (!client) {
+    await checkPrerequisites();
+    client = cachedClient;
+  }
+  if (!client) {
+    throw new Error('No validated Railway client available. Re-run and paste a PAT when prompted.');
+  }
+
+  // 2. Defensive schema compatibility check — Railway has renamed mutations
+  //    before, and we'd rather fail here than halfway through provisioning.
+  const compat = await client.assertSchemaCompatibility();
+  if (!compat.ok) {
+    console.log(red('  ✗ Railway schema check failed'));
+    console.log('    Missing mutations: ' + compat.missing.join(', '));
+    console.log('    See: https://docs.railway.com/reference/public-api');
+    throw new Error('Railway API schema is incompatible with this client.');
+  }
+  console.log(`  ${check} Schema check passed`);
+
+  // 3. Whoami confirmation. checkPrerequisites already called this, but
+  //    re-running it is cheap and the deploy path may be called on its own.
+  const me = await client.whoami();
+  console.log(`  ${check} Logged in as ${me.email ?? me.name ?? 'unknown user'}`);
+
+  // 4. Project name, GitHub repo, branch.
+  console.log('');
   const projectName = await ask('Railway project name:', 'bigbluebam');
-  console.log(`\nCreating project ${cyan(projectName)}...`);
+
+  let githubRepo = detectGithubRepo();
+  if (!githubRepo) {
+    githubRepo = await ask('GitHub repo (user/repo):', 'eoffermann/BigBlueBam');
+  }
+  console.log(`  ${check} GitHub repo: ${githubRepo}`);
+
+  const branch = detectGitBranch();
+  console.log(`  ${check} Branch: ${branch}`);
+  console.log('');
+
+  // 5. Build the orchestrator. The plugin-prompt callback needs the
+  //    projectId so it can print a working dashboard link — capture it from
+  //    the onProgress 'project' phase events as the orchestrator emits them.
+  let capturedProjectId = null;
+
+  const awaitPluginConfirmation = async () => {
+    console.log('');
+    console.log(bold('  The only manual step: add Postgres + Redis plugins.'));
+    console.log('');
+    const projectUrl = capturedProjectId
+      ? `https://railway.com/project/${capturedProjectId}`
+      : 'https://railway.com/dashboard';
+    console.log(`    1. Open ${cyan(projectUrl)}`);
+    console.log(`    2. Click '${bold('New')}' → '${bold('Database')}' → '${bold('Add PostgreSQL')}'`);
+    console.log(`    3. Click '${bold('New')}' → '${bold('Database')}' → '${bold('Add Redis')}'`);
+    console.log('');
+    await confirm("I've added both plugins. Continue?", true);
+  };
+
+  const handleProgress = (event) => {
+    if (!event) return;
+    const { phase, service, step, total, message, ok, error, identity, summary } = event;
+
+    // Capture projectId from the orchestrator state as soon as the project
+    // phase finishes. The orchestrator sets `this.projectId` during the
+    // project phase, so by the time we see any post-project event we can
+    // also read it off the orchestrator directly — but we keep this cheap
+    // sniff in the progress callback too.
+    if (summary?.projectId && !capturedProjectId) {
+      capturedProjectId = summary.projectId;
+    }
+
+    const counter = dim(`[${step ?? '?'}/${total ?? '?'}]`);
+    const prefix = service ? `${cyan(service)}: ` : '';
+    const body = message ?? '';
+
+    if (ok === true) {
+      console.log(`${counter} ${green(check)} ${prefix}${body}`);
+    } else if (ok === false) {
+      const errMsg = error?.message ?? 'failed';
+      console.log(`${counter} ${red(cross)} ${prefix}${body} — ${red(errMsg)}`);
+    } else {
+      // "starting" event — print a dim line so the user sees progress.
+      console.log(`${counter} ${dim('…')} ${prefix}${body}`);
+    }
+
+    if (identity?.email) {
+      // Purely informational; the orchestrator emits one of these during
+      // the validate phase.
+    }
+  };
+
+  const orchestrator = new RailwayOrchestrator(client, {
+    projectName,
+    workspaceId: null,
+    githubRepo,
+    branch,
+    generatedSecrets: extractSecretsFromEnvConfig(envConfig),
+    publicUrl: null,
+    userIntegrations: extractUserIntegrationsFromEnvConfig(envConfig),
+    awaitPluginConfirmation: async () => {
+      // By the time the plugin-prompt fires, the orchestrator has set its
+      // own projectId — prefer that over whatever the progress sniff saw.
+      if (orchestrator.projectId) capturedProjectId = orchestrator.projectId;
+      await awaitPluginConfirmation();
+    },
+    onProgress: handleProgress,
+  });
+
+  // 6. Run it.
   try {
-    await runShell(`railway init --name ${shellEscape(projectName)}`);
-    console.log(`${check} Project created`);
-  } catch {
-    console.log(yellow('  Project may already exist, trying to link...'));
-    try {
-      await runShell(`railway link --project ${shellEscape(projectName)}`);
-      console.log(`${check} Linked to existing project`);
-    } catch {
-      console.log(yellow('  Could not link automatically. Run `railway link` in another shell, then re-run this script.'));
-      return false;
-    }
-  }
-
-  // Step 2: managed plugins (Postgres, Redis)
-  console.log(`\n${bold('Step 2: Managed infrastructure (Postgres + Redis)')}\n`);
-  for (const svc of getManagedInfra()) {
-    process.stdout.write(`  Adding ${svc.description}... `);
-    try {
-      await runShell(`railway add --database ${svc.name}`, { silent: true });
-      console.log(check);
-    } catch {
-      console.log(yellow('already exists'));
-    }
-  }
-
-  // Step 3: print the manual dashboard checklist
-  console.log(`\n${bold('Step 3: Create services in the Railway dashboard')}\n`);
-  console.log('Open your Railway project and create the following services. For');
-  console.log('each one, set:');
-  console.log('');
-  console.log(`  ${cyan('Source')}        GitHub → this repository (or current branch)`);
-  console.log(`  ${cyan('Root Dir')}      ${dim('. (repo root — leave default)')}`);
-  console.log(`  ${cyan('Config Path')}   railway/<service>.json`);
-  console.log('');
-  console.log('Then set the env vars listed in railway/env-vars.md for each.');
-  console.log('');
-
-  const selfHosted = getSelfHostedInfra();
-  const sections = [
-    { title: 'Application services', list: APP_SERVICES.filter((s) => s.required) },
-    { title: 'Optional services', list: APP_SERVICES.filter((s) => !s.required) },
-    { title: 'Self-hosted infrastructure', list: selfHosted },
-    { title: 'One-shot jobs', list: JOB_SERVICES },
-  ];
-
-  for (const sec of sections) {
-    if (sec.list.length === 0) continue;
-    console.log(`  ${bold(sec.title)}`);
-    for (const svc of sec.list) {
-      const tag = svc.is_public_ingress ? cyan(' [public ingress]') : '';
-      console.log(`    ${dim('•')} ${svc.name}${tag}`);
-      console.log(`      ${dim(`config: railway/${svc.name}.json`)}`);
+    const summary = await orchestrator.run();
+    console.log('');
+    console.log(`${green(check)} Deploy initiated successfully`);
+    console.log(`  ${dim('•')} ${summary.servicesCreated} services created`);
+    console.log(`  ${dim('•')} ${summary.servicesConfigured} services configured`);
+    console.log(`  ${dim('•')} ${summary.servicesDeployed} deploys triggered`);
+    console.log('');
+    console.log(`Watch progress at: ${cyan('https://railway.com/project/' + summary.projectId)}`);
+    console.log('');
+    return true;
+  } catch (err) {
+    console.log('');
+    console.log(red(`✗ Deploy failed: ${err.message}`));
+    if (err.kind === 'graphql' && err.errors) {
+      for (const e of err.errors) console.log(red(`    ${e.message}`));
     }
     console.log('');
+    console.log(dim('Re-run this script to retry — Railway operations are idempotent.'));
+    return false;
   }
-
-  console.log(dim('  Tip: open the dashboard with:'));
-  console.log(cyan('    railway open'));
-  console.log('');
-
-  if (envConfig) {
-    console.log(`${dim('Your generated secrets are saved in .env locally — copy them into')}`);
-    console.log(`${dim('Railway as service-level variables (or shared variables at the project')}`);
-    console.log(`${dim('level so plugin references like ${{Postgres.DATABASE_URL}} resolve).')}`);
-    console.log('');
-  }
-
-  console.log(yellow('  Manual setup required to continue. After every service is created'));
-  console.log(yellow('  and reports healthy in the Railway dashboard, re-run this script'));
-  console.log(yellow('  with --reconfigure to advance to the admin-account step.'));
-  console.log('');
-
-  // Return false so the orchestrator does NOT mark the deploy phase as
-  // complete — the user has manual work to do, and re-running the script
-  // should bring them back here until they confirm services are live.
-  return false;
 }
 
 /**
  * Run a one-off command in a Railway service. Used by createSuperUser.
+ *
+ * The deploy path no longer needs the Railway CLI, but this admin-bootstrap
+ * step does — Railway's public GraphQL API has no equivalent of
+ * `railway run --service <name> -- <cmd>` for exec'ing inside a running
+ * container. If the CLI isn't installed or the workspace isn't linked,
+ * throw a clear error so main.mjs's createSuperUser flow can catch it and
+ * fall back to manual instructions.
  */
 async function runCommand(service, cmd) {
-  return runShell(`railway run --service ${service} -- ${cmd}`, { silent: true });
+  try {
+    return await runShell(`railway run --service ${service} -- ${cmd}`, { silent: true });
+  } catch (err) {
+    throw new Error(
+      `Failed to exec command in Railway service '${service}': ${err.message}\n` +
+      `Make sure the Railway CLI is installed and you're linked to the project:\n` +
+      `  npm install -g @railway/cli && railway link`
+    );
+  }
 }
 
 /**
  * Verify login. For Railway this is best-effort because the public URL
- * isn't immediately available after a manual dashboard setup.
+ * isn't immediately available until the first deploy finishes and the
+ * public domain is configured.
  */
 async function verifyLogin(_email, _password) {
   throw new Error('Login verification deferred until the public domain is configured in the Railway dashboard.');
 }
 
 /**
- * Tear down the linked Railway project (CAUTION: removes all services).
+ * Tear down the Railway project. Not implemented via the public API —
+ * project deletion is a destructive operation we'd rather the user confirm
+ * by hand from the dashboard.
  */
 async function stop() {
-  await runShell('railway down');
+  throw new Error(
+    'Project teardown via API is not implemented. Use the Railway dashboard:\n' +
+    '  Settings → Delete Project'
+  );
 }
 
 export default {

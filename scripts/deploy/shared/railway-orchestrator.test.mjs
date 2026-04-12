@@ -1,0 +1,622 @@
+// railway-orchestrator.test.mjs
+//
+// Unit tests for RailwayOrchestrator and buildServiceVariables at
+// railway-orchestrator.mjs. The RailwayClient is mocked with vi.fn()s so
+// no real network calls happen.
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  buildServiceVariables,
+  RailwayOrchestrator,
+} from './railway-orchestrator.mjs';
+import {
+  APP_SERVICES,
+  INFRA_SERVICES,
+  JOB_SERVICES,
+  getRequiredAppServices,
+  getSelfHostedInfra,
+} from './services.mjs';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeFakeClient(overrides = {}) {
+  return {
+    assertSchemaCompatibility: vi.fn().mockResolvedValue({ ok: true, missing: [] }),
+    whoami: vi.fn().mockResolvedValue({ email: 'test@example.com', name: 'Test User' }),
+    findProjectByName: vi.fn().mockResolvedValue(null),
+    getDefaultEnvironment: vi.fn().mockResolvedValue({ id: 'env_test', name: 'production' }),
+    createProject: vi.fn().mockResolvedValue({
+      id: 'prj_test',
+      name: 'bigbluebam',
+      defaultEnvironmentId: 'env_test',
+      defaultEnvironmentName: 'production',
+    }),
+    listServices: vi.fn().mockResolvedValue([]),
+    findServiceByName: vi.fn().mockResolvedValue(null),
+    createService: vi
+      .fn()
+      .mockImplementation(({ name }) => Promise.resolve({ id: `svc_${name}`, name })),
+    updateServiceInstance: vi.fn().mockResolvedValue(true),
+    upsertVariables: vi.fn().mockResolvedValue(true),
+    triggerDeploy: vi.fn().mockResolvedValue(true),
+    ...overrides,
+  };
+}
+
+function makeOptions(overrides = {}) {
+  return {
+    projectName: 'bigbluebam',
+    workspaceId: 'ws_test',
+    githubRepo: 'eddie/bigbluebam',
+    branch: 'main',
+    generatedSecrets: {
+      SESSION_SECRET: 'sess-secret',
+      INTERNAL_HELPDESK_SECRET: 'helpdesk-secret',
+      INTERNAL_SERVICE_SECRET: 'internal-secret',
+      MINIO_ROOT_USER: 'minio-user',
+      MINIO_ROOT_PASSWORD: 'minio-password',
+      LIVEKIT_API_KEY: 'lk-key',
+      LIVEKIT_API_SECRET: 'lk-secret',
+    },
+    publicUrl: 'https://example.up.railway.app',
+    userIntegrations: {
+      OAUTH_GITHUB_CLIENT_ID: 'gh-client-id',
+      OAUTH_GITHUB_CLIENT_SECRET: 'gh-client-secret',
+      OAUTH_GOOGLE_CLIENT_ID: 'goo-client-id',
+      OAUTH_GOOGLE_CLIENT_SECRET: 'goo-client-secret',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_USER: 'smtp-user',
+      SMTP_PASS: 'smtp-pass',
+      SMTP_FROM: 'noreply@example.com',
+    },
+    awaitPluginConfirmation: vi.fn().mockResolvedValue(undefined),
+    onProgress: vi.fn(),
+    ...overrides,
+  };
+}
+
+function getApiService() {
+  const s = APP_SERVICES.find((svc) => svc.name === 'api');
+  if (!s) throw new Error('api service missing from catalog');
+  return s;
+}
+
+function getMinioService() {
+  const s = INFRA_SERVICES.find((svc) => svc.name === 'minio');
+  if (!s) throw new Error('minio service missing from catalog');
+  return s;
+}
+
+function getLivekitService() {
+  return INFRA_SERVICES.find((svc) => svc.name === 'livekit') ?? null;
+}
+
+function getSiteService() {
+  const s = APP_SERVICES.find((svc) => svc.name === 'site');
+  if (!s) throw new Error('site service missing from catalog');
+  return s;
+}
+
+function fullContext() {
+  return {
+    generatedSecrets: {
+      SESSION_SECRET: 'sess-secret',
+      INTERNAL_HELPDESK_SECRET: 'helpdesk-secret',
+      INTERNAL_SERVICE_SECRET: 'internal-secret',
+      MINIO_ROOT_USER: 'minio-user',
+      MINIO_ROOT_PASSWORD: 'minio-password',
+      LIVEKIT_API_KEY: 'lk-key',
+      LIVEKIT_API_SECRET: 'lk-secret',
+    },
+    publicUrl: 'https://example.up.railway.app',
+    userIntegrations: {
+      OAUTH_GITHUB_CLIENT_ID: 'gh-client-id',
+      OAUTH_GITHUB_CLIENT_SECRET: 'gh-client-secret',
+      OAUTH_GOOGLE_CLIENT_ID: 'goo-client-id',
+      OAUTH_GOOGLE_CLIENT_SECRET: 'goo-client-secret',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_USER: 'smtp-user',
+      SMTP_PASS: 'smtp-pass',
+      SMTP_FROM: 'noreply@example.com',
+    },
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// buildServiceVariables
+// ---------------------------------------------------------------------------
+
+describe('buildServiceVariables', () => {
+  it('resolves all hint kinds (plugin, secret, computed, reference, literal, public, user) for api service', () => {
+    const result = buildServiceVariables(getApiService(), fullContext());
+
+    // plugin refs
+    expect(result.DATABASE_URL).toBe('${{Postgres.DATABASE_URL}}');
+    expect(result.REDIS_URL).toBe('${{Redis.REDIS_URL}}');
+    // generated secrets
+    expect(result.SESSION_SECRET).toBe('sess-secret');
+    expect(result.INTERNAL_HELPDESK_SECRET).toBe('helpdesk-secret');
+    // computed
+    expect(result.S3_ENDPOINT).toBe('http://minio.railway.internal:9000');
+    // references
+    expect(result.S3_ACCESS_KEY).toBe('${{minio.MINIO_ROOT_USER}}');
+    expect(result.S3_SECRET_KEY).toBe('${{minio.MINIO_ROOT_PASSWORD}}');
+    // literals
+    expect(result.S3_BUCKET).toBe('bigbluebam-uploads');
+    expect(result.S3_REGION).toBe('us-east-1');
+    expect(result.LOG_LEVEL).toBe('info');
+    // public (needs publicUrl)
+    expect(result.CORS_ORIGIN).toBe('https://example.up.railway.app');
+    expect(result.FRONTEND_URL).toBe('https://example.up.railway.app/b3');
+    // user integrations
+    expect(result.OAUTH_GITHUB_CLIENT_ID).toBe('gh-client-id');
+    expect(result.OAUTH_GITHUB_CLIENT_SECRET).toBe('gh-client-secret');
+    expect(result.OAUTH_GOOGLE_CLIENT_ID).toBe('goo-client-id');
+    expect(result.OAUTH_GOOGLE_CLIENT_SECRET).toBe('goo-client-secret');
+    expect(result.SMTP_HOST).toBe('smtp.example.com');
+    expect(result.SMTP_PORT).toBe('587');
+    expect(result.SMTP_USER).toBe('smtp-user');
+    expect(result.SMTP_PASS).toBe('smtp-pass');
+    expect(result.SMTP_FROM).toBe('noreply@example.com');
+  });
+
+  it('strips trailing slashes on publicUrl so substituted values have no double slashes', () => {
+    const ctx = { ...fullContext(), publicUrl: 'https://example.up.railway.app/' };
+    const result = buildServiceVariables(getApiService(), ctx);
+    expect(result.CORS_ORIGIN).toBe('https://example.up.railway.app');
+    expect(result.FRONTEND_URL).toBe('https://example.up.railway.app/b3');
+    expect(result.FRONTEND_URL).not.toMatch(/\/\/b3/);
+  });
+
+  it('skips all public-kind vars when no publicUrl is provided', () => {
+    const ctx = { ...fullContext(), publicUrl: null };
+    const result = buildServiceVariables(getApiService(), ctx);
+    expect(result).not.toHaveProperty('CORS_ORIGIN');
+    expect(result).not.toHaveProperty('FRONTEND_URL');
+    // required non-public vars still present
+    expect(result.DATABASE_URL).toBeDefined();
+    expect(result.SESSION_SECRET).toBeDefined();
+  });
+
+  it('skips all user-kind vars when userIntegrations is empty; keeps literal SMTP_PORT', () => {
+    const ctx = { ...fullContext(), userIntegrations: {} };
+    const result = buildServiceVariables(getApiService(), ctx);
+    expect(result).not.toHaveProperty('OAUTH_GITHUB_CLIENT_ID');
+    expect(result).not.toHaveProperty('OAUTH_GITHUB_CLIENT_SECRET');
+    expect(result).not.toHaveProperty('SMTP_HOST');
+    expect(result).not.toHaveProperty('SMTP_USER');
+    // literal remains
+    expect(result.SMTP_PORT).toBe('587');
+  });
+
+  it('throws a descriptive error when a required secret is missing', () => {
+    const ctx = fullContext();
+    delete ctx.generatedSecrets.SESSION_SECRET;
+    expect(() => buildServiceVariables(getApiService(), ctx)).toThrow(
+      /SESSION_SECRET.*api/,
+    );
+  });
+
+  it('treats empty-string user integration values as not set', () => {
+    const ctx = {
+      ...fullContext(),
+      userIntegrations: { OAUTH_GITHUB_CLIENT_ID: '' },
+    };
+    const result = buildServiceVariables(getApiService(), ctx);
+    expect(result).not.toHaveProperty('OAUTH_GITHUB_CLIENT_ID');
+  });
+
+  it('uses generatedSecrets to set MinIO root credentials on the minio service itself', () => {
+    const result = buildServiceVariables(getMinioService(), fullContext());
+    expect(result.MINIO_ROOT_USER).toBe('minio-user');
+    expect(result.MINIO_ROOT_PASSWORD).toBe('minio-password');
+  });
+
+  it('uses generatedSecrets to set LiveKit credentials on the livekit service itself', () => {
+    const livekit = getLivekitService();
+    if (!livekit) return; // skip gracefully if livekit removed from catalog
+    const result = buildServiceVariables(livekit, fullContext());
+    expect(result.LIVEKIT_API_KEY).toBe('lk-key');
+    expect(result.LIVEKIT_API_SECRET).toBe('lk-secret');
+  });
+
+  it('returns an empty object for a service with no env vars (site)', () => {
+    const result = buildServiceVariables(getSiteService(), fullContext());
+    expect(result).toEqual({});
+  });
+
+  it('returns keys in alphabetically sorted order', () => {
+    const result = buildServiceVariables(getApiService(), fullContext());
+    const keys = Object.keys(result);
+    const sorted = [...keys].sort();
+    expect(keys).toEqual(sorted);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RailwayOrchestrator constructor
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator constructor', () => {
+  it('stores constructor options on the instance', () => {
+    const client = makeFakeClient();
+    const opts = makeOptions();
+    const orch = new RailwayOrchestrator(client, opts);
+    expect(orch.client).toBe(client);
+    expect(orch.projectName).toBe(opts.projectName);
+    expect(orch.workspaceId).toBe(opts.workspaceId);
+    expect(orch.githubRepo).toBe(opts.githubRepo);
+    expect(orch.branch).toBe(opts.branch);
+    expect(orch.generatedSecrets).toBe(opts.generatedSecrets);
+    expect(orch.publicUrl).toBe(opts.publicUrl);
+    expect(orch.userIntegrations).toBe(opts.userIntegrations);
+    expect(orch.onProgress).toBe(opts.onProgress);
+    expect(orch.awaitPluginConfirmation).toBe(opts.awaitPluginConfirmation);
+  });
+
+  it('uses sensible defaults for optional options', () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, {
+      projectName: 'bigbluebam',
+      githubRepo: 'eddie/bigbluebam',
+      branch: 'main',
+    });
+    expect(orch.workspaceId).toBeNull();
+    expect(orch.publicUrl).toBeNull();
+    expect(orch.userIntegrations).toEqual({});
+    expect(orch.generatedSecrets).toEqual({});
+    expect(orch.awaitPluginConfirmation).toBeNull();
+    expect(typeof orch.onProgress).toBe('function');
+  });
+
+  it('throws when no client is provided', () => {
+    expect(() => new RailwayOrchestrator(null, makeOptions())).toThrow(
+      /RailwayClient/,
+    );
+    expect(() => new RailwayOrchestrator(undefined, makeOptions())).toThrow(
+      /RailwayClient/,
+    );
+  });
+
+  it('throws when projectName is missing', () => {
+    const client = makeFakeClient();
+    expect(
+      () =>
+        new RailwayOrchestrator(client, {
+          githubRepo: 'eddie/bigbluebam',
+          branch: 'main',
+        }),
+    ).toThrow(/projectName/);
+  });
+
+  it('throws when githubRepo is missing', () => {
+    const client = makeFakeClient();
+    expect(
+      () =>
+        new RailwayOrchestrator(client, {
+          projectName: 'bigbluebam',
+          branch: 'main',
+        }),
+    ).toThrow(/githubRepo/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RailwayOrchestrator.run — phase 1: validate
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator.run() — validate phase', () => {
+  it('calls assertSchemaCompatibility and whoami on successful run', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    expect(client.assertSchemaCompatibility).toHaveBeenCalledTimes(1);
+    expect(client.whoami).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws a descriptive error naming missing mutations when schema compat fails', async () => {
+    const client = makeFakeClient({
+      assertSchemaCompatibility: vi
+        .fn()
+        .mockResolvedValue({ ok: false, missing: ['serviceCreate', 'variableCollectionUpsert'] }),
+    });
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await expect(orch.run()).rejects.toThrow(/serviceCreate/);
+    await expect(
+      new RailwayOrchestrator(client, makeOptions()).run(),
+    ).rejects.toThrow(/variableCollectionUpsert/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2: project
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator.run() — project phase', () => {
+  it('reuses an existing project (no createProject call)', async () => {
+    const client = makeFakeClient({
+      findProjectByName: vi.fn().mockResolvedValue({ id: 'prj_existing', name: 'bigbluebam' }),
+      getDefaultEnvironment: vi
+        .fn()
+        .mockResolvedValue({ id: 'env_existing', name: 'production' }),
+    });
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    expect(client.findProjectByName).toHaveBeenCalledWith('bigbluebam');
+    expect(client.createProject).not.toHaveBeenCalled();
+    expect(client.getDefaultEnvironment).toHaveBeenCalledWith('prj_existing');
+    expect(orch.projectId).toBe('prj_existing');
+    expect(orch.defaultEnvironmentId).toBe('env_existing');
+  });
+
+  it('creates a new project if none exists and uses its default environment', async () => {
+    const client = makeFakeClient({
+      findProjectByName: vi.fn().mockResolvedValue(null),
+      createProject: vi.fn().mockResolvedValue({
+        id: 'prj_new',
+        name: 'bigbluebam',
+        defaultEnvironmentId: 'env_new',
+        defaultEnvironmentName: 'production',
+      }),
+    });
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    expect(client.createProject).toHaveBeenCalledTimes(1);
+    expect(client.createProject).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'bigbluebam', workspaceId: 'ws_test' }),
+    );
+    expect(orch.projectId).toBe('prj_new');
+    expect(orch.defaultEnvironmentId).toBe('env_new');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3: plugin prompt
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator.run() — plugin prompt phase', () => {
+  it('calls awaitPluginConfirmation exactly once, after project creation and before services', async () => {
+    const callOrder = [];
+    const await_fn = vi.fn().mockImplementation(async () => {
+      callOrder.push('await');
+    });
+    const client = makeFakeClient({
+      createProject: vi.fn().mockImplementation(async (input) => {
+        callOrder.push('createProject');
+        return {
+          id: 'prj_new',
+          name: input.name,
+          defaultEnvironmentId: 'env_new',
+          defaultEnvironmentName: 'production',
+        };
+      }),
+      createService: vi.fn().mockImplementation(async ({ name }) => {
+        callOrder.push(`createService:${name}`);
+        return { id: `svc_${name}`, name };
+      }),
+    });
+    const orch = new RailwayOrchestrator(
+      client,
+      makeOptions({ awaitPluginConfirmation: await_fn }),
+    );
+    await orch.run();
+    expect(await_fn).toHaveBeenCalledTimes(1);
+    const createProjectIdx = callOrder.indexOf('createProject');
+    const awaitIdx = callOrder.indexOf('await');
+    const firstCreateServiceIdx = callOrder.findIndex((s) => s.startsWith('createService:'));
+    expect(createProjectIdx).toBeGreaterThanOrEqual(0);
+    expect(awaitIdx).toBeGreaterThan(createProjectIdx);
+    expect(firstCreateServiceIdx).toBeGreaterThan(awaitIdx);
+  });
+
+  it('proceeds without throwing when awaitPluginConfirmation is omitted', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(
+      client,
+      makeOptions({ awaitPluginConfirmation: null }),
+    );
+    await expect(orch.run()).resolves.toBeDefined();
+    // services still created
+    expect(client.createService).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4: services
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator.run() — services phase', () => {
+  const expectedPlanCount =
+    getRequiredAppServices().filter((s) => s.name !== 'voice-agent').length +
+    getSelfHostedInfra().length +
+    JOB_SERVICES.length;
+
+  it('calls createService once per service in the deploy plan', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    expect(client.createService).toHaveBeenCalledTimes(expectedPlanCount);
+    // Every call is tagged with the github repo source and branch for dockerfile-based services
+    for (const call of client.createService.mock.calls) {
+      const input = call[0];
+      expect(input.projectId).toBe('prj_test');
+      expect(input.name).toEqual(expect.any(String));
+      expect(input.source).toEqual(expect.objectContaining({ repo: 'eddie/bigbluebam' }));
+      expect(input.branch).toBe('main');
+    }
+  });
+
+  it('calls updateServiceInstance once per service with rootDirectory, dockerfilePath, and policy', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    expect(client.updateServiceInstance).toHaveBeenCalledTimes(expectedPlanCount);
+    for (const call of client.updateServiceInstance.mock.calls) {
+      const input = call[0];
+      expect(input.rootDirectory).toBe('.');
+      expect(input.dockerfilePath).toEqual(expect.any(String));
+      expect(input.environmentId).toBe('env_test');
+      expect(['ON_FAILURE', 'NEVER']).toContain(input.restartPolicyType);
+    }
+  });
+
+  it('calls upsertVariables with resolved env for the api service (includes DATABASE_URL, SESSION_SECRET)', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    const apiCall = client.upsertVariables.mock.calls.find(
+      (call) => call[0].serviceId === 'svc_api',
+    );
+    expect(apiCall).toBeDefined();
+    const [args] = apiCall;
+    expect(args.projectId).toBe('prj_test');
+    expect(args.environmentId).toBe('env_test');
+    expect(args.variables).toEqual(
+      expect.objectContaining({
+        DATABASE_URL: '${{Postgres.DATABASE_URL}}',
+        REDIS_URL: '${{Redis.REDIS_URL}}',
+        SESSION_SECRET: 'sess-secret',
+        INTERNAL_HELPDESK_SECRET: 'helpdesk-secret',
+      }),
+    );
+  });
+
+  it('skips upsertVariables for services with no env vars (site, frontend)', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    const serviceIdsWithVars = client.upsertVariables.mock.calls.map(
+      (call) => call[0].serviceId,
+    );
+    expect(serviceIdsWithVars).not.toContain('svc_site');
+    // frontend's only optional vars (HTTP_PORT, HTTPS_PORT) are kind=note, so SKIP → empty → no call
+    expect(serviceIdsWithVars).not.toContain('svc_frontend');
+  });
+
+  it('configures the migrate job with restartPolicyType: NEVER', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    const migrateCall = client.updateServiceInstance.mock.calls.find(
+      (call) => call[0].serviceId === 'svc_migrate',
+    );
+    expect(migrateCall).toBeDefined();
+    const [input] = migrateCall;
+    expect(input.restartPolicyType).toBe('NEVER');
+    // App services should be ON_FAILURE
+    const apiConfigCall = client.updateServiceInstance.mock.calls.find(
+      (call) => call[0].serviceId === 'svc_api',
+    );
+    expect(apiConfigCall[0].restartPolicyType).toBe('ON_FAILURE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5: deploy trigger
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator.run() — deploy phase', () => {
+  const expectedPlanCount =
+    getRequiredAppServices().filter((s) => s.name !== 'voice-agent').length +
+    getSelfHostedInfra().length +
+    JOB_SERVICES.length;
+
+  it('calls triggerDeploy once per service in the plan', async () => {
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await orch.run();
+    expect(client.triggerDeploy).toHaveBeenCalledTimes(expectedPlanCount);
+    for (const call of client.triggerDeploy.mock.calls) {
+      const input = call[0];
+      expect(input.projectId).toBe('prj_test');
+      expect(input.environmentId).toBe('env_test');
+      expect(input.serviceId).toEqual(expect.stringMatching(/^svc_/));
+    }
+  });
+
+  it('does not reach triggerDeploy when a service configure step fails', async () => {
+    const client = makeFakeClient({
+      updateServiceInstance: vi.fn().mockImplementation(async ({ serviceId }) => {
+        if (serviceId === 'svc_api') throw new Error('config boom');
+        return true;
+      }),
+    });
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await expect(orch.run()).rejects.toThrow(/config boom/);
+    expect(client.triggerDeploy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Error handling
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator.run() — error handling', () => {
+  it('aborts the run when createService throws, skipping later services', async () => {
+    let createCount = 0;
+    const client = makeFakeClient({
+      createService: vi.fn().mockImplementation(async ({ name }) => {
+        createCount += 1;
+        if (createCount === 1) throw new Error('create boom');
+        return { id: `svc_${name}`, name };
+      }),
+    });
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await expect(orch.run()).rejects.toThrow(/create boom/);
+    expect(client.createService).toHaveBeenCalledTimes(1);
+    expect(client.updateServiceInstance).not.toHaveBeenCalled();
+    expect(client.upsertVariables).not.toHaveBeenCalled();
+    expect(client.triggerDeploy).not.toHaveBeenCalled();
+  });
+
+  it('emits an onProgress event with ok:false and the error before throwing', async () => {
+    const onProgress = vi.fn();
+    const client = makeFakeClient({
+      createService: vi.fn().mockRejectedValue(new Error('create boom')),
+    });
+    const orch = new RailwayOrchestrator(client, makeOptions({ onProgress }));
+    await expect(orch.run()).rejects.toThrow(/create boom/);
+    const failureEvent = onProgress.mock.calls
+      .map((c) => c[0])
+      .find((ev) => ev.ok === false);
+    expect(failureEvent).toBeDefined();
+    expect(failureEvent.error).toBeInstanceOf(Error);
+    expect(failureEvent.error.message).toMatch(/create boom/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Done event
+// ---------------------------------------------------------------------------
+
+describe('RailwayOrchestrator.run() — done event', () => {
+  it('emits a final onProgress event with phase: done and a summary', async () => {
+    const onProgress = vi.fn();
+    const client = makeFakeClient();
+    const orch = new RailwayOrchestrator(client, makeOptions({ onProgress }));
+    const result = await orch.run();
+
+    const events = onProgress.mock.calls.map((c) => c[0]);
+    const lastEvent = events[events.length - 1];
+    expect(lastEvent.phase).toBe('done');
+    expect(lastEvent.ok).toBe(true);
+    expect(lastEvent.summary).toEqual(
+      expect.objectContaining({
+        projectId: 'prj_test',
+        environmentId: 'env_test',
+        servicesCreated: expect.any(Number),
+        servicesConfigured: expect.any(Number),
+        servicesDeployed: expect.any(Number),
+      }),
+    );
+    // run() returns the same summary
+    expect(result).toEqual(lastEvent.summary);
+    expect(result.servicesCreated).toBeGreaterThan(0);
+  });
+});
