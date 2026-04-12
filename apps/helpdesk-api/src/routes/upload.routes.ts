@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { env } from '../env.js';
-import { uploadFile, getFileUrl } from '../services/upload.service.js';
+import { uploadFile } from '../services/upload.service.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
 
 const MAX_FILE_SIZE = 26214400; // 25MB

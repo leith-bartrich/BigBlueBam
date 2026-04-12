@@ -1,8 +1,7 @@
-import { eq, and, desc, sql, gte } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   blastCampaigns,
-  blastEngagementEvents,
   blastUnsubscribes,
 } from '../db/schema/index.js';
 

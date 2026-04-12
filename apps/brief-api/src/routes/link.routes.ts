@@ -38,7 +38,6 @@ export default async function linkRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { task_id, link_type } = createTaskLinkSchema.parse(request.body);
-      const doc = (request as any).document ?? { id: request.params.id };
 
       const link = await linkService.createTaskLink(
         request.params.id,

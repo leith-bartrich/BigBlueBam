@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as formService from '../services/form.service.js';
-import { env } from '../env.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 import { enrichForm, loadActor, loadOrg } from '../lib/bolt-enrich.js';
 

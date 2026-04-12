@@ -6,9 +6,7 @@ import {
   boolean,
   timestamp,
   index,
-  check,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 import { organizations, users } from './bbb-refs.js';
 import { bookCalendars } from './book-calendars.js';
 import { bookBookingPages } from './book-booking-pages.js';

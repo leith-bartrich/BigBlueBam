@@ -74,7 +74,7 @@ export default async function trackingRoutes(fastify: FastifyInstance) {
         });
       }
 
-      return reply.redirect(302, redirect_url);
+      return reply.redirect(redirect_url, 302);
     },
   );
 

@@ -6,7 +6,7 @@ import {
   blankSubmissions,
   projectMemberships,
 } from '../db/schema/index.js';
-import { notFound, badRequest, conflict, forbidden } from '../lib/utils.js';
+import { notFound, badRequest, forbidden } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,7 +30,7 @@ export interface CreateFormInput {
 
 export interface UpdateFormInput {
   name?: string;
-  description?: string;
+  description?: string | null;
   slug?: string;
   project_id?: string | null;
   form_type?: string;
@@ -262,7 +262,6 @@ export async function getFormBySlug(slug: string, ctx?: GetFormBySlugContext) {
     const shuffled: typeof fields = [];
     for (const [, pageFields] of [...pages.entries()].sort(([a], [b]) => a - b)) {
       // Separate fixed-position fields from shufflable ones
-      const fixed = pageFields.filter((f) => NON_SHUFFLABLE.includes(f.field_type));
       const moveable = pageFields.filter((f) => !NON_SHUFFLABLE.includes(f.field_type));
       // Fisher-Yates shuffle
       for (let i = moveable.length - 1; i > 0; i--) {
@@ -412,11 +411,10 @@ export async function publishForm(id: string, orgId: string) {
 
   if (fields.length === 0) throw badRequest('Cannot publish a form with no fields');
 
-  const [updated] = await db
+  await db
     .update(blankForms)
     .set({ status: 'published', published_at: new Date(), updated_at: new Date() })
-    .where(eq(blankForms.id, id))
-    .returning();
+    .where(eq(blankForms.id, id));
 
   return getForm(id, orgId);
 }

@@ -1,7 +1,7 @@
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { bookIcalTokens, bookEvents, bookCalendars, bookEventAttendees } from '../db/schema/index.js';
+import { bookIcalTokens, bookEvents, bookCalendars } from '../db/schema/index.js';
 import { notFound } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------

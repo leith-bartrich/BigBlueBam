@@ -18,7 +18,7 @@ export interface CreateSegmentInput {
   name: string;
   description?: string;
   filter_criteria: {
-    conditions: Array<{ field: string; op: string; value: unknown }>;
+    conditions: Array<{ field: string; op: string; value?: unknown }>;
     match: 'all' | 'any';
   };
 }

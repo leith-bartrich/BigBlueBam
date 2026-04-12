@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -35,7 +35,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler(async (error, request, reply) => {
+fastify.setErrorHandler(async (error: FastifyError, request, reply) => {
   if (error.validation) {
     return reply.status(400).send({
       error: {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireScope } from '../plugins/auth.js';
-import { requireMinOrgRole, requireBeaconEditAccess } from '../middleware/authorize.js';
+import { requireBeaconEditAccess } from '../middleware/authorize.js';
 import * as tagService from '../services/tag.service.js';
 
 const addTagsSchema = z.object({

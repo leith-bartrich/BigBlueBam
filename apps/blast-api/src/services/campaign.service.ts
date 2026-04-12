@@ -7,11 +7,8 @@ import {
   blastCampaigns,
   blastSendLog,
   blastEngagementEvents,
-  blastUnsubscribes,
-  bondContacts,
-  blastSegments,
 } from '../db/schema/index.js';
-import { notFound, badRequest, forbidden } from '../lib/utils.js';
+import { notFound, badRequest } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // BullMQ queue for blast:send jobs (producer side only)

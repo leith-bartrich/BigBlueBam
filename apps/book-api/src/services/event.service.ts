@@ -1,6 +1,6 @@
-import { eq, and, gte, lte, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { bookEvents, bookEventAttendees, bookCalendars } from '../db/schema/index.js';
+import { bookEvents, bookEventAttendees } from '../db/schema/index.js';
 import { notFound, badRequest } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ export interface UpdateEventInput {
   title?: string;
   description?: string;
   location?: string;
-  meeting_url?: string;
+  meeting_url?: string | null;
   start_at?: string;
   end_at?: string;
   all_day?: boolean;
@@ -208,7 +208,7 @@ export async function updateEvent(
 // ---------------------------------------------------------------------------
 
 export async function deleteEvent(id: string, orgId: string) {
-  const existing = await getEvent(id, orgId);
+  await getEvent(id, orgId);
 
   // Soft-cancel rather than hard-delete
   const [updated] = await db

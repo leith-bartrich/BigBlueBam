@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { briefEmbeds, briefDocuments } from '../db/schema/index.js';
 

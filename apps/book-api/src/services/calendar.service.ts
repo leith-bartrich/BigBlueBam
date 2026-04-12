@@ -1,4 +1,4 @@
-import { eq, and, or, desc, sql } from 'drizzle-orm';
+import { eq, and, or, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bookCalendars } from '../db/schema/index.js';
 import { notFound, badRequest } from '../lib/utils.js';

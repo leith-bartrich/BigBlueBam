@@ -8,7 +8,6 @@ import {
   index,
   unique,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 import { users, organizations, projects } from './bbb-refs.js';
 
 export const savedQueryScopeEnum = pgEnum('saved_query_scope', [

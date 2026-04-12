@@ -1,4 +1,4 @@
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { beaconTags, beaconEntries } from '../db/schema/index.js';
 

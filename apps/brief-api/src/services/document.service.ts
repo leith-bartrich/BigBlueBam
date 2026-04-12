@@ -3,9 +3,7 @@ import { eq, and, or, sql, asc, desc, gt, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   briefDocuments,
-  briefVersions,
   briefStars,
-  briefCollaborators,
   briefTemplates,
   projectMemberships,
   users,
