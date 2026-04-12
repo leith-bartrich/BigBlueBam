@@ -238,23 +238,38 @@ Optional:
 
 ---
 
+## Choosing a branch to deploy
+
+BigBlueBam uses a two-branch model:
+
+- **`stable`** — the production branch. Every commit has been validated on `main` first and, where possible, exercised against a real deployment. **This is the default** and what you should pick for most deploys.
+- **`main`** — the bleeding-edge integration branch. New features and fixes land here first. Pick `main` only when you specifically want the latest code and can tolerate the occasional rough edge.
+
+The deploy script prompts you once (on the first run) to choose between `stable` and `main`. Your choice is saved in `.deploy-state.json` and reused on subsequent runs. To switch later, re-run with `--reconfigure` and pick the other branch.
+
+Both the Docker Compose and Railway platform adapters honor the choice:
+- **Docker Compose** uses the selected branch for `git fetch origin <branch>` and `git pull origin <branch>` on the upgrade path.
+- **Railway** passes the branch to every service it creates, so Railway auto-rebuilds when commits land on it.
+
+---
+
 ## Updating
 
-**The recommended way to update is to re-run the deploy script.** It detects the existing installation, pulls the latest code, forces a `--no-cache` rebuild of the API image (so new migration files can't be lost to stale build cache or WSL2 file sync), runs the database migrations explicitly, and restarts services:
+**The recommended way to update is to re-run the deploy script.** It detects the existing installation, checks for new commits on your chosen branch (default: `stable`), forces a `--no-cache` rebuild of the API image (so new migration files can't be lost to stale build cache or WSL2 file sync), runs the database migrations explicitly, and restarts services:
 
 ```bash
 ./scripts/deploy.sh  # or deploy.ps1 on Windows
 ```
 
-That's it — you don't need to `git pull` first; the script will offer to do it for you and report how many commits you're behind.
+That's it — you don't need to `git pull` first; the script will offer to do it for you and report how many commits you're behind on the tracked branch.
 
 ### Updating manually
 
-If you'd rather drive the update by hand, the sequence below matches what the deploy script does and avoids two traps that have bitten the project in the past (see [Migration failures](#migration-failures) for context):
+If you'd rather drive the update by hand, the sequence below matches what the deploy script does and avoids two traps that have bitten the project in the past (see [Migration failures](#migration-failures) for context). Substitute `stable` with `main` if you're on the bleeding-edge branch:
 
 ```bash
-# 1. Pull the new code
-git pull origin main
+# 1. Pull the new code (default: stable — swap for main if you opted in)
+git pull origin stable
 
 # 2. Force a no-cache rebuild of the api image
 #    (defeats stale build cache that can drop new migration files silently)

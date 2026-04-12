@@ -256,25 +256,20 @@ function detectGithubRepo() {
 }
 
 /**
- * Detect the current git branch. Defaults to 'main' on failure.
- */
-function detectGitBranch() {
-  try {
-    const b = execSync('git rev-parse --abbrev-ref HEAD', { stdio: 'pipe', encoding: 'utf8' }).trim();
-    if (b && b !== 'HEAD') return b;
-  } catch {
-    // fall through
-  }
-  return 'main';
-}
-
-/**
  * Provision the full BigBlueBam stack on Railway: validate the PAT, create
  * (or reuse) the project, prompt once for the managed Postgres + Redis
  * plugins, then create and configure every service via Railway's public
  * GraphQL API and trigger the initial deploys.
+ *
+ * @param {object} envConfig - Resolved env config from main.mjs
+ * @param {object} [options]
+ * @param {string} [options.branch='stable'] - Git branch Railway should
+ *   track for every service created by the orchestrator. Operator is
+ *   prompted in main.mjs and the choice is saved in `.deploy-state.json`
+ *   so subsequent runs offer to reuse it. Defaults to `stable` — the
+ *   validated production branch. Choose `main` for bleeding-edge deploys.
  */
-async function deploy(envConfig) {
+async function deploy(envConfig, { branch = 'stable' } = {}) {
   printWelcomeBanner();
 
   // 1. Get a validated RailwayClient — reuse the one checkPrerequisites
@@ -314,7 +309,6 @@ async function deploy(envConfig) {
   }
   console.log(`  ${check} GitHub repo: ${githubRepo}`);
 
-  const branch = detectGitBranch();
   console.log(`  ${check} Branch: ${branch}`);
   console.log('');
 

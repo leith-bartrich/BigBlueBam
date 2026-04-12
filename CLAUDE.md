@@ -207,6 +207,17 @@ docker compose logs --tail=50 <affected-api> 2>&1 | grep -iE "column.*does not e
 
 If you see `PostgresError: column "X" does not exist` (SQLSTATE `42703`), you have drift — not a query bug, not a filter bug, not an org-scoping bug. Fix the drift first, then see if the symptom remains.
 
+## Branch model
+
+BigBlueBam uses a two-branch model for deployments:
+
+- **`stable`** — the production branch. Every commit here has been validated on `main` first and, where possible, exercised against a real deployment. This is the **default** branch for `./scripts/deploy.sh` and the branch you should normally merge feature work into (via `main` → `stable` promotion). Treat it as protected — no direct pushes of unvalidated work.
+- **`main`** — the bleeding-edge integration branch. New features land here first. Most development PRs target `main`. A separate promotion step (a merge commit from `main` to `stable`) happens when work is judged production-ready.
+
+When `./scripts/deploy.sh` runs, it prompts the operator to choose between `stable` and `main` (default `stable`). The choice is persisted in `.deploy-state.json` and re-used on subsequent runs. Both the Docker Compose and Railway adapters honor it. See `scripts/deploy/shared/branch-select.mjs` for the prompt + `scripts/deploy/main.mjs` for how it's threaded through to the platform adapters.
+
+Day-to-day development: work on feature branches off `main`, merge to `main` via PR, then promote `main` → `stable` when the change is production-ready (typically fast-forward or a `--ff-only` merge to avoid extra merge noise on `stable`).
+
 ## Common Commands
 
 ```bash

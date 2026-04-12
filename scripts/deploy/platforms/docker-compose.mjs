@@ -158,8 +158,16 @@ function writeEnvFile(envConfig) {
 
 /**
  * Build and start the full stack.
+ *
+ * @param {object} envConfig - Resolved env config from main.mjs
+ * @param {object} [options]
+ * @param {string} [options.branch='stable'] - Git branch to track for updates.
+ *   Operator is prompted in main.mjs and the choice is saved in
+ *   `.deploy-state.json` so subsequent runs offer to reuse it. Defaults to
+ *   `stable` — the validated production branch. Choose `main` for bleeding-
+ *   edge deploys that may be unstable.
  */
-async function deploy(envConfig) {
+async function deploy(envConfig, { branch = 'stable' } = {}) {
   const dc = composeCmd();
 
   // 1. Write .env
@@ -170,28 +178,28 @@ async function deploy(envConfig) {
   // Check for updates if this is an existing installation
   const isUpgrade = fs.existsSync(path.resolve(process.cwd(), '.deploy-state.json'));
   if (isUpgrade) {
-    console.log('\nChecking for updates...');
+    console.log(`\nChecking for updates on ${bold(branch)}...`);
     try {
-      execSync('git fetch origin main', { stdio: 'pipe', timeout: 15000 });
-      const behind = execSync('git rev-list HEAD..origin/main --count', { stdio: 'pipe', encoding: 'utf8' }).trim();
+      execSync(`git fetch origin ${branch}`, { stdio: 'pipe', timeout: 15000 });
+      const behind = execSync(`git rev-list HEAD..origin/${branch} --count`, { stdio: 'pipe', encoding: 'utf8' }).trim();
 
       if (behind !== '0') {
-        console.log(`\n${yellow(`${behind} new commit(s) available on main.`)}\n`);
+        console.log(`\n${yellow(`${behind} new commit(s) available on ${branch}.`)}\n`);
         try {
-          const log = execSync('git log HEAD..origin/main --oneline --max-count=10', { stdio: 'pipe', encoding: 'utf8' }).trim();
+          const log = execSync(`git log HEAD..origin/${branch} --oneline --max-count=10`, { stdio: 'pipe', encoding: 'utf8' }).trim();
           console.log(dim(log));
           console.log('');
         } catch {}
 
         if (await confirm('Pull updates before rebuilding?', true)) {
-          execSync('git pull origin main', { stdio: 'inherit' });
+          execSync(`git pull origin ${branch}`, { stdio: 'inherit' });
           console.log(`${check} Code updated.\n`);
         }
       } else {
         console.log(`${check} Already up to date.\n`);
       }
     } catch {
-      console.log(dim('  Could not check for updates (no git or no network).\n'));
+      console.log(dim(`  Could not check for updates on ${branch} (no git or no network).\n`));
     }
   }
 

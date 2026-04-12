@@ -6,6 +6,7 @@
 import { banner, select, confirm, ask } from './shared/prompt.mjs';
 import { loadState, saveState, isPhaseComplete, markPhaseComplete, resetState } from './shared/state.mjs';
 import { checkSharedPrerequisites } from './shared/prerequisites.mjs';
+import { chooseDeployBranch } from './shared/branch-select.mjs';
 import {
   generateSecrets,
   promptStorageChoice,
@@ -66,6 +67,24 @@ async function main() {
     })));
     platform = PLATFORMS.find((p) => p.name === choice);
     state.platform = choice;
+    saveState(state);
+  }
+
+  // --- Phase 1b: Branch selection ---
+  //
+  // BigBlueBam uses a two-branch model: `stable` for production deploys
+  // (validated on main first) and `main` for bleeding-edge. Ask once here
+  // and save the choice to state; subsequent runs offer to reuse it.
+  let branch;
+  if (state.branch && !process.argv.includes('--reconfigure')) {
+    if (await confirm(`Continue deploying ${bold(state.branch)}?`, true)) {
+      branch = state.branch;
+    }
+  }
+  if (!branch) {
+    console.log('');
+    branch = await chooseDeployBranch({ previous: state.branch });
+    state.branch = branch;
     saveState(state);
   }
 
@@ -156,7 +175,7 @@ async function main() {
     console.log(`${bold('Step 5: Build and launch')}\n`);
 
     if (await confirm('Ready to build and start all services?', true)) {
-      const healthy = await platform.deploy(envConfig);
+      const healthy = await platform.deploy(envConfig, { branch });
       if (healthy) {
         markPhaseComplete(state, 'deploy');
         saveState(state);
@@ -171,7 +190,7 @@ async function main() {
   } else {
     console.log(`${check} Services were already deployed.`);
     if (await confirm('Redeploy?', false)) {
-      await platform.deploy(envConfig);
+      await platform.deploy(envConfig, { branch });
     } else {
       console.log(dim('  Skipping deployment.\n'));
     }

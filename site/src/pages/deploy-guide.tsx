@@ -615,11 +615,38 @@ Verifying login... ✓`}</CodeBlock>
               </p>
             </FaqItem>
 
+            <FaqItem q="Which branch should I deploy?">
+              <p>
+                BigBlueBam uses a two-branch model:
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>
+                  <strong><code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">stable</code></strong>{' '}
+                  — the production branch. Every commit has been validated on{' '}
+                  <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">main</code> first.{' '}
+                  <strong>This is the default.</strong> Pick it unless you specifically want the latest unreleased code.
+                </li>
+                <li>
+                  <strong><code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">main</code></strong>{' '}
+                  — the bleeding-edge integration branch. New features and fixes land here first. Choose this only if you're comfortable with the occasional rough edge.
+                </li>
+              </ul>
+              <p className="mt-2">
+                The deploy script prompts you once (on the first run) to choose between the two.
+                Your choice is saved in{' '}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">.deploy-state.json</code>{' '}
+                and reused on subsequent runs. To switch later, re-run with{' '}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">--reconfigure</code>.
+              </p>
+            </FaqItem>
+
             <FaqItem q="How do I update to a new version?">
               <p>
                 The easiest way is to re-run the deploy script. It detects the existing
-                installation, pulls the latest code, forces a no-cache rebuild of the API image,
-                runs migrations explicitly, and restarts services:
+                installation, checks your chosen branch (default{' '}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">stable</code>) for new
+                commits, forces a no-cache rebuild of the API image, runs migrations explicitly,
+                and restarts services:
               </p>
               <div className="mt-2">
                 <CodeBlock>{`./scripts/deploy.sh   # or deploy.ps1 on Windows`}</CodeBlock>
@@ -630,10 +657,12 @@ Verifying login... ✓`}</CodeBlock>
                 is <em>not</em> enough on an existing stack, because the{' '}
                 <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">migrate</code> sidecar
                 is cached as <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">service_completed_successfully</code>{' '}
-                and won't re-run, and the build cache can silently drop new migration files:
+                and won't re-run, and the build cache can silently drop new migration files.
+                Substitute <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">stable</code>{' '}
+                with <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">main</code> if you opted into the bleeding-edge branch:
               </p>
               <div className="mt-2">
-                <CodeBlock>{`git pull origin main
+                <CodeBlock>{`git pull origin stable
 docker compose build --no-cache api
 docker compose up -d postgres
 docker compose run --rm migrate
