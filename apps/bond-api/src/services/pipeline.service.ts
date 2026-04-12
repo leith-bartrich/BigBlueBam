@@ -1,4 +1,4 @@
-import { eq, and, sql, asc } from 'drizzle-orm';
+import { eq, and, sql, asc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bondPipelines, bondPipelineStages, bondDeals } from '../db/schema/index.js';
 import { notFound, conflict } from '../lib/utils.js';
@@ -51,7 +51,7 @@ export async function listPipelines(orgId: string) {
   const stages = await db
     .select()
     .from(bondPipelineStages)
-    .where(sql`${bondPipelineStages.pipeline_id} = ANY(${pipelineIds})`)
+    .where(inArray(bondPipelineStages.pipeline_id, pipelineIds))
     .orderBy(asc(bondPipelineStages.sort_order));
 
   const stagesByPipeline = new Map<string, typeof stages>();
