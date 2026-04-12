@@ -7,7 +7,9 @@ import {
   type KeyboardEvent,
   type ChangeEvent,
   type InputHTMLAttributes,
+  type CSSProperties,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { TemplateSuggestion } from '@/hooks/use-template-suggestions';
 import { cn } from '@/lib/utils';
 
@@ -103,6 +105,66 @@ const CATEGORY_COLOR: Record<TemplateSuggestion['category'], string> = {
   step: 'text-green-600 dark:text-green-400',
 };
 
+// ─── Viewport-aware popup positioning ────────────────────────────────
+//
+// The suggestion popup is rendered via a React portal into document.body so
+// it can escape any `overflow: hidden` / scroll containers above the input
+// (the action editor lives inside several scroll containers — without the
+// portal, items past the container edge get clipped). Position is computed
+// from the input's bounding rect each time the popup opens and on every
+// scroll / resize while it's open. The popup flips above the input when
+// there's more vertical room up than down, and its max-height is capped to
+// the available space minus a small margin so the bottom never overflows.
+
+interface PopupPosition extends CSSProperties {
+  position: 'fixed';
+  left: string;
+  width: string;
+  maxHeight: string;
+  // Exactly one of these is set per render — the other defaults to 'auto'.
+  top?: string;
+  bottom?: string;
+}
+
+function computePopupPosition(input: HTMLInputElement): PopupPosition {
+  const rect = input.getBoundingClientRect();
+  const margin = 8;          // breathing room from the viewport edge
+  const minHeight = 120;     // never collapse smaller than this
+  const minWidth = 320;      // narrow inputs (parameter values) still get a readable popup
+  const gap = 4;             // vertical gap between input and popup
+
+  const spaceBelow = window.innerHeight - rect.bottom - margin;
+  const spaceAbove = rect.top - margin;
+
+  // Place below by default; flip above only if there's noticeably more room
+  // up there. The bias prevents flickery flips when both sides are similar.
+  const placeBelow = spaceBelow >= minHeight || spaceBelow + 40 >= spaceAbove;
+  const availableHeight = placeBelow ? spaceBelow - gap : spaceAbove - gap;
+  const maxHeight = Math.max(minHeight, availableHeight);
+
+  // Width matches the input but is at least minWidth — and we never let the
+  // right edge run off the viewport.
+  const popupWidth = Math.max(rect.width, minWidth);
+  let left = rect.left;
+  if (left + popupWidth > window.innerWidth - margin) {
+    left = window.innerWidth - popupWidth - margin;
+  }
+  if (left < margin) left = margin;
+
+  const base: PopupPosition = {
+    position: 'fixed',
+    left: `${left}px`,
+    width: `${popupWidth}px`,
+    maxHeight: `${maxHeight}px`,
+  };
+  if (placeBelow) {
+    base.top = `${rect.bottom + gap}px`;
+  } else {
+    base.bottom = `${window.innerHeight - rect.top + gap}px`;
+  }
+  return base;
+}
+
 export function TemplateInput({
   value,
   onChange,
@@ -115,6 +177,7 @@ export function TemplateInput({
   const [caret, setCaret] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [popupStyle, setPopupStyle] = useState<PopupPosition | null>(null);
 
   // Derive whether we're currently inside an open {{ ... and what's typed so
   // far. If not inside a template, the popup stays hidden.
@@ -134,6 +197,30 @@ export function TemplateInput({
   }, [filtered.length, highlight]);
 
   const showPopup = isOpen && openTemplate !== null && filtered.length > 0;
+
+  // Recompute the popup's fixed position whenever it opens, on scroll inside
+  // any ancestor (capture: true catches all scroll events that bubble or
+  // not), and on window resize. We don't bother with a ResizeObserver on the
+  // input because the parent layout is form-based and rarely resizes
+  // independently of the window.
+  useEffect(() => {
+    if (!showPopup) {
+      setPopupStyle(null);
+      return;
+    }
+    const update = () => {
+      if (inputRef.current) {
+        setPopupStyle(computePopupPosition(inputRef.current));
+      }
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [showPopup]);
 
   const applySuggestion = useCallback(
     (path: string) => {
@@ -216,11 +303,15 @@ export function TemplateInput({
         className={className}
       />
 
-      {showPopup && (
-        <div className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-auto rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg">
-          <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
+      {showPopup && popupStyle && createPortal(
+        <div
+          style={popupStyle}
+          className="z-[9999] flex flex-col overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg"
+        >
+          <div className="shrink-0 px-3 py-1.5 text-[10px] uppercase tracking-wider text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
             Template suggestions — ↑↓ select, Enter to insert, Esc to dismiss
           </div>
+          <div className="flex-1 overflow-y-auto">
           {filtered.map((s, idx) => (
             <button
               key={s.path}
@@ -252,7 +343,9 @@ export function TemplateInput({
               </span>
             </button>
           ))}
-        </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
