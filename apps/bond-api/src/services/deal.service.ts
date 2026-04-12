@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, inArray, gte, lte, isNull, ilike } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, gte, lte, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bondDeals,
@@ -68,7 +68,7 @@ export interface UpdateDealInput {
   expected_close_date?: string;
   probability_pct?: number;
   owner_id?: string;
-  company_id?: string;
+  company_id?: string | null;
   custom_fields?: Record<string, unknown>;
 }
 
@@ -1070,4 +1070,41 @@ export async function getDealStageHistory(dealId: string, orgId: string) {
     .from(bondDealStageHistory)
     .where(eq(bondDealStageHistory.deal_id, dealId))
     .orderBy(desc(bondDealStageHistory.changed_at));
+}
+
+// ---------------------------------------------------------------------------
+// Detect stale deals (BullMQ job surface)
+// ---------------------------------------------------------------------------
+//
+// Returns open deals whose time-in-stage has exceeded their stage's
+// `rotting_days` threshold. This is the worker-facing detector used by the
+// stale-deals BullMQ job: it returns a flat array of deal rows enriched with
+// `stage_name`, `rotting_days`, and a computed `days_in_stage` so the job can
+// emit per-deal notifications without re-querying.
+//
+// NOTE: do NOT collapse this with `analyticsService.staleDeals` in
+// analytics.service.ts. That function powers the HTTP endpoint
+// `GET /bond/api/analytics/stale-deals`, the MCP tool `bond_get_stale_deals`,
+// and the dashboard widget — it returns a `{ stale_deals, count }` envelope
+// with a slimmer projection. The two are intentionally separate surfaces.
+export async function detectStaleDeals(orgId: string) {
+  const rows = await db.execute(sql`
+    SELECT
+      d.*,
+      s.name AS stage_name,
+      s.rotting_days AS rotting_days,
+      FLOOR(EXTRACT(EPOCH FROM (NOW() - d.stage_entered_at)) / 86400)::int AS days_in_stage
+    FROM bond_deals d
+    INNER JOIN bond_pipeline_stages s ON s.id = d.stage_id
+    WHERE d.organization_id = ${orgId}
+      AND d.closed_at IS NULL
+      AND s.rotting_days IS NOT NULL
+      AND EXTRACT(EPOCH FROM (NOW() - d.stage_entered_at)) / 86400 > s.rotting_days
+    ORDER BY days_in_stage DESC
+  `);
+
+  // drizzle's db.execute returns the raw driver result; in tests it is mocked
+  // as a plain array. In production (postgres-js / node-postgres) it is also
+  // an array-like of row objects, so this normalises both.
+  return Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []);
 }

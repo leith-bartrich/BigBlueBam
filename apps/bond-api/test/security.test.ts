@@ -36,6 +36,7 @@ vi.mock('../src/env.js', () => ({
     RATE_LIMIT_WINDOW_MS: 60000,
     BBB_API_INTERNAL_URL: 'http://api:4000',
     COOKIE_SECURE: false,
+    PUBLIC_URL: 'http://localhost',
   },
 }));
 
@@ -47,7 +48,8 @@ function chainable(result: unknown[]) {
   const obj: any = {};
   obj.then = (resolve: Function, reject?: Function) =>
     Promise.resolve(result).then(resolve as any, reject as any);
-  obj.limit = vi.fn().mockResolvedValue(result);
+  obj.limit = vi.fn().mockReturnValue(obj);
+  obj.offset = vi.fn().mockResolvedValue(result);
   obj.returning = vi.fn().mockResolvedValue(result);
   obj.from = vi.fn().mockReturnValue(obj);
   obj.where = vi.fn().mockReturnValue(obj);
@@ -79,7 +81,7 @@ describe('ILIKE injection prevention', () => {
   let escapeLike: (s: string) => string;
 
   beforeEach(async () => {
-    const mod = await import('../src/services/contact.service.js');
+    const mod = await import('../src/lib/utils.js');
     escapeLike = mod.escapeLike;
   });
 
@@ -123,11 +125,12 @@ describe('cross-org contact isolation', () => {
     getContact = mod.getContact;
   });
 
-  it('should return null when contact belongs to different org', async () => {
+  it('should throw NOT_FOUND when contact belongs to different org', async () => {
+    const { BondError } = await import('../src/lib/utils.js');
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getContact(CONTACT_ID, ORG_ID_2);
-    expect(result).toBeNull();
+    await expect(getContact(CONTACT_ID, ORG_ID_2)).rejects.toThrow(BondError);
+    await expect(getContact(CONTACT_ID, ORG_ID_2)).rejects.toThrow('Contact not found');
   });
 });
 
@@ -145,11 +148,12 @@ describe('cross-org deal isolation', () => {
     getDeal = mod.getDeal;
   });
 
-  it('should return null when deal belongs to different org', async () => {
+  it('should throw NOT_FOUND when deal belongs to different org', async () => {
+    const { BondError } = await import('../src/lib/utils.js');
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getDeal(DEAL_ID, ORG_ID_2);
-    expect(result).toBeNull();
+    await expect(getDeal(DEAL_ID, ORG_ID_2)).rejects.toThrow(BondError);
+    await expect(getDeal(DEAL_ID, ORG_ID_2)).rejects.toThrow('Deal not found');
   });
 });
 
@@ -167,11 +171,12 @@ describe('cross-org pipeline isolation', () => {
     getPipeline = mod.getPipeline;
   });
 
-  it('should return null when pipeline belongs to different org', async () => {
+  it('should throw NOT_FOUND when pipeline belongs to different org', async () => {
+    const { BondError } = await import('../src/lib/utils.js');
     mockSelect.mockReturnValue(chainable([]));
 
-    const result = await getPipeline(PIPELINE_ID, ORG_ID_2);
-    expect(result).toBeNull();
+    await expect(getPipeline(PIPELINE_ID, ORG_ID_2)).rejects.toThrow(BondError);
+    await expect(getPipeline(PIPELINE_ID, ORG_ID_2)).rejects.toThrow('Pipeline not found');
   });
 });
 
@@ -181,28 +186,28 @@ describe('cross-org pipeline isolation', () => {
 
 describe('error message sanitization', () => {
   it('BondError should not expose internal database details', async () => {
-    const { BondError } = await import('../src/services/contact.service.js');
+    const { BondError } = await import('../src/lib/utils.js');
 
-    const error = new BondError('NOT_FOUND', 'Contact not found', 404);
+    const error = new BondError(404, 'NOT_FOUND', 'Contact not found');
     expect(error.message).not.toContain('SELECT');
     expect(error.message).not.toContain('postgres');
     expect(error.message).not.toContain('SQL');
     expect(error.message).toBe('Contact not found');
   });
 
-  it('DealError should not expose internal details', async () => {
-    const { DealError } = await import('../src/services/deal.service.js');
+  it('BondError (deal context) should not expose internal details', async () => {
+    const { BondError } = await import('../src/lib/utils.js');
 
-    const error = new DealError('NOT_FOUND', 'Deal not found', 404);
+    const error = new BondError(404, 'NOT_FOUND', 'Deal not found');
     expect(error.message).not.toContain('SELECT');
     expect(error.message).not.toContain('postgres');
     expect(error.message).toBe('Deal not found');
   });
 
-  it('PipelineError should not expose internal details', async () => {
-    const { PipelineError } = await import('../src/services/pipeline.service.js');
+  it('BondError (pipeline context) should not expose internal details', async () => {
+    const { BondError } = await import('../src/lib/utils.js');
 
-    const error = new PipelineError('NOT_FOUND', 'Pipeline not found', 404);
+    const error = new BondError(404, 'NOT_FOUND', 'Pipeline not found');
     expect(error.message).not.toContain('SELECT');
     expect(error.message).not.toContain('postgres');
     expect(error.message).toBe('Pipeline not found');

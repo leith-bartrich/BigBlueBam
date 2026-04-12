@@ -8,7 +8,7 @@ import {
   bondDeals,
   bondActivities,
 } from '../db/schema/index.js';
-import { escapeLike, notFound, badRequest, conflict } from '../lib/utils.js';
+import { escapeLike, notFound, badRequest } from '../lib/utils.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 import {
   loadActor,

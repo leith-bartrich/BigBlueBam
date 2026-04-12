@@ -18,6 +18,7 @@ import { processBearingRecomputeJob, type BearingRecomputeJobData } from './jobs
 import { processBearingDigestJob, type BearingDigestJobData } from './jobs/bearing-digest.job.js';
 import { processBoltExecuteJob, type BoltExecuteJobData } from './jobs/bolt-execute.job.js';
 import { processBlastSendJob, type BlastSendJobData } from './jobs/blast-send.job.js';
+import { processBondStaleDealsJob, type BondStaleDealsJobData } from './jobs/bond-stale-deals.job.js';
 
 const env = loadEnv();
 
@@ -299,6 +300,32 @@ blastSendWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'blast-send', err }, 'Job failed');
 });
 
+// Bond stale-deals worker (daily cron — detects rotting deals and emits bolt events)
+const bondStaleDealsWorker = new Worker<BondStaleDealsJobData>(
+  'bond-stale-deals',
+  async (job: Job<BondStaleDealsJobData>) => {
+    await processBondStaleDealsJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+
+bondStaleDealsWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bond-stale-deals' }, 'Job completed');
+});
+
+bondStaleDealsWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bond-stale-deals', err }, 'Job failed');
+});
+
+// Schedule bond stale-deals sweep as a daily repeatable job at 02:00 UTC
+// (offset from beacon-expiry-sweep @ 03:00 and bearing-snapshot @ 00:00)
+const bondStaleDealsQueue = new Queue('bond-stale-deals', { connection: redis });
+bondStaleDealsQueue.upsertJobScheduler(
+  'bond-stale-deals-daily',
+  { pattern: '0 2 * * *' }, // 2 AM daily
+  { name: 'daily-sweep', data: {} },
+).catch((err) => logger.error({ err }, 'Failed to register bond stale-deals scheduler'));
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -320,10 +347,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, boltExecuteWorker, blastSendWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, boltExecuteWorker, blastSendWorker, bondStaleDealsWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt-execute', 'blast-send', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt-execute', 'blast-send', 'bond-stale-deals', 'analytics'] },
   'All workers started',
 );
 

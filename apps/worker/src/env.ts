@@ -11,6 +11,8 @@ const envSchema = z.object({
   TRACKING_BASE_URL: z.string().default('http://localhost'),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  BOLT_API_INTERNAL_URL: z.string().url().default('http://bolt-api:4006'),
+  INTERNAL_SERVICE_SECRET: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

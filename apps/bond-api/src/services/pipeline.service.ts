@@ -1,7 +1,7 @@
 import { eq, and, sql, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bondPipelines, bondPipelineStages, bondDeals } from '../db/schema/index.js';
-import { notFound, badRequest, conflict } from '../lib/utils.js';
+import { notFound, conflict } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // Types

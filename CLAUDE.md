@@ -29,7 +29,7 @@ apps/
   banter-api/   — Banter Fastify REST API + WebSocket (internal :4002, proxied at /banter/api/) — 15 route files, 18 schema tables, ~45 source files
   banter/       — Banter React SPA served by nginx at /banter/ — ~39 source files, 7 pages, 14 components (BETA)
   mcp-server/   — MCP protocol server (internal :3001, proxied at /mcp/) — 238 tools (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond + 14 Blast + 9 Bench), 10+ resources, 8 prompts, 21 tool modules
-  worker/       — BullMQ background job processor (no exposed port) — 6 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention)
+  worker/       — BullMQ background job processor (no exposed port) — 15 job handlers (email, notification, export, sprint-close, banter-notification, banter-retention, bond-stale-deals, …)
   helpdesk-api/ — Helpdesk Fastify API (internal :4001, proxied at /helpdesk/api/)
   helpdesk/     — Helpdesk React SPA served by nginx at /helpdesk/
   beacon-api/   — Beacon Fastify API (internal :4004, proxied at /beacon/api/) — knowledge base, search, graph, policies
@@ -104,6 +104,21 @@ Application containers (api, banter-api, beacon-api, brief-api, bolt-api, bearin
 - Only target what changed: `docker compose build frontend && docker compose up -d --force-recreate frontend`
 
 The test database contains seeded projects, users, tickets, and conversations that are time-consuming to recreate.
+
+## IMPORTANT: "Pre-existing" is not a dismissal
+
+When running `typecheck`, `test`, `lint`, `db:check`, or any other verification and you encounter errors/warnings/failures that already existed before your current task, **do not wave them away** with "all remaining errors are pre-existing" or "not a regression from this work." The fact that an error existed already is not a reason to leave it alone — it is a reason it has been festering, and every pass that ignores it lets it rot further.
+
+When you find pre-existing issues during a task:
+
+1. **Always record them.** Add each one as a task via `TaskCreate` with enough detail (file, line, exact error message, rough hypothesis) that you or a future agent can pick it up without reconstruction. If you're running under a human's supervision, surface them in your response — do not bury them.
+2. **Fix them if the fix is small and obviously safe** (unused imports, missing type narrowing, straightforward `null` vs `undefined` mismatches). Touch nothing beyond the minimum needed and mention what you fixed.
+3. **If a fix is non-trivial** (would expand scope, change behavior, or requires design decisions), leave it in the task list and flag it loudly in your final response. Non-trivial fixes still get recorded — they just don't get silently bundled into the current PR.
+4. **Never report a "clean" build when errors remain.** If `tsc --noEmit` exits non-zero, the build is not clean. Say "N errors remain, M are pre-existing and now tracked in tasks X/Y/Z, K are from this work and fixed in commit abc123" rather than "typecheck is clean modulo pre-existing noise."
+
+This rule applies to all verification commands, not just typecheck. Pre-existing test failures, pre-existing lint warnings, pre-existing `db:check` drift, pre-existing CI job failures — record and investigate all of them.
+
+The cost of tracking an existing error is a one-line TaskCreate call. The cost of dismissing it is that it will still be there six months from now, and every future change has to navigate around it.
 
 ## Database Schema & Migrations
 
@@ -255,6 +270,7 @@ pnpm --filter @bigbluebam/banter test        # Banter frontend component tests (
 - **WebSocket realtime** uses Redis PubSub for cross-instance broadcasting; rooms are scoped to org, project, and user levels.
 - **Keyboard shortcuts** and a **command palette** (Cmd+K) are built into the frontend for power-user navigation.
 - **User and member management** is consolidated at `/b3/people` (org admins/owners) and `/b3/superuser/people` (platform SuperUsers) — not under Settings — with tabbed user-detail pages covering profile, projects, access (API keys/sessions/passwords), and activity.
+- **Bond stale-deal detection** runs as a daily 2 AM UTC worker job that finds deals where `days_in_stage > rotting_days` and emits `bond.deal.rotting` events to Bolt ingest; `bond_deals.rotting_alerted_at` is the per-stage-entry idempotency marker (reset naturally when `stage_entered_at` changes).
 
 ## Error Response Envelope
 

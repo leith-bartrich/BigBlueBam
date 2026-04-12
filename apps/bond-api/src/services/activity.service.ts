@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, inArray } from 'drizzle-orm';
+import { eq, and, sql, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bondActivities, bondDeals, bondContacts, bondCompanies } from '../db/schema/index.js';
 import { notFound } from '../lib/utils.js';
@@ -18,25 +18,6 @@ import {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-const VALID_ACTIVITY_TYPES = [
-  'note',
-  'email_sent',
-  'email_received',
-  'call',
-  'meeting',
-  'task',
-  'stage_change',
-  'deal_created',
-  'deal_won',
-  'deal_lost',
-  'contact_created',
-  'form_submission',
-  'campaign_sent',
-  'campaign_opened',
-  'campaign_clicked',
-  'custom',
-] as const;
 
 export interface ActivityFilters {
   organization_id: string;
