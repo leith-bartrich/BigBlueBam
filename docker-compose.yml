@@ -287,6 +287,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BBB_API_INTERNAL_URL: http://api:4000
       INTERNAL_HELPDESK_SECRET: ${INTERNAL_HELPDESK_SECRET:?INTERNAL_HELPDESK_SECRET is required}
+      # BAM-RL-E2E: opt-in flag to multiply the global rate limit ceiling for
+      # parallel e2e runs. Leave unset on real production deployments.
+      BBB_E2E_PERMISSIVE_RATE_LIMIT: ${BBB_E2E_PERMISSIVE_RATE_LIMIT:-}
+      RATE_LIMIT_E2E_MULTIPLIER: ${RATE_LIMIT_E2E_MULTIPLIER:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4001/health"]
       interval: 15s
