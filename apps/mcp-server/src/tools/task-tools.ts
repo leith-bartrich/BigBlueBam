@@ -230,7 +230,7 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
       };
     },
-  );
+  });
 
   registerTool(server, {
     name: 'get_task',

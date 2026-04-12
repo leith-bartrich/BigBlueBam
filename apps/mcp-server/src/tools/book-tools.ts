@@ -1,3 +1,4 @@
+import { registerTool } from '../lib/register-tool.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
@@ -127,30 +128,44 @@ function buildQs(params: Record<string, unknown>): string {
   return qs ? `?${qs}` : '';
 }
 
+const eventShape = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  start_at: z.string(),
+  end_at: z.string(),
+  calendar_id: z.string().uuid().optional(),
+  status: z.string().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
+const slotShape = z.object({ start: z.string(), end: z.string() });
+
 export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl: string): void {
   const client = createBookClient(bookApiUrl, api);
 
   // ===== 1. book_list_events =====
-  server.tool(
-    'book_list_events',
-    'List calendar events in a date range, optionally filtered by calendar IDs.',
-    {
+  registerTool(server, {
+    name: 'book_list_events',
+    description: 'List calendar events in a date range, optionally filtered by calendar IDs.',
+    input: {
       start_after: z.string().describe('ISO 8601 date — events ending after this time'),
       start_before: z.string().describe('ISO 8601 date — events starting before this time'),
       calendar_ids: z.string().optional().describe('Comma-separated calendar UUIDs'),
       limit: z.number().int().positive().max(500).optional().describe('Page size (default 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(eventShape) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/events${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing events', result.data);
     },
-  );
+  });
 
   // ===== 2. book_create_event =====
-  server.tool(
-    'book_create_event',
-    'Create a calendar event with optional attendees. `calendar_id` accepts either a UUID or a calendar name (case-insensitive). Each attendee `user_id` accepts either a UUID or an email address.',
-    {
+  registerTool(server, {
+    name: 'book_create_event',
+    description: 'Create a calendar event with optional attendees. `calendar_id` accepts either a UUID or a calendar name (case-insensitive). Each attendee `user_id` accepts either a UUID or an email address.',
+    input: {
       calendar_id: z.string().describe('Calendar UUID or name to create the event in'),
       title: z.string().min(1).max(500).describe('Event title'),
       start_at: z.string().describe('ISO 8601 start time'),
@@ -165,7 +180,8 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
         user_id: z.string().optional().describe('User UUID or email (falls back to the attendee email)'),
       })).optional().describe('List of attendees'),
     },
-    async (params) => {
+    returns: eventShape,
+    handler: async (params) => {
       const resolvedCalendarId = await resolveCalendarId(client, params.calendar_id);
       if (!resolvedCalendarId) {
         return err('creating event', {
@@ -198,13 +214,13 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       const result = await client.request('POST', '/events', body);
       return result.ok ? ok(result.data) : err('creating event', result.data);
     },
-  );
+  });
 
   // ===== 3. book_update_event =====
-  server.tool(
-    'book_update_event',
-    'Update an existing calendar event. `id` accepts either a UUID or an event title (case-insensitive exact or single fuzzy match within +/- 1 year of now).',
-    {
+  registerTool(server, {
+    name: 'book_update_event',
+    description: 'Update an existing calendar event. `id` accepts either a UUID or an event title (case-insensitive exact or single fuzzy match within +/- 1 year of now).',
+    input: {
       id: z.string().describe('Event UUID or title'),
       title: z.string().optional().describe('New title'),
       start_at: z.string().optional().describe('New start time'),
@@ -213,7 +229,8 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       location: z.string().optional().describe('New location'),
       status: z.enum(['tentative', 'confirmed', 'cancelled']).optional(),
     },
-    async ({ id, ...body }) => {
+    returns: eventShape,
+    handler: async ({ id, ...body }) => {
       const resolvedId = await resolveEventId(client, id);
       if (!resolvedId) {
         return err('updating event', {
@@ -223,16 +240,17 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       const result = await client.request('PATCH', `/events/${resolvedId}`, body);
       return result.ok ? ok(result.data) : err('updating event', result.data);
     },
-  );
+  });
 
   // ===== 4. book_cancel_event =====
-  server.tool(
-    'book_cancel_event',
-    'Cancel a calendar event (sets status to cancelled). `id` accepts either a UUID or an event title.',
-    {
+  registerTool(server, {
+    name: 'book_cancel_event',
+    description: 'Cancel a calendar event (sets status to cancelled). `id` accepts either a UUID or an event title.',
+    input: {
       id: z.string().describe('Event UUID or title to cancel'),
     },
-    async ({ id }) => {
+    returns: z.object({ ok: z.boolean() }),
+    handler: async ({ id }) => {
       const resolvedId = await resolveEventId(client, id);
       if (!resolvedId) {
         return err('cancelling event', {
@@ -242,18 +260,19 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       const result = await client.request('DELETE', `/events/${resolvedId}`);
       return result.ok ? ok(result.data) : err('cancelling event', result.data);
     },
-  );
+  });
 
   // ===== 5. book_get_availability =====
-  server.tool(
-    'book_get_availability',
-    'Get available time slots for a user in a date range. `user_id` accepts either a UUID or an email address.',
-    {
+  registerTool(server, {
+    name: 'book_get_availability',
+    description: 'Get available time slots for a user in a date range. `user_id` accepts either a UUID or an email address.',
+    input: {
       user_id: z.string().describe('User UUID or email to check availability for'),
       start_date: z.string().describe('ISO 8601 range start'),
       end_date: z.string().describe('ISO 8601 range end'),
     },
-    async ({ user_id, ...params }) => {
+    returns: z.object({ user_id: z.string().uuid(), slots: z.array(slotShape) }).passthrough(),
+    handler: async ({ user_id, ...params }) => {
       const resolvedUserId = await resolveUserIdByEmail(api, user_id);
       if (!resolvedUserId) {
         return err('getting availability', {
@@ -263,18 +282,19 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       const result = await client.request('GET', `/availability/${resolvedUserId}${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('getting availability', result.data);
     },
-  );
+  });
 
   // ===== 6. book_get_team_availability =====
-  server.tool(
-    'book_get_team_availability',
-    'Get available time slots for multiple users to find common free times. Each entry in `user_ids` accepts either a UUID or an email address. Fails cleanly if any input cannot be resolved.',
-    {
+  registerTool(server, {
+    name: 'book_get_team_availability',
+    description: 'Get available time slots for multiple users to find common free times. Each entry in `user_ids` accepts either a UUID or an email address. Fails cleanly if any input cannot be resolved.',
+    input: {
       user_ids: z.array(z.string()).min(2).describe('Array of user UUIDs or emails'),
       start_date: z.string().describe('ISO 8601 range start'),
       end_date: z.string().describe('ISO 8601 range end'),
     },
-    async ({ user_ids, ...params }) => {
+    returns: z.object({ data: z.record(z.array(slotShape)) }).passthrough(),
+    handler: async ({ user_ids, ...params }) => {
       const resolved = await Promise.all(
         user_ids.map(async (u) => ({ input: u, id: await resolveUserIdByEmail(api, u) })),
       );
@@ -288,19 +308,20 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       const result = await client.request('GET', `/availability/team${buildQs({ user_ids: ids.join(','), ...params })}`);
       return result.ok ? ok(result.data) : err('getting team availability', result.data);
     },
-  );
+  });
 
   // ===== 7. book_find_meeting_time =====
-  server.tool(
-    'book_find_meeting_time',
-    'AI-assisted: find optimal meeting times for a set of attendees. Returns up to 3 suggested slots. Each entry in `user_ids` accepts either a UUID or an email address.',
-    {
+  registerTool(server, {
+    name: 'book_find_meeting_time',
+    description: 'AI-assisted: find optimal meeting times for a set of attendees. Returns up to 3 suggested slots. Each entry in `user_ids` accepts either a UUID or an email address.',
+    input: {
       user_ids: z.array(z.string()).min(2).describe('Attendee user UUIDs or emails'),
       duration_minutes: z.number().int().min(5).max(480).describe('Meeting duration in minutes'),
       start_date: z.string().describe('Earliest date to consider'),
       end_date: z.string().describe('Latest date to consider'),
     },
-    async ({ user_ids, duration_minutes, start_date, end_date }) => {
+    returns: z.object({ suggestions: z.array(slotShape) }),
+    handler: async ({ user_ids, duration_minutes, start_date, end_date }) => {
       const resolved = await Promise.all(
         user_ids.map(async (u) => ({ input: u, id: await resolveUserIdByEmail(api, u) })),
       );
@@ -315,7 +336,7 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       const result = await client.request('GET', `/availability/team${buildQs({ user_ids: ids.join(','), start_date, end_date })}`);
       if (!result.ok) return err('getting team availability', result.data);
 
-      const allSlots: Record<string, Array<{ start: string; end: string }>> = result.data.data;
+      const allSlots: Record<string, Array<{ start: string; end: string }>> = (result.data as { data: Record<string, Array<{ start: string; end: string }>> }).data;
       const durationMs = duration_minutes * 60 * 1000;
 
       // Find intersecting free slots
@@ -340,47 +361,50 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
 
       return ok({ suggestions: candidates });
     },
-  );
+  });
 
   // ===== 8. book_create_booking_page =====
-  server.tool(
-    'book_create_booking_page',
-    'Create a public booking page (scheduling link).',
-    {
+  registerTool(server, {
+    name: 'book_create_booking_page',
+    description: 'Create a public booking page (scheduling link).',
+    input: {
       slug: z.string().describe('URL slug for /meet/:slug'),
       title: z.string().describe('Page title shown to visitors'),
       description: z.string().optional().describe('Description'),
       duration_minutes: z.number().int().optional().describe('Meeting duration (default 30)'),
     },
-    async (params) => {
+    returns: z.object({ id: z.string().uuid(), slug: z.string(), url: z.string().optional() }).passthrough(),
+    handler: async (params) => {
       const result = await client.request('POST', '/booking-pages', params);
       return result.ok ? ok(result.data) : err('creating booking page', result.data);
     },
-  );
+  });
 
   // ===== 9. book_get_timeline =====
-  server.tool(
-    'book_get_timeline',
-    'Get aggregated cross-product timeline with Book events, Bam tasks, sprints, and more.',
-    {
+  registerTool(server, {
+    name: 'book_get_timeline',
+    description: 'Get aggregated cross-product timeline with Book events, Bam tasks, sprints, and more.',
+    input: {
       start_date: z.string().describe('ISO 8601 range start'),
       end_date: z.string().describe('ISO 8601 range end'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(z.object({ type: z.string(), id: z.string(), title: z.string(), start_at: z.string() }).passthrough()) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/timeline${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('getting timeline', result.data);
     },
-  );
+  });
 
   // ===== 10. book_rsvp_event =====
-  server.tool(
-    'book_rsvp_event',
-    'Accept, decline, or mark tentative for a calendar event on behalf of the current user. `event_id` accepts either a UUID or an event title.',
-    {
+  registerTool(server, {
+    name: 'book_rsvp_event',
+    description: 'Accept, decline, or mark tentative for a calendar event on behalf of the current user. `event_id` accepts either a UUID or an event title.',
+    input: {
       event_id: z.string().describe('Event UUID or title'),
       response_status: z.enum(['accepted', 'declined', 'tentative']).describe('RSVP response'),
     },
-    async ({ event_id, response_status }) => {
+    returns: z.object({ event_id: z.string().uuid(), response_status: z.string(), updated_at: z.string().optional() }).passthrough(),
+    handler: async ({ event_id, response_status }) => {
       const resolvedId = await resolveEventId(client, event_id);
       if (!resolvedId) {
         return err('RSVPing to event', {
@@ -390,7 +414,7 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       const result = await client.request('POST', `/events/${resolvedId}/rsvp`, { response_status });
       return result.ok ? ok(result.data) : err('RSVPing to event', result.data);
     },
-  );
+  });
 }
 
 // Helper: intersect two lists of time slots

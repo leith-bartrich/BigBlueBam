@@ -1,3 +1,4 @@
+import { registerTool } from '../lib/register-tool.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
@@ -58,6 +59,32 @@ function buildQs(params: Record<string, unknown>): string {
   return qs ? `?${qs}` : '';
 }
 
+const docShape = z.object({
+  id: z.string().uuid(),
+  title: z.string().nullable().optional(),
+  status: z.string().optional(),
+  visibility: z.string().optional(),
+  project_id: z.string().uuid().nullable().optional(),
+  created_by: z.string().uuid().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
+const briefCommentShape = z.object({
+  id: z.string().uuid(),
+  document_id: z.string().uuid(),
+  body: z.string(),
+  resolved: z.boolean().optional(),
+  created_at: z.string(),
+}).passthrough();
+
+const versionShape = z.object({
+  id: z.string().uuid(),
+  document_id: z.string().uuid(),
+  version_number: z.number().optional(),
+  created_at: z.string(),
+}).passthrough();
+
 export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUrl: string): void {
   const client = createBriefClient(briefApiUrl, api);
 
@@ -74,10 +101,10 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
 
   // ===== DOCUMENTS CRUD (9) =====
 
-  server.tool(
-    'brief_list',
-    'List Brief documents with optional filters and pagination.',
-    {
+  registerTool(server, {
+    name: 'brief_list',
+    description: 'List Brief documents with optional filters and pagination.',
+    input: {
       project_id: z.string().uuid().optional().describe('Filter by project'),
       folder_id: z.string().uuid().optional().describe('Filter by folder'),
       status: z.enum(['draft', 'in_review', 'approved', 'archived']).optional().describe('Filter by document status'),
@@ -85,28 +112,30 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
       cursor: z.string().optional().describe('Pagination cursor'),
       limit: z.number().int().positive().max(100).optional().describe('Page size (default 50, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(docShape), next_cursor: z.string().nullable().optional() }),
+    handler: async (params) => {
       const result = await client.request('GET', `/documents${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing documents', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_get',
-    'Retrieve a single Brief document by ID or slug.',
-    {
+  registerTool(server, {
+    name: 'brief_get',
+    description: 'Retrieve a single Brief document by ID or slug.',
+    input: {
       id: z.string().describe('Document ID (UUID) or slug'),
     },
-    async ({ id }) => {
+    returns: docShape.extend({ content: z.string().optional() }),
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/documents/${id}`);
       return result.ok ? ok(result.data) : err('getting document', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_create',
-    'Create a new Brief document.',
-    {
+  registerTool(server, {
+    name: 'brief_create',
+    description: 'Create a new Brief document.',
+    input: {
       title: z.string().max(500).optional().describe('Document title (max 500 chars)'),
       project_id: z.string().uuid().optional().describe('Project to create the document in'),
       folder_id: z.string().uuid().optional().describe('Folder to place the document in'),
@@ -114,16 +143,17 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
       content: z.string().max(500_000).optional().describe('Initial Markdown content (max 500k chars)'),
       visibility: z.enum(['private', 'project', 'organization']).optional().describe('Document visibility level'),
     },
-    async (params) => {
+    returns: docShape,
+    handler: async (params) => {
       const result = await client.request('POST', '/documents', params);
       return result.ok ? ok(result.data) : err('creating document', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_update',
-    'Update Brief document metadata. Provide only the fields to change.',
-    {
+  registerTool(server, {
+    name: 'brief_update',
+    description: 'Update Brief document metadata. Provide only the fields to change.',
+    input: {
       id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       title: z.string().max(500).optional().describe('Updated title'),
       status: z.enum(['draft', 'in_review', 'approved', 'archived']).optional().describe('Updated status'),
@@ -132,83 +162,89 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
       icon: z.string().max(100).optional().describe('Document icon (emoji or icon name)'),
       pinned: z.boolean().optional().describe('Pin document to top of list'),
     },
-    async ({ id, ...body }) => {
+    returns: docShape,
+    handler: async ({ id, ...body }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
       const result = await client.request('PATCH', `/documents/${documentId}`, body);
       return result.ok ? ok(result.data) : err('updating document', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_update_content',
-    'Replace the entire content of a Brief document with new Markdown.',
-    {
+  registerTool(server, {
+    name: 'brief_update_content',
+    description: 'Replace the entire content of a Brief document with new Markdown.',
+    input: {
       id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       content: z.string().max(500_000).describe('New Markdown content (max 500k chars)'),
     },
-    async ({ id, content }) => {
+    returns: docShape,
+    handler: async ({ id, content }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
       const result = await client.request('PUT', `/documents/${documentId}/content`, { content });
       return result.ok ? ok(result.data) : err('updating document content', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_append_content',
-    'Append Markdown content to the end of a Brief document.',
-    {
+  registerTool(server, {
+    name: 'brief_append_content',
+    description: 'Append Markdown content to the end of a Brief document.',
+    input: {
       id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       content: z.string().max(100_000).describe('Markdown to append (max 100k chars)'),
     },
-    async ({ id, content }) => {
+    returns: docShape,
+    handler: async ({ id, content }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
       const result = await client.request('POST', `/documents/${documentId}/append`, { content });
       return result.ok ? ok(result.data) : err('appending to document', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_archive',
-    'Archive a Brief document (soft-delete).',
-    {
+  registerTool(server, {
+    name: 'brief_archive',
+    description: 'Archive a Brief document (soft-delete).',
+    input: {
       id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
-    async ({ id }) => {
+    returns: z.object({ ok: z.boolean() }),
+    handler: async ({ id }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
       const result = await client.request('DELETE', `/documents/${documentId}`);
       return result.ok ? ok(result.data) : err('archiving document', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_restore',
-    'Restore an archived Brief document.',
-    {
+  registerTool(server, {
+    name: 'brief_restore',
+    description: 'Restore an archived Brief document.',
+    input: {
       id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
-    async ({ id }) => {
+    returns: docShape,
+    handler: async ({ id }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
       const result = await client.request('POST', `/documents/${documentId}/restore`);
       return result.ok ? ok(result.data) : err('restoring document', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_duplicate',
-    'Duplicate a Brief document, optionally into a different project.',
-    {
+  registerTool(server, {
+    name: 'brief_duplicate',
+    description: 'Duplicate a Brief document, optionally into a different project.',
+    input: {
       id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       project_id: z
         .string()
         .optional()
         .describe('Target project UUID or exact project name (defaults to same project)'),
     },
-    async ({ id, project_id }) => {
+    returns: docShape,
+    handler: async ({ id, project_id }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
 
@@ -237,142 +273,151 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
       );
       return result.ok ? ok(result.data) : err('duplicating document', result.data);
     },
-  );
+  });
 
   // ===== SEARCH (1) =====
 
-  server.tool(
-    'brief_search',
-    'Search Brief documents by keyword or semantic similarity.',
-    {
+  registerTool(server, {
+    name: 'brief_search',
+    description: 'Search Brief documents by keyword or semantic similarity.',
+    input: {
       query: z.string().max(500).describe('Search query text (max 500 chars)'),
       project_id: z.string().uuid().optional().describe('Filter by project'),
       status: z.enum(['draft', 'in_review', 'approved', 'archived']).optional().describe('Filter by status'),
       semantic: z.boolean().optional().describe('Enable semantic (vector) search (default false)'),
       limit: z.number().int().positive().max(100).optional().describe('Max results (default 50, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(docShape), next_cursor: z.string().nullable().optional() }),
+    handler: async (params) => {
       const result = await client.request('GET', `/documents/search${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('searching documents', result.data);
     },
-  );
+  });
 
   // ===== COMMENTS (3) =====
 
-  server.tool(
-    'brief_comment_list',
-    'List comments on a Brief document.',
-    {
+  registerTool(server, {
+    name: 'brief_comment_list',
+    description: 'List comments on a Brief document.',
+    input: {
       document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
-    async ({ document_id }) => {
+    returns: z.object({ data: z.array(briefCommentShape) }),
+    handler: async ({ document_id }) => {
       const resolved = await resolveDocumentId(client, document_id);
       if (!resolved) return documentNotFound(document_id);
       const result = await client.request('GET', `/documents/${resolved}/comments`);
       return result.ok ? ok(result.data) : err('listing comments', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_comment_add',
-    'Add a comment to a Brief document, optionally as a reply or anchored to specific text.',
-    {
+  registerTool(server, {
+    name: 'brief_comment_add',
+    description: 'Add a comment to a Brief document, optionally as a reply or anchored to specific text.',
+    input: {
       document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       body: z.string().max(10_000).describe('Comment body text (max 10k chars)'),
       parent_id: z.string().uuid().optional().describe('Parent comment ID for threaded reply'),
       anchor_text: z.string().max(500).optional().describe('Text selection the comment is anchored to (max 500 chars)'),
     },
-    async ({ document_id, ...body }) => {
+    returns: briefCommentShape,
+    handler: async ({ document_id, ...body }) => {
       const resolved = await resolveDocumentId(client, document_id);
       if (!resolved) return documentNotFound(document_id);
       const result = await client.request('POST', `/documents/${resolved}/comments`, body);
       return result.ok ? ok(result.data) : err('adding comment', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_comment_resolve',
-    'Toggle the resolved state of a comment.',
-    {
+  registerTool(server, {
+    name: 'brief_comment_resolve',
+    description: 'Toggle the resolved state of a comment.',
+    input: {
       comment_id: z.string().uuid().describe('Comment ID'),
     },
-    async ({ comment_id }) => {
+    returns: briefCommentShape,
+    handler: async ({ comment_id }) => {
       const result = await client.request('POST', `/comments/${comment_id}/resolve`);
       return result.ok ? ok(result.data) : err('resolving comment', result.data);
     },
-  );
+  });
 
   // ===== VERSIONS (3) =====
 
-  server.tool(
-    'brief_versions',
-    'List the version history of a Brief document.',
-    {
+  registerTool(server, {
+    name: 'brief_versions',
+    description: 'List the version history of a Brief document.',
+    input: {
       document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
     },
-    async ({ document_id }) => {
+    returns: z.object({ data: z.array(versionShape) }),
+    handler: async ({ document_id }) => {
       const resolved = await resolveDocumentId(client, document_id);
       if (!resolved) return documentNotFound(document_id);
       const result = await client.request('GET', `/documents/${resolved}/versions`);
       return result.ok ? ok(result.data) : err('listing versions', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_version_get',
-    'Get a specific version of a Brief document.',
-    {
+  registerTool(server, {
+    name: 'brief_version_get',
+    description: 'Get a specific version of a Brief document.',
+    input: {
       document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       version_id: z.string().uuid().describe('Version ID'),
     },
-    async ({ document_id, version_id }) => {
+    returns: versionShape.extend({ content: z.string().optional() }),
+    handler: async ({ document_id, version_id }) => {
       const resolved = await resolveDocumentId(client, document_id);
       if (!resolved) return documentNotFound(document_id);
       const result = await client.request('GET', `/documents/${resolved}/versions/${version_id}`);
       return result.ok ? ok(result.data) : err('getting version', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_version_restore',
-    'Restore a Brief document to a specific previous version.',
-    {
+  registerTool(server, {
+    name: 'brief_version_restore',
+    description: 'Restore a Brief document to a specific previous version.',
+    input: {
       document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       version_id: z.string().uuid().describe('Version ID to restore'),
     },
-    async ({ document_id, version_id }) => {
+    returns: docShape,
+    handler: async ({ document_id, version_id }) => {
       const resolved = await resolveDocumentId(client, document_id);
       if (!resolved) return documentNotFound(document_id);
       const result = await client.request('POST', `/documents/${resolved}/versions/${version_id}/restore`);
       return result.ok ? ok(result.data) : err('restoring version', result.data);
     },
-  );
+  });
 
   // ===== INTEGRATIONS (2) =====
 
-  server.tool(
-    'brief_promote_to_beacon',
-    'Graduate a Brief document to a Beacon knowledge article.',
-    {
+  registerTool(server, {
+    name: 'brief_promote_to_beacon',
+    description: 'Graduate a Brief document to a Beacon knowledge article.',
+    input: {
       id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match) to promote'),
     },
-    async ({ id }) => {
+    returns: z.object({ beacon_id: z.string().uuid(), document_id: z.string().uuid() }).passthrough(),
+    handler: async ({ id }) => {
       const documentId = await resolveDocumentId(client, id);
       if (!documentId) return documentNotFound(id);
       const result = await client.request('POST', `/documents/${documentId}/promote`);
       return result.ok ? ok(result.data) : err('promoting document to beacon', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'brief_link_task',
-    'Link a Brief document to a Bam task.',
-    {
+  registerTool(server, {
+    name: 'brief_link_task',
+    description: 'Link a Brief document to a Bam task.',
+    input: {
       document_id: z.string().describe('Document ID (UUID), slug, or title (exact case-insensitive match)'),
       task_id: z.string().describe('Bam task UUID or human ref (e.g. FRND-42)'),
       link_type: z.enum(['reference', 'spec', 'notes', 'postmortem']).optional().describe('Type of link (default reference)'),
     },
-    async ({ document_id, task_id, link_type }) => {
+    returns: z.object({ document_id: z.string().uuid(), task_id: z.string().uuid(), link_type: z.string() }).passthrough(),
+    handler: async ({ document_id, task_id, link_type }) => {
       const resolved = await resolveDocumentId(client, document_id);
       if (!resolved) return documentNotFound(document_id);
 
@@ -394,5 +439,5 @@ export function registerBriefTools(server: McpServer, api: ApiClient, briefApiUr
       const result = await client.request('POST', `/documents/${resolved}/links/task`, body);
       return result.ok ? ok(result.data) : err('linking document to task', result.data);
     },
-  );
+  });
 }

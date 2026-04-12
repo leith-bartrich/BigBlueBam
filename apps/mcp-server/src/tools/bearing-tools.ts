@@ -1,3 +1,4 @@
+import { registerTool } from '../lib/register-tool.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
@@ -202,70 +203,96 @@ async function resolveOwnerId(api: ApiClient, idOrEmail: string): Promise<string
   return users[0]?.id ?? null;
 }
 
+const goalShape = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  status: z.string().optional(),
+  scope: z.string().optional(),
+  owner_id: z.string().uuid().optional(),
+  period_id: z.string().uuid().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
+const krShape = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  goal_id: z.string().uuid(),
+  current_value: z.number().optional(),
+  target_value: z.number(),
+  metric_type: z.string().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
 export function registerBearingTools(server: McpServer, api: ApiClient, bearingApiUrl: string): void {
   const client = createBearingClient(bearingApiUrl, api);
 
   // ===== PERIODS (2) =====
 
-  server.tool(
-    'bearing_periods',
-    'List OKR periods with optional filters by status and year.',
-    {
+  registerTool(server, {
+    name: 'bearing_periods',
+    description: 'List OKR periods with optional filters by status and year.',
+    input: {
       status: z.enum(['planning', 'active', 'completed']).optional().describe('Filter by period status'),
       year: z.number().int().optional().describe('Filter by year'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(z.object({ id: z.string().uuid(), name: z.string(), status: z.string(), year: z.number().optional() }).passthrough()) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/periods${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing periods', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bearing_period_get',
-    'Get a single OKR period with aggregated stats.',
-    {
+  registerTool(server, {
+    name: 'bearing_period_get',
+    description: 'Get a single OKR period with aggregated stats.',
+    input: {
       id: z.string().uuid().describe('Period ID'),
     },
-    async ({ id }) => {
+    returns: z.object({ id: z.string().uuid(), name: z.string(), status: z.string(), goal_count: z.number().optional() }).passthrough(),
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/periods/${id}`);
       return result.ok ? ok(result.data) : err('getting period', result.data);
     },
-  );
+  });
 
   // ===== GOALS (4) =====
 
-  server.tool(
-    'bearing_goals',
-    'List OKR goals with optional filters by period, scope, owner, and status.',
-    {
+  registerTool(server, {
+    name: 'bearing_goals',
+    description: 'List OKR goals with optional filters by period, scope, owner, and status.',
+    input: {
       period_id: z.string().uuid().optional().describe('Filter by period'),
       scope: z.enum(['organization', 'team', 'project', 'individual']).optional().describe('Filter by goal scope'),
       owner_id: z.string().uuid().optional().describe('Filter by goal owner'),
       status: z.enum(['draft', 'on_track', 'at_risk', 'behind', 'achieved', 'missed']).optional().describe('Filter by goal status'),
       limit: z.number().int().positive().max(100).optional().describe('Max results (default 50, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(goalShape) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/goals${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing goals', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bearing_goal_get',
-    'Get a single goal with its key results and progress details.',
-    {
+  registerTool(server, {
+    name: 'bearing_goal_get',
+    description: 'Get a single goal with its key results and progress details.',
+    input: {
       id: z.string().uuid().describe('Goal ID'),
     },
-    async ({ id }) => {
+    returns: goalShape.extend({ key_results: z.array(krShape).optional() }),
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/goals/${id}`);
       return result.ok ? ok(result.data) : err('getting goal', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bearing_goal_create',
-    'Create a new OKR goal within a period. `period_id` accepts either a UUID or the period label (e.g. "Q2 2026"). `owner_id` accepts a UUID or the owner\'s email address.',
-    {
+  registerTool(server, {
+    name: 'bearing_goal_create',
+    description: 'Create a new OKR goal within a period. `period_id` accepts either a UUID or the period label (e.g. "Q2 2026"). `owner_id` accepts a UUID or the owner\'s email address.',
+    input: {
       period_id: z.string().describe('Period UUID or period label (e.g. "Q2 2026")'),
       title: z.string().max(255).describe('Goal title (max 255 chars)'),
       description: z.string().max(2000).optional().describe('Goal description (max 2000 chars)'),
@@ -276,7 +303,8 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       color: z.string().max(20).optional().describe('Color value (hex or named)'),
       owner_id: z.string().describe('Goal owner: user UUID or email address'),
     },
-    async (params) => {
+    returns: goalShape,
+    handler: async (params) => {
       const period_id = await resolvePeriodId(client, params.period_id);
       if (!period_id) {
         return err('creating goal', {
@@ -295,12 +323,12 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       const result = await client.request('POST', '/goals', body);
       return result.ok ? ok(result.data) : err('creating goal', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bearing_goal_update',
-    'Update an existing goal. Provide only the fields to change. `id` accepts either a UUID or the goal title. `owner_id` accepts a UUID or email address.',
-    {
+  registerTool(server, {
+    name: 'bearing_goal_update',
+    description: 'Update an existing goal. Provide only the fields to change. `id` accepts either a UUID or the goal title. `owner_id` accepts a UUID or email address.',
+    input: {
       id: z.string().describe('Goal UUID or goal title'),
       title: z.string().max(255).optional().describe('Updated title'),
       description: z.string().max(2000).optional().describe('Updated description'),
@@ -309,7 +337,8 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       icon: z.string().max(50).optional().describe('Updated icon'),
       color: z.string().max(20).optional().describe('Updated color'),
     },
-    async ({ id, ...rest }) => {
+    returns: goalShape,
+    handler: async ({ id, ...rest }) => {
       const goalId = await resolveGoalId(client, id);
       if (!goalId) {
         return err('updating goal', {
@@ -331,14 +360,14 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       const result = await client.request('PATCH', `/goals/${goalId}`, body);
       return result.ok ? ok(result.data) : err('updating goal', result.data);
     },
-  );
+  });
 
   // ===== KEY RESULTS (3) =====
 
-  server.tool(
-    'bearing_kr_create',
-    'Create a key result under a goal. `goal_id` accepts a UUID or the goal title. `owner_id` accepts a UUID or email address.',
-    {
+  registerTool(server, {
+    name: 'bearing_kr_create',
+    description: 'Create a key result under a goal. `goal_id` accepts a UUID or the goal title. `owner_id` accepts a UUID or email address.',
+    input: {
       goal_id: z.string().describe('Parent goal UUID or goal title'),
       title: z.string().max(255).describe('Key result title (max 255 chars)'),
       description: z.string().max(2000).optional().describe('Key result description'),
@@ -350,7 +379,8 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       progress_mode: z.enum(['manual', 'linked']).optional().describe('How progress is tracked'),
       owner_id: z.string().optional().describe('Key result owner: user UUID or email (defaults to goal owner)'),
     },
-    async ({ goal_id, owner_id, ...body }) => {
+    returns: krShape,
+    handler: async ({ goal_id, owner_id, ...body }) => {
       const goalId = await resolveGoalId(client, goal_id);
       if (!goalId) {
         return err('creating key result', {
@@ -372,18 +402,19 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       const result = await client.request('POST', `/goals/${goalId}/key-results`, resolvedBody);
       return result.ok ? ok(result.data) : err('creating key result', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bearing_kr_update',
-    'Update a key result value or metadata. When current_value is provided, also records a value check-in. `id` accepts either a UUID or the KR title — if multiple KRs share the title the tool fails and asks for disambiguation.',
-    {
+  registerTool(server, {
+    name: 'bearing_kr_update',
+    description: 'Update a key result value or metadata. When current_value is provided, also records a value check-in. `id` accepts either a UUID or the KR title — if multiple KRs share the title the tool fails and asks for disambiguation.',
+    input: {
       id: z.string().describe('Key result UUID or KR title'),
       current_value: z.number().optional().describe('New current value (also posts a value check-in)'),
       title: z.string().max(255).optional().describe('Updated title'),
       target_value: z.number().optional().describe('Updated target value'),
     },
-    async ({ id, current_value, ...metaBody }) => {
+    returns: krShape,
+    handler: async ({ id, current_value, ...metaBody }) => {
       const krId = await resolveKeyResultId(client, id);
       if (!krId) {
         return err('updating key result', {
@@ -409,19 +440,20 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       const getResult = await client.request('GET', `/key-results/${krId}`);
       return getResult.ok ? ok(getResult.data) : err('fetching updated key result', getResult.data);
     },
-  );
+  });
 
-  server.tool(
-    'bearing_kr_link',
-    'Link a key result to a Bam entity (epic, project, or task query) for automatic progress tracking. `key_result_id` accepts a UUID or the KR title.',
-    {
+  registerTool(server, {
+    name: 'bearing_kr_link',
+    description: 'Link a key result to a Bam entity (epic, project, or task query) for automatic progress tracking. `key_result_id` accepts a UUID or the KR title.',
+    input: {
       key_result_id: z.string().describe('Key result UUID or KR title'),
       link_type: z.enum(['epic', 'project', 'task_query', 'task', 'sprint']).describe('Type of entity to link'),
       target_type: z.enum(['task', 'epic', 'project', 'sprint', 'goal']).describe('Type of target entity'),
       target_id: z.string().uuid().describe('Target entity ID'),
       metadata: z.record(z.unknown()).optional().describe('Optional metadata for this link'),
     },
-    async ({ key_result_id, ...body }) => {
+    returns: z.object({ id: z.string().uuid(), key_result_id: z.string().uuid(), target_id: z.string().uuid() }).passthrough(),
+    handler: async ({ key_result_id, ...body }) => {
       const krId = await resolveKeyResultId(client, key_result_id);
       if (!krId) {
         return err('linking key result', {
@@ -431,19 +463,20 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       const result = await client.request('POST', `/key-results/${krId}/links`, body);
       return result.ok ? ok(result.data) : err('linking key result', result.data);
     },
-  );
+  });
 
   // ===== UPDATES (1) =====
 
-  server.tool(
-    'bearing_update_post',
-    'Post a status update on a goal. `goal_id` accepts a UUID or the goal title.',
-    {
+  registerTool(server, {
+    name: 'bearing_update_post',
+    description: 'Post a status update on a goal. `goal_id` accepts a UUID or the goal title.',
+    input: {
       goal_id: z.string().describe('Goal UUID or goal title'),
       status: z.enum(['draft', 'on_track', 'at_risk', 'behind', 'achieved', 'missed']).describe('Goal status for this update'),
       body: z.string().max(5000).optional().describe('Update body text (max 5000 chars)'),
     },
-    async ({ goal_id, status, body: updateBody }) => {
+    returns: z.object({ id: z.string().uuid(), goal_id: z.string().uuid(), status: z.string(), created_at: z.string() }).passthrough(),
+    handler: async ({ goal_id, status, body: updateBody }) => {
       const goalId = await resolveGoalId(client, goal_id);
       if (!goalId) {
         return err('posting goal update', {
@@ -453,20 +486,21 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       const result = await client.request('POST', `/goals/${goalId}/updates`, { status, body: updateBody });
       return result.ok ? ok(result.data) : err('posting goal update', result.data);
     },
-  );
+  });
 
   // ===== REPORTS (2) =====
 
-  server.tool(
-    'bearing_report',
-    'Generate a period summary, at-risk, or owner report.',
-    {
+  registerTool(server, {
+    name: 'bearing_report',
+    description: 'Generate a period summary, at-risk, or owner report.',
+    input: {
       report_type: z.enum(['period', 'at_risk', 'owner']).describe('Type of report to generate'),
       period_id: z.string().uuid().optional().describe('Period ID (required for period reports)'),
       user_id: z.string().uuid().optional().describe('User ID (required for owner reports)'),
       format: z.enum(['markdown', 'json']).optional().describe('Output format (default json)'),
     },
-    async ({ report_type, period_id, user_id, format }) => {
+    returns: z.object({}).passthrough().describe('Report data — shape varies by report_type'),
+    handler: async ({ report_type, period_id, user_id, format }) => {
       let path: string;
       const qs = buildQs({ format });
 
@@ -491,15 +525,16 @@ export function registerBearingTools(server: McpServer, api: ApiClient, bearingA
       const result = await client.request('GET', path);
       return result.ok ? ok(result.data) : err('generating report', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bearing_at_risk',
-    'Quick check: list all at-risk or behind goals across the organization.',
-    {},
-    async () => {
+  registerTool(server, {
+    name: 'bearing_at_risk',
+    description: 'Quick check: list all at-risk or behind goals across the organization.',
+    input: {},
+    returns: z.object({ data: z.array(goalShape) }),
+    handler: async () => {
       const result = await client.request('GET', '/reports/at-risk');
       return result.ok ? ok(result.data) : err('fetching at-risk goals', result.data);
     },
-  );
+  });
 }

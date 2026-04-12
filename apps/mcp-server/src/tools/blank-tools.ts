@@ -1,3 +1,4 @@
+import { registerTool } from '../lib/register-tool.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
@@ -50,41 +51,60 @@ function buildQs(params: Record<string, unknown>): string {
   return qs ? `?${qs}` : '';
 }
 
+const formShape = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  status: z.string().optional(),
+  form_type: z.string().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
+const submissionShape = z.object({
+  id: z.string().uuid(),
+  form_id: z.string().uuid(),
+  submitted_at: z.string(),
+  responses: z.record(z.unknown()).optional(),
+}).passthrough();
+
 export function registerBlankTools(server: McpServer, api: ApiClient, blankApiUrl: string): void {
   const client = createBlankClient(blankApiUrl, api);
 
   // ===== blank_list_forms =====
-  server.tool(
-    'blank_list_forms',
-    'List available forms for the current organization. Supports filtering by status and project.',
-    {
+  registerTool(server, {
+    name: 'blank_list_forms',
+    description: 'List available forms for the current organization. Supports filtering by status and project.',
+    input: {
       status: z.enum(['draft', 'published', 'closed', 'archived']).optional().describe('Filter by form status'),
       project_id: z.string().uuid().optional().describe('Filter by project ID'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(formShape) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/forms${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing forms', result.data);
     },
-  );
+  });
 
   // ===== blank_get_form =====
-  server.tool(
-    'blank_get_form',
-    'Get a form definition with all its fields.',
-    {
+  registerTool(server, {
+    name: 'blank_get_form',
+    description: 'Get a form definition with all its fields.',
+    input: {
       id: z.string().uuid().describe('Form ID'),
     },
-    async ({ id }) => {
+    returns: formShape.extend({ fields: z.array(z.object({ field_key: z.string(), label: z.string(), field_type: z.string() }).passthrough()).optional() }),
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/forms/${id}`);
       return result.ok ? ok(result.data) : err('getting form', result.data);
     },
-  );
+  });
 
   // ===== blank_create_form =====
-  server.tool(
-    'blank_create_form',
-    'Create a new form with optional inline field definitions.',
-    {
+  registerTool(server, {
+    name: 'blank_create_form',
+    description: 'Create a new form with optional inline field definitions.',
+    input: {
       name: z.string().describe('Form name'),
       slug: z.string().describe('URL slug for the form'),
       description: z.string().optional().describe('Form description'),
@@ -101,20 +121,22 @@ export function registerBlankTools(server: McpServer, api: ApiClient, blankApiUr
         scale_max_label: z.string().optional(),
       })).optional().describe('Fields to create with the form'),
     },
-    async (params) => {
+    returns: formShape,
+    handler: async (params) => {
       const result = await client.request('POST', '/forms', params);
       return result.ok ? ok(result.data) : err('creating form', result.data);
     },
-  );
+  });
 
   // ===== blank_generate_form =====
-  server.tool(
-    'blank_generate_form',
-    'AI generates a form from a natural-language description. Returns a form specification that can be passed to blank_create_form.',
-    {
+  registerTool(server, {
+    name: 'blank_generate_form',
+    description: 'AI generates a form from a natural-language description. Returns a form specification that can be passed to blank_create_form.',
+    input: {
       description: z.string().describe('Natural-language description of the form to generate (e.g., "customer feedback survey with NPS, product rating, and open comments")'),
     },
-    async ({ description }) => {
+    returns: z.object({ suggestion: formShape.extend({ fields: z.array(z.record(z.unknown())) }).partial(), instructions: z.string() }),
+    handler: async ({ description }) => {
       // Parse the description and generate form fields
       const fields: Array<{ field_key: string; label: string; field_type: string; required?: boolean; options?: unknown; scale_min?: number; scale_max?: number; scale_min_label?: string; scale_max_label?: string }> = [];
 
@@ -173,13 +195,13 @@ export function registerBlankTools(server: McpServer, api: ApiClient, blankApiUr
         instructions: 'Review the suggested form and call blank_create_form with the specification above (or modify it first).',
       });
     },
-  );
+  });
 
   // ===== blank_update_form =====
-  server.tool(
-    'blank_update_form',
-    'Update form metadata or settings.',
-    {
+  registerTool(server, {
+    name: 'blank_update_form',
+    description: 'Update form metadata or settings.',
+    input: {
       id: z.string().uuid().describe('Form ID'),
       name: z.string().optional().describe('Updated form name'),
       description: z.string().optional().describe('Updated description'),
@@ -187,92 +209,99 @@ export function registerBlankTools(server: McpServer, api: ApiClient, blankApiUr
       accept_responses: z.boolean().optional(),
       theme_color: z.string().optional(),
     },
-    async ({ id, ...updates }) => {
+    returns: formShape,
+    handler: async ({ id, ...updates }) => {
       const result = await client.request('PATCH', `/forms/${id}`, updates);
       return result.ok ? ok(result.data) : err('updating form', result.data);
     },
-  );
+  });
 
   // ===== blank_publish_form =====
-  server.tool(
-    'blank_publish_form',
-    'Publish a draft form, making it available for submissions.',
-    {
+  registerTool(server, {
+    name: 'blank_publish_form',
+    description: 'Publish a draft form, making it available for submissions.',
+    input: {
       id: z.string().uuid().describe('Form ID to publish'),
     },
-    async ({ id }) => {
+    returns: formShape,
+    handler: async ({ id }) => {
       const result = await client.request('POST', `/forms/${id}/publish`);
       return result.ok ? ok(result.data) : err('publishing form', result.data);
     },
-  );
+  });
 
   // ===== blank_list_submissions =====
-  server.tool(
-    'blank_list_submissions',
-    'List submissions for a form. Returns paginated results.',
-    {
+  registerTool(server, {
+    name: 'blank_list_submissions',
+    description: 'List submissions for a form. Returns paginated results.',
+    input: {
       form_id: z.string().uuid().describe('Form ID'),
       cursor: z.string().optional().describe('Pagination cursor'),
       limit: z.number().int().positive().max(100).optional().describe('Results per page (default 50)'),
     },
-    async ({ form_id, cursor, limit }) => {
+    returns: z.object({ data: z.array(submissionShape), next_cursor: z.string().nullable().optional() }),
+    handler: async ({ form_id, cursor, limit }) => {
       const result = await client.request('GET', `/forms/${form_id}/submissions${buildQs({ cursor, limit })}`);
       return result.ok ? ok(result.data) : err('listing submissions', result.data);
     },
-  );
+  });
 
   // ===== blank_get_submission =====
-  server.tool(
-    'blank_get_submission',
-    'Get a specific submission with all response data.',
-    {
+  registerTool(server, {
+    name: 'blank_get_submission',
+    description: 'Get a specific submission with all response data.',
+    input: {
       id: z.string().uuid().describe('Submission ID'),
     },
-    async ({ id }) => {
+    returns: submissionShape,
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/submissions/${id}`);
       return result.ok ? ok(result.data) : err('getting submission', result.data);
     },
-  );
+  });
 
   // ===== blank_summarize_responses =====
-  server.tool(
-    'blank_summarize_responses',
-    'Get analytics data for a form including response counts, field breakdowns, and trends. Useful for AI summarization of form results.',
-    {
+  registerTool(server, {
+    name: 'blank_summarize_responses',
+    description: 'Get analytics data for a form including response counts, field breakdowns, and trends. Useful for AI summarization of form results.',
+    input: {
       form_id: z.string().uuid().describe('Form ID to analyze'),
     },
-    async ({ form_id }) => {
+    returns: z.object({ total_submissions: z.number(), fields: z.array(z.record(z.unknown())) }).passthrough(),
+    handler: async ({ form_id }) => {
       const result = await client.request('GET', `/forms/${form_id}/analytics`);
       return result.ok ? ok(result.data) : err('getting analytics', result.data);
     },
-  );
+  });
 
   // ===== blank_export_submissions =====
-  server.tool(
-    'blank_export_submissions',
-    'Export all submissions for a form as CSV data.',
-    {
+  registerTool(server, {
+    name: 'blank_export_submissions',
+    description: 'Export all submissions for a form as CSV data.',
+    input: {
       form_id: z.string().uuid().describe('Form ID to export'),
     },
-    async ({ form_id }) => {
+    returns: z.object({ csv: z.string().optional(), url: z.string().optional() }).passthrough(),
+    handler: async ({ form_id }) => {
       const result = await client.request('GET', `/forms/${form_id}/submissions/export`);
       if (result.ok) {
         return { content: [{ type: 'text' as const, text: typeof result.data === 'string' ? result.data : JSON.stringify(result.data) }] };
       }
       return err('exporting submissions', result.data);
     },
-  );
+  });
 
   // ===== blank_get_form_analytics =====
-  server.tool(
-    'blank_get_form_analytics',
-    'Get response aggregation data for a form, including per-field breakdowns, submission trends, and summary statistics.',
-    {
+  registerTool(server, {
+    name: 'blank_get_form_analytics',
+    description: 'Get response aggregation data for a form, including per-field breakdowns, submission trends, and summary statistics.',
+    input: {
       form_id: z.string().uuid().describe('Form ID'),
     },
-    async ({ form_id }) => {
+    returns: z.object({ total_submissions: z.number(), fields: z.array(z.record(z.unknown())) }).passthrough(),
+    handler: async ({ form_id }) => {
       const result = await client.request('GET', `/forms/${form_id}/analytics`);
       return result.ok ? ok(result.data) : err('getting form analytics', result.data);
     },
-  );
+  });
 }

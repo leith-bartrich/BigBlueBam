@@ -69,6 +69,7 @@ import { registerImportTools } from '../src/tools/import-tools.js';
 import { registerMeTools } from '../src/tools/me-tools.js';
 import { registerPlatformTools } from '../src/tools/platform-tools.js';
 import { registerBeaconTools } from '../src/tools/beacon-tools.js';
+import { registerBamResolverTools } from '../src/tools/bam-resolver-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -81,7 +82,7 @@ describe('MCP Integration Tests', () => {
     tools = mock.tools;
 
     registerProjectTools(mock.server, api);
-    registerBoardTools(mock.server, api);
+    registerBoardTools(mock.server, api, 'http://localhost:4008');
     registerTaskTools(mock.server, api);
     registerSprintTools(mock.server, api);
     registerCommentTools(mock.server, api);
@@ -92,6 +93,7 @@ describe('MCP Integration Tests', () => {
     registerMeTools(mock.server, api);
     registerPlatformTools(mock.server, api);
     registerBeaconTools(mock.server, api, 'http://localhost:4004');
+    registerBamResolverTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -209,68 +211,24 @@ describe('MCP Integration Tests', () => {
     });
   });
 
-  // ===== BOARD TOOLS =====
+  // ===== BAM RESOLVER TOOLS =====
+  // The legacy `get_board` / `list_phases` / `create_phase` / `reorder_phases`
+  // tools were dropped when board-tools.ts was repurposed for the whiteboard
+  // collaboration product (commit d8bfb26). The phase listing surface now
+  // lives in bam-resolver-tools.ts as `bam_list_phases`. Phase write
+  // operations have no MCP wrapper today — callers go through the REST API
+  // directly.
 
-  describe('get_board', () => {
-    it('returns board state on success', async () => {
-      mockApiOk({ phases: [{ id: UUID, name: 'To Do', tasks: [] }] });
-      const result = await getTool('get_board').handler({ project_id: UUID });
-      expectSuccessFormat(result);
-    });
-
-    it('returns error on failure', async () => {
-      mockApiError(404, { error: 'Project not found' });
-      const result = await getTool('get_board').handler({ project_id: UUID });
-      expectErrorFormat(result);
-    });
-  });
-
-  describe('list_phases', () => {
+  describe('bam_list_phases', () => {
     it('returns phases on success', async () => {
-      mockApiOk([{ id: UUID, name: 'To Do' }]);
-      const result = await getTool('list_phases').handler({ project_id: UUID });
+      mockApiOk({ data: [{ id: UUID, name: 'To Do', position: 0 }] });
+      const result = await getTool('bam_list_phases').handler({ project_id: UUID });
       expectSuccessFormat(result);
     });
 
     it('returns error on failure', async () => {
       mockApiError(500, { error: 'Internal error' });
-      const result = await getTool('list_phases').handler({ project_id: UUID });
-      expectErrorFormat(result);
-    });
-  });
-
-  describe('create_phase', () => {
-    it('creates a phase on success', async () => {
-      mockApiOk({ id: UUID, name: 'In Progress', position: 1 });
-      const result = await getTool('create_phase').handler({
-        project_id: UUID, name: 'In Progress', position: 1,
-      });
-      expectSuccessFormat(result);
-    });
-
-    it('returns error on failure', async () => {
-      mockApiError(400, { error: 'Invalid position' });
-      const result = await getTool('create_phase').handler({
-        project_id: UUID, name: '', position: -1,
-      });
-      expectErrorFormat(result);
-    });
-  });
-
-  describe('reorder_phases', () => {
-    it('reorders phases on success', async () => {
-      mockApiOk({ success: true });
-      const result = await getTool('reorder_phases').handler({
-        project_id: UUID, phase_ids: [UUID, UUID2],
-      });
-      expectSuccessFormat(result);
-    });
-
-    it('returns error on failure', async () => {
-      mockApiError(400, { error: 'Invalid phase IDs' });
-      const result = await getTool('reorder_phases').handler({
-        project_id: UUID, phase_ids: [],
-      });
+      const result = await getTool('bam_list_phases').handler({ project_id: UUID });
       expectErrorFormat(result);
     });
   });
@@ -1041,18 +999,23 @@ describe('MCP Integration Tests', () => {
         // project
         'list_projects', 'get_project', 'create_project',
         'test_slack_webhook', 'disconnect_github_integration',
-        // board
-        'get_board', 'list_phases', 'create_phase', 'reorder_phases',
+        // bam resolver
+        'bam_list_phases', 'bam_list_labels', 'bam_list_states', 'bam_list_epics',
+        // board (whiteboard collaboration)
+        'board_list', 'board_get', 'board_create', 'board_update', 'board_archive',
+        'board_read_elements', 'board_read_stickies', 'board_read_frames',
+        'board_add_sticky', 'board_add_text', 'board_promote_to_tasks',
+        'board_export', 'board_summarize', 'board_search',
         // task
         'search_tasks', 'get_task', 'create_task', 'update_task',
         'move_task', 'delete_task', 'bulk_update_tasks', 'log_time',
-        'duplicate_task', 'import_csv',
+        'duplicate_task', 'import_csv', 'bam_get_task_by_human_id',
         // sprint
         'list_sprints', 'create_sprint', 'start_sprint', 'complete_sprint', 'get_sprint_report',
         // comment
         'list_comments', 'add_comment',
         // member
-        'list_members', 'get_my_tasks',
+        'list_members', 'get_my_tasks', 'bam_find_user', 'bam_find_user_by_email',
         // report
         'get_velocity_report', 'get_burndown', 'get_cumulative_flow',
         'get_overdue_tasks', 'get_workload', 'get_status_distribution',

@@ -1,3 +1,4 @@
+import { registerTool } from '../lib/register-tool.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../middleware/api-client.js';
@@ -221,15 +222,46 @@ async function resolveOwnerId(
   return users[0]?.id ?? null;
 }
 
+const contactShape = z.object({
+  id: z.string().uuid(),
+  first_name: z.string().nullable().optional(),
+  last_name: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  lifecycle_stage: z.string().optional(),
+  lead_score: z.number().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
+const companyShape = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  domain: z.string().nullable().optional(),
+  industry: z.string().nullable().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
+const dealShape = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  value: z.number().nullable().optional(),
+  currency: z.string().optional(),
+  stage_id: z.string().uuid().nullable().optional(),
+  closed_at: z.string().nullable().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
 export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl: string): void {
   const client = createBondClient(bondApiUrl, api);
 
   // ===== CONTACTS (5) =====
 
-  server.tool(
-    'bond_list_contacts',
-    'Search and filter CRM contacts with pagination. Supports lifecycle stage, owner, company, lead score range, and custom field filters.',
-    {
+  registerTool(server, {
+    name: 'bond_list_contacts',
+    description: 'Search and filter CRM contacts with pagination. Supports lifecycle stage, owner, company, lead score range, and custom field filters.',
+    input: {
       lifecycle_stage: z.enum(['subscriber', 'lead', 'marketing_qualified', 'sales_qualified', 'opportunity', 'customer', 'evangelist', 'other']).optional().describe('Filter by lifecycle stage'),
       owner_id: z.string().uuid().optional().describe('Filter by owner user ID'),
       company_id: z.string().uuid().optional().describe('Filter by associated company'),
@@ -241,28 +273,30 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       cursor: z.string().optional().describe('Pagination cursor'),
       limit: z.number().int().positive().max(100).optional().describe('Page size (default 50, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(contactShape), next_cursor: z.string().nullable().optional() }),
+    handler: async (params) => {
       const result = await client.request('GET', `/contacts${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing contacts', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_get_contact',
-    'Get full contact detail including associated companies, deals, and recent activities.',
-    {
+  registerTool(server, {
+    name: 'bond_get_contact',
+    description: 'Get full contact detail including associated companies, deals, and recent activities.',
+    input: {
       id: z.string().uuid().describe('Contact ID'),
     },
-    async ({ id }) => {
+    returns: contactShape.extend({ companies: z.array(companyShape).optional(), deals: z.array(dealShape).optional() }),
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/contacts/${id}`);
       return result.ok ? ok(result.data) : err('getting contact', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_create_contact',
-    'Create a new CRM contact with identity, classification, and optional company association. `owner_id` accepts a user UUID or email; `company_id` accepts a company UUID or name.',
-    {
+  registerTool(server, {
+    name: 'bond_create_contact',
+    description: 'Create a new CRM contact with identity, classification, and optional company association. `owner_id` accepts a user UUID or email; `company_id` accepts a company UUID or name.',
+    input: {
       first_name: z.string().max(100).optional().describe('First name'),
       last_name: z.string().max(100).optional().describe('Last name'),
       email: z.string().email().max(255).optional().describe('Email address'),
@@ -280,7 +314,8 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       country: z.string().length(2).optional().describe('ISO 3166-1 alpha-2 country code'),
       custom_fields: z.record(z.unknown()).optional().describe('Custom field values as key-value pairs'),
     },
-    async (params) => {
+    returns: contactShape,
+    handler: async (params) => {
       const { owner_id, company_id, ...rest } = params;
       const body: Record<string, unknown> = { ...rest };
 
@@ -306,12 +341,12 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       const result = await client.request('POST', '/contacts', body);
       return result.ok ? ok(result.data) : err('creating contact', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_update_contact',
-    'Update an existing contact. Provide only the fields to change. `id` accepts a contact UUID, an email, or a name fragment (single-match only). `owner_id` accepts a user UUID or email.',
-    {
+  registerTool(server, {
+    name: 'bond_update_contact',
+    description: 'Update an existing contact. Provide only the fields to change. `id` accepts a contact UUID, an email, or a name fragment (single-match only). `owner_id` accepts a user UUID or email.',
+    input: {
       id: z.string().describe('Contact — accepts a UUID, email address, or unique name fragment'),
       first_name: z.string().max(100).optional().describe('Updated first name'),
       last_name: z.string().max(100).optional().describe('Updated last name'),
@@ -329,7 +364,8 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       country: z.string().length(2).optional().describe('Updated country code'),
       custom_fields: z.record(z.unknown()).optional().describe('Updated custom field values'),
     },
-    async ({ id, owner_id, ...rest }) => {
+    returns: contactShape,
+    handler: async ({ id, owner_id, ...rest }) => {
       const resolvedId = await resolveContactId(client, id);
       if (!resolvedId) {
         return err('updating contact', {
@@ -351,27 +387,28 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       const result = await client.request('PATCH', `/contacts/${resolvedId}`, body);
       return result.ok ? ok(result.data) : err('updating contact', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_merge_contacts',
-    'Merge duplicate contacts. The target contact absorbs the source contact\'s deals, activities, and company associations. The source contact is soft-deleted.',
-    {
+  registerTool(server, {
+    name: 'bond_merge_contacts',
+    description: 'Merge duplicate contacts. The target contact absorbs the source contact\'s deals, activities, and company associations. The source contact is soft-deleted.',
+    input: {
       target_id: z.string().uuid().describe('Contact ID to keep (target)'),
       source_id: z.string().uuid().describe('Contact ID to merge into target (will be soft-deleted)'),
     },
-    async ({ target_id, source_id }) => {
+    returns: contactShape,
+    handler: async ({ target_id, source_id }) => {
       const result = await client.request('POST', `/contacts/${target_id}/merge`, { source_id });
       return result.ok ? ok(result.data) : err('merging contacts', result.data);
     },
-  );
+  });
 
   // ===== COMPANIES (4) =====
 
-  server.tool(
-    'bond_list_companies',
-    'Search and filter CRM companies with pagination.',
-    {
+  registerTool(server, {
+    name: 'bond_list_companies',
+    description: 'Search and filter CRM companies with pagination.',
+    input: {
       search: z.string().max(200).optional().describe('Search by company name or domain'),
       industry: z.string().max(100).optional().describe('Filter by industry'),
       size_bucket: z.enum(['1-10', '11-50', '51-200', '201-1000', '1001-5000', '5000+']).optional().describe('Filter by company size'),
@@ -380,28 +417,30 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       cursor: z.string().optional().describe('Pagination cursor'),
       limit: z.number().int().positive().max(100).optional().describe('Page size (default 50, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(companyShape), next_cursor: z.string().nullable().optional() }),
+    handler: async (params) => {
       const result = await client.request('GET', `/companies${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing companies', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_get_company',
-    'Get full company detail including associated contacts, deals, and recent activities.',
-    {
+  registerTool(server, {
+    name: 'bond_get_company',
+    description: 'Get full company detail including associated contacts, deals, and recent activities.',
+    input: {
       id: z.string().uuid().describe('Company ID'),
     },
-    async ({ id }) => {
+    returns: companyShape.extend({ contacts: z.array(contactShape).optional(), deals: z.array(dealShape).optional() }),
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/companies/${id}`);
       return result.ok ? ok(result.data) : err('getting company', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_create_company',
-    'Create a new CRM company.',
-    {
+  registerTool(server, {
+    name: 'bond_create_company',
+    description: 'Create a new CRM company.',
+    input: {
       name: z.string().max(255).describe('Company name'),
       domain: z.string().max(255).optional().describe('Company domain (e.g., "acme.com")'),
       industry: z.string().max(100).optional().describe('Industry'),
@@ -418,16 +457,17 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       owner_id: z.string().uuid().optional().describe('Owner user ID'),
       custom_fields: z.record(z.unknown()).optional().describe('Custom field values as key-value pairs'),
     },
-    async (params) => {
+    returns: companyShape,
+    handler: async (params) => {
       const result = await client.request('POST', '/companies', params);
       return result.ok ? ok(result.data) : err('creating company', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_update_company',
-    'Update an existing company. Provide only the fields to change.',
-    {
+  registerTool(server, {
+    name: 'bond_update_company',
+    description: 'Update an existing company. Provide only the fields to change.',
+    input: {
       id: z.string().uuid().describe('Company ID'),
       name: z.string().max(255).optional().describe('Updated name'),
       domain: z.string().max(255).optional().describe('Updated domain'),
@@ -445,18 +485,19 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       owner_id: z.string().uuid().optional().describe('Updated owner user ID'),
       custom_fields: z.record(z.unknown()).optional().describe('Updated custom field values'),
     },
-    async ({ id, ...body }) => {
+    returns: companyShape,
+    handler: async ({ id, ...body }) => {
       const result = await client.request('PATCH', `/companies/${id}`, body);
       return result.ok ? ok(result.data) : err('updating company', result.data);
     },
-  );
+  });
 
   // ===== DEALS (7) =====
 
-  server.tool(
-    'bond_list_deals',
-    'Search and filter CRM deals with pagination. Supports pipeline, stage, owner, value range, and stale flag filters.',
-    {
+  registerTool(server, {
+    name: 'bond_list_deals',
+    description: 'Search and filter CRM deals with pagination. Supports pipeline, stage, owner, value range, and stale flag filters.',
+    input: {
       pipeline_id: z.string().uuid().optional().describe('Filter by pipeline'),
       stage_id: z.string().uuid().optional().describe('Filter by pipeline stage'),
       owner_id: z.string().uuid().optional().describe('Filter by deal owner'),
@@ -471,28 +512,30 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       cursor: z.string().optional().describe('Pagination cursor'),
       limit: z.number().int().positive().max(100).optional().describe('Page size (default 50, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(dealShape), next_cursor: z.string().nullable().optional() }),
+    handler: async (params) => {
       const result = await client.request('GET', `/deals${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('listing deals', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_get_deal',
-    'Get full deal detail including associated contacts, activities, and stage change history.',
-    {
+  registerTool(server, {
+    name: 'bond_get_deal',
+    description: 'Get full deal detail including associated contacts, activities, and stage change history.',
+    input: {
       id: z.string().uuid().describe('Deal ID'),
     },
-    async ({ id }) => {
+    returns: dealShape.extend({ contacts: z.array(contactShape).optional() }),
+    handler: async ({ id }) => {
       const result = await client.request('GET', `/deals/${id}`);
       return result.ok ? ok(result.data) : err('getting deal', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_create_deal',
-    'Create a new deal in a pipeline. `pipeline_id` accepts a pipeline UUID or exact name; `stage_id` accepts a stage UUID or exact name (within the resolved pipeline); `owner_id` accepts a user UUID or email; `company_id` accepts a company UUID or name; `contact_ids` entries each accept a contact UUID or email.',
-    {
+  registerTool(server, {
+    name: 'bond_create_deal',
+    description: 'Create a new deal in a pipeline. `pipeline_id` accepts a pipeline UUID or exact name; `stage_id` accepts a stage UUID or exact name (within the resolved pipeline); `owner_id` accepts a user UUID or email; `company_id` accepts a company UUID or name; `contact_ids` entries each accept a contact UUID or email.',
+    input: {
       name: z.string().max(255).describe('Deal name'),
       pipeline_id: z.string().describe('Pipeline — accepts a UUID or exact pipeline name'),
       stage_id: z.string().optional().describe('Initial stage — accepts a UUID or exact stage name (scoped to the resolved pipeline). Defaults to the first stage in the pipeline.'),
@@ -506,7 +549,8 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       contact_ids: z.array(z.string()).optional().describe('Contacts to associate — each entry accepts a UUID or email'),
       custom_fields: z.record(z.unknown()).optional().describe('Custom field values'),
     },
-    async (params) => {
+    returns: dealShape,
+    handler: async (params) => {
       const {
         pipeline_id,
         stage_id,
@@ -583,12 +627,12 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       const result = await client.request('POST', '/deals', body);
       return result.ok ? ok(result.data) : err('creating deal', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_update_deal',
-    'Update an existing deal. Provide only the fields to change. `id` accepts a deal UUID or a unique title fragment (single-match only). `owner_id` accepts a user UUID or email; `company_id` accepts a company UUID or name.',
-    {
+  registerTool(server, {
+    name: 'bond_update_deal',
+    description: 'Update an existing deal. Provide only the fields to change. `id` accepts a deal UUID or a unique title fragment (single-match only). `owner_id` accepts a user UUID or email; `company_id` accepts a company UUID or name.',
+    input: {
       id: z.string().describe('Deal — accepts a UUID or unique deal title fragment'),
       name: z.string().max(255).optional().describe('Updated name'),
       value: z.number().int().optional().describe('Updated value in cents'),
@@ -600,7 +644,8 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       company_id: z.string().optional().describe('Updated primary company — accepts a company UUID or name'),
       custom_fields: z.record(z.unknown()).optional().describe('Updated custom field values'),
     },
-    async ({ id, owner_id, company_id, ...rest }) => {
+    returns: dealShape,
+    handler: async ({ id, owner_id, company_id, ...rest }) => {
       const resolvedId = await resolveDealId(client, id);
       if (!resolvedId) {
         return err('updating deal', {
@@ -631,16 +676,17 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       const result = await client.request('PATCH', `/deals/${resolvedId}`, body);
       return result.ok ? ok(result.data) : err('updating deal', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_move_deal_stage',
-    'Move a deal to a new pipeline stage. Records stage history and emits a deal.stage_changed event for Bolt automations. `id` accepts a deal UUID or a unique title fragment; `stage_id` accepts a stage UUID or exact stage name (stage name is resolved within the deal\'s pipeline).',
-    {
+  registerTool(server, {
+    name: 'bond_move_deal_stage',
+    description: 'Move a deal to a new pipeline stage. Records stage history and emits a deal.stage_changed event for Bolt automations. `id` accepts a deal UUID or a unique title fragment; `stage_id` accepts a stage UUID or exact stage name (stage name is resolved within the deal\'s pipeline).',
+    input: {
       id: z.string().describe('Deal — accepts a UUID or unique deal title fragment'),
       stage_id: z.string().describe('Target stage — accepts a UUID or exact stage name (resolved within the deal\'s pipeline)'),
     },
-    async ({ id, stage_id }) => {
+    returns: dealShape,
+    handler: async ({ id, stage_id }) => {
       // 1. Resolve the deal first — we need its pipeline_id to scope the stage lookup.
       const resolvedDeal = await resolveDeal(client, id);
       if (!resolvedDeal) {
@@ -684,16 +730,17 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       );
       return result.ok ? ok(result.data) : err('moving deal stage', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_close_deal_won',
-    'Mark a deal as won. Sets closed_at, moves to the won stage, and emits a deal.won event for Bolt automations. `id` accepts a deal UUID or a unique title fragment.',
-    {
+  registerTool(server, {
+    name: 'bond_close_deal_won',
+    description: 'Mark a deal as won. Sets closed_at, moves to the won stage, and emits a deal.won event for Bolt automations. `id` accepts a deal UUID or a unique title fragment.',
+    input: {
       id: z.string().describe('Deal — accepts a UUID or unique deal title fragment'),
       close_reason: z.string().max(2000).optional().describe('Reason for winning the deal'),
     },
-    async ({ id, ...body }) => {
+    returns: dealShape,
+    handler: async ({ id, ...body }) => {
       const resolvedId = await resolveDealId(client, id);
       if (!resolvedId) {
         return err('closing deal as won', {
@@ -703,17 +750,18 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       const result = await client.request('POST', `/deals/${resolvedId}/won`, body);
       return result.ok ? ok(result.data) : err('closing deal as won', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_close_deal_lost',
-    'Mark a deal as lost. Sets closed_at, close_reason, and optionally the competitor who won. Emits a deal.lost event for Bolt automations. `id` accepts a deal UUID or a unique title fragment.',
-    {
+  registerTool(server, {
+    name: 'bond_close_deal_lost',
+    description: 'Mark a deal as lost. Sets closed_at, close_reason, and optionally the competitor who won. Emits a deal.lost event for Bolt automations. `id` accepts a deal UUID or a unique title fragment.',
+    input: {
       id: z.string().describe('Deal — accepts a UUID or unique deal title fragment'),
       close_reason: z.string().max(2000).optional().describe('Reason for losing the deal'),
       lost_to_competitor: z.string().max(255).optional().describe('Competitor who won the deal'),
     },
-    async ({ id, ...body }) => {
+    returns: dealShape,
+    handler: async ({ id, ...body }) => {
       const resolvedId = await resolveDealId(client, id);
       if (!resolvedId) {
         return err('closing deal as lost', {
@@ -723,14 +771,14 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       const result = await client.request('POST', `/deals/${resolvedId}/lost`, body);
       return result.ok ? ok(result.data) : err('closing deal as lost', result.data);
     },
-  );
+  });
 
   // ===== ACTIVITIES (1) =====
 
-  server.tool(
-    'bond_log_activity',
-    'Log an activity (note, call, email, meeting, task, etc.) against a contact, deal, or both. `contact_id` accepts a UUID or email; `deal_id` accepts a UUID or unique deal title fragment; `company_id` accepts a UUID or company name.',
-    {
+  registerTool(server, {
+    name: 'bond_log_activity',
+    description: 'Log an activity (note, call, email, meeting, task, etc.) against a contact, deal, or both. `contact_id` accepts a UUID or email; `deal_id` accepts a UUID or unique deal title fragment; `company_id` accepts a UUID or company name.',
+    input: {
       activity_type: z.enum([
         'note', 'email_sent', 'email_received', 'call', 'meeting',
         'task', 'form_submission', 'custom',
@@ -743,7 +791,8 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       performed_at: z.string().optional().describe('When the activity occurred (ISO datetime, defaults to now)'),
       metadata: z.record(z.unknown()).optional().describe('Additional activity-type-specific data'),
     },
-    async (params) => {
+    returns: z.object({ id: z.string().uuid(), activity_type: z.string(), created_at: z.string() }).passthrough(),
+    handler: async (params) => {
       const { contact_id, deal_id, company_id, ...rest } = params;
 
       const [
@@ -786,76 +835,81 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
       const result = await client.request('POST', '/activities', body);
       return result.ok ? ok(result.data) : err('logging activity', result.data);
     },
-  );
+  });
 
   // ===== ANALYTICS (2) =====
 
-  server.tool(
-    'bond_get_pipeline_summary',
-    'Get pipeline summary with deal count, total value, and weighted value per stage.',
-    {
+  registerTool(server, {
+    name: 'bond_get_pipeline_summary',
+    description: 'Get pipeline summary with deal count, total value, and weighted value per stage.',
+    input: {
       pipeline_id: z.string().uuid().optional().describe('Pipeline ID (defaults to the org default pipeline)'),
     },
-    async (params) => {
+    returns: z.object({ pipeline_id: z.string().uuid().optional(), stages: z.array(z.object({ stage_id: z.string().uuid(), name: z.string(), deal_count: z.number(), total_value: z.number(), weighted_value: z.number() }).passthrough()) }).passthrough(),
+    handler: async (params) => {
       const result = await client.request('GET', `/analytics/pipeline-summary${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('getting pipeline summary', result.data);
     },
-  );
+  });
 
-  server.tool(
-    'bond_get_stale_deals',
-    'List deals that have exceeded the rotting threshold for their current pipeline stage. Useful for stale deal follow-up automations.',
-    {
+  registerTool(server, {
+    name: 'bond_get_stale_deals',
+    description: 'List deals that have exceeded the rotting threshold for their current pipeline stage. Useful for stale deal follow-up automations.',
+    input: {
       pipeline_id: z.string().uuid().optional().describe('Filter by pipeline'),
       owner_id: z.string().uuid().optional().describe('Filter by deal owner'),
       limit: z.number().int().positive().max(100).optional().describe('Max results (default 50, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(dealShape.extend({ days_in_stage: z.number().optional() })) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/analytics/stale-deals${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('getting stale deals', result.data);
     },
-  );
+  });
 
   // ===== LEAD SCORING (1) =====
 
-  server.tool(
-    'bond_score_lead',
-    'Trigger lead score recalculation for a specific contact. Evaluates all enabled scoring rules and updates the cached lead_score on the contact.',
-    {
+  registerTool(server, {
+    name: 'bond_score_lead',
+    description: 'Trigger lead score recalculation for a specific contact. Evaluates all enabled scoring rules and updates the cached lead_score on the contact.',
+    input: {
       contact_id: z.string().uuid().describe('Contact ID to score'),
     },
-    async ({ contact_id }) => {
+    returns: z.object({ contact_id: z.string().uuid(), lead_score: z.number(), evaluated_rules: z.number().optional() }).passthrough(),
+    handler: async ({ contact_id }) => {
       const result = await client.request('POST', '/scoring/recalculate', { contact_id });
       return result.ok ? ok(result.data) : err('scoring lead', result.data);
     },
-  );
+  });
 
   // ===== FORECAST (1) =====
 
-  server.tool(
-    'bond_get_forecast',
-    'Get revenue forecast from weighted pipeline value, broken into 30/60/90 day buckets based on expected close dates.',
-    {
+  registerTool(server, {
+    name: 'bond_get_forecast',
+    description: 'Get revenue forecast from weighted pipeline value, broken into 30/60/90 day buckets based on expected close dates.',
+    input: {
       pipeline_id: z.string().uuid().optional().describe('Pipeline ID (defaults to the org default pipeline)'),
     },
-    async (params) => {
+    returns: z.object({ pipeline_id: z.string().uuid().optional(), next_30_days: z.number(), next_60_days: z.number(), next_90_days: z.number(), currency: z.string().optional() }).passthrough(),
+    handler: async (params) => {
       const result = await client.request('GET', `/analytics/forecast${buildQs(params)}`);
       return result.ok ? ok(result.data) : err('getting forecast', result.data);
     },
-  );
+  });
 
   // ===== SEARCH (1) =====
 
-  server.tool(
-    'bond_search_contacts',
-    'Full-text search across contact name, email, and phone. Returns contacts ranked by lead score.',
-    {
+  registerTool(server, {
+    name: 'bond_search_contacts',
+    description: 'Full-text search across contact name, email, and phone. Returns contacts ranked by lead score.',
+    input: {
       query: z.string().min(1).max(200).describe('Search query string'),
       limit: z.number().int().positive().max(100).optional().describe('Max results (default 20, max 100)'),
     },
-    async (params) => {
+    returns: z.object({ data: z.array(contactShape) }),
+    handler: async (params) => {
       const result = await client.request('GET', `/contacts/search${buildQs({ q: params.query, limit: params.limit })}`);
       return result.ok ? ok(result.data) : err('searching contacts', result.data);
     },
-  );
+  });
 }
