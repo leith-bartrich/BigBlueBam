@@ -795,12 +795,23 @@ services:
       - backend
 
   # ── One-shot ────────────────────────────────────────────────────
-  # Applies all pending SQL migrations from /app/migrations (baked into the
-  # api image from infra/postgres/migrations). Tracks applied migrations in
-  # the `schema_migrations` table. Idempotent: rerunning is a no-op when the
-  # DB is already up to date. Every DB-using service declares this as a
-  # `service_completed_successfully` dependency so migrations ALWAYS run
-  # before app code that assumes the current schema.
+  # Applies all pending SQL migrations from /app/migrations. Tracks applied
+  # migrations in the `schema_migrations` table. Idempotent: rerunning is a
+  # no-op when the DB is already up to date. Every DB-using service declares
+  # this as a `service_completed_successfully` dependency so migrations
+  # ALWAYS run before app code that assumes the current schema.
+  #
+  # NOTE ON THE BIND MOUNT: `infra/postgres/migrations` is also COPYed into
+  # the production image by apps/api/Dockerfile so Helm/k8s deployments ship
+  # a self-contained image. For `docker compose` on developer hosts (esp.
+  # Windows/WSL2 where the build context has been observed to silently drop
+  # newly-added SQL files from COPY layers), the bind mount below overrides
+  # the baked-in `/app/migrations` directory with the live host tree. This
+  # makes new migration files available to `docker compose run --rm migrate`
+  # instantly without a rebuild and bypasses the WSL2 file-sync class of
+  # bugs that caused migrations 0043/0044/0045 to be silently missing from
+  # the image earlier in development. Mounted read-only so the container
+  # cannot corrupt host source.
   migrate:
     build:
       context: .
@@ -813,6 +824,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/bigbluebam
       MIGRATIONS_DIR: /app/migrations
+    volumes:
+      - ./infra/postgres/migrations:/app/migrations:ro
     restart: "no"
     networks:
       - backend

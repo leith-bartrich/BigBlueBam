@@ -130,7 +130,7 @@ The `migrate` service (reuses the api image, runs `node dist/migrate.js`) is a `
 
 1. Update the Drizzle schema file in `apps/*/src/db/schema/`.
 2. Add a **new** numbered file in `infra/postgres/migrations/` that applies the change idempotently (use `ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP TRIGGER IF EXISTS ... ; CREATE TRIGGER ...`, or guarded `DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;` blocks). **Never edit an existing migration** — the runner records a SHA-256 checksum per file and aborts on mismatch.
-3. Rebuild the api image (`docker compose build api`) so the new migration is baked in, then `docker compose up -d` — the migrate service will apply it before app services start.
+3. Run `docker compose run --rm migrate` to apply it. The `migrate` service bind-mounts `./infra/postgres/migrations` into `/app/migrations` at runtime, so the new file is picked up instantly — **no rebuild is required** on developer hosts. Then rebuild and restart whichever app container now depends on the new schema (`docker compose build <app> && docker compose up -d --force-recreate <app>`). Production deployments (k8s/Helm) still bake the migrations into the image via `apps/api/Dockerfile`, so `docker compose build api` is only needed when shipping.
 
 Every migration must be idempotent so the same migration file is safe to run against both empty DBs and DBs that may already have the object (e.g., from the historical init.sql bootstrap).
 
@@ -155,32 +155,35 @@ Enforced by `pnpm lint:migrations` (`scripts/lint-migrations.mjs`), run in CI by
 
 ### Applying a new migration to a long-running stack (gotchas)
 
-The "just run `docker compose up -d`" flow works on a clean boot but has two traps that have each bitten this project and produced hours of silent "column does not exist" debugging. Read these before adding a migration to an existing stack:
+The "just run `docker compose up -d`" flow has one trap that still bites, plus one trap that used to bite but has been mitigated. Read this before adding a migration to an existing stack:
 
-1. **The `migrate` sidecar is cached via `service_completed_successfully`.** Once it has run to completion on the first boot, subsequent `docker compose up -d <service>` invocations see the cached completion and **do not re-run it**. Simply rebuilding `bolt-api` (or any other dependent service) will not trigger the migration, even if the new migration file is sitting in the image. You must explicitly run `docker compose run --rm migrate` yourself after a rebuild.
+1. **The `migrate` sidecar is cached via `service_completed_successfully`.** Once it has run to completion on the first boot, subsequent `docker compose up -d <service>` invocations see the cached completion and **do not re-run it**. Simply rebuilding `bolt-api` (or any other dependent service) will not trigger the migration, even if the new migration file is present. You must explicitly run `docker compose run --rm migrate` yourself after adding a new migration file.
 
-2. **Docker Desktop's WSL2 file sync can silently drop new files from the build context.** On Windows hosts specifically, a newly-added migration file in `infra/postgres/migrations/` sometimes fails to propagate into the build context even after `touch + docker compose build --no-cache + docker builder prune -af`. The resulting image has every migration *except* the new one, and the `migrate` sidecar happily reports "N applied, N already up-to-date" without ever seeing the new file. The Drizzle schema (which IS rebuilt from host source) now expects a column that doesn't exist in the database — every `db.select().from(<table>)` crashes at the Postgres driver with `column "X" does not exist`, and any raw SQL paths that skip the missing column keep working, producing the exact "stats shows 13 / list shows nothing" class of symptom.
+2. **(Fixed, historical context only.)** Docker Desktop's WSL2 file sync used to silently drop newly-added migration files from the build context on Windows hosts, so a `docker compose build api` would produce an image that had every migration *except* the new one, and the `migrate` sidecar happily reported "N applied, N already up-to-date" without ever seeing the new file. This produced hours of confusing "column does not exist" / "stats shows 13 / list shows nothing" debugging across the Bolt `template_strict`, `bolt_graph_column`, and `bond_deal_rotting_alerted` incidents. **The fix is in `docker-compose.yml`**: the `migrate` service now bind-mounts `./infra/postgres/migrations:/app/migrations:ro` at runtime, so the host directory is read live every time the container starts. New migration files are visible to the runner instantly, without a rebuild and without going through any COPY / BuildKit / WSL2 sync layers. The `apps/api/Dockerfile` still `COPY`s the migrations into the production image as a fallback for Helm/k8s deployments where no compose bind mount exists.
 
-**Safe sequence after adding a migration** (does both things explicitly):
+**Standard sequence after adding a migration** (no rebuild of the api image needed unless you are shipping to prod):
 
 ```sh
-docker compose build --no-cache api
-docker compose run --rm migrate
-docker compose up -d --force-recreate <affected-services>
+docker compose run --rm migrate                            # applies the new migration
+docker compose build <app-that-uses-the-new-column>         # rebuild the affected app
+docker compose up -d --force-recreate <app-that-uses-it>    # restart it
 ```
 
-**Verify the migration actually shipped** — don't trust the "N already up-to-date" message:
+**Verify the migration actually applied:**
 
 ```sh
-# 1. Confirm the file made it into the image
+# 1. Confirm the runner sees the new file (bind mount makes this instant)
 docker compose run --rm migrate sh -c "ls /app/migrations | tail -5"
-# If your new file is missing from this list, Docker's file sync dropped it.
 
-# 2. Confirm the column actually exists in the live DB
+# 2. Confirm the column/table actually exists in the live DB
 docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c "\d <table>"
+
+# 3. Confirm schema_migrations has the new row
+docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c \
+  "SELECT id FROM schema_migrations ORDER BY id DESC LIMIT 5;"
 ```
 
-**Bulletproof fallback when Docker file sync is the problem.** If the rebuild refuses to pick up the new file, bypass Docker entirely:
+**Manual psql fallback (should no longer be necessary, retained for emergencies).** If something does go wrong and the migrate runner refuses to apply a file that's clearly present, you can still bypass it:
 
 ```sh
 # Apply the migration SQL directly against the running postgres container
@@ -189,13 +192,12 @@ cat infra/postgres/migrations/NNNN_new_migration.sql \
 
 # Record it in schema_migrations so the next clean boot's migrate service
 # knows to skip it. The id column is the filename (with .sql extension);
-# checksum can be 'manual' — the runner only re-verifies checksums for
-# migrations it finds in /app/migrations, so an orphan row is harmless.
+# the runner re-verifies checksums against on-disk files, so use a real
+# SHA-256 of the SQL body (post-header) or, if you just need to get
+# unblocked, 'manual' and accept you'll have to fix it on the next boot.
 docker compose exec -T postgres psql -U bigbluebam -d bigbluebam -c \
   "INSERT INTO schema_migrations (id, checksum) VALUES ('NNNN_new_migration.sql', 'manual') ON CONFLICT (id) DO NOTHING;"
 ```
-
-This is what had to happen during the Bolt `template_strict` incident — the file was on disk, `.dockerignore` didn't exclude it, `--no-cache` rebuilds ran cleanly, `docker builder prune -af` completed, and the image still didn't contain the file. Direct `psql` application was the only path that worked. The fact that the rest of the application code (Drizzle schema, migration runner code) already had the new column meant the database just needed to catch up.
 
 **When debugging "it works for stats but not for list" symptoms**, always check for schema drift FIRST:
 
