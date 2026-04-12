@@ -75,16 +75,6 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
     }
   }, [existing]);
 
-  if (!isNew && isLoading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
-      </div>
-    );
-  }
-
-  // Recompute validation whenever any relevant field changes
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const validationErrors = useMemo(
     () =>
       validateAutomationForm({
@@ -101,6 +91,14 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
 
   const hasErrors = Object.keys(validationErrors).length > 0;
   const showErrors = hasSubmitAttempt && hasErrors;
+
+  if (!isNew && isLoading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+      </div>
+    );
+  }
 
   const handleSave = async (enableOnSave = false) => {
     setHasSubmitAttempt(true);
