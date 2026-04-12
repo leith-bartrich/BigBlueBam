@@ -76,6 +76,9 @@ if ($hasDocker) {
 Write-Host ""
 
 # Hand off to Node.js orchestrator
-$deployScript = Join-Path $PSScriptRoot "deploy" "main.mjs"
+# Nested Join-Path so this works on Windows PowerShell 5.1 too — the 3-arg
+# form (Join-Path path child1 child2) only exists via -AdditionalChildPath
+# in PowerShell 6+, which not every operator has installed.
+$deployScript = Join-Path (Join-Path $PSScriptRoot "deploy") "main.mjs"
 & node "$deployScript" @args
 exit $LASTEXITCODE
