@@ -201,7 +201,7 @@ export function AutomationEditorPage({ id, onNavigate }: AutomationEditorPagePro
 
           {/* WHEN section (blue) */}
           <div className={cn(
-            'rounded-xl border-2 overflow-hidden',
+            'rounded-xl border-2',
             showErrors && (validationErrors['trigger_source'] || validationErrors['trigger_event'])
               ? 'border-red-400 dark:border-red-700'
               : 'border-blue-200 dark:border-blue-800/50',

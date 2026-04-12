@@ -163,7 +163,7 @@ export function useUpdateAutomation() {
 
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<BoltAutomation> & { id: string }) =>
-      api.patch<SingleResponse>(`/automations/${id}`, data),
+      api.put<SingleResponse>(`/automations/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['automations'] });
     },
