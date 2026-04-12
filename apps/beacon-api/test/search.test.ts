@@ -633,23 +633,29 @@ describe('link traversal logic', () => {
   });
 
   it('returns empty array when no beacon IDs provided', async () => {
-    const result = await linkTraversalSearch([]);
+    const result = await linkTraversalSearch([], 'org-1');
     expect(result).toEqual([]);
   });
 
   it('follows links in both directions', async () => {
-    const links = [
+    const sourceLinks = [
       { source_id: 'beacon-1', target_id: 'beacon-linked-a' },
+    ];
+    const targetLinks = [
       { source_id: 'beacon-linked-b', target_id: 'beacon-1' },
     ];
 
-    const mockChain = {
+    const makeChain = (rows: any) => ({
       from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue(links),
-    };
-    (db.select as any).mockReturnValue(mockChain);
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue(rows),
+    });
 
-    const result = await linkTraversalSearch(['beacon-1']);
+    (db.select as any)
+      .mockReturnValueOnce(makeChain(sourceLinks))
+      .mockReturnValueOnce(makeChain(targetLinks));
+
+    const result = await linkTraversalSearch(['beacon-1'], 'org-1');
 
     expect(result).toContain('beacon-linked-a');
     expect(result).toContain('beacon-linked-b');

@@ -92,7 +92,7 @@ export async function processBearingDigestJob(
     lines.push(`## ${period.name}`);
     lines.push('');
     lines.push(`**Period:** ${period.start_date} to ${period.end_date}`);
-    lines.push(`**Goals:** ${totalGoals} | **Avg Progress:** ${avgProgress.toFixed(1)}% | **Completed:** ${completedCount}`);
+    lines.push(`**Goals:** ${totalGoals} | **Avg Progress:** ${avgProgress.toFixed(1)}% | **Completed:** ${completedCount} | **At Risk:** ${atRiskCount} | **Behind:** ${behindCount}`);
     lines.push('');
 
     // At-risk and behind items first (highlighted)
@@ -206,7 +206,7 @@ export async function processBearingDigestJob(
     logger.warn({ err }, 'Failed to cache digest in Redis (non-fatal)');
   } finally {
     if (cacheRedis) {
-      await cacheRedis.disconnect().catch(() => {});
+      await cacheRedis.quit().catch(() => {});
     }
   }
 

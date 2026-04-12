@@ -89,6 +89,14 @@ describe('Submission Service', () => {
 
   describe('createSubmission', () => {
     it('creates a submission', async () => {
+      const form = {
+        id: FORM_ID,
+        organization_id: ORG_ID,
+        name: 'Customer Feedback',
+        slug: 'customer-feedback',
+        one_per_email: false,
+        max_responses: null,
+      };
       const newSub = {
         id: SUB_ID,
         form_id: FORM_ID,
@@ -96,6 +104,17 @@ describe('Submission Service', () => {
         response_data: { name: 'Bob' },
         submitted_at: new Date().toISOString(),
       };
+
+      // createSubmission makes two db.select() calls:
+      //   1. Load the form to confirm it exists
+      //   2. Load the field definitions for validation
+      let callCount = 0;
+      mockSelect.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) return chainable([form]);
+        return chainable([]);
+      });
+
       const insertChain = chainable([newSub]);
       mockInsert.mockReturnValue({ values: vi.fn().mockReturnValue(insertChain) });
 

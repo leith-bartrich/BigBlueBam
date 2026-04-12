@@ -48,7 +48,7 @@ function chainable(result: unknown[]) {
   const obj: any = {};
   obj.then = (resolve: Function, reject?: Function) =>
     Promise.resolve(result).then(resolve as any, reject as any);
-  obj.limit = vi.fn().mockResolvedValue(result);
+  obj.limit = vi.fn().mockReturnValue(obj);
   obj.returning = vi.fn().mockResolvedValue(result);
   obj.from = vi.fn().mockReturnValue(obj);
   obj.where = vi.fn().mockReturnValue(obj);

@@ -238,6 +238,7 @@ describe('createGoal', () => {
 
   it('should create goal with valid data', async () => {
     const goal = makeGoal();
+    mockSelect.mockReturnValue(chainable([{ id: PERIOD_ID }]));
     mockInsert.mockReturnValue(chainable([goal]));
 
     const result = await createGoal(
@@ -257,6 +258,7 @@ describe('createGoal', () => {
 
   it('should default scope to organization', async () => {
     const goal = makeGoal({ scope: 'organization' });
+    mockSelect.mockReturnValue(chainable([{ id: PERIOD_ID }]));
     mockInsert.mockReturnValue(chainable([goal]));
 
     const result = await createGoal(
@@ -273,6 +275,7 @@ describe('createGoal', () => {
 
   it('should default status to draft', async () => {
     const goal = makeGoal({ status: 'draft' });
+    mockSelect.mockReturnValue(chainable([{ id: PERIOD_ID }]));
     mockInsert.mockReturnValue(chainable([goal]));
 
     const result = await createGoal(

@@ -347,6 +347,7 @@ describe('addLink', () => {
     };
 
     mockSelect.mockReturnValue(chainable([{ kr, goal_org_id: ORG_ID }]));
+    mockExecute.mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000002' }]);
     mockInsert.mockReturnValue(chainable([link]));
 
     const result = await addLink(

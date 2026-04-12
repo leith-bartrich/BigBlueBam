@@ -14,6 +14,7 @@
     "postgres": "^3.4.0",
     "drizzle-orm": "^0.33.0",
     "@bigbluebam/shared": "workspace:*",
+    "@qdrant/js-client-rest": "^1.12.0",
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
     "dotenv": "^16.4.0",

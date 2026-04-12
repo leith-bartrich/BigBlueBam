@@ -48,7 +48,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
       <PeriodSelector />
 
       {/* Stats */}
-      <ProgressSummary goals={goals} isLoading={isLoading} />
+      <ProgressSummary periodId={selectedPeriodId ?? undefined} />
 
       {/* Filters */}
       <div className="flex items-center gap-4 flex-wrap">

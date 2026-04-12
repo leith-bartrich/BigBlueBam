@@ -51,15 +51,6 @@ interface ActionRow {
   retry_delay_ms: number;
 }
 
-interface AutomationRow {
-  id: string;
-  org_id: string;
-  name: string;
-  max_chain_depth: number;
-  created_by: string;
-  template_strict: boolean;
-}
-
 // ---------------------------------------------------------------------------
 // Template variable resolution
 // ---------------------------------------------------------------------------
@@ -346,12 +337,10 @@ export async function processBoltExecuteJob(
     execution_id,
     automation_id,
     event_payload,
-    event_source,
     event_type,
     org_id,
     actor_id,
     actor_type,
-    chain_depth,
   } = job.data;
 
   logger.info(
@@ -496,7 +485,6 @@ export async function processBoltExecuteJob(
     let stepSuccess = false;
     let stepResponse: unknown = null;
     let stepError: string | undefined;
-    let stepDurationMs = 0;
 
     // Strict mode: if ANY template warning occurred, abort this step before
     // calling the MCP tool. The step is recorded as failed with a clear error.
@@ -504,7 +492,6 @@ export async function processBoltExecuteJob(
       const firstUnresolved =
         templateWarnings.find((w) => w.reason === 'unresolved') ?? templateWarnings[0]!;
       stepError = `Template resolution failed: {{ ${firstUnresolved.expression} }} did not resolve (param "${firstUnresolved.path}"). Strict mode is enabled; either disable strict mode or fix the template.`;
-      stepDurationMs = 0;
       logger.warn(
         { execution_id, step: i, mcp_tool: action.mcp_tool, warnings: templateWarnings },
         'Aborting step: strict template mode and unresolved template(s)',
@@ -522,7 +509,6 @@ export async function processBoltExecuteJob(
         }
 
         const result = await callMcpTool(mcpUrl, action.mcp_tool, resolvedParams, org_id, logger);
-        stepDurationMs = result.durationMs;
         stepResponse = result.response;
 
         if (result.success) {
@@ -592,7 +578,6 @@ export async function processBoltExecuteJob(
     finalStatus = 'success';
   } else if (failedStepIndex !== null && failedStepIndex < actionRows.length - 1) {
     // Stopped early or some steps failed with continue
-    const completedSteps = actionRows.length;
     const executedAll = !failureMessage || failedStepIndex === actionRows.length - 1;
     finalStatus = executedAll ? 'partial' : 'failed';
   } else {
