@@ -11,6 +11,9 @@ services:
       - "4000:4000"
     environment:
       NODE_ENV: development
+      # BAM-RL-E2E: dev stacks always run permissive so Playwright workers
+      # can run in parallel without hitting HTTP 429.
+      BBB_E2E_PERMISSIVE_RATE_LIMIT: "1"
 
   frontend:
     build:

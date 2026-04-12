@@ -292,6 +292,8 @@ All API errors follow this structure:
 
 Required env vars: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `SESSION_SECRET`. See `.env.example` for the full list including optional OAuth, SMTP, and port overrides.
 
+Optional test/dev knobs on the Bam api: set `BBB_E2E_PERMISSIVE_RATE_LIMIT=1` to multiply the global Fastify rate limit ceiling by `RATE_LIMIT_E2E_MULTIPLIER` (default 100x), unblocking parallel Playwright workers on `/auth/login`. Already on by default in `docker-compose.dev.yml` and any non-production `NODE_ENV`; production stays strict unless the flag is set explicitly. Per-route rate limits (org admin, llm-provider, change-password, switch-org, guest-invite) are unaffected.
+
 ## Development Phases
 
 The project is planned in 7 phases over ~30 weeks. Phase 1 (Foundation) covers monorepo scaffolding, Docker stack, auth, org/user/project CRUD, basic board with drag-and-drop. Refer to Section 26 of the design document for the full breakdown.
