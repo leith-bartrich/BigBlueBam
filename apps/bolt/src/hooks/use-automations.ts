@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { BoltGraph } from '@/types/bolt-graph';
 import { api } from '@/lib/api';
 import { useProjectStore } from '@/stores/project.store';
 
@@ -73,6 +74,7 @@ export interface BoltAutomation {
   project_name: string | null;
   created_by: string;
   creator_name: string | null;
+  graph: BoltGraph | null;
   created_at: string;
   updated_at: string;
 }

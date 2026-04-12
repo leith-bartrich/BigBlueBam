@@ -1,0 +1,41 @@
+/* ─── Dark mode overrides for xyflow ─── */
+
+.dark .react-flow__background {
+  background-color: #18181b; /* zinc-900 */
+}
+
+.dark .react-flow__minimap {
+  background-color: #18181b; /* zinc-900 */
+}
+
+.dark .react-flow__minimap-mask {
+  fill: rgba(39, 39, 42, 0.6); /* zinc-800 semi-transparent */
+}
+
+.dark .react-flow__controls button {
+  background-color: #27272a; /* zinc-800 */
+  border-color: #3f3f46; /* zinc-700 */
+  color: #a1a1aa; /* zinc-400 */
+  fill: #a1a1aa;
+}
+
+.dark .react-flow__controls button:hover {
+  background-color: #3f3f46; /* zinc-700 */
+}
+
+/* ─── Handle styles ─── */
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+}
+
+/* ─── Edge styles ─── */
+
+.dark .react-flow__edge-path {
+  stroke: #71717a; /* zinc-500 */
+}
+
+.dark .react-flow__connection-line {
+  stroke: #a1a1aa; /* zinc-400 */
+}
