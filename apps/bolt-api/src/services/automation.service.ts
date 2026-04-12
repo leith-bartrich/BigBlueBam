@@ -1,4 +1,4 @@
-import { eq, and, or, sql, asc, desc, gt, ilike } from 'drizzle-orm';
+import { eq, and, or, sql, asc, gt, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   boltAutomations,
@@ -40,7 +40,7 @@ export class BoltError extends Error {
 // Validation: MCP tool allowlist
 // ---------------------------------------------------------------------------
 
-const allowedToolsCache = new Set(getAvailableActions().map((a) => a.tool));
+const allowedToolsCache = new Set(getAvailableActions().map((a) => a.mcp_tool));
 
 /**
  * Validate that every action references a tool on the allowlist.

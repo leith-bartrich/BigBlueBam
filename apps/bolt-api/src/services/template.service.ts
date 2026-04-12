@@ -388,7 +388,7 @@ export function instantiateTemplate(
   template: AutomationTemplate,
   overrides: {
     name?: string;
-    description?: string;
+    description?: string | null;
     project_id?: string | null;
     cron_expression?: string | null;
     cron_timezone?: string;
