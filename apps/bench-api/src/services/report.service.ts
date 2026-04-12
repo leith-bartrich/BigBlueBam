@@ -1,7 +1,7 @@
 import { eq, and, asc, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { benchScheduledReports, benchDashboards } from '../db/schema/index.js';
-import { notFound, badRequest } from '../lib/utils.js';
+import { notFound } from '../lib/utils.js';
 
 // ---------------------------------------------------------------------------
 // Types

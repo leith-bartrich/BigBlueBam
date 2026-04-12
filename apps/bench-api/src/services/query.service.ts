@@ -21,7 +21,7 @@ export interface QueryDimension {
 export interface QueryFilter {
   field: string;
   op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'is_null' | 'is_not_null' | 'between' | 'like';
-  value: unknown;
+  value?: unknown;
 }
 
 export interface TimeDimension {
@@ -80,10 +80,10 @@ function validateDateString(value: string): string {
 /** Accumulates positional parameters ($1, $2, ...) alongside the SQL string. */
 interface ParameterizedQuery {
   text: string;
-  params: unknown[];
+  params: string[];
 }
 
-function addParam(pq: ParameterizedQuery, value: unknown): string {
+function addParam(pq: ParameterizedQuery, value: string): string {
   pq.params.push(value);
   return `$${pq.params.length}`;
 }

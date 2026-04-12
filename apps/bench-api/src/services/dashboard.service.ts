@@ -1,7 +1,7 @@
-import { eq, and, sql, asc, desc, or } from 'drizzle-orm';
+import { eq, and, sql, asc, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { benchDashboards, benchWidgets } from '../db/schema/index.js';
-import { notFound, badRequest, forbidden } from '../lib/utils.js';
+import { notFound, forbidden } from '../lib/utils.js';
 import type { CacheService } from '../services/cache.service.js';
 
 // ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ export interface CreateDashboardInput {
 export interface UpdateDashboardInput {
   name?: string;
   description?: string;
-  project_id?: string;
+  project_id?: string | null;
   visibility?: string;
   is_default?: boolean;
   auto_refresh_seconds?: number | null;
@@ -83,7 +83,7 @@ export async function listDashboards(orgId: string, params: {
       count: sql<number>`count(*)::int`,
     })
     .from(benchWidgets)
-    .where(sql`${benchWidgets.dashboard_id} = ANY(${dashIds})`)
+    .where(inArray(benchWidgets.dashboard_id, dashIds))
     .groupBy(benchWidgets.dashboard_id);
 
   const countMap = new Map(widgetCounts.map((wc) => [wc.dashboard_id, wc.count]));
