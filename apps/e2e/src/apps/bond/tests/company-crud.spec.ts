@@ -14,7 +14,7 @@ test.describe('Bond — Company CRUD', () => {
     await contactsPage.goto();
     await contactsPage.navigateToCompanies();
     await screenshots.capture(page, 'companies-loaded');
-    await contactsPage.expectPath('/v1/companies');
+    await contactsPage.expectPath('/companies');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'companies-content-visible');
   });

@@ -69,7 +69,7 @@ test.describe('Bond — Deal CRUD', () => {
     });
     await screenshots.capture(page, 'deal-created-via-api');
 
-    await pipelinePage.goto();
+    await pipelinePage.gotoPipeline(resolved!.pipelineId);
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'pipeline-after-create');
     await pipelinePage.expectDealVisible(dealName);
@@ -99,7 +99,13 @@ test.describe('Bond — Deal CRUD', () => {
 
     test.skip(!deal, 'No deal available');
 
-    await pipelinePage.goto();
+    // Navigate to the specific pipeline so the board loads deals
+    const pipelineId = deal.pipeline_id;
+    if (pipelineId) {
+      await pipelinePage.gotoPipeline(pipelineId);
+    } else {
+      await pipelinePage.goto();
+    }
     await page.waitForTimeout(1000);
     await screenshots.capture(page, 'pipeline-before-click');
 
@@ -128,7 +134,7 @@ test.describe('Bond — Deal CRUD', () => {
     const updatedName = `${dealName} Updated`;
     await api.patch(`/v1/deals/${deal.id}`, { name: updatedName });
 
-    await pipelinePage.goto();
+    await pipelinePage.gotoPipeline(resolved!.pipelineId);
     await page.waitForTimeout(2000);
     await screenshots.capture(page, 'pipeline-after-rename');
     await pipelinePage.expectDealVisible(updatedName);
