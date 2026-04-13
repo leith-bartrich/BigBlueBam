@@ -207,8 +207,10 @@ async function checkPrerequisites() {
   }
 
   // 2. Best-effort CLI detection — only needed later for createSuperUser.
+  // Railway's CLI uses `railway --version` (flag), not `railway version`
+  // (subcommand) — the latter exits non-zero with "unknown command".
   try {
-    execSync('railway version', { stdio: 'pipe' });
+    execSync('railway --version', { stdio: 'pipe' });
   } catch {
     console.log(`  ${warn} Railway CLI not detected — admin auto-creation will print manual instructions instead`);
   }
@@ -247,12 +249,31 @@ function printWelcomeBanner() {
  * Extract the generated-secrets bundle the orchestrator expects from the
  * envConfig produced by buildEnvConfig(). Missing keys fall through as empty
  * strings so the orchestrator's `secret` branch can SKIP cleanly.
+ *
+ * Defense-in-depth: SESSION_SECRET and INTERNAL_HELPDESK_SECRET must be
+ * ≥ 32 chars or every Bam app crash-loops on Zod env validation. If
+ * something upstream (e.g. a stale `.deploy-state.json` carrying the
+ * literal '[REDACTED]' marker) snuck a too-short value through, throw a
+ * loud preflight error rather than letting the deploy "succeed" and
+ * stranding 17 services in a healthcheck-timeout loop on Railway.
  */
 function extractSecretsFromEnvConfig(envConfig = {}) {
+  const sessionSecret = envConfig.SESSION_SECRET ?? '';
+  const helpdeskSecret = envConfig.INTERNAL_HELPDESK_SECRET ?? '';
+  const tooShort = [];
+  if (sessionSecret.length < 32) tooShort.push(`SESSION_SECRET (${sessionSecret.length} chars)`);
+  if (helpdeskSecret.length < 32) tooShort.push(`INTERNAL_HELPDESK_SECRET (${helpdeskSecret.length} chars)`);
+  if (tooShort.length > 0) {
+    throw new Error(
+      `Required secret(s) too short for Bam env validation: ${tooShort.join(', ')}. ` +
+        `Both must be ≥ 32 characters. This usually means '.deploy-state.json' was ` +
+        `loaded with redacted placeholder values; delete it and re-run, or pass --reconfigure.`,
+    );
+  }
   return {
-    SESSION_SECRET: envConfig.SESSION_SECRET ?? '',
-    INTERNAL_HELPDESK_SECRET: envConfig.INTERNAL_HELPDESK_SECRET ?? '',
-    INTERNAL_SERVICE_SECRET: envConfig.INTERNAL_SERVICE_SECRET ?? envConfig.INTERNAL_HELPDESK_SECRET ?? '',
+    SESSION_SECRET: sessionSecret,
+    INTERNAL_HELPDESK_SECRET: helpdeskSecret,
+    INTERNAL_SERVICE_SECRET: envConfig.INTERNAL_SERVICE_SECRET ?? helpdeskSecret,
     MINIO_ROOT_USER: envConfig.MINIO_ROOT_USER ?? '',
     MINIO_ROOT_PASSWORD: envConfig.MINIO_ROOT_PASSWORD ?? '',
     LIVEKIT_API_KEY: envConfig.LIVEKIT_API_KEY ?? '',

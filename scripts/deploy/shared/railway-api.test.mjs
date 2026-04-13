@@ -334,6 +334,31 @@ describe('RailwayClient.listProjects', () => {
     const client = new RailwayClient(VALID_TOKEN);
     expect(await client.listProjects()).toEqual([{ id: 'p1', name: 'alpha' }]);
   });
+
+  it('filters out soft-deleted projects (deletedAt set)', async () => {
+    // Railway returns projects in a "trash" state for some time after the
+    // operator clicks Delete. Without filtering, the orchestrator sees
+    // these stale duplicates and trips the duplicate-name guard for
+    // projects the operator already considers gone.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: {
+          me: {
+            projects: {
+              edges: [
+                { node: { id: 'p1', name: 'bigbluebam', deletedAt: null } },
+                { node: { id: 'p2', name: 'bigbluebam', deletedAt: '2026-04-12T00:00:00Z' } },
+                { node: { id: 'p3', name: 'bigbluebam', deletedAt: '2026-04-11T00:00:00Z' } },
+              ],
+            },
+          },
+        },
+      }),
+    );
+    const client = new RailwayClient(VALID_TOKEN);
+    const result = await client.listProjects();
+    expect(result).toEqual([{ id: 'p1', name: 'bigbluebam' }]);
+  });
 });
 
 describe('RailwayClient.findProjectByName', () => {

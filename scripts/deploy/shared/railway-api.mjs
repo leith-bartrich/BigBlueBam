@@ -138,12 +138,18 @@ export class RailwayClient {
   }
 
   async listProjects() {
+    // `deletedAt` is requested so we can filter out soft-deleted projects.
+    // Railway's API returns projects in a "trash" / grace-period state for
+    // some time after the operator clicks Delete; if we don't filter them
+    // the orchestrator sees stale duplicates and the operator gets a
+    // confusing "Found N projects named …" error for projects they think
+    // they already deleted.
     const data = await this.query(`
       {
         me {
-          projects {
+          projects(first: 200) {
             edges {
-              node { id name }
+              node { id name deletedAt }
             }
           }
         }
@@ -153,12 +159,85 @@ export class RailwayClient {
     return edges
       .map((e) => e?.node)
       .filter(Boolean)
+      .filter((n) => !n.deletedAt)
       .map((n) => ({ id: n.id, name: n.name }));
   }
 
-  async findProjectByName(name) {
-    const projects = await this.listProjects();
-    return projects.find((p) => p.name === name) ?? null;
+  /**
+   * List projects scoped to a specific workspace. Necessary because Railway's
+   * `me { projects }` query has not historically returned every project the
+   * user has access to across every workspace — projects in team workspaces
+   * (or workspaces created after the personal one) can be missing from the
+   * top-level list, which causes findProjectByName to return null and the
+   * orchestrator to silently create duplicate projects on re-runs.
+   *
+   * We try the workspace-scoped query first via `me { workspaces { projects } }`,
+   * which matches Railway's current schema. If the GraphQL server rejects the
+   * `projects` sub-selection (older / different schema), we fall back to the
+   * top-level `me.projects` list — that's still better than nothing.
+   */
+  async listProjectsInWorkspace(workspaceId) {
+    if (!workspaceId) return this.listProjects();
+    // `deletedAt` is requested so we can filter out soft-deleted projects.
+    // See the listProjects() comment for why.
+    try {
+      const data = await this.query(`
+        {
+          me {
+            workspaces {
+              id
+              projects {
+                edges {
+                  node { id name deletedAt }
+                }
+              }
+            }
+          }
+        }
+      `);
+      const workspaces = data?.me?.workspaces ?? [];
+      const ws = workspaces.find((w) => w?.id === workspaceId);
+      if (!ws) return [];
+      const edges = ws.projects?.edges ?? [];
+      return edges
+        .map((e) => e?.node)
+        .filter(Boolean)
+        .filter((n) => !n.deletedAt)
+        .map((n) => ({ id: n.id, name: n.name }));
+    } catch (err) {
+      if (err instanceof RailwayApiError && err.kind === 'graphql') {
+        // Schema doesn't expose projects under workspaces — fall back.
+        return this.listProjects();
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Find a project by name. When `workspaceId` is provided, restrict the
+   * lookup to that workspace; otherwise fall back to the global `me.projects`
+   * list. Returns the first match, or null.
+   *
+   * Returning the first match is intentional: if there are multiple projects
+   * with the same name in the same workspace, callers should detect that with
+   * `findProjectsByName` and prompt the operator. This entry point is for the
+   * common case where there's exactly one.
+   */
+  async findProjectByName(name, { workspaceId } = {}) {
+    const matches = await this.findProjectsByName(name, { workspaceId });
+    return matches[0] ?? null;
+  }
+
+  /**
+   * Find ALL projects with a given name, optionally scoped to a workspace.
+   * Used by the orchestrator to detect duplicate-name situations and warn
+   * the operator instead of silently picking one.
+   */
+  async findProjectsByName(name, { workspaceId } = {}) {
+    const projects = workspaceId
+      ? await this.listProjectsInWorkspace(workspaceId)
+      : await this.listProjects();
+    return projects.filter((p) => p.name === name);
   }
 
   /**

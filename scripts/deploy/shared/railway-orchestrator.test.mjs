@@ -26,6 +26,7 @@ function makeFakeClient(overrides = {}) {
     assertSchemaCompatibility: vi.fn().mockResolvedValue({ ok: true, missing: [] }),
     whoami: vi.fn().mockResolvedValue({ email: 'test@example.com', name: 'Test User' }),
     findProjectByName: vi.fn().mockResolvedValue(null),
+    findProjectsByName: vi.fn().mockResolvedValue([]),
     getDefaultEnvironment: vi.fn().mockResolvedValue({ id: 'env_test', name: 'production' }),
     createProject: vi.fn().mockResolvedValue({
       id: 'prj_test',
@@ -341,14 +342,18 @@ describe('RailwayOrchestrator.run() — validate phase', () => {
 describe('RailwayOrchestrator.run() — project phase', () => {
   it('reuses an existing project (no createProject call)', async () => {
     const client = makeFakeClient({
-      findProjectByName: vi.fn().mockResolvedValue({ id: 'prj_existing', name: 'bigbluebam' }),
+      findProjectsByName: vi
+        .fn()
+        .mockResolvedValue([{ id: 'prj_existing', name: 'bigbluebam' }]),
       getDefaultEnvironment: vi
         .fn()
         .mockResolvedValue({ id: 'env_existing', name: 'production' }),
     });
     const orch = new RailwayOrchestrator(client, makeOptions());
     await orch.run();
-    expect(client.findProjectByName).toHaveBeenCalledWith('bigbluebam');
+    expect(client.findProjectsByName).toHaveBeenCalledWith('bigbluebam', {
+      workspaceId: 'ws_test',
+    });
     expect(client.createProject).not.toHaveBeenCalled();
     expect(client.getDefaultEnvironment).toHaveBeenCalledWith('prj_existing');
     expect(orch.projectId).toBe('prj_existing');
@@ -357,7 +362,7 @@ describe('RailwayOrchestrator.run() — project phase', () => {
 
   it('creates a new project if none exists and uses its default environment', async () => {
     const client = makeFakeClient({
-      findProjectByName: vi.fn().mockResolvedValue(null),
+      findProjectsByName: vi.fn().mockResolvedValue([]),
       createProject: vi.fn().mockResolvedValue({
         id: 'prj_new',
         name: 'bigbluebam',
@@ -373,6 +378,18 @@ describe('RailwayOrchestrator.run() — project phase', () => {
     );
     expect(orch.projectId).toBe('prj_new');
     expect(orch.defaultEnvironmentId).toBe('env_new');
+  });
+
+  it('throws when multiple projects share the same name in the workspace', async () => {
+    const client = makeFakeClient({
+      findProjectsByName: vi.fn().mockResolvedValue([
+        { id: 'prj_a', name: 'bigbluebam' },
+        { id: 'prj_b', name: 'bigbluebam' },
+      ]),
+    });
+    const orch = new RailwayOrchestrator(client, makeOptions());
+    await expect(orch.run()).rejects.toThrow(/Found 2 live projects named "bigbluebam"/);
+    expect(client.createProject).not.toHaveBeenCalled();
   });
 });
 

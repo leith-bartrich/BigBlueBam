@@ -271,35 +271,75 @@ export class RailwayOrchestrator {
 
   // ─── Phase 2: project ───────────────────────────────────────────────
   async _phaseProject() {
-    await this._step('project', `Resolving Railway project "${this.projectName}"`, async () => {
-      // Prefer an existing project with this name so repeated runs reuse
-      // the same project instead of creating duplicates.
-      const existing = await this.client.findProjectByName(this.projectName);
-      if (existing) {
-        this.projectId = existing.id;
-        // We still need the environment ID — findProjectByName only
-        // returns {id, name}.
-        const env = await this.client.getDefaultEnvironment(this.projectId);
-        if (!env) {
+    // Lookup MUST be workspace-scoped — Railway's `me.projects` query does
+    // not reliably return projects across every workspace, so without the
+    // workspaceId filter we'd silently miss the existing project and create
+    // a duplicate (which then has no Postgres/Redis databases attached and
+    // every Bam app dies on `${{Postgres.DATABASE_URL}}` resolving to nothing).
+    const matches = await this._step(
+      'project',
+      `Looking for an existing project named "${this.projectName}" in this workspace`,
+      async () =>
+        this.client.findProjectsByName(this.projectName, {
+          workspaceId: this.workspaceId,
+        }),
+    );
+
+    if (matches.length > 1) {
+      // Don't silently pick when there's ambiguity — surface it so the
+      // operator can clean up the duplicates and re-run unambiguously.
+      // Soft-deleted projects are already filtered out at the API layer
+      // (see listProjects / listProjectsInWorkspace `deletedAt` check),
+      // so anything we surface here is a real, live project.
+      const links = matches
+        .map((m) => `      • https://railway.com/project/${m.id}`)
+        .join('\n');
+      throw new Error(
+        `Found ${matches.length} live projects named "${this.projectName}" in this workspace.\n\n` +
+          `  Open each one in your browser and decide which to keep:\n${links}\n\n` +
+          `  Then either:\n` +
+          `    (a) Delete every duplicate so only one "${this.projectName}" project remains, OR\n` +
+          `    (b) Rename the ones you want to keep so this script can match exactly one.\n\n` +
+          `  After cleanup, re-run this script.`,
+      );
+    }
+
+    if (matches.length === 1) {
+      await this._step(
+        'project',
+        `Reusing existing project "${this.projectName}" (${matches[0].id})`,
+        async () => {
+          this.projectId = matches[0].id;
+          const env = await this.client.getDefaultEnvironment(this.projectId);
+          if (!env) {
+            throw new Error(
+              `Project "${this.projectName}" exists but has no environments — create one in the Railway dashboard.`,
+            );
+          }
+          this.defaultEnvironmentId = env.id;
+        },
+        { summary: { projectId: matches[0].id, action: 'reused' } },
+      );
+      return;
+    }
+
+    await this._step(
+      'project',
+      `No existing "${this.projectName}" project found in this workspace — creating a new one`,
+      async () => {
+        const created = await this.client.createProject({
+          name: this.projectName,
+          workspaceId: this.workspaceId ?? undefined,
+        });
+        this.projectId = created.id;
+        this.defaultEnvironmentId = created.defaultEnvironmentId;
+        if (!this.defaultEnvironmentId) {
           throw new Error(
-            `Project "${this.projectName}" exists but has no environments — create one in the Railway dashboard.`,
+            `Created project "${this.projectName}" but could not resolve a default environment.`,
           );
         }
-        this.defaultEnvironmentId = env.id;
-        return;
-      }
-      const created = await this.client.createProject({
-        name: this.projectName,
-        workspaceId: this.workspaceId ?? undefined,
-      });
-      this.projectId = created.id;
-      this.defaultEnvironmentId = created.defaultEnvironmentId;
-      if (!this.defaultEnvironmentId) {
-        throw new Error(
-          `Created project "${this.projectName}" but could not resolve a default environment.`,
-        );
-      }
-    });
+      },
+    );
   }
 
   // ─── Phase 3: database prompt (Postgres + Redis) ────────────────────

@@ -124,6 +124,28 @@ async function main() {
   if (isPhaseComplete(state, 'configuration') && state.envConfig && !process.argv.includes('--reconfigure')) {
     if (await confirm('Configuration from a previous run was found. Keep it?', true)) {
       envConfig = state.envConfig;
+      // state.mjs redacts auto-generated secrets to the literal string
+      // '[REDACTED]' before persisting. If we hand that straight to the
+      // platform adapter, services crash-loop on env validation (e.g. Bam
+      // apps require SESSION_SECRET ≥ 32 chars). Regenerate any redacted
+      // or missing values, merge them back in, and persist so subsequent
+      // runs are stable.
+      const fresh = generateSecrets();
+      const rehydrated = [];
+      for (const [key, value] of Object.entries(fresh)) {
+        const current = envConfig[key];
+        if (!current || current === '[REDACTED]') {
+          envConfig[key] = value;
+          rehydrated.push(key);
+        }
+      }
+      if (rehydrated.length > 0) {
+        console.log(dim(`  Regenerated ${rehydrated.length} secret(s) that were redacted in saved state:`));
+        console.log(dim(`    ${rehydrated.join(', ')}`));
+        console.log(dim('  (Existing user sessions will be invalidated on next deploy.)'));
+        state.envConfig = envConfig;
+        saveState(state);
+      }
       console.log(`${check} Using saved configuration.\n`);
     } else {
       envConfig = null;
@@ -214,28 +236,112 @@ async function main() {
   }
 
   // --- Phase 4: Deploy ---
-  if (!isPhaseComplete(state, 'deploy')) {
-    console.log(`${bold('Step 5: Build and launch')}\n`);
+  // The deploy phase is the only step we can't verify locally. A previous
+  // run may have completed deploys that are still happily running on
+  // Railway/Docker — OR the operator may have torn everything down outside
+  // this script (deleted the Railway project, ran `docker compose down`,
+  // wiped a cloud account…). The local `.deploy-state.json` has no way to
+  // know. So instead of asserting one or the other, we tell the operator
+  // exactly what state we *think* we're in and ask them to confirm.
+  let needsFreshDeploy = !isPhaseComplete(state, 'deploy');
 
+  if (!needsFreshDeploy) {
+    console.log('');
+    console.log(`${bold('Step 5: Build and launch')}\n`);
+    console.log(dim('  This computer has notes from a previous run that finished the deploy'));
+    console.log(dim('  step. We have no way to look at your actual cloud account from here,'));
+    console.log(dim('  so we need you to tell us which of these is true right now:'));
+    console.log('');
+    console.log(`  ${bold('1.')} The services from that previous run are ${bold('still running')} where`);
+    console.log(`     you deployed them. (You did not delete the project, you did not run`);
+    console.log(`     ${cyan('docker compose down')}, the cloud account is intact, etc.)`);
+    console.log('');
+    console.log(`  ${bold('2.')} You have ${bold('torn it all down')} since then — deleted the Railway`);
+    console.log(`     project, wiped the docker volumes, started fresh, etc. — and you`);
+    console.log(`     are installing from scratch right now.`);
+    console.log('');
+    const stillRunning = await confirm(
+      'Are the services from the previous run still running?',
+      true,
+    );
+    if (!stillRunning) {
+      // Operator confirmed they tore it all down. Reset the deploy AND
+      // admin phases so the normal "build and start everything → create
+      // admin" path runs from scratch. The admin user no longer exists in
+      // the new deployment, so we have to re-create it too.
+      console.log(dim('  Got it — treating this as a fresh install.'));
+      console.log('');
+      if (state.phases?.deploy) delete state.phases.deploy;
+      if (state.phases?.admin) delete state.phases.admin;
+      saveState(state);
+      needsFreshDeploy = true;
+    }
+  }
+
+  if (needsFreshDeploy) {
+    if (isPhaseComplete(state, 'configuration')) {
+      // We only printed the Step 5 header above when we KNEW a previous
+      // deploy phase was recorded. On a true first run we still need to
+      // print it before the first deploy.
+      console.log(`${bold('Step 5: Build and launch')}\n`);
+    }
     if (await confirm('Ready to build and start all services?', true)) {
       const healthy = await platform.deploy(envConfig, { branch });
       if (healthy) {
         markPhaseComplete(state, 'deploy');
         saveState(state);
       } else {
-        console.log(yellow('\nDeploy started but health checks did not pass. Re-run to retry.\n'));
+        // Deploy returned false — the platform adapter has already printed
+        // a detailed error block (with logs, dashboard links, etc.). DO NOT
+        // continue to admin creation or print a "ready" summary; that lies
+        // to the operator and wastes their time on a doomed admin step.
+        console.log('');
+        console.log(red(bold('Deployment did not complete successfully.')));
+        console.log(dim('  See the error block above for details. Fix the issue (or follow the'));
+        console.log(dim('  instructions printed above) and re-run this script — every operation'));
+        console.log(dim('  is idempotent, so re-runs pick up where you left off.'));
+        console.log('');
         saveState(state);
+        return;
       }
     } else {
       console.log(yellow('\nDeployment paused. Re-run this script to continue.\n'));
       return;
     }
   } else {
-    console.log(`${check} Services were already deployed.`);
-    if (await confirm('Redeploy?', false)) {
-      await platform.deploy(envConfig, { branch });
+    console.log('');
+    console.log(`${check} ${bold('Your services are still running from a previous run.')}`);
+    console.log('');
+    console.log(dim('  Right now we are deciding whether to push your current settings to'));
+    console.log(dim('  them again and start a fresh deploy.'));
+    console.log('');
+    console.log(`  ${bold('Pick "yes" if any of these are true:')}`);
+    console.log(dim('    • You changed something in the configuration above (a password, a'));
+    console.log(dim('      domain, an integration, an API key, etc.)'));
+    console.log(dim('    • The script just told you it regenerated secrets a moment ago'));
+    console.log(dim('    • The previous deploy failed and you want to try again'));
+    console.log(dim('    • You updated the code on GitHub and want the new version live'));
+    console.log('');
+    console.log(`  ${bold('Pick "no" if:')}`);
+    console.log(dim('    • Everything is already working and you just want to skip ahead'));
+    console.log(dim('      to the next step (creating your admin account)'));
+    console.log('');
+    console.log(dim('  Saying "yes" will not delete any data — your database, file uploads,'));
+    console.log(dim('  and existing users are safe either way. It just rebuilds and restarts'));
+    console.log(dim('  the running services with the latest settings, which takes a few minutes.'));
+    console.log('');
+    if (await confirm('Push the current settings and redeploy now?', false)) {
+      const healthy = await platform.deploy(envConfig, { branch });
+      if (!healthy) {
+        console.log('');
+        console.log(red(bold('Redeploy did not complete successfully.')));
+        console.log(dim('  See the error block above for details. Your previously running services'));
+        console.log(dim('  are unaffected. Fix the issue and re-run this script.'));
+        console.log('');
+        return;
+      }
     } else {
-      console.log(dim('  Skipping deployment.\n'));
+      console.log(dim('  Skipping deployment — your services keep running with their previous settings.\n'));
     }
   }
 

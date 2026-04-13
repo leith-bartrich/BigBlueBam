@@ -69,16 +69,23 @@ export function printSummary(config) {
   if (config.adminEmail) {
     console.log(bold('  Admin account:\n'));
     console.log(`    Email: ${cyan(config.adminEmail)}`);
-    console.log(`    Login: ${cyan(baseUrl + '/helpdesk/')}`);
+    // The SuperUser admin account is in Bam's `users` table. Helpdesk has
+    // its own `helpdesk_users` table with separate auth, so the admin
+    // password will NOT log into /helpdesk/ — operators self-register
+    // there. Always point the admin at /b3/ for first login.
+    console.log(`    Login: ${cyan(baseUrl + '/b3/')}`);
   }
 
   // Next steps
   console.log('');
   console.log(bold('  Next steps:\n'));
-  console.log(`    1. Open ${cyan(baseUrl + '/helpdesk/')} in your browser`);
-  console.log(`    2. Log in with your admin account`);
-  console.log(`    3. Create your first project in ${cyan('Bam')}`);
+  console.log(`    1. Open ${cyan(baseUrl + '/b3/')} in your browser (this is ${bold('Bam')}, the main app)`);
+  console.log(`    2. Log in with the admin email and password you just set`);
+  console.log(`    3. Create your first project`);
   console.log(`    4. Invite team members from the People page`);
+  console.log('');
+  console.log(dim(`  Note: ${baseUrl}/helpdesk/ has its own user accounts — your admin`));
+  console.log(dim('  password will NOT work there. Helpdesk users register themselves.'));
   console.log('');
   console.log(dim('  Useful commands:'));
   console.log(dim('    View logs:     docker compose logs -f'));
