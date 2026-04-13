@@ -242,8 +242,40 @@ async function main() {
   saveState(state);
 }
 
-main().catch((err) => {
-  console.error(`\n${red('Error: ' + err.message)}`);
-  if (process.env.DEBUG) console.error(err.stack);
-  process.exit(1);
-});
+// Top-level runner.
+//
+// Node's libuv will assert with `UV_HANDLE_CLOSING` (src\win\async.c:76) if
+// the process exits while a readline interface still has pending callbacks.
+// That happens when an error is thrown mid-prompt and propagates through
+// `main().catch()` directly to `process.exit()`. The fix is to let the
+// event loop drain naturally:
+//
+//   1. Catch any error thrown from main() cleanly.
+//   2. Print the message in a friendly red banner, including the `.cause`
+//      chain so targeted errors (like the PAT-vs-Project-Token one from
+//      railway.mjs::nonPatTokenError) still show their full context.
+//   3. Pause stdin so readline's async handle can be collected.
+//   4. Set process.exitCode instead of calling process.exit() — Node drains
+//      the event loop normally and exits with the right status.
+async function runMain() {
+  try {
+    await main();
+  } catch (err) {
+    const msg = err?.message || String(err);
+    console.error('');
+    console.error(red(bold('Deployment interrupted:')));
+    console.error(`  ${msg.split('\n').join('\n  ')}`);
+    if (err?.cause && err.cause.message && err.cause.message !== msg) {
+      console.error(dim(`\n  caused by: ${err.cause.message}`));
+    }
+    if (process.env.DEBUG && err?.stack) {
+      console.error(dim('\n' + err.stack));
+    }
+    console.error('');
+    // Release any readline-held stdin handle so libuv can close cleanly.
+    try { process.stdin.pause(); } catch {}
+    process.exitCode = 1;
+  }
+}
+
+runMain();

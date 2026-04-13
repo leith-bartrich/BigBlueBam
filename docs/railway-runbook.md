@@ -89,7 +89,9 @@ The Railway adapter runs `checkPrerequisites()` at `scripts/deploy/platforms/rai
 - Pick up `RAILWAY_TOKEN` from your environment if set, OR
 - Prompt you to paste the PAT. It echoes a link to the token page if you haven't created one yet.
 
-The token is stored in your local `.deploy-state.json` (gitignored) so subsequent runs don't re-prompt.
+**Must be a Personal Access Token, not a Project Token or Workspace/Team Token.** Railway has multiple token types, and only PATs (generated at the account-level tokens page) have the scope to call `me { ... }` and create new projects. Project Tokens and Workspace Tokens authenticate successfully at the HTTP layer but Railway's GraphQL resolver rejects the `me` query with `Not Authorized`. Go to <https://railway.com/account/tokens> (the account-level page, **not** a project's Settings → Tokens page) and click "Create New Token."
+
+If you accidentally paste a non-PAT, the script will detect it and print a targeted error explaining what's wrong — no silent failures. The token is stored in your local `.env` (gitignored) so subsequent runs don't re-prompt.
 
 ### Step 4 — Confirm project name, GitHub repo, and branch
 

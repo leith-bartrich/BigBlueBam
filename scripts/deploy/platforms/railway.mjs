@@ -98,6 +98,40 @@ function writeTokenToEnvFile(token) {
 }
 
 /**
+ * Detect the "wrong token type" failure mode: Project Tokens and Workspace/
+ * Team Tokens authenticate successfully at the HTTP layer (so we don't get a
+ * 401/403 + kind='auth') but Railway's GraphQL resolver returns a
+ * `Not Authorized` error on the `me { email name }` query because those
+ * tokens aren't tied to a user account. PATs generated at the account-level
+ * tokens page are the only token type that can call `me`.
+ *
+ * Returns true if the error looks like a non-PAT token type.
+ */
+function looksLikeNonPatTokenError(err) {
+  if (!(err instanceof RailwayApiError)) return false;
+  if (err.kind !== 'graphql') return false;
+  const msg = (err.message || '').toLowerCase();
+  return msg.includes('not authorized') || msg.includes('not authorised');
+}
+
+/**
+ * Build the targeted error message shown when a non-PAT token is detected.
+ * Keeps the original error as .cause so debugging tools can surface it.
+ */
+function nonPatTokenError(originalErr) {
+  const e = new Error(
+    'Railway accepted the token but rejected the `me` query — this looks like a Project Token or Workspace/Team Token, not a Personal Access Token.\n' +
+    '\n' +
+    '    Go to https://railway.com/account/tokens (the ACCOUNT-level tokens page,\n' +
+    '    not a project\'s Settings → Tokens page) and generate a Personal Access\n' +
+    '    Token there. Only account-level PATs have the scope to create projects\n' +
+    '    and services.',
+  );
+  e.cause = originalErr;
+  return e;
+}
+
+/**
  * Prompt the user to paste a PAT, validate it, and return a RailwayClient.
  * On success, persists the token to .env and caches the client at module
  * scope. Throws on repeated failure.
@@ -106,6 +140,8 @@ async function promptForToken() {
   console.log('');
   console.log('  Generate a Personal Access Token:');
   console.log(cyan('    https://railway.com/account/tokens'));
+  console.log(dim('    (Must be an account-level PAT — Project Tokens and Workspace'));
+  console.log(dim('     Tokens authenticate but lack the scope to create projects.)'));
   console.log('');
   const token = await ask('Paste your Railway PAT:');
   if (!token) throw new Error('Railway PAT is required.');
@@ -120,6 +156,9 @@ async function promptForToken() {
   } catch (err) {
     if (err instanceof RailwayApiError && err.kind === 'auth') {
       throw new Error('Railway rejected the token. Generate a new one at https://railway.com/account/tokens and try again.');
+    }
+    if (looksLikeNonPatTokenError(err)) {
+      throw nonPatTokenError(err);
     }
     throw new Error(`Railway token validation failed: ${err.message}`);
   }
@@ -146,6 +185,14 @@ async function checkPrerequisites() {
     } catch (err) {
       if (err instanceof RailwayApiError && err.kind === 'auth') {
         console.log(`  ${cross} Token rejected — generate a new one`);
+        await promptForToken();
+      } else if (looksLikeNonPatTokenError(err)) {
+        // The env/.env-loaded token is the wrong type (Project Token or
+        // Workspace Token). Don't silently re-prompt — tell the operator
+        // exactly what's wrong so they don't waste another round.
+        console.log(`  ${cross} Token is not a Personal Access Token (likely a Project Token or Workspace Token)`);
+        console.log(`  ${dim('    PATs are the only token type that can call the `me` query + create projects.')}`);
+        console.log('');
         await promptForToken();
       } else {
         // Network/unknown — don't burn the token, but still let the user retry.
