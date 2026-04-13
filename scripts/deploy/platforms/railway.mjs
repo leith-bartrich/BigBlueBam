@@ -459,13 +459,24 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
     }
   };
 
+  // Resolve the public URL from the domain the operator entered in Step 3.
+  // env-hints.mjs uses this to compute TRACKING_BASE_URL, FRONTEND_URL,
+  // CORS_ORIGIN, and any other public-kind env vars. If it's null, services
+  // that REQUIRE a public-kind var (e.g. blast-api needs TRACKING_BASE_URL)
+  // will fail with "Cannot resolve required variable" at the Setting-
+  // variables step. Pre-pending https:// because operators are asked to
+  // enter just the hostname (no protocol, no trailing slash).
+  const publicUrl = envConfig.DOMAIN && envConfig.DOMAIN !== 'localhost'
+    ? `https://${envConfig.DOMAIN.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`
+    : null;
+
   const orchestrator = new RailwayOrchestrator(client, {
     projectName,
     workspaceId,
     githubRepo,
     branch,
     generatedSecrets: extractSecretsFromEnvConfig(envConfig),
-    publicUrl: null,
+    publicUrl,
     userIntegrations: extractUserIntegrationsFromEnvConfig(envConfig),
     awaitPluginConfirmation: async () => {
       // By the time the plugin-prompt fires, the orchestrator has set its
