@@ -118,11 +118,39 @@ async function main() {
   if (!envConfig) {
     console.log(`\n${bold('Step 3: Configure your deployment')}\n`);
 
-    // Domain
-    const domain = await ask(
-      'Domain name (or "localhost" for local development):',
-      'localhost',
-    );
+    // Domain — platform-specific prompt + default. The value gets written
+    // into CORS_ORIGIN and FRONTEND_URL on every API service, so it needs
+    // to match what humans will actually type into a browser to reach the
+    // deployed app. For Docker Compose on a laptop, "localhost" is the
+    // right answer. For Railway (and any other managed-cloud adapter), the
+    // right answer is the public URL you'll eventually point at the
+    // frontend/nginx service — even if you don't have it yet, a reasonable
+    // placeholder works because Railway lets you edit env vars after deploy.
+    const isRailway = platform.name === 'Railway';
+    let domain;
+    if (isRailway) {
+      console.log(dim('  The public URL that humans will use to reach your deployed app.'));
+      console.log(dim('  This gets baked into CORS_ORIGIN and FRONTEND_URL on every API service.'));
+      console.log('');
+      console.log(dim('  Accepted forms:'));
+      console.log(dim('    - a custom domain you already own (e.g. bigbluebam.example.com)'));
+      console.log(dim('    - a Railway auto-generated subdomain (e.g. bigbluebam.up.railway.app)'));
+      console.log(dim('    - a placeholder if you don\'t know yet — you can edit these env vars'));
+      console.log(dim('      in the Railway dashboard after you assign the real domain to the'));
+      console.log(dim('      frontend service in Step 11 of the runbook.'));
+      console.log('');
+      console.log(dim('  Enter only the hostname — no "https://", no trailing slash.'));
+      console.log('');
+      domain = await ask(
+        'Public domain for the deployed app:',
+        'bigbluebam.example.com',
+      );
+    } else {
+      domain = await ask(
+        'Domain name (or "localhost" for local development):',
+        'localhost',
+      );
+    }
 
     // Generate secrets
     process.stdout.write('\nGenerating cryptographic secrets... ');

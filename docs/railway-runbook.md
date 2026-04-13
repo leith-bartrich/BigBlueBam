@@ -53,6 +53,12 @@ Railway tracks the branch you pick per-service — every service the orchestrato
 
 - Unlike the Docker Compose path, the Railway deployer never runs containers locally. It talks to Railway's GraphQL API directly. You can run the deploy script from any machine with Node 22, even one without Docker installed.
 
+### 6. Railway CLI is OPTIONAL
+
+- The deploy script will print `[!] Railway CLI not detected — admin auto-creation will print manual instructions instead` if `railway version` doesn't resolve. **This is a warning, not an error.** The deploy itself doesn't use the CLI — it talks to Railway's GraphQL API directly.
+- The CLI is only needed later for Step 14's automatic admin-user creation. Without it, Step 14 falls back to printing instructions for running the `create-admin` command inside the api service via the Railway dashboard's ephemeral shell.
+- If you want to install it anyway: on Windows use `scoop install railway`, download the binary from <https://github.com/railwayapp/cli/releases>, or `npm install -g @railway/cli` (Node wrapper that downloads the binary — npm's "N packages are looking for funding" info output during this install is normal and can be ignored). On macOS/Linux use `brew install railway` or the install script from Railway's docs.
+
 ## Step-by-step deploy
 
 ### Step 0 — Pull the latest refs
@@ -105,7 +111,14 @@ The script asks:
 
 You'll be asked for:
 
-- **Public domain** — whatever domain you'll put in front of the frontend (nginx) service. Can be a placeholder like `bigbluebam.example.com` for now; you'll configure the real domain in Railway dashboard later. The orchestrator uses this to compute `CORS_ORIGIN` and `FRONTEND_URL`.
+- **Public domain** (prompt text: *"Public domain for the deployed app"*). This is the URL humans will use to reach your deployed app in a browser — it gets baked into `CORS_ORIGIN` and `FRONTEND_URL` on every API service. Three legitimate answers:
+
+  1. **A custom domain you already own** — e.g., `bigbluebam.mycompany.com`. You'll point DNS at Railway's frontend service in Step 12.
+  2. **A Railway auto-generated subdomain** — e.g., `bigbluebam.up.railway.app`. You won't know the exact subdomain until Step 11 creates the frontend service, but you can plan for the pattern.
+  3. **A temporary placeholder** (the prompt's default is `bigbluebam.example.com`) — fine if you don't know the real domain yet. Railway lets you edit `CORS_ORIGIN` and `FRONTEND_URL` on each service later from the dashboard Variables tab.
+
+  Enter only the hostname — no `https://` prefix, no trailing slash.
+
 - **Storage provider** — stick with the default MinIO (built-in, self-hosted on Railway) unless you want to point at an external S3.
 - **Vector database** — stick with Qdrant (default). Beacon's knowledge base needs it.
 - **LiveKit** — optional. Choose "skip" unless you're enabling voice/video (Board app uses it).
