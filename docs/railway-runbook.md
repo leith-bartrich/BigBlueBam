@@ -29,7 +29,8 @@ Railway tracks the branch you pick per-service — every service the orchestrato
 
 ### 1. Railway account with billing enabled
 
-- Sign up at <https://railway.com> (note: `.com`, not `.app`).
+- Sign up at **<https://railway.com?referralCode=xCAYHN>** — using our referral link costs you nothing extra and gives BigBlueBam a small Railway credit that helps fund continued development. (Plain sign-up at <https://railway.com> also works; the referral is optional but appreciated.)
+- Note the domain is `.com`, not `.app`.
 - Add a payment method. Expected monthly cost for BigBlueBam is roughly **$20–40** — you're running 20 services, most of which are low-traffic APIs, plus Postgres and Redis. Exact price depends on traffic and the MinIO/Qdrant volume sizes you allocate.
 - **There is no free tier** that can fit this workload — Railway's starter plan caps out quickly with 20 services.
 

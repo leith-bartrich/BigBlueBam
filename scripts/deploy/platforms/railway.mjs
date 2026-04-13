@@ -236,6 +236,10 @@ function printWelcomeBanner() {
   console.log(dim('  Reference: railway/env-vars.md'));
   console.log(dim('  ─────────────────────────────────────────────────────────────'));
   console.log('');
+  console.log(`  ${bold('★ Support BigBlueBam:')} sign up with our Railway referral link:`);
+  console.log(`     ${cyan('https://railway.com?referralCode=xCAYHN')}`);
+  console.log(dim('     (Costs you nothing extra — just gives BigBlueBam a small credit.)'));
+  console.log('');
 }
 
 /**

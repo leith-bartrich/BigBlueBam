@@ -29,6 +29,21 @@ const PLATFORMS = [dockerCompose, railway];
 async function main() {
   banner('BigBlueBam Deployment Setup');
 
+  // Railway referral. Signing up with the referral code doesn't cost the
+  // operator anything extra — it just gives BigBlueBam a small Railway
+  // credit that helps fund continued development. Shown before the
+  // "Welcome" banner so it's the first thing a new user sees; framed so
+  // Docker-Compose-only operators can safely ignore it.
+  console.log(`${bold('★ Deploying to Railway?')}`);
+  console.log('  If you sign up through our referral link, Railway gives BigBlueBam a');
+  console.log('  small credit — it costs you nothing extra and helps support ongoing');
+  console.log('  development of this project:');
+  console.log('');
+  console.log(`  ${cyan('https://railway.com?referralCode=xCAYHN')}`);
+  console.log('');
+  console.log(dim('  (Deploying with Docker Compose instead? You can skip this — no referral needed.)'));
+  console.log('');
+
   console.log("Welcome to BigBlueBam! Let's get you set up.\n");
   console.log('This will take about 10 minutes. Here is what we will do:\n');
   console.log('  1. Choose your hosting platform');
