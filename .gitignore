@@ -16,6 +16,8 @@ test-*.png
 .claude/
 .claire/
 .deploy-state.json
+.deploy-state-railway.json
+.deploy-state-railway-logs/
 apps/e2e/test-results
 apps/e2e/reports
 apps/e2e/playwright-report

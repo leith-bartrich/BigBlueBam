@@ -16,6 +16,7 @@ import { bold, check, cross, dim, green, yellow, cyan, red, warn } from '../shar
 import { ask, confirm, select } from '../shared/prompt.mjs';
 import { RailwayClient, RailwayApiError } from '../shared/railway-api.mjs';
 import { RailwayOrchestrator } from '../shared/railway-orchestrator.mjs';
+import { pullRailwayLogs, printLogPullerSummary } from '../shared/railway-logs.mjs';
 
 const name = 'Railway';
 const description = 'Managed cloud containers on Railway.app — fully automated';
@@ -306,6 +307,238 @@ function detectGithubRepo() {
   return null;
 }
 
+// ─── Debug bundle (written on every run) ────────────────────────────────────
+//
+// The deploy script writes a machine-readable dump of the current Railway
+// project state to `.deploy-state-railway.json` at the end of every run —
+// success or failure. On failure we also print a short human-readable
+// summary pointing the operator at the file and telling them exactly what
+// to paste into Claude (or forward to a support channel) to get help
+// debugging.
+//
+// The bundle is intentionally verbose — it includes project + environment
+// IDs, service IDs, dashboard URLs, the last failing progress event, and
+// copy-paste commands for fetching logs via the Railway CLI. Tokens and
+// secrets are NEVER written to the bundle; all identifiers are safe to
+// share in bug reports.
+//
+// Why a JSON file: Claude and other agents can read it directly with
+// Read / Bash tools without needing the operator to paste the whole
+// thing in chat. Humans can open it in any editor.
+
+const DEBUG_BUNDLE_FILE = '.deploy-state-railway.json';
+
+/**
+ * Build + serialize the debug bundle and write it to disk. Returns the
+ * in-memory bundle so the caller can also print a summary. Never throws —
+ * a write failure is logged as a warning and the bundle is still returned.
+ */
+function writeRailwayDebugBundle({
+  success,
+  orchestrator,
+  summary,
+  githubRepo,
+  branch,
+  publicUrl,
+  lastFailedEvent,
+  lastStartingEvent,
+  error,
+}) {
+  const projectId = orchestrator?.projectId ?? summary?.projectId ?? null;
+  const environmentId =
+    orchestrator?.defaultEnvironmentId ?? summary?.environmentId ?? null;
+
+  // orchestrator.serviceIds is a Map<name, id>. Flatten to a sorted
+  // array-of-objects for the bundle so JSON.stringify preserves order.
+  const services = [];
+  if (orchestrator?.serviceIds instanceof Map) {
+    for (const [name, id] of orchestrator.serviceIds.entries()) {
+      services.push({
+        name,
+        id,
+        dashboard_url: projectId
+          ? `https://railway.com/project/${projectId}/service/${id}`
+          : null,
+      });
+    }
+    services.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const bundle = {
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    success: Boolean(success),
+    project: {
+      id: projectId,
+      name: orchestrator?.projectName ?? null,
+      dashboard_url: projectId ? `https://railway.com/project/${projectId}` : null,
+    },
+    environment: {
+      id: environmentId,
+      name: orchestrator?.defaultEnvironmentName ?? null,
+    },
+    source: {
+      github_repo: githubRepo ?? null,
+      branch: branch ?? null,
+      public_url: publicUrl ?? null,
+    },
+    services,
+    last_failed_event: lastFailedEvent,
+    last_starting_event: lastStartingEvent,
+    error: error
+      ? {
+          message: error.message ?? String(error),
+          kind: error.kind ?? null,
+          graphql_errors: Array.isArray(error.errors)
+            ? error.errors.map((e) => e?.message ?? String(e))
+            : null,
+        }
+      : null,
+    summary: summary
+      ? {
+          services_created: summary.servicesCreated,
+          services_configured: summary.servicesConfigured,
+          services_deployed: summary.servicesDeployed,
+        }
+      : null,
+    // Copy-paste commands for fetching logs. These assume the operator
+    // has the Railway CLI installed and logged in (`railway login` +
+    // `railway link`). Agents reading this bundle can suggest running
+    // them verbatim.
+    log_commands: (() => {
+      const cmds = [];
+      if (lastFailedEvent?.service) {
+        cmds.push({
+          description: `Build logs for the failing service "${lastFailedEvent.service}"`,
+          command: `railway logs --service ${lastFailedEvent.service} --deployment build`,
+        });
+        cmds.push({
+          description: `Runtime (deploy) logs for "${lastFailedEvent.service}"`,
+          command: `railway logs --service ${lastFailedEvent.service} --deployment deploy`,
+        });
+      }
+      // Always include a generic all-services logs command.
+      cmds.push({
+        description: 'Tail all services in the project',
+        command: 'railway logs',
+      });
+      if (projectId) {
+        cmds.push({
+          description: 'Open the failing service in the Railway dashboard',
+          command: `start ${
+            lastFailedEvent?.service && services.find((s) => s.name === lastFailedEvent.service)
+              ? services.find((s) => s.name === lastFailedEvent.service).dashboard_url
+              : `https://railway.com/project/${projectId}`
+          }`,
+        });
+      }
+      return cmds;
+    })(),
+  };
+
+  try {
+    const filePath = path.resolve(process.cwd(), DEBUG_BUNDLE_FILE);
+    fs.writeFileSync(filePath, JSON.stringify(bundle, null, 2) + '\n', 'utf8');
+    bundle._written_to = filePath;
+  } catch (writeErr) {
+    console.log(
+      `  ${warn} Could not write ${DEBUG_BUNDLE_FILE}: ${writeErr?.message ?? writeErr}`,
+    );
+    bundle._written_to = null;
+  }
+
+  return bundle;
+}
+
+/**
+ * Print a human-readable summary of a failure debug bundle, including
+ * the exact instructions a user should give to Claude (or any log-
+ * capable agent). When logs have already been pulled to a local
+ * directory (the common case — we auto-pull on failure), the printed
+ * instructions point Claude directly at that directory so it can read
+ * the actual build/deploy logs without any further steps.
+ */
+function printRailwayDebugBundleSummary(bundle, logSummary = null) {
+  if (!bundle) return;
+  const file = bundle._written_to ?? DEBUG_BUNDLE_FILE;
+  const projectId = bundle.project?.id ?? 'unknown';
+  const envName = bundle.environment?.name ?? 'unknown';
+  const failedService = bundle.last_failed_event?.service ?? null;
+  const failedStep = bundle.last_failed_event?.step ?? null;
+  const failedTotal = bundle.last_failed_event?.total ?? null;
+  const failedMessage =
+    bundle.last_failed_event?.message ?? bundle.error?.message ?? 'unknown';
+  const logsDir = logSummary?.output_dir ?? null;
+
+  console.log(bold('  ═══ Debug bundle ══════════════════════════════════════════'));
+  console.log(`  Identifiers:  ${cyan(file)}`);
+  if (logsDir) {
+    console.log(`  Logs:         ${cyan(logsDir + path.sep)}`);
+  }
+  console.log('');
+  console.log(`  Project:      ${bundle.project?.name ?? '(none)'} ${dim(`(${projectId})`)}`);
+  console.log(`  Environment:  ${envName}`);
+  console.log(`  Branch:       ${bundle.source?.branch ?? '(unknown)'}`);
+  if (failedStep != null) {
+    console.log(
+      `  Failed at:    step ${failedStep}/${failedTotal ?? '?'} — ${failedService ?? ''} ${dim(failedMessage)}`,
+    );
+  } else {
+    console.log(`  Failed:       ${dim(failedMessage)}`);
+  }
+  if (Array.isArray(bundle.services) && bundle.services.length > 0) {
+    console.log(`  Services:     ${bundle.services.length} created so far`);
+  }
+  console.log('');
+  console.log(bold('  ─── To debug with Claude (or any coding agent) ─────────────'));
+  console.log('  Paste one of these lines to Claude in your working-directory chat:');
+  console.log('');
+  if (logsDir) {
+    // Logs were successfully pulled to a local directory. This is the
+    // happy path — Claude can just read the files directly.
+    console.log(
+      `    ${cyan(`"Read ${DEBUG_BUNDLE_FILE} and ${path.basename(logsDir)}/_summary.json,`)}`,
+    );
+    console.log(`     ${cyan(`then help me debug the Railway deploy."`)}`);
+    console.log('');
+    console.log(dim('  Claude will read the summary to find failing services, then'));
+    console.log(dim('  grep / read the individual build.log and deploy.log files'));
+    console.log(dim(`  under ${path.basename(logsDir)}/<service>/ as needed. No extra back-and-forth.`));
+  } else {
+    // Log pull failed (or couldn't run) — Claude only has the debug
+    // bundle to work from. Still useful, but less.
+    console.log(
+      `    ${cyan(`"Read ${DEBUG_BUNDLE_FILE} and help me debug the Railway deploy."`)}`,
+    );
+    console.log('');
+    console.log(dim('  Automatic log pull failed — Claude will only see Railway identifiers'));
+    console.log(dim('  and the last failing orchestrator step, not the actual build/deploy output.'));
+    console.log(dim('  Run `node scripts/deploy/railway-pull-logs.mjs` to retry the log pull'));
+    console.log(dim('  once the underlying issue (network, API schema drift, etc.) is resolved.'));
+  }
+  console.log('');
+  console.log(dim('  The debug bundle and logs contain NO secrets — safe to forward'));
+  console.log(dim('  to support or paste in a bug report.'));
+  console.log('');
+  console.log(bold('  ─── To debug in the Railway dashboard ─────────────────────'));
+  if (failedService && projectId) {
+    const svc = bundle.services.find((s) => s.name === failedService);
+    if (svc?.dashboard_url) {
+      console.log(`    1. Open ${cyan(svc.dashboard_url)}`);
+    } else {
+      console.log(
+        `    1. Open ${cyan('https://railway.com/project/' + projectId)} and click "${failedService}"`,
+      );
+    }
+    console.log('    2. Deployments tab → click the latest → Build logs / Deploy logs');
+  } else if (projectId) {
+    console.log(`    1. Open ${cyan('https://railway.com/project/' + projectId)}`);
+    console.log('    2. Click the failing service → Deployments → latest → logs');
+  }
+  console.log(bold('  ════════════════════════════════════════════════════════════'));
+  console.log('');
+}
+
 /**
  * Provision the full BigBlueBam stack on Railway: validate the PAT, create
  * (or reuse) the project, prompt once for the managed Postgres + Redis
@@ -415,6 +648,17 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
   //    projectId so it can print a working dashboard link — capture it from
   //    the onProgress 'project' phase events as the orchestrator emits them.
   let capturedProjectId = null;
+  // Track the most recent progress event that reported ok=false. On a
+  // thrown error we include this in the debug bundle so Claude (or a
+  // human) can tell at-a-glance which step was mid-execution when the
+  // failure occurred, instead of having to reconstruct it from the
+  // scrolling log output.
+  let lastFailedEvent = null;
+  // Track the most recent "starting" event (ok === undefined) so we
+  // know exactly what the orchestrator was ATTEMPTING when the error
+  // was thrown — useful when the throw happens inside a step before
+  // an ok=false event is emitted.
+  let lastStartingEvent = null;
 
   const awaitPluginConfirmation = async () => {
     console.log('');
@@ -468,9 +712,11 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
     } else if (ok === false) {
       const errMsg = error?.message ?? 'failed';
       console.log(`${counter} ${red(cross)} ${prefix}${body} — ${red(errMsg)}`);
+      lastFailedEvent = { phase, service, step, total, message, error: errMsg };
     } else {
       // "starting" event — print a dim line so the user sees progress.
       console.log(`${counter} ${dim('…')} ${prefix}${body}`);
+      lastStartingEvent = { phase, service, step, total, message };
     }
 
     if (identity?.email) {
@@ -518,6 +764,23 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
     console.log('');
     console.log(`Watch progress at: ${cyan('https://railway.com/project/' + summary.projectId)}`);
     console.log('');
+
+    // Write a debug bundle on success too — operators hitting build/
+    // deploy failures AFTER the script exits (e.g. a Railway build
+    // breaking mid-compile) still need these identifiers to find logs,
+    // and the script won't be re-invoked to regenerate them.
+    writeRailwayDebugBundle({
+      success: true,
+      orchestrator,
+      summary,
+      githubRepo,
+      branch,
+      publicUrl,
+      lastFailedEvent: null,
+      lastStartingEvent: null,
+      error: null,
+    });
+
     return true;
   } catch (err) {
     console.log('');
@@ -527,6 +790,76 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
     }
     console.log('');
     console.log(dim('Re-run this script to retry — Railway operations are idempotent.'));
+    console.log('');
+
+    // Write the failure debug bundle — this captures every Railway
+    // identifier (project ID, environment ID, service IDs) in a machine-
+    // readable JSON file so an agent can later pull fresh logs without
+    // having to re-ask the operator for anything.
+    const bundle = writeRailwayDebugBundle({
+      success: false,
+      orchestrator,
+      summary: null,
+      githubRepo,
+      branch,
+      publicUrl,
+      lastFailedEvent,
+      lastStartingEvent,
+      error: err,
+    });
+
+    // Automatically pull build + runtime logs for every service that
+    // was created before the failure. This is the critical piece:
+    // Railway's build failures happen asynchronously AFTER the orchestrator
+    // reports success on variable-setting, so the operator (and Claude)
+    // can't just look at the script's stdout to see what went wrong —
+    // the actual build/deploy errors live on Railway's side and have to
+    // be fetched via the API. Downloading them to local files means an
+    // agent can just read the files without the operator having to run
+    // `railway logs --service <name>` for every service manually.
+    //
+    // This block is best-effort: if the log API is unavailable or the
+    // schema has changed, we log the error and still surface the debug
+    // bundle so the operator can fall back to the Railway dashboard
+    // manually.
+    let logSummary = null;
+    try {
+      if (orchestrator?.projectId && orchestrator?.defaultEnvironmentId) {
+        const services = [];
+        if (orchestrator.serviceIds instanceof Map) {
+          for (const [name, id] of orchestrator.serviceIds.entries()) {
+            services.push({ name, id });
+          }
+        }
+        if (services.length > 0) {
+          console.log(dim(`Pulling build + runtime logs for ${services.length} services...`));
+          logSummary = await pullRailwayLogs({
+            client,
+            projectId: orchestrator.projectId,
+            environmentId: orchestrator.defaultEnvironmentId,
+            services,
+            onProgress: (result) => {
+              const label = result.deployment_status ?? (result.error ? 'error' : 'pending');
+              console.log(
+                `  ${dim('•')} ${result.service}: ${dim(label)}`,
+              );
+            },
+          });
+          printLogPullerSummary(logSummary);
+        }
+      }
+    } catch (logErr) {
+      console.log('');
+      console.log(
+        `  ${warn} Could not pull Railway logs automatically: ${logErr?.message ?? String(logErr)}`,
+      );
+      console.log(
+        dim(`  You can still inspect the project at https://railway.com/project/${orchestrator?.projectId ?? ''}`),
+      );
+    }
+
+    printRailwayDebugBundleSummary(bundle, logSummary);
+
     return false;
   }
 }

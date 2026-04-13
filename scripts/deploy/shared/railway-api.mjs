@@ -285,6 +285,115 @@ export class RailwayClient {
     return services.find((s) => s.name === name) ?? null;
   }
 
+  // ─── Log fetching ──────────────────────────────────────────────────────
+  //
+  // Railway's GraphQL API exposes deployments and their logs, but the
+  // public schema isn't extensively documented and field names have
+  // changed over the years. We use the shapes that match Railway's
+  // current public schema as of 2025-Q4; if a query shape changes we
+  // fall through to a clear error so the caller can decide what to do.
+  //
+  // These are used by pullRailwayLogs (platforms/railway.mjs) to
+  // automatically download build + runtime logs for every service in a
+  // project to local files on deploy failure — so agents like Claude can
+  // grep/read them without the operator manually running `railway logs`
+  // for every service individually.
+
+  /**
+   * List the latest N deployments for a specific service, most-recent
+   * first. Returns an array of { id, status, createdAt, meta } objects.
+   *
+   * Railway's deployments query takes a filter input object. Passing an
+   * empty/default input returns everything; narrowing by projectId +
+   * environmentId + serviceId is the normal per-service lookup.
+   */
+  async listServiceDeployments({ projectId, environmentId, serviceId, limit = 1 } = {}) {
+    const data = await this.query(
+      `
+      query svcDeployments($input: DeploymentListInput!, $first: Int!) {
+        deployments(input: $input, first: $first) {
+          edges {
+            node {
+              id
+              status
+              createdAt
+              staticUrl
+              meta
+            }
+          }
+        }
+      }
+      `,
+      {
+        input: { projectId, environmentId, serviceId },
+        first: limit,
+      },
+    );
+    const edges = data?.deployments?.edges ?? [];
+    return edges
+      .map((e) => e?.node)
+      .filter(Boolean)
+      .map((n) => ({
+        id: n.id,
+        status: n.status ?? null,
+        createdAt: n.createdAt ?? null,
+        staticUrl: n.staticUrl ?? null,
+        meta: n.meta ?? null,
+      }));
+  }
+
+  /**
+   * Fetch build logs for a given deployment ID. Returns an array of
+   * { timestamp, severity, message } objects. Railway's buildLogs query
+   * returns the build output line-by-line; if a build is in-progress we
+   * get whatever's been emitted so far.
+   */
+  async fetchBuildLogs(deploymentId, { limit = 5000 } = {}) {
+    const data = await this.query(
+      `
+      query buildLogs($deploymentId: String!, $limit: Int) {
+        buildLogs(deploymentId: $deploymentId, limit: $limit) {
+          timestamp
+          severity
+          message
+        }
+      }
+      `,
+      { deploymentId, limit },
+    );
+    const logs = Array.isArray(data?.buildLogs) ? data.buildLogs : [];
+    return logs.map((l) => ({
+      timestamp: l?.timestamp ?? null,
+      severity: l?.severity ?? null,
+      message: l?.message ?? '',
+    }));
+  }
+
+  /**
+   * Fetch runtime (deploy) logs for a given deployment ID. Same shape as
+   * fetchBuildLogs. These are the logs from the running container.
+   */
+  async fetchDeploymentLogs(deploymentId, { limit = 5000 } = {}) {
+    const data = await this.query(
+      `
+      query deploymentLogs($deploymentId: String!, $limit: Int) {
+        deploymentLogs(deploymentId: $deploymentId, limit: $limit) {
+          timestamp
+          severity
+          message
+        }
+      }
+      `,
+      { deploymentId, limit },
+    );
+    const logs = Array.isArray(data?.deploymentLogs) ? data.deploymentLogs : [];
+    return logs.map((l) => ({
+      timestamp: l?.timestamp ?? null,
+      severity: l?.severity ?? null,
+      message: l?.message ?? '',
+    }));
+  }
+
   /**
    * Idempotent: returns the existing service if one with this name already
    * exists under the project. This matters because the deploy script is
