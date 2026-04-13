@@ -244,6 +244,11 @@ async function main() {
   // know. So instead of asserting one or the other, we tell the operator
   // exactly what state we *think* we're in and ask them to confirm.
   let needsFreshDeploy = !isPhaseComplete(state, 'deploy');
+  // Tracks whether we're on a "previous services still alive" path. If so,
+  // the admin account already exists in the live database from before — we
+  // skip the admin creation prompt entirely instead of pestering the operator
+  // every update.
+  let priorDeploymentPreserved = false;
 
   if (!needsFreshDeploy) {
     console.log('');
@@ -275,6 +280,11 @@ async function main() {
       if (state.phases?.admin) delete state.phases.admin;
       saveState(state);
       needsFreshDeploy = true;
+    } else {
+      // Services are alive from before — there's already an admin in the
+      // live database, whether this script created them on a previous run
+      // or the operator did it manually. Don't run admin creation again.
+      priorDeploymentPreserved = true;
     }
   }
 
@@ -346,7 +356,21 @@ async function main() {
   }
 
   // --- Phase 5: Admin account ---
-  if (!isPhaseComplete(state, 'admin')) {
+  if (priorDeploymentPreserved && !isPhaseComplete(state, 'admin')) {
+    // Operator confirmed the previous deployment is still live, which means
+    // an admin already exists in the live database (this script created one
+    // on a prior run, OR the operator did it by hand). Mark the phase
+    // complete so we don't pester them on every update push, and don't try
+    // to run the create-admin command again — it'd just create a noisy
+    // duplicate account at best, or fail and waste five minutes of their
+    // time at worst.
+    console.log('');
+    console.log(`${check} Skipping admin creation — your existing deployment already has one.`);
+    console.log(dim('  (If you actually need a brand-new admin account, run this script with'));
+    console.log(dim('  --reconfigure or create one directly in the running app.)'));
+    markPhaseComplete(state, 'admin');
+    saveState(state);
+  } else if (!isPhaseComplete(state, 'admin')) {
     console.log(`\n${bold('Step 6: Create admin account')}\n`);
 
     const result = await createSuperUser(platform);
@@ -354,6 +378,22 @@ async function main() {
       state.adminEmail = result.email;
       markPhaseComplete(state, 'admin');
       saveState(state);
+    } else {
+      // Admin creation failed (most often: Railway CLI not authenticated,
+      // not linked to the project, etc.). The createSuperUser helper has
+      // already printed the manual fallback command. Offer to mark the
+      // phase complete so the operator isn't re-prompted on every future
+      // run — they can run the manual command on their own time.
+      console.log('');
+      const skip = await confirm(
+        'Mark admin step as done so this script stops asking on future runs?',
+        true,
+      );
+      if (skip) {
+        markPhaseComplete(state, 'admin');
+        saveState(state);
+        console.log(dim('  Marked done. Remember to run the manual command above before logging in.'));
+      }
     }
   } else {
     console.log(`${check} Admin account already created (${dim(state.adminEmail || 'unknown')}).`);
