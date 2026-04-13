@@ -162,6 +162,44 @@ export class RailwayClient {
   }
 
   /**
+   * List the workspaces the authenticated user belongs to. Railway's
+   * ProjectCreateInput now requires workspaceId — it used to be optional and
+   * default to the user's personal workspace, but as of the Railway API
+   * schema revision that shipped around 2025-11, passing null or omitting it
+   * returns "You must specify a workspaceId to create a project."
+   *
+   * Every Railway user has at least one workspace — the personal workspace,
+   * auto-created on signup. Team accounts may have additional workspaces.
+   *
+   * Returns: [{ id, name, team?: { id } }, ...]. `team` is present for
+   * team-backed workspaces (older concept); personal workspaces omit it.
+   *
+   * Note: Railway's `me { workspaces }` returns a direct list (not a Relay
+   * connection), so the query shape is simpler than `me { projects }`.
+   */
+  async listWorkspaces() {
+    const data = await this.query(`
+      {
+        me {
+          workspaces {
+            id
+            name
+            team { id }
+          }
+        }
+      }
+    `);
+    const rows = data?.me?.workspaces ?? [];
+    return rows
+      .filter(Boolean)
+      .map((w) => ({
+        id: w.id,
+        name: w.name ?? 'unnamed workspace',
+        team: w.team ?? null,
+      }));
+  }
+
+  /**
    * Create a project and resolve its default environment in one call.
    * The deploy flow always needs the env ID immediately afterward (to create
    * service instances and push variables), so bundling the lookup here keeps

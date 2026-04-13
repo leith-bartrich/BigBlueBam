@@ -13,7 +13,7 @@ import { execSync, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { bold, check, cross, dim, green, yellow, cyan, red, warn } from '../shared/colors.mjs';
-import { ask, confirm } from '../shared/prompt.mjs';
+import { ask, confirm, select } from '../shared/prompt.mjs';
 import { RailwayClient, RailwayApiError } from '../shared/railway-api.mjs';
 import { RailwayOrchestrator } from '../shared/railway-orchestrator.mjs';
 
@@ -359,6 +359,54 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
   console.log(`  ${check} Branch: ${branch}`);
   console.log('');
 
+  // 4b. Workspace resolution. Railway's ProjectCreateInput now requires a
+  //     workspaceId — passing null returns "You must specify a workspaceId
+  //     to create a project." Every Railway user has at least one workspace
+  //     (the personal workspace, auto-created on signup); accounts on paid
+  //     plans may have additional team workspaces.
+  //
+  //     Auto-pick when there's exactly one. Prompt when there are multiple.
+  //     Throw a clear error when there are zero (shouldn't happen in
+  //     practice, but the error message is useful if Railway's API shape
+  //     changes again and the query starts returning empty).
+  //
+  //     The chosen workspaceId is NOT persisted to state because it's tied
+  //     to the current PAT — if the operator switches tokens between runs,
+  //     the old workspaceId would be wrong. Re-resolving on every run is
+  //     cheap (one GraphQL query) and correct.
+  let workspaceId;
+  try {
+    const workspaces = await client.listWorkspaces();
+    if (workspaces.length === 0) {
+      throw new Error(
+        'Railway returned zero workspaces for this account. Every account should have at least a personal workspace — if you\'re seeing this, Railway\'s API may have changed shape. Try re-running with DEBUG=1 for the raw response.',
+      );
+    }
+    if (workspaces.length === 1) {
+      workspaceId = workspaces[0].id;
+      console.log(`  ${check} Workspace: ${workspaces[0].name} ${dim(`(${workspaceId})`)}`);
+    } else {
+      console.log(dim(`  Found ${workspaces.length} workspaces on this account.`));
+      const pick = await select(
+        'Which workspace should this project be created in?',
+        workspaces.map((w) => ({
+          label: w.name,
+          value: w.id,
+          description: w.team ? `Team workspace (${w.id})` : `Personal workspace (${w.id})`,
+        })),
+      );
+      workspaceId = pick;
+      const chosen = workspaces.find((w) => w.id === pick);
+      console.log(`  ${check} Workspace: ${chosen?.name ?? workspaceId}`);
+    }
+  } catch (err) {
+    if (err instanceof RailwayApiError) {
+      throw new Error(`Could not fetch Railway workspaces: ${err.message}`);
+    }
+    throw err;
+  }
+  console.log('');
+
   // 5. Build the orchestrator. The plugin-prompt callback needs the
   //    projectId so it can print a working dashboard link — capture it from
   //    the onProgress 'project' phase events as the orchestrator emits them.
@@ -413,7 +461,7 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
 
   const orchestrator = new RailwayOrchestrator(client, {
     projectName,
-    workspaceId: null,
+    workspaceId,
     githubRepo,
     branch,
     generatedSecrets: extractSecretsFromEnvConfig(envConfig),
