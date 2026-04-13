@@ -2,6 +2,8 @@ import nodemailer from 'nodemailer';
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
 import type { Env } from '../env.js';
+import { getDb } from '../utils/db.js';
+import { getSmtpConfig, type ResolvedSmtpConfig } from '../utils/smtp-config.js';
 
 export interface EmailJobData {
   to: string;
@@ -10,24 +12,30 @@ export interface EmailJobData {
   text?: string;
 }
 
-let _transport: nodemailer.Transporter | null = null;
+// Cached transport keyed by a fingerprint of the resolved config. When the
+// operator updates SMTP settings in the UI, the resolver cache (30s TTL)
+// drops first, then the next call produces a new fingerprint and we build
+// a fresh transport. Old transports are gc'd naturally.
+let cachedTransport: nodemailer.Transporter | null = null;
+let cachedFingerprint: string | null = null;
 
-function getTransport(env: Env): nodemailer.Transporter | null {
-  if (!env.SMTP_HOST) {
-    return null;
-  }
-  if (!_transport) {
-    _transport = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_PORT === 465,
-      auth:
-        env.SMTP_USER && env.SMTP_PASS
-          ? { user: env.SMTP_USER, pass: env.SMTP_PASS }
-          : undefined,
-    });
-  }
-  return _transport;
+function fingerprintConfig(cfg: ResolvedSmtpConfig): string {
+  return [cfg.host, cfg.port, cfg.user ?? '', cfg.pass ?? '', cfg.secure].join('|');
+}
+
+async function resolveTransport(env: Env): Promise<nodemailer.Transporter | null> {
+  const cfg = await getSmtpConfig(getDb(), env);
+  if (!cfg) return null;
+  const fp = fingerprintConfig(cfg);
+  if (cachedTransport && fp === cachedFingerprint) return cachedTransport;
+  cachedTransport = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: cfg.user && cfg.pass ? { user: cfg.user, pass: cfg.pass } : undefined,
+  });
+  cachedFingerprint = fp;
+  return cachedTransport;
 }
 
 export async function processEmailJob(
@@ -39,18 +47,19 @@ export async function processEmailJob(
 
   logger.info({ jobId: job.id, to, subject }, 'Processing email job');
 
-  const transport = getTransport(env);
+  const cfg = await getSmtpConfig(getDb(), env);
+  const transport = await resolveTransport(env);
 
-  if (!transport) {
+  if (!transport || !cfg) {
     logger.warn(
       { to, subject, html: html.substring(0, 200), text: text?.substring(0, 200) },
-      'SMTP not configured — logging email instead of sending',
+      'SMTP not configured (neither system_settings nor env vars) — logging email instead of sending',
     );
     return;
   }
 
   const info = await transport.sendMail({
-    from: env.EMAIL_FROM,
+    from: cfg.from,
     to,
     subject,
     html,

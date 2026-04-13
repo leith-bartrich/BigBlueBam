@@ -104,17 +104,45 @@ export async function promptLiveKitChoice() {
 }
 
 /**
- * Prompt for optional integrations (OAuth, SMTP).
+ * Prompt for optional integrations.
+ *
+ * Historical note: earlier versions of this function also asked about
+ * Google OAuth (OAUTH_GOOGLE_CLIENT_ID/SECRET) and AI provider keys
+ * (OPENAI_API_KEY/ANTHROPIC_API_KEY). Both were removed:
+ *
+ *   - Google OAuth SSO is not yet implemented in the auth layer. Nothing
+ *     in apps/api/src/ consumes OAUTH_GOOGLE_* env vars, so the prompt
+ *     was writing values that no service reads. If/when SSO lands, re-add
+ *     the prompt here (or — better — let operators configure it from a
+ *     SuperUser settings page, same pattern as SMTP below).
+ *
+ *   - AI/LLM provider keys are managed in-app via the LLM Providers page
+ *     (apps/frontend/src/pages/settings-llm-providers.tsx, backed by
+ *     apps/api/src/routes/llm-provider.routes.ts). Operators create
+ *     provider records at runtime with test-connection support; the
+ *     deploy-script prompt was writing env vars that no service reads.
+ *     The in-app flow is strictly better than the deploy-time prompt.
+ *
+ * What remains here: SMTP. The SMTP config is ALSO editable from a
+ * SuperUser settings page (apps/frontend/src/components/settings/
+ * smtp-settings-form.tsx), backed by the system_settings table. The
+ * worker's email jobs resolve config DB-first, env-fallback (see
+ * apps/worker/src/utils/smtp-config.ts). Operators can pick either
+ * path — fill it in here at deploy time, or skip and configure later
+ * in the app. We call that out in the prompt text.
  */
 export async function promptOptionalIntegrations() {
   const config = {};
 
   console.log(`\n${bold('Optional Integrations')}`);
-  console.log(dim('You can skip these now and configure them later in the .env file.\n'));
+  console.log(dim('Everything in this section can also be configured later as a SuperUser'));
+  console.log(dim('from inside the app (Settings → Integrations). Skip anything you\'d rather'));
+  console.log(dim('set up after the deploy finishes — no need to know your SMTP creds now.\n'));
 
-  // SMTP
-  if (await confirm('Configure email (SMTP) for notifications?', false)) {
-    console.log(`\n${bold('SMTP Configuration')}\n`);
+  // SMTP — also editable at runtime via the SuperUser Settings → Email form
+  if (await confirm('Configure email (SMTP) for notifications now?', false)) {
+    console.log(`\n${bold('SMTP Configuration')}`);
+    console.log(dim('You can change any of these later from Settings → Integrations → Email\n'));
     config.SMTP_HOST = await ask('SMTP host:', 'smtp.gmail.com');
     config.SMTP_PORT = await ask('SMTP port:', '587');
     config.SMTP_USER = await ask('SMTP username/email:');
@@ -122,34 +150,8 @@ export async function promptOptionalIntegrations() {
     config.SMTP_FROM = await ask('From address:', config.SMTP_USER || '');
     console.log(`  ${check} SMTP configured`);
   } else {
-    console.log(`  ${dim('Skipped SMTP -- email notifications will be disabled')}`);
-  }
-
-  // OAuth
-  if (await confirm('\nConfigure Google OAuth (SSO login)?', false)) {
-    console.log(`\n${bold('Google OAuth Configuration')}\n`);
-    config.OAUTH_GOOGLE_CLIENT_ID = await ask('Client ID:');
-    config.OAUTH_GOOGLE_CLIENT_SECRET = await askPassword('Client secret:');
-    console.log(`  ${check} Google OAuth configured`);
-  } else {
-    console.log(`  ${dim('Skipped OAuth -- users will log in with email/password')}`);
-  }
-
-  // AI / LLM key
-  if (await confirm('\nConfigure an AI/LLM API key (for Beacon AI features)?', false)) {
-    console.log(`\n${bold('AI Configuration')}\n`);
-    const provider = await select('AI provider:', [
-      { label: 'OpenAI', value: 'openai' },
-      { label: 'Anthropic', value: 'anthropic' },
-    ]);
-    if (provider === 'openai') {
-      config.OPENAI_API_KEY = await askPassword('OpenAI API key:');
-    } else {
-      config.ANTHROPIC_API_KEY = await askPassword('Anthropic API key:');
-    }
-    console.log(`  ${check} AI provider configured`);
-  } else {
-    console.log(`  ${dim('Skipped AI -- AI-powered features will be disabled')}`);
+    console.log(`  ${dim('Skipped SMTP — configure it later at Settings → Integrations → Email')}`);
+    console.log(`  ${dim('(Sign in as a SuperUser after the deploy completes.)')}`);
   }
 
   return config;

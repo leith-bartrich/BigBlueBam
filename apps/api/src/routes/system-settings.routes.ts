@@ -38,8 +38,35 @@ const REDIRECT_MAP: Record<RootRedirectValue, string | null> = {
 };
 
 // Per-key value validators
+//
+// New keys can be added here freely — the PUT route applies the matching
+// validator if one exists, otherwise accepts the raw value. Keys without a
+// validator are still SuperUser-gated at the route level.
+//
+// NOTE on SMTP: the password is stored plaintext in the system_settings
+// value column. For self-hosted BigBlueBam where the operator controls both
+// the DB and the app, this is a defensible trade-off (same person has
+// access to both). If you're running in a multi-tenant context where the
+// DB might be visible to parties who should not see SMTP creds, set the
+// values via env vars instead — the resolver (apps/worker/src/utils/
+// smtp-config.mjs) reads the DB first and falls back to env vars, so
+// env-only deploys still work.
 const KEY_VALIDATORS: Record<string, z.ZodType> = {
   root_redirect: z.enum(ROOT_REDIRECT_VALUES),
+
+  // SMTP (see apps/worker/src/utils/smtp-config.mjs for the resolver)
+  smtp_host: z.string().min(1).max(255),
+  smtp_port: z.union([
+    z.number().int().min(1).max(65535),
+    z.string().regex(/^\d+$/).refine((v) => {
+      const n = parseInt(v, 10);
+      return n >= 1 && n <= 65535;
+    }, 'smtp_port must be an integer between 1 and 65535'),
+  ]),
+  smtp_user: z.string().min(1).max(255),
+  smtp_password: z.string().min(1).max(512),
+  smtp_from: z.string().email(),
+  smtp_secure: z.boolean(),
 };
 
 export default async function systemSettingsRoutes(fastify: FastifyInstance) {

@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { SettingsLlmProviders } from '@/pages/settings-llm-providers';
+import { SmtpSettingsForm } from '@/components/settings/smtp-settings-form';
 
 interface ApiKeyData {
   id: string;
@@ -1321,19 +1322,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                   )}
                 </div>
 
-                {/* Email Configuration */}
-                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Email Notifications</h2>
-                    <p className="text-sm text-zinc-500">
-                      Email notifications require SMTP configuration in the server's environment variables
-                      (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS).
-                    </p>
-                  </div>
-                  <p className="text-sm text-zinc-400">
-                    Contact your server administrator to configure email delivery.
-                  </p>
-                </div>
+                {/* Email Configuration — editable SMTP form, SuperUser only */}
+                <SmtpSettingsForm isSuperuser={Boolean(user?.is_superuser)} />
               </div>
             )}
             {activeTab === 'permissions' && (

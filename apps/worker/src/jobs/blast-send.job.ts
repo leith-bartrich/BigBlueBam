@@ -79,25 +79,38 @@ export interface BlastSendJobData {
 }
 
 // ---------------------------------------------------------------------------
-// SMTP transport (reuses worker SMTP config, same as email.job.ts)
+// SMTP transport — resolves config from system_settings first, env vars
+// fallback. See apps/worker/src/utils/smtp-config.ts for the resolver and
+// apps/worker/src/jobs/email.job.ts for the matching pattern used by the
+// transactional email job. `getDb` is already imported at the top of the
+// file for the main transaction flow.
 // ---------------------------------------------------------------------------
 
-let _transport: nodemailer.Transporter | null = null;
+import { getSmtpConfig, type ResolvedSmtpConfig } from '../utils/smtp-config.js';
 
-function getTransport(env: Env): nodemailer.Transporter | null {
-  if (!env.SMTP_HOST) return null;
-  if (!_transport) {
-    _transport = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_PORT === 465,
-      auth:
-        env.SMTP_USER && env.SMTP_PASS
-          ? { user: env.SMTP_USER, pass: env.SMTP_PASS }
-          : undefined,
-    });
-  }
-  return _transport;
+let cachedTransport: nodemailer.Transporter | null = null;
+let cachedFingerprint: string | null = null;
+
+function fingerprintConfig(cfg: ResolvedSmtpConfig): string {
+  return [cfg.host, cfg.port, cfg.user ?? '', cfg.pass ?? '', cfg.secure].join('|');
+}
+
+async function resolveTransport(env: Env): Promise<{
+  transport: nodemailer.Transporter | null;
+  cfg: ResolvedSmtpConfig | null;
+}> {
+  const cfg = await getSmtpConfig(getDb(), env);
+  if (!cfg) return { transport: null, cfg: null };
+  const fp = fingerprintConfig(cfg);
+  if (cachedTransport && fp === cachedFingerprint) return { transport: cachedTransport, cfg };
+  cachedTransport = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: cfg.user && cfg.pass ? { user: cfg.user, pass: cfg.pass } : undefined,
+  });
+  cachedFingerprint = fp;
+  return { transport: cachedTransport, cfg };
 }
 
 // ---------------------------------------------------------------------------
@@ -224,11 +237,11 @@ export async function processBlastSendJob(
     'Contacts loaded and filtered',
   );
 
-  const transport = getTransport(env);
+  const { transport, cfg: smtpCfg } = await resolveTransport(env);
   let sentCount = 0;
   let failedCount = 0;
 
-  const fromEmail = campaign.from_email ?? env.EMAIL_FROM;
+  const fromEmail = campaign.from_email ?? smtpCfg?.from ?? env.EMAIL_FROM;
   const fromName = campaign.from_name ?? 'BigBlueBam';
 
   // 5. Process each eligible contact

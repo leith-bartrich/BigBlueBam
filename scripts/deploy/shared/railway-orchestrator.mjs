@@ -302,33 +302,40 @@ export class RailwayOrchestrator {
     });
   }
 
-  // ─── Phase 3: plugin prompt (Postgres + Redis) ──────────────────────
-  async _phasePluginPrompt() {
-    // The Railway public API does NOT expose plugin creation (they're a
-    // dashboard-only product as of this writing), so we can't add the
-    // Postgres and Redis plugins ourselves. Instead we emit a prompt event
+  // ─── Phase 3: database prompt (Postgres + Redis) ────────────────────
+  async _phaseDatabasePrompt() {
+    // Railway's public GraphQL API does NOT expose database provisioning
+    // (you can't templateDeploy Postgres/Redis as a regular operator),
+    // so we can't add them automatically. Instead we emit a prompt event
     // and, if the caller wired one, await their confirmation callback.
+    //
+    // TODO: investigate whether Railway's `templateDeploy` mutation works
+    // for 'postgres' and 'redis' template codes at the public-API level.
+    // If yes, we can skip this manual step entirely. Tracked as a
+    // follow-up — for now the text below is written for clarity and
+    // accuracy against Railway's current dashboard UI.
     this.step += 1;
     this._emit({
-      phase: 'plugin-prompt',
+      phase: 'database-prompt',
       step: this.step,
       total: this.total,
       message:
-        'Add the Postgres and Redis plugins in the Railway dashboard (Project → New → Database), ' +
-        'then confirm to continue.',
+        'Waiting for you to add a PostgreSQL database and a Redis database in the Railway dashboard.',
     });
     if (typeof this.awaitPluginConfirmation === 'function') {
       // Caller-supplied async gate — typically a `confirm()` CLI prompt.
+      // (Historically named awaitPluginConfirmation — renaming the
+      // callback is a breaking API change, so keeping the old name.)
       await this.awaitPluginConfirmation();
     }
     // If no confirmation callback was provided we assume the caller has
-    // already added the plugins (or is running in an automated context
-    // where the plugins are pre-provisioned).
+    // already added the databases (or is running in an automated context
+    // where they are pre-provisioned).
     this._emit({
-      phase: 'plugin-prompt',
+      phase: 'database-prompt',
       step: this.step,
       total: this.total,
-      message: 'Plugins confirmed',
+      message: 'Databases confirmed',
       ok: true,
     });
   }
@@ -467,7 +474,7 @@ export class RailwayOrchestrator {
 
     await this._phaseValidate();
     await this._phaseProject();
-    await this._phasePluginPrompt();
+    await this._phaseDatabasePrompt();
     await this._phaseServices();
     await this._phaseDeploy();
 

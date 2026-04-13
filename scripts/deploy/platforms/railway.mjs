@@ -228,7 +228,7 @@ function printWelcomeBanner() {
   console.log('');
   console.log(dim('    1. Validate your Railway PAT'));
   console.log(dim('    2. Create the project'));
-  console.log(dim('    3. Prompt to add Postgres + Redis plugins (one click each)'));
+  console.log(dim('    3. Pause so you can add PostgreSQL + Redis in the Railway dashboard'));
   console.log(dim('    4. Create + configure every service (source, Dockerfile,'));
   console.log(dim('       healthcheck, env vars)'));
   console.log(dim('    5. Trigger initial deploys'));
@@ -418,16 +418,32 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
 
   const awaitPluginConfirmation = async () => {
     console.log('');
-    console.log(bold('  The only manual step: add Postgres + Redis plugins.'));
+    console.log(bold('  One manual step: add a PostgreSQL database and a Redis database'));
+    console.log(bold('  to this project from the Railway dashboard.'));
+    console.log('');
+    console.log(dim('  Why: Railway\'s public API doesn\'t let us provision databases'));
+    console.log(dim('  automatically, so you have to click through the dashboard once.'));
+    console.log(dim('  (We tried. If you know a way, PRs welcome.)'));
     console.log('');
     const projectUrl = capturedProjectId
       ? `https://railway.com/project/${capturedProjectId}`
       : 'https://railway.com/dashboard';
-    console.log(`    1. Open ${cyan(projectUrl)}`);
-    console.log(`    2. Click '${bold('New')}' → '${bold('Database')}' → '${bold('Add PostgreSQL')}'`);
-    console.log(`    3. Click '${bold('New')}' → '${bold('Database')}' → '${bold('Add Redis')}'`);
+    console.log(`  ${bold('1.')} Open this project in your browser:`);
+    console.log(`     ${cyan(projectUrl)}`);
     console.log('');
-    await confirm("I've added both plugins. Continue?", true);
+    console.log(`  ${bold('2.')} Add a ${bold('PostgreSQL')} database. Railway has a couple of UI paths,`);
+    console.log('     depending on when you signed up — any one of these works:');
+    console.log(dim('       • Right-click on the project canvas → "Database" → "Add PostgreSQL"'));
+    console.log(dim('       • Or click the "+ Create" / "+ New" button (usually top-right),'));
+    console.log(dim('         then "Database" → "Add PostgreSQL"'));
+    console.log(dim('       • Or click the blank canvas area, then "Database" from the menu'));
+    console.log('');
+    console.log(`  ${bold('3.')} Repeat for ${bold('Redis')}. Same menu, choose "Add Redis" instead.`);
+    console.log('');
+    console.log(dim('  After both tiles show up in the project canvas (they\'ll self-provision'));
+    console.log(dim('  within ~30 seconds), come back here and answer Y below.'));
+    console.log('');
+    await confirm("PostgreSQL and Redis are both added and provisioned — continue?", true);
   };
 
   const handleProgress = (event) => {
