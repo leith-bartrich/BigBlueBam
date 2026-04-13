@@ -22,4 +22,8 @@ RUN npm install -g serve@14 --no-audit --no-fund
 COPY --from=builder /build/dist ./dist
 EXPOSE 3000
 # `-s` = SPA-style fallback to index.html for unknown paths.
-CMD ["serve", "-s", "dist", "-l", "3000"]
+# Shell form (not exec form) so `${PORT:-3000}` is interpolated by /bin/sh:
+# Railway sets $PORT to a randomly-assigned port and routes its healthcheck
+# there. Hardcoding -l 3000 made the healthcheck unreachable and the
+# deployment fail. Local docker-compose still gets 3000 via the fallback.
+CMD sh -c 'serve -s dist -l ${PORT:-3000}'

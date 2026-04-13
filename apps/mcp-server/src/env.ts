@@ -1,7 +1,15 @@
 import { z } from 'zod';
 
+// Railway (and most managed PaaS providers) inject `PORT` and require the
+// service to bind to it for healthchecks and the public proxy to work. Prefer
+// PORT when set, fall back to the historical MCP_PORT (used by docker-compose),
+// fall back to 3001 for local dev.
 const envSchema = z.object({
-  MCP_PORT: z.coerce.number().int().positive().default(3001),
+  MCP_PORT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(() => Number(process.env.PORT) || 3001),
   MCP_TRANSPORT: z.enum(['streamable-http', 'stdio', 'sse']).default('streamable-http'),
   API_INTERNAL_URL: z.string().url().default('http://localhost:3000'),
   HELPDESK_API_URL: z.string().url().default('http://localhost:4001'),
