@@ -5,8 +5,8 @@
 <h1 align="center">BigBlueBam</h1>
 
 <p align="center">
-  <strong>Project management built for human-AI teams.</strong><br/>
-  Engineers set the strategy. AI agents handle the grunt work. Everyone sees it on the board.
+  <strong>The work suite built for human-AI teams.</strong><br/>
+  Your team sets the strategy. AI agents handle the routine. Everyone works in the same place.
 </p>
 
 <p align="center">
@@ -38,15 +38,15 @@
 
 ## The Vision
 
-Most project management tools are built for humans talking to humans. BigBlueBam is built for **human-AI collaborative development** — a world where engineers and AI agents work side by side on the same board, in the same sprints, toward the same goals.
+Most work platforms are built for humans talking to humans. BigBlueBam is built for **human-AI collaboration**, a world where your team and AI agents plan projects, message each other, close deals, write docs, track goals, automate workflows, and support customers in the same suite, at the same time.
 
-**Humans** own the strategy: setting priorities, defining epics, reviewing deliverables, talking to customers.
+**Humans** own the strategy: setting priorities, defining epics, closing deals, reviewing deliverables, talking to customers.
 
-**AI agents** own the routine: triaging helpdesk tickets, creating tasks from bug reports, posting status updates, generating sprint reports, and keeping the board organized.
+**AI agents** own the routine: triaging helpdesk tickets, writing knowledge base articles, drafting documents, updating CRM pipelines, generating sprint reports, firing workflow automations, and keeping the board organized.
 
-The **Kanban board** is the shared workspace. When an AI agent creates a task, moves a card, or replies to a customer, it shows up on the board in real time — right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
+The **suite** is the shared workspace. When an AI agent creates a task, replies to a customer, updates a deal, or posts to a Banter channel, it shows up in real time, right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **215 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to projects, tasks, sprints, comments, reports, helpdesk tickets, team messaging, the knowledge base, collaborative documents, workflow automations, goals & OKRs, visual collaboration whiteboards, and CRM pipeline management.
+This is made possible by **215 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to project boards, sprints, team messaging, helpdesk tickets, knowledge base, collaborative docs, workflow automations, goals and OKRs, whiteboards, CRM pipelines, email campaigns, analytics dashboards, and more.
 
 ---
 
