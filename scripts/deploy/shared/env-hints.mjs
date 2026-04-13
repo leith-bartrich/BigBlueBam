@@ -16,10 +16,27 @@
 
 import { APP_SERVICES, INFRA_SERVICES } from './services.mjs';
 
-// Helper: compute the internal Railway DNS URL for a service.
+// Railway sets PORT=8080 on every container and expects the service to bind
+// to it. Every Bam app service (api, helpdesk-api, …, mcp-server, site,
+// frontend, worker) reads process.env.PORT and binds to 8080 accordingly,
+// REGARDLESS of the nominal docker-compose port in the catalog. So
+// internal-DNS URLs going TO a Bam service must use 8080, not the catalog
+// port — using the catalog port produces 502s at request time even though
+// per-service healthchecks pass (because Railway probes localhost:8080).
+//
+// Third-party container images (minio, qdrant, livekit) ignore $PORT and
+// bind to their own hardcoded defaults (9000, 6333, 7880); for those we
+// keep the catalog port. Managed plugins (postgres, redis) never go
+// through internal() — they use ${{Postgres.DATABASE_URL}} references.
+const RAILWAY_DYNAMIC_PORT = 8080;
+const APP_SERVICE_NAMES = new Set(APP_SERVICES.map((s) => s.name));
+
 function internal(name) {
   const svc = [...APP_SERVICES, ...INFRA_SERVICES].find((s) => s.name === name);
   if (!svc) throw new Error(`Unknown service in env-hints: ${name}`);
+  if (APP_SERVICE_NAMES.has(name)) {
+    return `http://${name}.railway.internal:${RAILWAY_DYNAMIC_PORT}`;
+  }
   if (!svc.port) return `http://${name}.railway.internal`;
   return `http://${name}.railway.internal:${svc.port}`;
 }

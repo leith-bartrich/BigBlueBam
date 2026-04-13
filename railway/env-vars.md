@@ -91,7 +91,7 @@ with **R**, optional with `o`.
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
 | **R** | `INTERNAL_HELPDESK_SECRET` | secret | `<generate>` | openssl rand -hex 16 — must be IDENTICAL on api and helpdesk-api |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `HELPDESK_URL` | public | `<frontend-public-url>/helpdesk` |  |
@@ -115,7 +115,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `S3_ENDPOINT` | computed | `http://minio.railway.internal:9000` |  |
@@ -127,7 +127,7 @@ with **R**, optional with `o`.
 | o | `LIVEKIT_API_KEY` | secret | `<generate>` | openssl rand -hex 16 — must MATCH on livekit, banter-api, board-api, voice-agent |
 | o | `LIVEKIT_API_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must MATCH on livekit, banter-api, board-api, voice-agent |
 | o | `LIVEKIT_WS_URL` | public | `wss://<your-public-domain>` | Public WebSocket URL clients use. If exposing LiveKit publicly, point to its Railway domain or your custom subdomain. Otherwise leave blank to disable voice/video. |
-| o | `VOICE_AGENT_URL` | computed | `http://voice-agent.railway.internal:4003` |  |
+| o | `VOICE_AGENT_URL` | computed | `http://voice-agent.railway.internal:8080` |  |
 
 ### beacon-api
 
@@ -139,7 +139,7 @@ with **R**, optional with `o`.
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
 | **R** | `QDRANT_URL` | computed | `http://qdrant.railway.internal:6333` |  |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `S3_ENDPOINT` | computed | `http://minio.railway.internal:9000` |  |
@@ -157,7 +157,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `RATE_LIMIT_MAX` | literal | `100` |  |
@@ -172,8 +172,8 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
-| **R** | `MCP_INTERNAL_URL` | computed | `http://mcp-server.railway.internal:3001` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
+| **R** | `MCP_INTERNAL_URL` | computed | `http://mcp-server.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `RATE_LIMIT_MAX` | literal | `100` |  |
@@ -189,7 +189,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `RATE_LIMIT_MAX` | literal | `100` |  |
@@ -204,7 +204,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `LIVEKIT_API_KEY` | secret | `<generate>` | openssl rand -hex 16 — must MATCH on livekit, banter-api, board-api, voice-agent |
@@ -220,7 +220,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `RATE_LIMIT_MAX` | literal | `100` |  |
@@ -235,8 +235,8 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
-| **R** | `BOND_API_INTERNAL_URL` | computed | `http://bond-api.railway.internal:4009` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
+| **R** | `BOND_API_INTERNAL_URL` | computed | `http://bond-api.railway.internal:8080` |  |
 | **R** | `TRACKING_BASE_URL` | public | `<frontend-public-url>` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
@@ -256,7 +256,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `DATABASE_READ_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Same as DATABASE_URL unless you set up a read replica |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
@@ -272,7 +272,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | **R** | `PUBLIC_URL` | public | `<frontend-public-url>` | e.g. https://your-frontend-service.up.railway.app or your custom domain |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
@@ -290,7 +290,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
 | o | `PUBLIC_FORM_RATE_LIMIT` | literal | `10` |  |
@@ -305,7 +305,7 @@ with **R**, optional with `o`.
 | **R** | `DATABASE_URL` | plugin | `${{Postgres.DATABASE_URL}}` | Reference the Railway Postgres plugin |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
 | **R** | `SESSION_SECRET` | secret | `<generate>` | openssl rand -hex 32 — must be IDENTICAL on every API service so they share sessions |
-| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `BBB_API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | **R** | `PUBLIC_URL` | public | `<frontend-public-url>` | e.g. https://your-frontend-service.up.railway.app or your custom domain |
 | o | `CORS_ORIGIN` | public | `<frontend-public-url>` |  |
 | o | `LOG_LEVEL` | literal | `info` |  |
@@ -317,19 +317,19 @@ with **R**, optional with `o`.
 | R/o | Variable | Kind | Value | Note |
 |---|---|---|---|---|
 | **R** | `MCP_TRANSPORT` | literal | `streamable-http` |  |
-| **R** | `API_INTERNAL_URL` | computed | `http://api.railway.internal:4000` |  |
+| **R** | `API_INTERNAL_URL` | computed | `http://api.railway.internal:8080` |  |
 | **R** | `REDIS_URL` | plugin | `${{Redis.REDIS_URL}}` | Reference the Railway Redis plugin |
-| o | `HELPDESK_API_URL` | computed | `http://helpdesk-api.railway.internal:4001` |  |
-| o | `BEACON_API_URL` | computed | `http://beacon-api.railway.internal:4004` |  |
-| o | `BOLT_API_URL` | computed | `http://bolt-api.railway.internal:4006/v1` |  |
-| o | `BEARING_API_URL` | computed | `http://bearing-api.railway.internal:4007/v1` |  |
-| o | `BOARD_API_URL` | computed | `http://board-api.railway.internal:4008/v1` |  |
-| o | `BOND_API_URL` | computed | `http://bond-api.railway.internal:4009/v1` |  |
-| o | `BLAST_API_URL` | computed | `http://blast-api.railway.internal:4010/v1` |  |
-| o | `BOOK_API_URL` | computed | `http://book-api.railway.internal:4012/v1` |  |
-| o | `BENCH_API_URL` | computed | `http://bench-api.railway.internal:4011/v1` |  |
-| o | `BILL_API_URL` | computed | `http://bill-api.railway.internal:4014/v1` |  |
-| o | `BLANK_API_URL` | computed | `http://blank-api.railway.internal:4013/v1` |  |
+| o | `HELPDESK_API_URL` | computed | `http://helpdesk-api.railway.internal:8080` |  |
+| o | `BEACON_API_URL` | computed | `http://beacon-api.railway.internal:8080` |  |
+| o | `BOLT_API_URL` | computed | `http://bolt-api.railway.internal:8080/v1` |  |
+| o | `BEARING_API_URL` | computed | `http://bearing-api.railway.internal:8080/v1` |  |
+| o | `BOARD_API_URL` | computed | `http://board-api.railway.internal:8080/v1` |  |
+| o | `BOND_API_URL` | computed | `http://bond-api.railway.internal:8080/v1` |  |
+| o | `BLAST_API_URL` | computed | `http://blast-api.railway.internal:8080/v1` |  |
+| o | `BOOK_API_URL` | computed | `http://book-api.railway.internal:8080/v1` |  |
+| o | `BENCH_API_URL` | computed | `http://bench-api.railway.internal:8080/v1` |  |
+| o | `BILL_API_URL` | computed | `http://bill-api.railway.internal:8080/v1` |  |
+| o | `BLANK_API_URL` | computed | `http://blank-api.railway.internal:8080/v1` |  |
 | o | `MCP_AUTH_REQUIRED` | literal | `true` | Recommended for production deployments |
 | o | `LOG_LEVEL` | literal | `info` |  |
 

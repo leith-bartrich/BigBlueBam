@@ -235,13 +235,40 @@ function generateRailwayNginxConf() {
     ...JOB_SERVICES.map((s) => s.name),
   ]);
 
-  let rewritten = 0;
-  const out = source.replace(
+  // Bam app services bind to PORT=8080 on Railway regardless of their
+  // nominal docker-compose port, because they read process.env.PORT and
+  // Railway sets PORT=8080 unconditionally. Third-party images
+  // (minio/qdrant/livekit) ignore $PORT and keep their default ports.
+  // We keep the original port when the upstream is third-party.
+  const RAILWAY_DYNAMIC_PORT = 8080;
+  const appHosts = new Set(APP_SERVICES.map((s) => s.name));
+  const railwayPortFor = (host) =>
+    appHosts.has(host) ? String(RAILWAY_DYNAMIC_PORT) : null;
+
+  let rewrittenProxyPass = 0;
+  let rewrittenListen = 0;
+
+  // 1. Rewrite proxy_pass upstreams: add `.railway.internal`, swap the
+  //    port to 8080 for Bam services, leave third-party ports alone.
+  let out = source.replace(
     /proxy_pass(\s+)http:\/\/([a-z][a-z0-9-]*):(\d+)/gi,
     (match, ws, host, port) => {
       if (!validHosts.has(host)) return match;
-      rewritten++;
-      return `proxy_pass${ws}http://${host}.railway.internal:${port}`;
+      rewrittenProxyPass++;
+      const railwayPort = railwayPortFor(host) ?? port;
+      return `proxy_pass${ws}http://${host}.railway.internal:${railwayPort}`;
+    },
+  );
+
+  // 2. The frontend nginx itself runs ON Railway and must bind to PORT=8080
+  //    so Railway's healthcheck and public proxy can reach it. Rewrite every
+  //    `listen N;` directive (typically just `listen 80;` from the source)
+  //    to `listen 8080;`. Source IPs and SSL options are preserved.
+  out = out.replace(
+    /(\blisten\s+)(\d+)([^;]*);/g,
+    (_match, prefix, _port, suffix) => {
+      rewrittenListen++;
+      return `${prefix}${RAILWAY_DYNAMIC_PORT}${suffix};`;
     },
   );
 
@@ -253,17 +280,26 @@ function generateRailwayNginxConf() {
     '#   node scripts/gen-railway-configs.mjs',
     '#',
     '# What\'s different from the source:',
-    '#   Every `proxy_pass http://<service>:<port>` whose hostname matches a',
-    '#   service in scripts/deploy/shared/services.mjs is rewritten to',
-    '#   `proxy_pass http://<service>.railway.internal:<port>` so the ingress',
-    '#   resolves backends through Railway\'s private DNS instead of the',
-    '#   docker-compose bridge network.',
+    '#   1. Every `proxy_pass http://<service>:<port>` whose hostname matches',
+    '#      a service in scripts/deploy/shared/services.mjs is rewritten to',
+    '#      `proxy_pass http://<service>.railway.internal:<port>` so the',
+    '#      ingress resolves backends through Railway\'s private DNS instead',
+    '#      of the docker-compose bridge network.',
+    '#   2. For Bam app services (api, helpdesk-api, mcp-server, …), the',
+    '#      upstream port is rewritten to 8080 because Railway sets PORT=8080',
+    '#      on every container and the services bind to that, NOT to their',
+    '#      docker-compose nominal port (4000, 4001, 3001, …).',
+    '#   3. Third-party services (minio, qdrant, livekit) keep their original',
+    '#      ports because they ignore $PORT and bind to hardcoded defaults.',
+    '#   4. The `listen N;` directive is rewritten to `listen 8080;` so the',
+    '#      frontend container binds to Railway\'s assigned PORT and its own',
+    '#      healthcheck passes.',
     '#',
     '',
   ].join('\n');
 
   writeFileSync(outPath, header + out);
-  return { path: outPath, rewritten };
+  return { path: outPath, rewrittenProxyPass, rewrittenListen };
 }
 
 const nginxResult = generateRailwayNginxConf();
@@ -409,7 +445,9 @@ process.stdout.write(`Wrote ${written} Railway configs to ${OUT_DIR}\n`);
 for (const m of manifests) {
   process.stdout.write(`  - ${m.name.padEnd(14)} ${m.kind.padEnd(8)} ${m.file}\n`);
 }
-process.stdout.write(`\nWrote nginx.railway.conf (${nginxResult.rewritten} upstreams rewritten)\n`);
+process.stdout.write(
+  `\nWrote nginx.railway.conf (${nginxResult.rewrittenProxyPass} upstreams + ${nginxResult.rewrittenListen} listen directives rewritten)\n`,
+);
 process.stdout.write(`  - ${nginxResult.path}\n`);
 process.stdout.write(`\nWrote env-vars.md\n`);
 process.stdout.write(`  - ${envDocPath}\n`);
