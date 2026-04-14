@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * db-check.mjs — Drizzle ↔ Postgres drift guard.
+ * db-check.mjs — Drizzle / Postgres drift guard.
  *
- * Parses every Drizzle `pgTable(...)` declaration across the three schema roots
- * (apps/api, apps/helpdesk-api, apps/banter-api), unions them by table name,
+ * Parses every Drizzle `pgTable(...)` declaration across every schema root
+ * discovered under `apps/{name}/src/db/schema`, unions them by table name,
  * then compares the result against the live database pointed to by
  * DATABASE_URL.
  *
@@ -14,6 +14,11 @@
  *
  * Type mismatches are reported as WARNINGS and do not fail the build, because
  * the regex parser can't perfectly reproduce Postgres's canonical type names.
+ *
+ * Debugging:
+ *   Set DEBUG_DB_CHECK=1 to print the discovered SCHEMA_ROOTS list on stderr
+ *   before parsing. Useful for confirming a new product's schema directory
+ *   is being walked after it ships.
  *
  * Dependencies: the `postgres` npm package (resolved from apps/api/node_modules).
  * No other runtime deps.
@@ -28,11 +33,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..');
 
-const SCHEMA_ROOTS = [
-  join(repoRoot, 'apps', 'api', 'src', 'db', 'schema'),
-  join(repoRoot, 'apps', 'helpdesk-api', 'src', 'db', 'schema'),
-  join(repoRoot, 'apps', 'banter-api', 'src', 'db', 'schema'),
-];
+/**
+ * Discover every `apps/<name>/src/db/schema/` directory automatically rather
+ * than hard-coding three roots and silently missing the other eleven products.
+ * See Platform_Plan.md (2026-04-13-revised) §3.1 for the gap that motivated
+ * this. The list is exported so the coverage regression test in
+ * `scripts/db-check.coverage.test.mjs` can assert that every schema directory
+ * on disk is present.
+ */
+const APPS_DIR = join(repoRoot, 'apps');
+export const SCHEMA_ROOTS = readdirSync(APPS_DIR, { withFileTypes: true })
+  .filter((e) => e.isDirectory())
+  .map((e) => join(APPS_DIR, e.name, 'src', 'db', 'schema'))
+  .filter((p) => {
+    try {
+      return statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  })
+  .sort();
+
+if (process.env.DEBUG_DB_CHECK === '1') {
+  console.error('[db-check] DEBUG_DB_CHECK=1 — discovered schema roots:');
+  for (const root of SCHEMA_ROOTS) {
+    console.error('  ' + relative(repoRoot, root).replaceAll('\\', '/'));
+  }
+  console.error(`[db-check] ${SCHEMA_ROOTS.length} schema root(s) total`);
+}
 
 // Tables that are internal to Postgres / the migration runner and should not
 // be expected in Drizzle schemas.
@@ -189,14 +217,37 @@ function parseSchemaFile(filePath) {
   }
 }
 
-for (const root of SCHEMA_ROOTS) {
-  for (const f of walkTsFiles(root)) parseSchemaFile(f);
+// ---------------------------------------------------------------------------
+// Entry-point guard.
+//
+// This module is imported by `scripts/db-check.coverage.test.mjs` purely to
+// read the SCHEMA_ROOTS export. When imported, we must NOT run the live-DB
+// introspection or process.exit — only the script's own CLI execution should.
+// ---------------------------------------------------------------------------
+
+const isMain = (() => {
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+})();
+
+if (!isMain) {
+  // Importer just wants the SCHEMA_ROOTS export. Skip the rest.
+} else {
+  for (const root of SCHEMA_ROOTS) {
+    for (const f of walkTsFiles(root)) parseSchemaFile(f);
+  }
+  await runDriftCheck();
 }
 
 // ---------------------------------------------------------------------------
-// 2. Introspect live DB
+// 2. Introspect live DB (wrapped in runDriftCheck so the module is safely
+//    importable by the coverage regression test without opening a DB pool).
 // ---------------------------------------------------------------------------
 
+async function runDriftCheck() {
 const databaseUrl =
   process.env.DATABASE_URL ??
   `postgresql://${process.env.POSTGRES_USER ?? 'bigbluebam'}:${
@@ -418,3 +469,4 @@ console.error(
     `Write a new migration file in infra/postgres/migrations/ to fix.\n`,
 );
 process.exit(1);
+} // end runDriftCheck

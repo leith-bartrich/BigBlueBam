@@ -72,6 +72,9 @@ jobs:
             psql -h localhost -U bigbluebam -d bigbluebam -v ON_ERROR_STOP=1 -f "$f"
           done
 
+      - name: Verify SCHEMA_ROOTS coverage (regression test)
+        run: node scripts/db-check.coverage.test.mjs
+
       - name: Run drift guard
         run: pnpm db:check
 
