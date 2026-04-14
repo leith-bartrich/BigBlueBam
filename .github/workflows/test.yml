@@ -73,8 +73,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build shared packages
-        run: pnpm --filter @bigbluebam/shared build
+      - name: Build shared + api packages
+        run: |
+          pnpm --filter @bigbluebam/shared build
+          pnpm --filter @bigbluebam/api build
 
       - name: Wait for Postgres
         run: |
@@ -85,13 +87,12 @@ jobs:
           echo "postgres never became ready" >&2
           exit 1
 
-      - name: Apply migrations
-        run: |
-          shopt -s nullglob
-          for f in infra/postgres/migrations/*.sql; do
-            echo "Applying $f"
-            psql -h localhost -U bigbluebam -d bigbluebam -v ON_ERROR_STOP=1 -f "$f"
-          done
+      - name: Apply migrations (via migrate runner)
+        # The runner handles the superuser sentinel bootstrap that unblocks
+        # 0023_beacon_tables on fresh DBs; see apps/api/src/migrate.ts.
+        env:
+          MIGRATIONS_DIR: ${{ github.workspace }}/infra/postgres/migrations
+        run: node apps/api/dist/migrate.js
 
       - name: Run unit tests
         run: pnpm -r --parallel --if-present test
