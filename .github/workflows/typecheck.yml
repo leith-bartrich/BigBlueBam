@@ -1,0 +1,46 @@
+name: Typecheck
+
+# Closes Platform_Plan.md (2026-04-13-revised) gap 2.2.2.
+#
+# Runs `tsc --noEmit` across every workspace package on every push and PR.
+# Uses `pnpm -r --parallel typecheck --if-present` so a package without a
+# typecheck script (e.g. packages/ui has no own tsconfig and is consumed
+# via Vite alias) does not break the run. Every package that has a
+# tsconfig is expected to have a typecheck script.
+
+on:
+  pull_request:
+  push:
+    branches: [main, stable]
+
+concurrency:
+  group: typecheck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tsc:
+    name: tsc --noEmit (all packages)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm --filter @bigbluebam/shared build
+
+      - name: Run typecheck
+        run: pnpm -r --parallel --if-present typecheck

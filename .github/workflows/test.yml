@@ -1,0 +1,97 @@
+name: Test
+
+# Closes Platform_Plan.md (2026-04-13-revised) gap 2.2.3.
+#
+# Runs Vitest across every workspace package on every push and PR. A
+# Postgres 16 service container and a Redis 7 service container are
+# provided so the API packages that hit a real DB can connect; hermetic
+# unit tests are unaffected. Migrations are applied with psql before the
+# Vitest run so the schema is in place for any test that queries it.
+#
+# E2E (Playwright) coverage lives in a separate integration workflow
+# (gap 2.2.4, deferred) because it requires the full docker-compose stack.
+
+on:
+  pull_request:
+  push:
+    branches: [main, stable]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vitest:
+    name: Vitest (all packages)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: bigbluebam
+          POSTGRES_USER: bigbluebam
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bigbluebam -d bigbluebam"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://bigbluebam:postgres@localhost:5432/bigbluebam
+      REDIS_URL: redis://localhost:6379
+      PGPASSWORD: postgres
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm --filter @bigbluebam/shared build
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U bigbluebam -d bigbluebam; then exit 0; fi
+            sleep 1
+          done
+          echo "postgres never became ready" >&2
+          exit 1
+
+      - name: Apply migrations
+        run: |
+          shopt -s nullglob
+          for f in infra/postgres/migrations/*.sql; do
+            echo "Applying $f"
+            psql -h localhost -U bigbluebam -d bigbluebam -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Run unit tests
+        run: pnpm -r --parallel --if-present test
