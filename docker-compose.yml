@@ -812,7 +812,7 @@ services:
   # `service_completed_successfully` dependency so migrations ALWAYS run
   # before app code that assumes the current schema.
   #
-  # GOTCHA — the sidecar is cached on subsequent `docker compose up -d`.
+  # GOTCHA: the sidecar is cached on subsequent `docker compose up -d`.
   # `service_completed_successfully` dependencies are evaluated against the
   # FIRST successful exit on a given stack lifetime. Once `migrate` has run
   # to completion, subsequent `docker compose up -d <service>` invocations

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * db-check.mjs — Drizzle / Postgres drift guard.
+ * db-check.mjs - Drizzle / Postgres drift guard.
  *
  * Parses every Drizzle `pgTable(...)` declaration across every schema root
  * discovered under `apps/{name}/src/db/schema`, unions them by table name,
@@ -8,8 +8,8 @@
  * DATABASE_URL.
  *
  * Exit codes:
- *   0 — schema in sync (missing columns/tables: none)
- *   1 — drift detected (Drizzle declares something the DB doesn't have, or
+ *   0 - schema in sync (missing columns/tables: none)
+ *   1 - drift detected (Drizzle declares something the DB doesn't have, or
  *       the DB contains something no Drizzle schema knows about)
  *
  * Type mismatches are reported as WARNINGS and do not fail the build, because
@@ -55,7 +55,7 @@ export const SCHEMA_ROOTS = readdirSync(APPS_DIR, { withFileTypes: true })
   .sort();
 
 if (process.env.DEBUG_DB_CHECK === '1') {
-  console.error('[db-check] DEBUG_DB_CHECK=1 — discovered schema roots:');
+  console.error('[db-check] DEBUG_DB_CHECK=1: discovered schema roots:');
   for (const root of SCHEMA_ROOTS) {
     console.error('  ' + relative(repoRoot, root).replaceAll('\\', '/'));
   }
@@ -178,7 +178,7 @@ function parseSchemaFile(filePath) {
   while ((m = PGTABLE_RE.exec(src)) !== null) {
     const tableName = m[1];
     // Opening brace for the columns object is the character matched just
-    // before the regex advanced — it is the `{` at m.index + m[0].length - 1.
+    // before the regex advanced; it is the `{` at m.index + m[0].length - 1.
     const braceOpen = m.index + m[0].length - 1;
     const braceClose = matchBrace(src, braceOpen);
     if (braceClose === -1) continue;
@@ -222,7 +222,7 @@ function parseSchemaFile(filePath) {
 //
 // This module is imported by `scripts/db-check.coverage.test.mjs` purely to
 // read the SCHEMA_ROOTS export. When imported, we must NOT run the live-DB
-// introspection or process.exit — only the script's own CLI execution should.
+// introspection or process.exit; only the script's own CLI execution should.
 // ---------------------------------------------------------------------------
 
 const isMain = (() => {
@@ -415,7 +415,7 @@ for (const [name, decl] of drizzleTables) {
     }
     if (!typesCompatible(colDecl.drizzleType, dbCol)) {
       warnings.push(
-        `TYPE MISMATCH: ${name}.${colName} — Drizzle ${colDecl.drizzleType} ` +
+        `TYPE MISMATCH: ${name}.${colName}: Drizzle ${colDecl.drizzleType} ` +
           `vs DB ${dbCol.dataType}${dbCol.dataType === 'ARRAY' ? `(${dbCol.udtName})` : ''} ` +
           `(${colDecl.file}:${colDecl.line})`,
       );
@@ -428,7 +428,7 @@ for (const [tableName, dbCols] of dbTables) {
   const decl = drizzleTables.get(tableName);
   if (!decl) {
     errors.push(
-      `UNKNOWN TABLE in DB: "${tableName}" — no Drizzle schema declares it.\n` +
+      `UNKNOWN TABLE in DB: "${tableName}": no Drizzle schema declares it.\n` +
         `  fix: add a Drizzle schema file, or drop the table in a migration.`,
     );
     continue;
@@ -436,7 +436,7 @@ for (const [tableName, dbCols] of dbTables) {
   for (const [colName] of dbCols) {
     if (!decl.columns.has(colName)) {
       errors.push(
-        `UNKNOWN COLUMN in DB: ${tableName}.${colName} — not declared in any Drizzle schema.\n` +
+        `UNKNOWN COLUMN in DB: ${tableName}.${colName}: not declared in any Drizzle schema.\n` +
           `  fix: add the column to a Drizzle schema, or drop it in a migration.`,
       );
     }
@@ -457,7 +457,7 @@ if (warnings.length > 0) {
 
 if (errors.length === 0) {
   console.log(
-    `\nschema in sync — ${tablesScanned} Drizzle tables, ${dbTableCount} DB tables, ${warnings.length} warning(s)\n`,
+    `\nschema in sync: ${tablesScanned} Drizzle tables, ${dbTableCount} DB tables, ${warnings.length} warning(s)\n`,
   );
   process.exit(0);
 }

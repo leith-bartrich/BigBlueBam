@@ -61,7 +61,7 @@ jobs:
           if [ -f infra/postgres/init.sql ]; then
             psql -h localhost -U bigbluebam -d bigbluebam -v ON_ERROR_STOP=1 -f infra/postgres/init.sql
           else
-            echo "init.sql not present — skipping"
+            echo "init.sql not present, skipping"
           fi
 
       - name: Apply migrations

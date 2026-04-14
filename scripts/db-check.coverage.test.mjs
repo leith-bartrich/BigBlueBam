@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * db-check.coverage.test.mjs — regression test for SCHEMA_ROOTS coverage.
+ * db-check.coverage.test.mjs - regression test for SCHEMA_ROOTS coverage.
  *
  * Closes Platform_Plan.md (2026-04-13-revised) gap 2.1.4. Asserts that the
  * SCHEMA_ROOTS list exported from `db-check.mjs` actually walks every
@@ -15,8 +15,8 @@
  * Run via:  node scripts/db-check.coverage.test.mjs
  *
  * Exit codes:
- *   0 — every schema directory on disk is in SCHEMA_ROOTS
- *   1 — one or more schema directories are missing from SCHEMA_ROOTS
+ *   0 - every schema directory on disk is in SCHEMA_ROOTS
+ *   1 - one or more schema directories are missing from SCHEMA_ROOTS
  */
 
 import { readdirSync, statSync } from 'node:fs';
