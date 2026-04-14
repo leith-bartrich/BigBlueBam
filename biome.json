@@ -23,7 +23,14 @@
   },
   "overrides": [
     {
-      "include": ["apps/**/src/**", "apps/**/test/**"],
+      "include": [
+        "apps/**/src/**",
+        "apps/**/test/**",
+        "src/**",
+        "test/**",
+        "./src/**",
+        "./test/**"
+      ],
       "formatter": {
         "enabled": false
       },
