@@ -2,6 +2,8 @@
 // Pre-built automation templates
 // ---------------------------------------------------------------------------
 
+import { banterApprovalDmTemplate } from '../templates/banter-approval-dm.js';
+
 export interface AutomationTemplate {
   id: string;
   name: string;
@@ -370,6 +372,10 @@ const TEMPLATES: AutomationTemplate[] = [
       },
     ],
   },
+  // Wave 3.2: Banter approval DM template. Defined in templates/
+  // banter-approval-dm.ts so future approval-workflow templates can
+  // live alongside it without bloating this file.
+  banterApprovalDmTemplate,
 ];
 
 // ---------------------------------------------------------------------------
