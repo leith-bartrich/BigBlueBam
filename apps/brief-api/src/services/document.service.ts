@@ -664,5 +664,15 @@ export async function promoteToBeacon(id: string, userId: string, orgId: string)
     .where(eq(briefDocuments.id, id))
     .returning();
 
+  // Bolt workflow event. Bare event name, source 'brief', canonical 6+1.
+  enrichDocumentEventPayload(doc!, userId, {
+    beacon_id: beacon!.id,
+    beacon_slug: beaconSlug,
+  })
+    .then((payload) =>
+      publishBoltEvent('document.promoted', 'brief', payload, orgId, userId, 'user'),
+    )
+    .catch(() => {});
+
   return { document: doc!, beacon_id: beacon!.id };
 }

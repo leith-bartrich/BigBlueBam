@@ -91,6 +91,8 @@ function toIso(v: Date | string): string {
 export interface EnrichExtras {
   previous_status?: string;
   changed_fields?: string[];
+  beacon_id?: string;
+  beacon_slug?: string;
 }
 
 /**
@@ -177,6 +179,12 @@ export async function enrichDocumentEventPayload(
 
   if (extras.previous_status !== undefined) {
     payload.previous_status = extras.previous_status;
+  }
+  if (extras.beacon_id !== undefined) {
+    payload.beacon = {
+      id: extras.beacon_id,
+      slug: extras.beacon_slug ?? null,
+    };
   }
   if (extras.changed_fields !== undefined) {
     payload.changed_fields = extras.changed_fields;
