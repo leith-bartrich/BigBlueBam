@@ -184,6 +184,19 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // POST /contacts/:id/restore — Undelete a soft-deleted contact (G4)
+  fastify.post<{ Params: { id: string } }>(
+    '/contacts/:id/restore',
+    { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
+    async (request, reply) => {
+      const contact = await contactService.restoreContact(
+        request.params.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: contact });
+    },
+  );
+
   // POST /contacts/:id/merge — Merge contacts
   fastify.post<{ Params: { id: string } }>(
     '/contacts/:id/merge',

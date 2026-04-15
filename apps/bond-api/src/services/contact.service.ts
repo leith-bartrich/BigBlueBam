@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, sql, desc, asc, inArray, gte, lte } from 'drizzle-orm';
+import { eq, and, or, ilike, sql, desc, asc, inArray, gte, lte, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bondContacts,
@@ -63,7 +63,10 @@ export interface UpdateContactInput extends Partial<CreateContactInput> {}
 // ---------------------------------------------------------------------------
 
 export async function listContacts(filters: ContactFilters) {
-  const conditions = [eq(bondContacts.organization_id, filters.organization_id)];
+  const conditions = [
+    eq(bondContacts.organization_id, filters.organization_id),
+    isNull(bondContacts.deleted_at),
+  ];
 
   if (filters.lifecycle_stage) {
     conditions.push(eq(bondContacts.lifecycle_stage, filters.lifecycle_stage));
@@ -158,7 +161,13 @@ export async function getContact(id: string, orgId: string) {
   const [contact] = await db
     .select()
     .from(bondContacts)
-    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondContacts.id, id),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!contact) throw notFound('Contact not found');
@@ -307,7 +316,13 @@ export async function updateContact(
       ...input,
       updated_at: new Date(),
     })
-    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondContacts.id, id),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .returning();
 
   if (!updated) throw notFound('Contact not found');
@@ -319,13 +334,38 @@ export async function updateContact(
 // ---------------------------------------------------------------------------
 
 export async function deleteContact(id: string, orgId: string) {
+  // Soft-delete: set deleted_at instead of removing the row. List/get queries
+  // filter on deleted_at IS NULL, so the row becomes invisible but is
+  // retained for audit trail and 90-day restoration (see restoreContact).
   const [deleted] = await db
-    .delete(bondContacts)
-    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .update(bondContacts)
+    .set({ deleted_at: new Date(), updated_at: new Date() })
+    .where(
+      and(
+        eq(bondContacts.id, id),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .returning({ id: bondContacts.id });
 
   if (!deleted) throw notFound('Contact not found');
   return deleted;
+}
+
+// ---------------------------------------------------------------------------
+// Restore (undelete) contact — admin-only via the routes layer
+// ---------------------------------------------------------------------------
+
+export async function restoreContact(id: string, orgId: string) {
+  const [restored] = await db
+    .update(bondContacts)
+    .set({ deleted_at: null, updated_at: new Date() })
+    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .returning();
+
+  if (!restored) throw notFound('Contact not found');
+  return restored;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,18 +379,30 @@ export async function mergeContacts(
 ) {
   if (targetId === sourceId) throw badRequest('Cannot merge a contact with itself');
 
-  // Verify both contacts exist in this org
+  // Verify both contacts exist in this org (and are not soft-deleted)
   const [target, source] = await Promise.all([
     db
       .select()
       .from(bondContacts)
-      .where(and(eq(bondContacts.id, targetId), eq(bondContacts.organization_id, orgId)))
+      .where(
+        and(
+          eq(bondContacts.id, targetId),
+          eq(bondContacts.organization_id, orgId),
+          isNull(bondContacts.deleted_at),
+        ),
+      )
       .limit(1)
       .then((r) => r[0]),
     db
       .select()
       .from(bondContacts)
-      .where(and(eq(bondContacts.id, sourceId), eq(bondContacts.organization_id, orgId)))
+      .where(
+        and(
+          eq(bondContacts.id, sourceId),
+          eq(bondContacts.organization_id, orgId),
+          isNull(bondContacts.deleted_at),
+        ),
+      )
       .limit(1)
       .then((r) => r[0]),
   ]);
@@ -421,8 +473,11 @@ export async function mergeContacts(
       .where(eq(bondContacts.id, targetId));
   }
 
-  // Delete source contact
-  await db.delete(bondContacts).where(eq(bondContacts.id, sourceId));
+  // Soft-delete source contact (merge makes it invisible but preserves audit).
+  await db
+    .update(bondContacts)
+    .set({ deleted_at: new Date(), updated_at: new Date() })
+    .where(eq(bondContacts.id, sourceId));
 
   // Return updated target
   return getContact(targetId, orgId);
@@ -445,6 +500,7 @@ export async function searchContacts(
     .where(
       and(
         eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
         or(
           ilike(bondContacts.first_name, pattern),
           ilike(bondContacts.last_name, pattern),
@@ -463,6 +519,12 @@ export async function searchContacts(
 // Import contacts (bulk CSV rows)
 // ---------------------------------------------------------------------------
 
+// TODO(bond-wave-3): wire the express-interest CSV pipeline (G1) through
+// import.service.ts so each row also records a bond_import_mappings row via
+// createImportMapping(). For now importContacts only dedupes by email and
+// does not populate the mapping table. The raw table is exposed through
+// POST /v1/imports/mappings as a transitional primitive while the CSV
+// ingestion path is being built.
 export async function importContacts(
   rows: CreateContactInput[],
   orgId: string,
@@ -481,6 +543,7 @@ export async function importContacts(
             and(
               eq(bondContacts.organization_id, orgId),
               eq(bondContacts.email, row.email),
+              isNull(bondContacts.deleted_at),
             ),
           )
           .limit(1);

@@ -43,6 +43,12 @@ const searchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+const companyDealsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  sort: z.string().max(60).optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
@@ -146,6 +152,41 @@ export default async function companyRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
       );
       return reply.send({ data: contacts });
+    },
+  );
+
+  // GET /companies/:id/deals — Paginated deals attached to this company (G3)
+  fastify.get<{
+    Params: { id: string };
+    Querystring: {
+      limit?: number;
+      offset?: number;
+      sort?: string;
+    };
+  }>(
+    '/companies/:id/deals',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const query = companyDealsQuerySchema.parse(request.query);
+      const result = await companyService.getCompanyDeals(
+        request.params.id,
+        request.user!.org_id,
+        query,
+      );
+      return reply.send(result);
+    },
+  );
+
+  // POST /companies/:id/restore — Undelete a soft-deleted company (G4)
+  fastify.post<{ Params: { id: string } }>(
+    '/companies/:id/restore',
+    { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
+    async (request, reply) => {
+      const company = await companyService.restoreCompany(
+        request.params.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: company });
     },
   );
 }

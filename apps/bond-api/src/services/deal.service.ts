@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, gte, lte, ilike } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, gte, lte, ilike, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bondDeals,
@@ -77,7 +77,10 @@ export interface UpdateDealInput {
 // ---------------------------------------------------------------------------
 
 export async function listDeals(filters: DealFilters) {
-  const conditions = [eq(bondDeals.organization_id, filters.organization_id)];
+  const conditions = [
+    eq(bondDeals.organization_id, filters.organization_id),
+    isNull(bondDeals.deleted_at),
+  ];
 
   if (filters.pipeline_id) {
     conditions.push(eq(bondDeals.pipeline_id, filters.pipeline_id));
@@ -162,7 +165,13 @@ export async function getDeal(id: string, orgId: string) {
   const [deal] = await db
     .select()
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, id),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -380,7 +389,13 @@ export async function updateDeal(
       ...input,
       updated_at: new Date(),
     })
-    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, id),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .returning();
 
   if (!updated) throw notFound('Deal not found');
@@ -454,13 +469,36 @@ export async function updateDeal(
 // ---------------------------------------------------------------------------
 
 export async function deleteDeal(id: string, orgId: string) {
+  // Soft-delete: see contact.service.deleteContact for rationale.
   const [deleted] = await db
-    .delete(bondDeals)
-    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .update(bondDeals)
+    .set({ deleted_at: new Date(), updated_at: new Date() })
+    .where(
+      and(
+        eq(bondDeals.id, id),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .returning({ id: bondDeals.id });
 
   if (!deleted) throw notFound('Deal not found');
   return deleted;
+}
+
+// ---------------------------------------------------------------------------
+// Restore (undelete) deal — admin-only via the routes layer
+// ---------------------------------------------------------------------------
+
+export async function restoreDeal(id: string, orgId: string) {
+  const [restored] = await db
+    .update(bondDeals)
+    .set({ deleted_at: null, updated_at: new Date() })
+    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .returning();
+
+  if (!restored) throw notFound('Deal not found');
+  return restored;
 }
 
 // ---------------------------------------------------------------------------
@@ -476,7 +514,13 @@ export async function moveDealStage(
   const [deal] = await db
     .select()
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, id),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -621,7 +665,13 @@ export async function closeDealWon(
   const [deal] = await db
     .select()
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, id),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -768,7 +818,13 @@ export async function closeDealLost(
   const [deal] = await db
     .select()
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, id),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -907,7 +963,13 @@ export async function duplicateDeal(id: string, orgId: string, userId: string) {
   const [original] = await db
     .select()
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, id), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, id),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!original) throw notFound('Deal not found');
@@ -970,11 +1032,17 @@ export async function duplicateDeal(id: string, orgId: string, userId: string) {
 // ---------------------------------------------------------------------------
 
 export async function listDealContacts(dealId: string, orgId: string) {
-  // Verify deal belongs to org
+  // Verify deal belongs to org and is not soft-deleted.
   const [deal] = await db
     .select({ id: bondDeals.id })
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, dealId), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, dealId),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -999,11 +1067,17 @@ export async function addDealContact(
   orgId: string,
   role?: string,
 ) {
-  // Verify both deal and contact belong to org
+  // Verify both deal and contact belong to org and are not soft-deleted.
   const [deal] = await db
     .select({ id: bondDeals.id })
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, dealId), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, dealId),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -1011,7 +1085,13 @@ export async function addDealContact(
   const [contact] = await db
     .select({ id: bondContacts.id })
     .from(bondContacts)
-    .where(and(eq(bondContacts.id, contactId), eq(bondContacts.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondContacts.id, contactId),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!contact) throw notFound('Contact not found');
@@ -1034,11 +1114,17 @@ export async function removeDealContact(
   contactId: string,
   orgId: string,
 ) {
-  // Verify deal belongs to org
+  // Verify deal belongs to org and is not soft-deleted.
   const [deal] = await db
     .select({ id: bondDeals.id })
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, dealId), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, dealId),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -1065,7 +1151,13 @@ export async function getDealStageHistory(dealId: string, orgId: string) {
   const [deal] = await db
     .select({ id: bondDeals.id })
     .from(bondDeals)
-    .where(and(eq(bondDeals.id, dealId), eq(bondDeals.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondDeals.id, dealId),
+        eq(bondDeals.organization_id, orgId),
+        isNull(bondDeals.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');

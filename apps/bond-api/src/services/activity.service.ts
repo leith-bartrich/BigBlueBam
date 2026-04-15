@@ -1,4 +1,4 @@
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql, desc, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bondActivities, bondDeals, bondContacts, bondCompanies } from '../db/schema/index.js';
 import { notFound } from '../lib/utils.js';
@@ -105,12 +105,18 @@ export async function createActivity(
     throw notFound('Activity must reference at least one contact, deal, or company');
   }
 
-  // Validate entity ownership within org
+  // Validate entity ownership within org (must be non-soft-deleted).
   if (input.contact_id) {
     const [c] = await db
       .select({ id: bondContacts.id })
       .from(bondContacts)
-      .where(and(eq(bondContacts.id, input.contact_id), eq(bondContacts.organization_id, orgId)))
+      .where(
+        and(
+          eq(bondContacts.id, input.contact_id),
+          eq(bondContacts.organization_id, orgId),
+          isNull(bondContacts.deleted_at),
+        ),
+      )
       .limit(1);
     if (!c) throw notFound('Contact not found');
   }
@@ -119,7 +125,13 @@ export async function createActivity(
     const [d] = await db
       .select({ id: bondDeals.id })
       .from(bondDeals)
-      .where(and(eq(bondDeals.id, input.deal_id), eq(bondDeals.organization_id, orgId)))
+      .where(
+        and(
+          eq(bondDeals.id, input.deal_id),
+          eq(bondDeals.organization_id, orgId),
+          isNull(bondDeals.deleted_at),
+        ),
+      )
       .limit(1);
     if (!d) throw notFound('Deal not found');
   }
@@ -128,7 +140,13 @@ export async function createActivity(
     const [co] = await db
       .select({ id: bondCompanies.id })
       .from(bondCompanies)
-      .where(and(eq(bondCompanies.id, input.company_id), eq(bondCompanies.organization_id, orgId)))
+      .where(
+        and(
+          eq(bondCompanies.id, input.company_id),
+          eq(bondCompanies.organization_id, orgId),
+          isNull(bondCompanies.deleted_at),
+        ),
+      )
       .limit(1);
     if (!co) throw notFound('Company not found');
   }
