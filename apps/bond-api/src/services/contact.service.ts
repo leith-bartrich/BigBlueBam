@@ -241,6 +241,7 @@ export async function createContact(
     const owner = await loadActor(c.owner_id);
     await publishBoltEvent(
       'contact.created',
+      'bond',
       {
         contact: {
           id: c.id,

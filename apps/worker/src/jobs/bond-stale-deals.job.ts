@@ -1,10 +1,11 @@
 /**
- * Bond stale-deal sweep job — daily cron (Bond design doc §7).
+ * Bond stale-deal sweep job, daily cron (Bond design doc section 7).
  *
  * Finds open deals whose time-in-stage has exceeded `bond_pipeline_stages.rotting_days`
  * and which have not yet been alerted for the current stage entry, emits a
- * `bond.deal.rotting` event to Bolt for each one, and marks the deal with
- * `rotting_alerted_at = NOW()` so the same stage-entry is not re-alerted.
+ * `deal.rotting` event to Bolt for each one (with `source: 'bond'`), and marks
+ * the deal with `rotting_alerted_at = NOW()` so the same stage-entry is not
+ * re-alerted.
  *
  * Idempotency model:
  *   - A deal is considered newly stale if either
@@ -15,8 +16,8 @@
  *
  * Ordering decision (update-AFTER-emission):
  *   We emit the event first, THEN update rotting_alerted_at. A crash between
- *   those two steps will cause the SAME deal to retry on the next daily run —
- *   that is the intended behavior, since bolt-api might genuinely have been
+ *   those two steps will cause the SAME deal to retry on the next daily run,
+ *   which is the intended behavior since bolt-api might genuinely have been
  *   down. The trade-off is that a successful POST followed by a crash before
  *   the UPDATE produces one duplicate alert on the next run; duplicates are
  *   preferable to silent drops for rotting deals. `publishBoltEvent` is
@@ -66,7 +67,7 @@ export async function processBondStaleDealsJob(
   const db = getDb();
 
   // Select newly-stale deals. The idempotency filter lives in the query so the
-  // loop body only handles rows that actually need alerting — no per-row skip
+  // loop body only handles rows that actually need alerting, no per-row skip
   // logic required.
   const rowsRaw = await db.execute(sql`
     SELECT
@@ -109,10 +110,9 @@ export async function processBondStaleDealsJob(
 
   for (const row of rows) {
     try {
-      // Fire-and-forget event emission. publishBoltEvent never throws, so
-      // this await will resolve cleanly whether the POST succeeded or not.
       await publishBoltEvent(
-        'bond.deal.rotting',
+        'deal.rotting',
+        'bond',
         {
           deal_id: row.id,
           stage_id: row.stage_id,
@@ -120,13 +120,13 @@ export async function processBondStaleDealsJob(
           rotting_days_threshold: row.rotting_days,
         },
         row.organization_id,
-        { source: 'bond', actorType: 'system' },
-        logger,
+        undefined,
+        'system',
       );
 
       // Update marker AFTER emit. A genuine bolt-api outage means publishBoltEvent
-      // logged a warning and returned — the UPDATE below still runs, which means
-      // we will NOT retry that deal tomorrow. That is acceptable because rotting
+      // swallowed the failure and returned, and the UPDATE below still runs, which
+      // means we will NOT retry that deal tomorrow. That is acceptable because rotting
       // thresholds are coarse (days) and the deal stays stale; the NEXT stage
       // move or threshold change will re-arm the alert. If we skipped the UPDATE
       // on emit-failure, a down bolt-api would cause the sweep to re-emit every

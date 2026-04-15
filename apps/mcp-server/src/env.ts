@@ -28,6 +28,15 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   MCP_AUTH_REQUIRED: z.coerce.boolean().default(true),
   MCP_RATE_LIMIT_RPM: z.coerce.number().int().positive().default(120),
+  // Wave 0.2: shared secret for the internal POST /tools/call HTTP route.
+  // Must match INTERNAL_SERVICE_SECRET on the calling services (bolt-api,
+  // worker, api). Absent or short means /tools/call returns 503.
+  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
+  // Bearer token minted via `cli create-service-account` that the internal
+  // /tools/call route hands to the per-request ApiClient. The service
+  // account is org-bound, so this token provides the org scoping for any
+  // tool invocation that flows through /tools/call.
+  MCP_INTERNAL_API_TOKEN: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 

@@ -175,6 +175,7 @@ export async function createActivity(
     const company = input.company_id ? await loadCompanyById(input.company_id) : null;
     await publishBoltEvent(
       'activity.logged',
+      'bond',
       {
         activity: {
           id: a.id,

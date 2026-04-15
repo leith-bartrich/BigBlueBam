@@ -97,3 +97,32 @@ New entries append to the end. Never edit or delete prior entries without explic
 
 **Scope.** This pattern is used for the rest of Step 1, Step 2, and Step 3. Every commit that writes orchestrator-owned files or creates new tree state goes through the same pattern.
 
+## D-007: Bond worker publishBoltEvent retains silent failure, no pino logger pass-through (2026-04-14 Wave 0.3/0.4)
+
+**Concern.** The worker's local `apps/worker/src/utils/bolt-events.ts` had a richer signature than the canonical `publishBoltEvent` in `@bigbluebam/shared`: it took an options object as the 4th argument and a pino Logger as the 5th, and logged pino warnings on non-2xx responses and on thrown errors. The canonical shared function is fully silent on failure (fire-and-forget). Converting the worker to use the shared function means per-row failures are no longer logged by the worker itself.
+
+**Options.**
+- (a) Keep a small worker-local wrapper that logs via pino, then delegates to the shared publisher. Preserves visibility. Costs one extra indirection per call and leaks a second signature into the workspace.
+- (b) Accept silent failure at the publisher layer. Rely on bolt-api's own ingest logging and on the worker's outer sweep-level `logger.error` that catches thrown exceptions. Canonical behavior is consistent with every other service in the workspace.
+- (c) Extend the canonical signature with an optional logger parameter. Breaks consistency for every existing caller and pushes worker concerns into a shared package.
+
+**Choice.** (b). The worker's `utils/bolt-events.ts` is now a straight re-export from `@bigbluebam/shared`, and `bond-stale-deals.job.ts` calls the canonical 6+1-arg signature with `undefined` actor and `'system'` actor type.
+
+**Rationale.** The Wave 0.3 plan explicitly says "call sites also need renormalizing to the canonical 6+1-arg signature in the same commit." Failures in `publishBoltEvent` are already swallowed at the shared layer precisely so that originating operations never crash on a missing/down bolt-api. The worker's visibility loss is limited to per-row HTTP failure reasons that were already logged at `warn`, not `error`. Recovery path: if a specific bolt-api outage needs per-row diagnostic, we can temporarily switch to a local wrapper at that site without touching the shared package. bolt-api's event-ingestion route already logs rejected requests on its side.
+
+**Revert.** Swap `apps/worker/src/utils/bolt-events.ts` back to a local publisher and restore the 4-arg options-object call site in `bond-stale-deals.job.ts`. The job file's event-name migration (`bond.deal.rotting` to `deal.rotting`) is a separate commit and does not need reverting.
+
+## D-008: Bond-api call sites get the canonical source argument; no local wrapper (2026-04-14 Wave 0.3)
+
+**Concern.** `apps/bond-api/src/lib/bolt-events.ts` had a non-canonical 5-arg signature: `(eventType, payload, orgId, actorId?, actorType?)` with `source` hard-coded to `'bond'` inside the helper. Every bond-api call site (8 total across `activity.service.ts`, `contact.service.ts`, `deal.service.ts`) used this 5-arg shape.
+
+**Options.**
+- (a) Keep a bond-api-local wrapper that curries `'bond'` and delegates to the shared publisher. Minimizes call-site churn.
+- (b) Update every bond-api call site to pass `'bond'` explicitly as the 2nd argument, matching the canonical 6-arg signature. Consistent with every other service.
+
+**Choice.** (b). Edited all 8 bond-api call sites to insert `'bond'` as the explicit second argument and replaced the bond-api `lib/bolt-events.ts` with a re-export shim.
+
+**Rationale.** The Wave 0.3 plan goal is a single canonical signature across the workspace. A local wrapper that hides `source` makes bond-api the odd one out and hides which source string reaches bolt-api's ingest route. Explicit is better than implicit here. The churn is 8 touch points in known files, fully mechanical.
+
+**Revert.** None needed; if the 6-arg shape proves ergonomically painful, a helper like `publishBondEvent = (name, payload, orgId, actorId?, actorType?) => publishBoltEvent(name, 'bond', payload, orgId, actorId, actorType)` can be added at any time without touching the shared package.
+

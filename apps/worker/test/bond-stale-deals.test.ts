@@ -39,13 +39,13 @@ describe('Bond Stale Deals Job', () => {
   });
 
   it('returns early with no-op when no stale deals are found', async () => {
-    // First execute() is the SELECT — return empty array
+    // First execute() is the SELECT, return empty array
     const mockExecute = vi.fn().mockResolvedValueOnce([]);
     vi.mocked(getDb).mockReturnValue({ execute: mockExecute } as any);
 
     await processBondStaleDealsJob(createMockJob(), mockLogger);
 
-    // Only the SELECT ran — no UPDATEs, no event emissions
+    // Only the SELECT ran, no UPDATEs, no event emissions
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(publishBoltEvent).not.toHaveBeenCalled();
     expect(mockLogger.info).toHaveBeenCalledWith(
@@ -100,7 +100,8 @@ describe('Bond Stale Deals Job', () => {
     expect(publishBoltEvent).toHaveBeenCalledTimes(3);
     expect(publishBoltEvent).toHaveBeenNthCalledWith(
       1,
-      'bond.deal.rotting',
+      'deal.rotting',
+      'bond',
       {
         deal_id: 'deal-1',
         stage_id: 'stage-1',
@@ -108,16 +109,17 @@ describe('Bond Stale Deals Job', () => {
         rotting_days_threshold: 30,
       },
       'org-a',
-      expect.objectContaining({ source: 'bond', actorType: 'system' }),
-      mockLogger,
+      undefined,
+      'system',
     );
     expect(publishBoltEvent).toHaveBeenNthCalledWith(
       3,
-      'bond.deal.rotting',
+      'deal.rotting',
+      'bond',
       expect.objectContaining({ deal_id: 'deal-3' }),
       'org-b',
-      expect.anything(),
-      mockLogger,
+      undefined,
+      'system',
     );
 
     // Completion log should report 3 alerted, 0 failed
@@ -153,10 +155,10 @@ describe('Bond Stale Deals Job', () => {
 
     vi.mocked(getDb).mockReturnValue({ execute: mockExecute } as any);
 
-    // publishBoltEvent is fire-and-forget and NEVER throws, even on failure —
+    // publishBoltEvent is fire-and-forget and NEVER throws, even on failure,
     // that is the contract. So a "failure" here simply resolves (the real impl
-    // would have logged the warning internally). Both deals should still get
-    // their rotting_alerted_at update.
+    // swallowed it internally). Both deals should still get their
+    // rotting_alerted_at update.
     vi.mocked(publishBoltEvent).mockResolvedValue(undefined);
 
     await processBondStaleDealsJob(createMockJob(), mockLogger);
@@ -230,7 +232,7 @@ describe('Bond Stale Deals Job', () => {
     let capturedQuery = '';
     const mockExecute = vi.fn().mockImplementation((query: any) => {
       // drizzle sql`` tags produce objects with a `.queryChunks` array of raw
-      // strings + params. Stringify the whole thing — good enough for a
+      // strings + params. Stringify the whole thing, good enough for a
       // substring check.
       capturedQuery = JSON.stringify(query);
       return Promise.resolve([]);
