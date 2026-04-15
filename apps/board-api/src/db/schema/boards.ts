@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   boolean,
+  integer,
   jsonb,
   timestamp,
   index,
@@ -34,6 +35,7 @@ export const boards = pgTable(
     template_id: uuid('template_id').references(() => boardTemplates.id, { onDelete: 'set null' }),
     background: varchar('background', { length: 20 }).default('dots').notNull(),
     locked: boolean('locked').default(false).notNull(),
+    element_count: integer('element_count').default(0).notNull(),
     visibility: varchar('visibility', { length: 20 }).default('project').notNull(),
     default_viewport: jsonb('default_viewport'),
     created_by: uuid('created_by')
@@ -48,5 +50,6 @@ export const boards = pgTable(
     index('idx_boards_organization_id').on(table.organization_id),
     index('idx_boards_project_id').on(table.project_id),
     index('idx_boards_created_by').on(table.created_by),
+    index('idx_boards_element_count').on(table.element_count),
   ],
 );

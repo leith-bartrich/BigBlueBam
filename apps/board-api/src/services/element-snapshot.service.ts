@@ -1,7 +1,11 @@
 import { eq, and, notInArray, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { boardElements } from '../db/schema/index.js';
+import { boardElements, boards } from '../db/schema/index.js';
 import type { SceneData } from '../ws/persistence.js';
+
+// Design-mandated element count limits (design §10).
+export const BOARD_ELEMENT_SOFT_LIMIT = 500;
+export const BOARD_ELEMENT_HARD_LIMIT = 2000;
 
 // ---------------------------------------------------------------------------
 // Excalidraw element type → board_elements element_type mapping
@@ -127,7 +131,7 @@ export async function syncElementsFromScene(
   boardId: string,
   sceneJson: SceneData,
   _orgId: string,
-): Promise<{ upserted: number; deleted: number }> {
+): Promise<{ upserted: number; deleted: number; element_count: number }> {
   const rawElements = sceneJson.elements;
   if (!Array.isArray(rawElements) || rawElements.length === 0) {
     // Scene has no elements — clear the snapshot table for this board
@@ -135,7 +139,8 @@ export async function syncElementsFromScene(
       .delete(boardElements)
       .where(eq(boardElements.board_id, boardId))
       .returning({ id: boardElements.id });
-    return { upserted: 0, deleted: deleted.length };
+    await updateBoardElementCount(boardId, 0);
+    return { upserted: 0, deleted: deleted.length, element_count: 0 };
   }
 
   const liveElements: ParsedElement[] = [];
@@ -238,7 +243,30 @@ export async function syncElementsFromScene(
     totalUpserted += batch.length;
   }
 
-  return { upserted: totalUpserted, deleted: totalDeleted };
+  const liveCount = liveElements.length;
+  await updateBoardElementCount(boardId, liveCount);
+
+  return { upserted: totalUpserted, deleted: totalDeleted, element_count: liveCount };
+}
+
+/**
+ * Update the denormalized `boards.element_count` column after a scene sync.
+ *
+ * Writes are best-effort: if the column is missing or the update fails, we
+ * swallow the error so snapshot sync remains resilient. The limit enforcement
+ * (soft 500 / hard 2000) is applied upstream by the caller using the returned
+ * element_count, keeping this service side-effect pure apart from the count
+ * bookkeeping.
+ */
+async function updateBoardElementCount(boardId: string, count: number): Promise<void> {
+  try {
+    await db
+      .update(boards)
+      .set({ element_count: count, updated_at: new Date() })
+      .where(eq(boards.id, boardId));
+  } catch {
+    // Tolerate transient failures or schema drift — snapshot is still valid.
+  }
 }
 
 // ---------------------------------------------------------------------------
