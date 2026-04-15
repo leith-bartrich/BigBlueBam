@@ -21,6 +21,13 @@ Authoritative registry of migration numbers for the 2026-04-14 recovery orchestr
 | 0083 | `0083_bearing_watcher_unsubscribe_token.sql` | Bearing_Plan.md (G9 conditional) | Wave 2.02 | conditional |
 | 0084 | `0084_bench_report_delivery_tracking.sql` | Bench_Plan.md | Wave 2.03 | claimed |
 | 0085 | `0085_bench_materialized_view_refresh_tracking.sql` | Bench_Plan.md | Wave 2.03 | claimed |
+| 0086 | `0086_bill_pdf_storage_and_locks.sql` | Bill_Plan.md | Wave 2.04 | claimed |
+| 0087 | `0087_bill_expense_receipt_metadata.sql` | Bill_Plan.md | Wave 2.04 | claimed |
+| 0088 | `0088_bill_worker_job_state.sql` | Bill_Plan.md | Wave 2.04 | claimed |
+| 0089 | `0089_blank_file_processing_status.sql` | Blank_Plan.md | Wave 2.05 | claimed |
+| 0090 | `0090_blank_submission_event_emission.sql` | Blank_Plan.md | Wave 2.05 | claimed |
+| 0091 | `0091_blast_engagement_event_indexes.sql` | Blast_Plan.md | Wave 2.06 | claimed |
+| 0092 | `0092_blast_campaign_completion_tracking.sql` | Blast_Plan.md | Wave 2.06 | claimed |
 
 ## Overflow pool
 

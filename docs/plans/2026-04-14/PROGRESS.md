@@ -36,9 +36,9 @@ Outputs to `docs/plans/2026-04-14/`. Each plan file consumes its corresponding a
 | Beacon_Plan.md | Beacon_Design_Audit.md | **committed** | 0079, 0080 (+0081, 0082 reserve) | pending |
 | Bearing_Plan.md | Bearing_Design_Audit.md | **committed** | 0083 (conditional) | pending |
 | Bench_Plan.md | Bench_Design_Audit.md | **committed** | 0084, 0085 | pending |
-| Bill_Plan.md | Bill_Design_Audit.md | pending | | |
-| Blank_Plan.md | Blank_Design_Audit.md | pending | | |
-| Blast_Plan.md | Blast_Design_Audit.md | pending | | |
+| Bill_Plan.md | Bill_Design_Audit.md | **committed** | 0086, 0087, 0088 | pending |
+| Blank_Plan.md | Blank_Design_Audit.md | **committed** | 0089, 0090 | pending |
+| Blast_Plan.md | Blast_Design_Audit.md | **committed** | 0091, 0092 | pending |
 | Board_Plan.md | Board_Design_Audit.md | pending | | |
 | Bolt_Plan.md | Bolt_Design_Audit.md | pending | | |
 | Bond_Plan.md | Bond_Design_Audit.md | pending | | |
