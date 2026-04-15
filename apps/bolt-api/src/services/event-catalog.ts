@@ -911,6 +911,17 @@ const bondEvents: EventDefinition[] = [
   },
   {
     source: 'bond',
+    event_type: 'deal.rotting',
+    description: 'Fired by the daily bond stale-deal sweep when a deal has been in its current stage longer than the stage rotting threshold.',
+    payload_schema: [
+      { name: 'deal_id', type: 'uuid', description: 'Rotting deal ID' },
+      { name: 'stage_id', type: 'uuid', description: 'Current pipeline stage ID' },
+      { name: 'days_in_stage', type: 'number', description: 'Days the deal has been in the current stage' },
+      { name: 'rotting_days_threshold', type: 'number', description: 'Configured rotting threshold for the stage' },
+    ],
+  },
+  {
+    source: 'bond',
     event_type: 'contact.created',
     description: 'Fired when a new contact is added to the CRM.',
     payload_schema: [
@@ -1283,6 +1294,26 @@ const billEvents: EventDefinition[] = [
       { name: 'org.id', type: 'uuid', description: 'Organization ID' },
       { name: 'org.name', type: 'string', description: 'Organization name' },
       { name: 'org.slug', type: 'string', description: 'Organization slug' },
+    ],
+  },
+  {
+    source: 'bill',
+    event_type: 'invoice.sent',
+    description: 'Fired when a finalized invoice is delivered to the customer (email, portal, or manual send).',
+    payload_schema: [
+      { name: 'invoice.id', type: 'uuid', description: 'Invoice ID' },
+      { name: 'invoice.number', type: 'string', description: 'Invoice number' },
+      { name: 'invoice.customer_id', type: 'uuid', description: 'Customer ID' },
+      { name: 'invoice.customer_name', type: 'string', description: 'Customer display name' },
+      { name: 'invoice.customer_email', type: 'string', description: 'Customer email' },
+      { name: 'invoice.total', type: 'number', description: 'Grand total in minor currency units' },
+      { name: 'invoice.currency', type: 'string', description: 'ISO 4217 currency code' },
+      { name: 'invoice.due_date', type: 'date', description: 'Due date' },
+      { name: 'invoice.url', type: 'string', description: 'Deep link in the Bill SPA' },
+      { name: 'invoice.pdf_url', type: 'string?', description: 'Public customer-facing PDF URL' },
+      { name: 'invoice.sent_at', type: 'datetime', description: 'When the invoice was sent' },
+      { name: 'actor', type: 'object', description: 'User who triggered the send' },
+      { name: 'org', type: 'object', description: 'Organization context' },
     ],
   },
   {

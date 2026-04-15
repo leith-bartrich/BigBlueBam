@@ -17,6 +17,10 @@ import { processBearingSnapshotJob, type BearingSnapshotJobData } from './jobs/b
 import { processBearingRecomputeJob, type BearingRecomputeJobData } from './jobs/bearing-recompute.job.js';
 import { processBearingDigestJob, type BearingDigestJobData } from './jobs/bearing-digest.job.js';
 import { processBoltExecuteJob, type BoltExecuteJobData } from './jobs/bolt-execute.job.js';
+import {
+  processBoltScheduleTickJob,
+  type BoltScheduleTickJobData,
+} from './jobs/bolt-schedule-tick.job.js';
 import { processBlastSendJob, type BlastSendJobData } from './jobs/blast-send.job.js';
 import { processBondStaleDealsJob, type BondStaleDealsJobData } from './jobs/bond-stale-deals.job.js';
 
@@ -283,6 +287,32 @@ boltExecuteWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'bolt-execute', err }, 'Job failed');
 });
 
+// Bolt schedule tick worker (G2 — scans bolt_schedules every minute and fires
+// synthetic cron.fired events for due rows)
+const boltScheduleTickWorker = new Worker<BoltScheduleTickJobData>(
+  'bolt-schedule',
+  async (job: Job<BoltScheduleTickJobData>) => {
+    await processBoltScheduleTickJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+
+boltScheduleTickWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bolt-schedule' }, 'Job completed');
+});
+
+boltScheduleTickWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bolt-schedule', err }, 'Job failed');
+});
+
+// Schedule bolt schedule-tick as a once-a-minute repeating job
+const boltScheduleQueue = new Queue('bolt-schedule', { connection: redis });
+boltScheduleQueue.upsertJobScheduler(
+  'bolt-schedule-tick',
+  { pattern: '* * * * *' }, // every minute
+  { name: 'tick', data: {} },
+).catch((err) => logger.error({ err }, 'Failed to register bolt schedule tick scheduler'));
+
 // Blast send worker (processes campaign email delivery)
 const blastSendWorker = new Worker<BlastSendJobData>(
   'blast-send',
@@ -347,10 +377,10 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, boltExecuteWorker, blastSendWorker, bondStaleDealsWorker, analyticsWorker];
+const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, boltExecuteWorker, boltScheduleTickWorker, blastSendWorker, bondStaleDealsWorker, analyticsWorker];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt-execute', 'blast-send', 'bond-stale-deals', 'analytics'] },
+  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt-execute', 'bolt-schedule', 'blast-send', 'bond-stale-deals', 'analytics'] },
   'All workers started',
 );
 

@@ -51,6 +51,7 @@ export const boltAutomations = pgTable(
     cooldown_seconds: integer('cooldown_seconds').default(0).notNull(),
     max_chain_depth: integer('max_chain_depth').default(5).notNull(),
     template_strict: boolean('template_strict').default(false).notNull(),
+    notify_owner_on_failure: boolean('notify_owner_on_failure').default(false).notNull(),
 
     graph: jsonb('graph'),
     graph_mode: varchar('graph_mode', { length: 16 }),
