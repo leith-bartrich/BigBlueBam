@@ -137,6 +137,7 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
         .insert(apiKeys)
         .values({
           user_id: request.user!.id,
+          org_id: request.user!.active_org_id,
           name: data.name,
           key_hash: keyHash,
           key_prefix: prefix,

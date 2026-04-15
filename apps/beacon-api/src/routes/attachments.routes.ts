@@ -95,7 +95,7 @@ export default async function attachmentsRoutes(fastify: FastifyInstance) {
         })
           .then((payload) =>
             publishBoltEvent(
-              'beacon.attachment.uploaded',
+              'attachment.uploaded',
               'beacon',
               payload,
               request.user!.org_id,

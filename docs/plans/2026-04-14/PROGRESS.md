@@ -70,13 +70,16 @@ The following per-app gaps were explicitly deferred during Wave 2 dispatches and
 
 - **Worker-side jobs across apps.** Many Wave 2 plans moved worker code to a follow-up pass to stay inside the "no cross-app touch" rule during parallel dispatches. Known deferrals: Bill PDF generation and email send jobs, Blank confirmation email and file process jobs, Bench report generation and MV refresh scheduler jobs, Brief embed and snapshot jobs, Helpdesk SLA breach monitor.
 - **Frontend UI across all 13 apps.** Wave 2 scoped only server-side work. Each per-app plan's G-numbered UI gaps remain to be implemented in a dedicated Wave 2B frontend pass.
-- **Banter parent partition conversion.** Migration 0106 assumes `banter_messages` is a partitioned parent, but the baseline `0000_init.sql` creates it as a plain table. The Banter wave's partition-manager helper gracefully no-ops; the upgrade path is an expand-contract migration to convert the parent table.
-- **Beacon event name rename.** Wave 2.01 Beacon commits emit `beacon.comment.created` and `beacon.attachment.uploaded` (source-prefixed), which fails the Wave 0.4 bare-name convention. Wave 3 catalog audit allowlisted them with TODO entries; a follow-up rename plus a migration rewriting historical rows is owed.
-- **Helpdesk local bolt-events shim.** Wave 2.13 Helpdesk has a local `lib/bolt-events.ts` shim rather than importing from `@bigbluebam/shared` so the commit did not touch `pnpm-lock.yaml`. Swap to the shared import in a follow-up install pass.
-- **Bond CSV import pipeline.** Wave 2.10 Bond added the `bond_import_mappings` table, the REST CRUD for mappings, and a TODO in `contact.service.importContacts` flagging that the CSV pipeline itself (with `createImportMapping` calls) is still P1 work.
 - **Approval request event.** Wave 3 Banter approval DM template targets `approval.requested`, an event not yet emitted by any service. Template activates the moment a producer ships the event.
-- **pnpm install / typecheck.** Every Wave 2 dispatch skipped `pnpm --filter typecheck` because the Windows dev host consistently fails on biomejs native rename races during `pnpm install`. Each agent visually verified its changes. CI or a clean Linux checkout is the authoritative verification path.
-- **Pre-existing POST /auth/api-keys bug.** Tracked separately under orchestrator task #10: `apps/api/src/routes/api-key.routes.ts` insert around line 126 omits `org_id`, but the column is NOT NULL. Either broken at runtime or saved by a default. Investigate in a focused follow-up.
+- **pnpm install / typecheck on this Windows host.** Every Wave 2 dispatch skipped `pnpm --filter typecheck` because the Windows dev host consistently fails on biomejs native rename races during `pnpm install`. Each agent visually verified its changes. CI or a clean Linux checkout is the authoritative verification path.
+
+## Fixes applied during Wave 4 close-out (the "pre-existing is still ours" pass)
+
+- **POST /auth/api-keys org_id insert** (orchestrator task #10): fixed. The route now passes `request.user!.active_org_id` on the insert.
+- **Beacon event name rename plus historical rewrite**: `beacon.comment.created` renamed to `comment.created`, `beacon.attachment.uploaded` renamed to `attachment.uploaded`, both in the emission sites and the catalog. Migration 0120_beacon_event_naming_rewrite.sql follows the 0096 pattern to rewrite historical `bolt_automations` and `bolt_executions` rows. Drift-guard allowlist cleared.
+- **Helpdesk local bolt-events shim**: replaced with a re-export from `@bigbluebam/shared`, and `@bigbluebam/shared` added to `apps/helpdesk-api/package.json` as a workspace dependency.
+- **Bond CSV import pipeline wiring**: `importContacts` now accepts an optional `source_system` plus a `resolveSourceId` callback, and creates/looks up `bond_import_mappings` rows automatically so re-imports short-circuit via `lookupImportMapping`. The raw REST CRUD remains in place for manual mapping authoring.
+- **Banter migration 0106**: rewrapped in a `DO $$` block that detects whether `banter_messages` is a partitioned parent and no-ops with `RAISE NOTICE` if not. This makes the migration safe on every cluster regardless of whether the parent-table conversion has happened yet. The partition-manager helper in `apps/banter-api` already handled the runtime side.
 
 ## Git state checkpoints
 

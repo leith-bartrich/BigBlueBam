@@ -519,21 +519,49 @@ export async function searchContacts(
 // Import contacts (bulk CSV rows)
 // ---------------------------------------------------------------------------
 
-// TODO(bond-wave-3): wire the express-interest CSV pipeline (G1) through
-// import.service.ts so each row also records a bond_import_mappings row via
-// createImportMapping(). For now importContacts only dedupes by email and
-// does not populate the mapping table. The raw table is exposed through
-// POST /v1/imports/mappings as a transitional primitive while the CSV
-// ingestion path is being built.
+/**
+ * Bulk-import contacts. Dedupes by email within the org. When `options.source_system`
+ * is provided and a row carries a `source_id`, each successful import creates a
+ * `bond_import_mappings` row via `createImportMapping` so future re-imports from the
+ * same upstream system short-circuit via `lookupImportMapping`.
+ *
+ * `source_id` is read off the row via `options.resolveSourceId`. The default resolver
+ * returns `row.email` if set, which is the common case for CSV-from-mailing-list imports.
+ */
+export interface ContactImportOptions {
+  source_system?: string;
+  resolveSourceId?: (row: CreateContactInput) => string | undefined;
+}
+
 export async function importContacts(
   rows: CreateContactInput[],
   orgId: string,
   userId: string,
+  options: ContactImportOptions = {},
 ) {
-  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const { source_system } = options;
+  const resolveSourceId =
+    options.resolveSourceId ?? ((row: CreateContactInput) => row.email ?? undefined);
+  const results = { created: 0, skipped: 0, mapped: 0, errors: [] as string[] };
+
+  const { createImportMapping, lookupImportMapping } = await import('./import.service.js');
 
   for (const row of rows) {
     try {
+      const sourceId = source_system ? resolveSourceId(row) : undefined;
+
+      // Short-circuit if the upstream row is already mapped to a local contact.
+      if (source_system && sourceId) {
+        const existingMapping = await lookupImportMapping(orgId, {
+          source_system,
+          source_id: sourceId,
+        });
+        if (existingMapping) {
+          results.skipped++;
+          continue;
+        }
+      }
+
       // Dedup by email within org
       if (row.email) {
         const [existing] = await db
@@ -549,13 +577,34 @@ export async function importContacts(
           .limit(1);
 
         if (existing) {
+          // Still record the mapping so re-imports from the same upstream stop
+          // hitting the email dedup path every time.
+          if (source_system && sourceId) {
+            await createImportMapping(orgId, {
+              source_system,
+              source_id: sourceId,
+              bond_entity_type: 'contact',
+              bond_entity_id: existing.id,
+            });
+            results.mapped++;
+          }
           results.skipped++;
           continue;
         }
       }
 
-      await createContact(row, orgId, userId);
+      const created = await createContact(row, orgId, userId);
       results.created++;
+
+      if (source_system && sourceId && created?.id) {
+        await createImportMapping(orgId, {
+          source_system,
+          source_id: sourceId,
+          bond_entity_type: 'contact',
+          bond_entity_id: created.id,
+        });
+        results.mapped++;
+      }
     } catch (err) {
       results.errors.push(`Failed to import ${row.email ?? 'unknown'}: ${(err as Error).message}`);
     }

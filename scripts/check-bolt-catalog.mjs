@@ -34,13 +34,7 @@ const EVENT_TYPE_REGEX = /source:\s*['"]([a-z_]+)['"][\s\S]{0,300}?event_type:\s
 // Adding to this set suppresses the drift guard for exactly that pair. Remove
 // entries ONLY when the producer has been renamed AND a historical-rewrite
 // migration (like 0096_bolt_event_naming_migration.sql) has shipped.
-//
-// TODO: migrate beacon.comment.created -> comment.created (source: beacon)
-// TODO: migrate beacon.attachment.uploaded -> attachment.uploaded (source: beacon)
-const LEGACY_PREFIXED_ALLOWLIST = new Set([
-  'beacon:beacon.comment.created',
-  'beacon:beacon.attachment.uploaded',
-]);
+const LEGACY_PREFIXED_ALLOWLIST = new Set([]);
 
 // Event-naming rule: the bare event name must NOT start with any known
 // source prefix. Catalog sources are derived at runtime from the catalog itself.

@@ -1866,7 +1866,7 @@ const wave1bEvents: EventDefinition[] = [
   // the Bolt drift guard and surfaces them in the trigger-picker UI.
   {
     source: 'beacon',
-    event_type: 'beacon.attachment.uploaded',
+    event_type: 'attachment.uploaded',
     description: 'Fired when an attachment is uploaded to a Beacon knowledge entry.',
     payload_schema: [
       { name: 'beacon.id', type: 'uuid', description: 'Beacon entry ID' },
@@ -1883,7 +1883,7 @@ const wave1bEvents: EventDefinition[] = [
   },
   {
     source: 'beacon',
-    event_type: 'beacon.comment.created',
+    event_type: 'comment.created',
     description: 'Fired when a comment is posted on a Beacon knowledge entry.',
     payload_schema: [
       { name: 'beacon.id', type: 'uuid', description: 'Beacon entry ID' },

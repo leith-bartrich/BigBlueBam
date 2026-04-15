@@ -68,7 +68,7 @@ export default async function commentsRoutes(fastify: FastifyInstance) {
         })
           .then((payload) =>
             publishBoltEvent(
-              'beacon.comment.created',
+              'comment.created',
               'beacon',
               payload,
               request.user!.org_id,
