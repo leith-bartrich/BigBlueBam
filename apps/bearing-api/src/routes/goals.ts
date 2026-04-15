@@ -262,6 +262,76 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         request.user!.id,
         'user',
       );
+
+      // Emit status_changed (and achieved) as separate events so Bolt rules
+      // can subscribe narrowly without having to diff `goal.updated` payloads.
+      if (
+        data.status !== undefined &&
+        previousGoal.status !== goal.status
+      ) {
+        publishBoltEvent(
+          'goal.status_changed',
+          'bearing',
+          {
+            goal: {
+              id: goal.id,
+              name: goal.title,
+              title: goal.title,
+              old_status: previousGoal.status,
+              new_status: goal.status,
+              progress_percent: Number(goal.progress),
+              period_id: goal.period_id,
+              owner_id: goal.owner_id,
+              url: buildGoalUrl(goal.id),
+            },
+            period: { id: period.id, name: period.name },
+            owner: owner
+              ? { id: owner.id, name: owner.name, email: owner.email }
+              : null,
+            actor: { id: actor.id, name: actor.name, email: actor.email },
+            org: { id: org.id, name: org.name, slug: org.slug },
+            // Legacy flat fields
+            id: goal.id,
+            name: goal.title,
+            old_status: previousGoal.status,
+            new_status: goal.status,
+          },
+          request.user!.org_id,
+          request.user!.id,
+          'user',
+        );
+
+        if (goal.status === 'achieved') {
+          publishBoltEvent(
+            'goal.achieved',
+            'bearing',
+            {
+              goal: {
+                id: goal.id,
+                name: goal.title,
+                title: goal.title,
+                progress_percent: Number(goal.progress),
+                period_id: goal.period_id,
+                owner_id: goal.owner_id,
+                url: buildGoalUrl(goal.id),
+                achieved_at: goal.updated_at,
+              },
+              period: { id: period.id, name: period.name },
+              owner: owner
+                ? { id: owner.id, name: owner.name, email: owner.email }
+                : null,
+              actor: { id: actor.id, name: actor.name, email: actor.email },
+              org: { id: org.id, name: org.name, slug: org.slug },
+              // Legacy flat fields
+              id: goal.id,
+              name: goal.title,
+            },
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          );
+        }
+      }
       return reply.send({ data: goal });
     },
   );
@@ -271,7 +341,53 @@ export default async function goalRoutes(fastify: FastifyInstance) {
     '/goals/:id',
     { preHandler: [requireAuth, requireGoalEditAccess(), requireScope('read_write')] },
     async (request, reply) => {
-      await goalService.deleteGoal((request as any).goal.id, request.user!.org_id);
+      // `requireGoalEditAccess` loaded the goal onto the request; capture
+      // its fields before deletion for the fire-and-forget Bolt emission.
+      const existingGoal = (request as any).goal as {
+        id: string;
+        title: string;
+        scope: string;
+        status: string;
+        period_id: string;
+        owner_id: string | null;
+      };
+      await goalService.deleteGoal(existingGoal.id, request.user!.org_id);
+
+      const [actor, org, owner, period] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadOwner(existingGoal.owner_id ?? null),
+        loadPeriod(existingGoal.period_id),
+      ]);
+      publishBoltEvent(
+        'goal.deleted',
+        'bearing',
+        {
+          goal: {
+            id: existingGoal.id,
+            name: existingGoal.title,
+            title: existingGoal.title,
+            scope: existingGoal.scope,
+            status: existingGoal.status,
+            period_id: existingGoal.period_id,
+            owner_id: existingGoal.owner_id,
+            url: buildGoalUrl(existingGoal.id),
+          },
+          period: { id: period.id, name: period.name },
+          owner: owner
+            ? { id: owner.id, name: owner.name, email: owner.email }
+            : null,
+          actor: { id: actor.id, name: actor.name, email: actor.email },
+          org: { id: org.id, name: org.name, slug: org.slug },
+          // Legacy flat fields
+          id: existingGoal.id,
+          name: existingGoal.title,
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
+
       return reply.status(204).send();
     },
   );
@@ -282,12 +398,94 @@ export default async function goalRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireGoalEditAccess(), requireScope('read_write')] },
     async (request, reply) => {
       const { status } = statusOverrideSchema.parse(request.body);
+      const previousGoal = (request as any).goal as {
+        id: string;
+        title: string;
+        status: string;
+        progress: string | number | null;
+        period_id: string;
+        owner_id: string | null;
+      };
       const goal = await goalService.overrideStatus(
-        (request as any).goal.id,
+        previousGoal.id,
         status,
         request.user!.org_id,
         fastify.redis,
       );
+
+      if (previousGoal.status !== goal.status) {
+        const [actor, org, owner, period] = await Promise.all([
+          loadActor(request.user!.id),
+          loadOrg(request.user!.org_id),
+          loadOwner(goal.owner_id ?? null),
+          loadPeriod(goal.period_id),
+        ]);
+        publishBoltEvent(
+          'goal.status_changed',
+          'bearing',
+          {
+            goal: {
+              id: goal.id,
+              name: goal.title,
+              title: goal.title,
+              old_status: previousGoal.status,
+              new_status: goal.status,
+              progress_percent: Number(goal.progress),
+              period_id: goal.period_id,
+              owner_id: goal.owner_id,
+              url: buildGoalUrl(goal.id),
+              override: true,
+            },
+            period: { id: period.id, name: period.name },
+            owner: owner
+              ? { id: owner.id, name: owner.name, email: owner.email }
+              : null,
+            actor: { id: actor.id, name: actor.name, email: actor.email },
+            org: { id: org.id, name: org.name, slug: org.slug },
+            // Legacy flat fields
+            id: goal.id,
+            name: goal.title,
+            old_status: previousGoal.status,
+            new_status: goal.status,
+          },
+          request.user!.org_id,
+          request.user!.id,
+          'user',
+        );
+
+        if (goal.status === 'achieved') {
+          publishBoltEvent(
+            'goal.achieved',
+            'bearing',
+            {
+              goal: {
+                id: goal.id,
+                name: goal.title,
+                title: goal.title,
+                progress_percent: Number(goal.progress),
+                period_id: goal.period_id,
+                owner_id: goal.owner_id,
+                url: buildGoalUrl(goal.id),
+                achieved_at: goal.updated_at,
+                override: true,
+              },
+              period: { id: period.id, name: period.name },
+              owner: owner
+                ? { id: owner.id, name: owner.name, email: owner.email }
+                : null,
+              actor: { id: actor.id, name: actor.name, email: actor.email },
+              org: { id: org.id, name: org.name, slug: org.slug },
+              // Legacy flat fields
+              id: goal.id,
+              name: goal.title,
+            },
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          );
+        }
+      }
+
       return reply.send({ data: goal });
     },
   );
@@ -342,11 +540,52 @@ export default async function goalRoutes(fastify: FastifyInstance) {
     '/goals/:id/watchers',
     { preHandler: [requireAuth, requireGoalAccess(), requireScope('read_write')] },
     async (request, reply) => {
+      const goalRow = (request as any).goal as {
+        id: string;
+        title: string;
+        owner_id: string | null;
+        period_id: string;
+      };
       const watcher = await goalService.addWatcher(
-        (request as any).goal.id,
+        goalRow.id,
         request.user!.id,
         request.user!.org_id,
       );
+
+      const [actor, org, period] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadPeriod(goalRow.period_id),
+      ]);
+      publishBoltEvent(
+        'goal.watcher_added',
+        'bearing',
+        {
+          goal: {
+            id: goalRow.id,
+            title: goalRow.title,
+            name: goalRow.title,
+            owner_id: goalRow.owner_id,
+            period_id: goalRow.period_id,
+            url: buildGoalUrl(goalRow.id),
+          },
+          watcher: {
+            user_id: request.user!.id,
+            name: actor.name,
+            email: actor.email,
+          },
+          period: { id: period.id, name: period.name },
+          actor: { id: actor.id, name: actor.name, email: actor.email },
+          org: { id: org.id, name: org.name, slug: org.slug },
+          // Legacy flat fields
+          id: goalRow.id,
+          user_id: request.user!.id,
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
+
       return reply.status(201).send({ data: watcher });
     },
   );
@@ -395,6 +634,42 @@ export default async function goalRoutes(fastify: FastifyInstance) {
         targetUserId,
         request.user!.org_id,
       );
+
+      const [actor, org, period, removedUser] = await Promise.all([
+        loadActor(callerId),
+        loadOrg(request.user!.org_id),
+        loadPeriod(goal.period_id),
+        loadActor(targetUserId),
+      ]);
+      publishBoltEvent(
+        'goal.watcher_removed',
+        'bearing',
+        {
+          goal: {
+            id: goal.id,
+            title: goal.title,
+            name: goal.title,
+            owner_id: goal.owner_id,
+            period_id: goal.period_id,
+            url: buildGoalUrl(goal.id),
+          },
+          watcher: {
+            user_id: targetUserId,
+            name: removedUser.name,
+            email: removedUser.email,
+          },
+          period: { id: period.id, name: period.name },
+          actor: { id: actor.id, name: actor.name, email: actor.email },
+          org: { id: org.id, name: org.name, slug: org.slug },
+          // Legacy flat fields
+          id: goal.id,
+          user_id: targetUserId,
+        },
+        request.user!.org_id,
+        callerId,
+        'user',
+      );
+
       return reply.status(204).send();
     },
   );
