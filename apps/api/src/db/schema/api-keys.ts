@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, index, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 import { organizations } from './organizations.js';
 
@@ -26,10 +26,19 @@ export const apiKeys = pgTable(
     expires_at: timestamp('expires_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     last_used_at: timestamp('last_used_at', { withTimezone: true }),
+    // Wave 1.A - rotation fields (migration 0117).
+    rotated_at: timestamp('rotated_at', { withTimezone: true }),
+    rotation_grace_expires_at: timestamp('rotation_grace_expires_at', { withTimezone: true }),
+    predecessor_id: uuid('predecessor_id').references(
+      (): AnyPgColumn => apiKeys.id,
+      { onDelete: 'set null' },
+    ),
   },
   (table) => [
     index('api_keys_user_id_idx').on(table.user_id),
     index('api_keys_key_prefix_idx').on(table.key_prefix),
     index('idx_api_keys_org_id').on(table.org_id),
+    index('idx_api_keys_rotation_grace').on(table.rotation_grace_expires_at),
+    index('idx_api_keys_predecessor').on(table.predecessor_id),
   ],
 );

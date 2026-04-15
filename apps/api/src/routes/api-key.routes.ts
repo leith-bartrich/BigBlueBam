@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import argon2 from 'argon2';
@@ -8,6 +8,16 @@ import { apiKeys } from '../db/schema/api-keys.js';
 import { requireAuth, requireMinRole } from '../plugins/auth.js';
 import * as orgService from '../services/org.service.js';
 import { getOrgPermissions, isOrgPrivileged } from '../services/org-permissions.js';
+
+// Wave 1.A: rotation grace period in milliseconds (7 days by default).
+// Override with API_KEY_ROTATION_GRACE_MS for shorter windows in tests.
+const DEFAULT_ROTATION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+function getRotationGraceMs(): number {
+  const raw = process.env.API_KEY_ROTATION_GRACE_MS;
+  if (!raw) return DEFAULT_ROTATION_GRACE_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ROTATION_GRACE_MS;
+}
 
 export default async function apiKeyRoutes(fastify: FastifyInstance) {
   fastify.get(
@@ -146,6 +156,102 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
           project_ids: apiKey!.project_ids,
           expires_at: apiKey!.expires_at,
           created_at: apiKey!.created_at,
+        },
+      });
+    },
+  );
+
+  // Wave 1.A: rotate an API key. Generates a new key that shares the same
+  // scope/project binding/org as the predecessor. Both keys work until
+  // rotation_grace_expires_at. The predecessor is marked rotated_at=now()
+  // and rotation_grace_expires_at=now()+7d (or override). predecessor_id
+  // on the new key points at the predecessor so we can clean up later.
+  fastify.post<{ Params: { id: string } }>(
+    '/auth/api-keys/:id/rotate',
+    { preHandler: [requireAuth, requireMinRole('member')] },
+    async (request, reply) => {
+      const [existing] = await db
+        .select()
+        .from(apiKeys)
+        .where(
+          and(
+            eq(apiKeys.id, request.params.id),
+            eq(apiKeys.user_id, request.user!.id),
+          ),
+        )
+        .limit(1);
+
+      if (!existing) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'API key not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (existing.rotated_at !== null) {
+        return reply.status(409).send({
+          error: {
+            code: 'ALREADY_ROTATED',
+            message: 'This key has already been rotated; rotate its successor instead.',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const rawKey = randomBytes(32).toString('base64url');
+      const fullToken = `bbam_${rawKey}`;
+      const prefix = fullToken.slice(0, 8);
+      const keyHash = await argon2.hash(fullToken);
+      const now = new Date();
+      const graceExpires = new Date(now.getTime() + getRotationGraceMs());
+
+      // Transactional swap: insert the successor, then mark the predecessor.
+      // Postgres-js driver autocommits per statement, so we wrap in a db
+      // transaction for atomicity.
+      const successor = await db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(apiKeys)
+          .values({
+            user_id: existing.user_id,
+            org_id: existing.org_id,
+            name: existing.name,
+            key_hash: keyHash,
+            key_prefix: prefix,
+            scope: existing.scope,
+            project_ids: existing.project_ids,
+            expires_at: existing.expires_at,
+            predecessor_id: existing.id,
+          })
+          .returning();
+
+        await tx
+          .update(apiKeys)
+          .set({
+            rotated_at: now,
+            rotation_grace_expires_at: graceExpires,
+          })
+          .where(eq(apiKeys.id, existing.id));
+
+        return inserted;
+      });
+
+      return reply.status(201).send({
+        data: {
+          id: successor!.id,
+          name: successor!.name,
+          key: fullToken,
+          key_prefix: prefix,
+          scope: successor!.scope,
+          project_ids: successor!.project_ids,
+          expires_at: successor!.expires_at,
+          created_at: successor!.created_at,
+          predecessor_id: existing.id,
+          predecessor_grace_expires_at: graceExpires,
         },
       });
     },
