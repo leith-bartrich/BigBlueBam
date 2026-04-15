@@ -35,9 +35,16 @@ export const helpdeskTicketEvents = pgTable(
     event_type: varchar('event_type', { length: 50 }).notNull(),
     payload: jsonb('payload').notNull(),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    // G3 (migration 0115). Bolt emission tracking so that retry sweeps can
+    // find rows whose corresponding Bolt event never published. bolt_event_id
+    // is the id returned by /v1/events/ingest if we ever wire it up; for now
+    // we only stamp bolt_event_emitted_at on success.
+    bolt_event_id: varchar('bolt_event_id', { length: 255 }),
+    bolt_event_emitted_at: timestamp('bolt_event_emitted_at', { withTimezone: true }),
   },
   (table) => [
     index('idx_helpdesk_ticket_events_ticket').on(table.ticket_id, table.id),
     index('idx_helpdesk_ticket_events_created_at').on(table.created_at),
+    index('idx_helpdesk_ticket_events_bolt_event_id').on(table.bolt_event_id),
   ],
 );

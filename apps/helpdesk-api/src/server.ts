@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
+import multipart from '@fastify/multipart';
 import { env } from './env.js';
 import { db, connection } from './db/index.js';
 import helpdeskAuthPlugin from './plugins/auth.js';
@@ -14,6 +15,7 @@ import ticketRoutes from './routes/ticket.routes.js';
 import agentRoutes from './routes/agent.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import helpdeskUploadRoutes from './routes/upload.routes.js';
+import attachmentRoutes from './routes/attachments.routes.js';
 import websocketHandler from './ws/handler.js';
 import { sql } from 'drizzle-orm';
 
@@ -117,6 +119,16 @@ await fastify.register(rateLimit, {
 
 await fastify.register(websocket);
 
+// G6: register @fastify/multipart at the root so both upload.routes.ts
+// and attachments.routes.ts share it. Using a generous root ceiling of
+// 25 MB; per-route limits (10 MB for ticket attachments) are enforced in
+// the route handlers themselves.
+await fastify.register(multipart, {
+  limits: {
+    fileSize: 26214400,
+  },
+});
+
 // Redis plugin — used by HB-57 lockout and health checks.
 await fastify.register(redisPlugin);
 
@@ -173,6 +185,9 @@ await fastify.register(ticketRoutes);
 await fastify.register(agentRoutes, { prefix: '/helpdesk/agents' });
 await fastify.register(settingsRoutes);
 await fastify.register(helpdeskUploadRoutes);
+// G6: ticket-scoped attachments. Shares the @fastify/multipart plugin
+// registered inside upload.routes.ts.
+await fastify.register(attachmentRoutes);
 await fastify.register(websocketHandler);
 
 // Graceful shutdown
