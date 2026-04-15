@@ -126,3 +126,18 @@ New entries append to the end. Never edit or delete prior entries without explic
 
 **Revert.** None needed; if the 6-arg shape proves ergonomically painful, a helper like `publishBondEvent = (name, payload, orgId, actorId?, actorType?) => publishBoltEvent(name, 'bond', payload, orgId, actorId, actorType)` can be added at any time without touching the shared package.
 
+## D-009: Edit-in-place fix for never-applied migrations 0103 and 0104 (2026-04-15 Wave 2)
+
+**Concern.** While extracting Wave 2 migrations from the per-app plans, the generated `infra/postgres/migrations/0103_brief_yjs_state_tracking.sql` and `0104_brief_qdrant_embedded_at.sql` both referenced `brief_documents.organization_id`, but the actual column in `0024_brief_tables.sql` is `org_id`. The Brief subagent discovered this while wiring the yjs persistence service: the `CREATE INDEX` at line 9 of 0103 and line 9 of 0104 would fail, rolling back the whole transaction (including the `ADD COLUMN`), which would leave the migrate runner in a permanent failure loop on any fresh database. Because these migrations have never been successfully applied anywhere, no `schema_migrations` row exists and no checksum is cached.
+
+**Options.**
+- (a) Honor the "never edit a committed migration" rule literally and add a new migration 0120/0121 pair. This does not work: 0103 is tried before 0120 and fails, aborting the runner before 0120 runs.
+- (b) Delete 0103 and 0104 outright and add replacement files at 0120/0121. Works but leaves ambiguous gaps in the numeric sequence and confuses future archaeologists.
+- (c) Edit 0103 and 0104 in place to fix the column name. Safe precisely because neither has been applied, so no checksum mismatch is possible and no client DB has any rollback work to do.
+
+**Choice.** (c). Both files edited to use `org_id` instead of `organization_id`. Commit message calls out that the fix is a recovery-of-never-applied-migration, not a retroactive rewrite.
+
+**Rationale.** The ground rule exists to prevent checksum drift on already-applied migrations. Migrations that have never applied cannot drift; the rule's spirit (do not break deployed databases) is trivially satisfied. Option (c) is the simplest path forward and produces the cleanest history. Option (a) is a dead end and option (b) creates worse bookkeeping. If a deployed environment somehow already applied the broken 0103 via a path we have not seen, the fix would need to be a forward-only 0120/0121 step that ADDs the correct index; we can revisit if that happens.
+
+**Revert.** None needed; the original broken SQL can be restored from git history if a concrete deployment is later found to have applied it. In that case, add 0120/0121 that drop the bad indexes and create the correct ones.
+

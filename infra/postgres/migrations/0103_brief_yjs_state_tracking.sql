@@ -6,7 +6,7 @@ ALTER TABLE brief_documents
   ADD COLUMN IF NOT EXISTS yjs_last_saved_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_brief_docs_yjs_lookup
-  ON brief_documents(id, organization_id)
+  ON brief_documents(id, org_id)
   WHERE yjs_state IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_brief_docs_yjs_last_saved

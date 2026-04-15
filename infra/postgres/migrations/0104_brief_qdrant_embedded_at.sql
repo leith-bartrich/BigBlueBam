@@ -6,4 +6,4 @@ ALTER TABLE brief_documents
   ADD COLUMN IF NOT EXISTS qdrant_embedded_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_brief_docs_qdrant_embedded
-  ON brief_documents(organization_id, qdrant_embedded_at);
+  ON brief_documents(org_id, qdrant_embedded_at);
