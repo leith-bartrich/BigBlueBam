@@ -134,6 +134,14 @@ export async function createSubmission(formId: string, orgId: string, input: Sub
     throw badRequest(`Validation failed: ${errors.map((e) => e.message).join('; ')}`);
   }
 
+  // Seed the file processing status column so the worker knows whether to
+  // pick up this row. When the form has no file/image fields we can short
+  // circuit straight to 'skipped' and save the worker a pointless wakeup.
+  const hasFileField = fields.some(
+    (f) => f.field_type === 'file_upload' || f.field_type === 'image_upload',
+  );
+  const fileProcessingStatus = hasFileField ? 'pending' : 'skipped';
+
   const [submission] = await db
     .insert(blankSubmissions)
     .values({
@@ -145,10 +153,51 @@ export async function createSubmission(formId: string, orgId: string, input: Sub
       submitted_by_ip: input.submitted_by_ip,
       user_agent: input.user_agent,
       attachments: input.attachments ?? [],
+      file_processing_status: fileProcessingStatus,
     })
     .returning();
 
   return submission!;
+}
+
+// ---------------------------------------------------------------------------
+// Bolt event idempotency helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Mark a submission as having successfully emitted its Bolt event(s). Called
+ * by the public submit route after the fire-and-forget publish resolves. The
+ * column is indexed (WHERE bolt_events_emitted = false) so a future worker
+ * backfill can cheaply find rows whose emission failed.
+ */
+export async function markBoltEventsEmitted(submissionId: string): Promise<void> {
+  try {
+    await db
+      .update(blankSubmissions)
+      .set({ bolt_events_emitted: true, bolt_event_emit_error: null })
+      .where(eq(blankSubmissions.id, submissionId));
+  } catch {
+    // Idempotency-marker update must never break the submit path.
+  }
+}
+
+/**
+ * Record that a Bolt event emission attempt failed for a submission. The
+ * error text is stored verbatim for operator debugging; the worker retry
+ * loop keys off bolt_events_emitted = false, not the error text.
+ */
+export async function markBoltEventEmitError(
+  submissionId: string,
+  errorMessage: string,
+): Promise<void> {
+  try {
+    await db
+      .update(blankSubmissions)
+      .set({ bolt_events_emitted: false, bolt_event_emit_error: errorMessage })
+      .where(eq(blankSubmissions.id, submissionId));
+  } catch {
+    // Swallow — this is itself a best-effort bookkeeping update.
+  }
 }
 
 // ---------------------------------------------------------------------------
