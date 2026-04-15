@@ -1860,6 +1860,83 @@ const wave1bEvents: EventDefinition[] = [
       { name: 'org', type: 'object', description: 'Full org context' },
     ],
   },
+  // --- Wave 3 audit: trivial misses from Wave 2 per-app commits ---
+  // These events are already published by their respective services but
+  // were never registered in the catalog. Registering them here unblocks
+  // the Bolt drift guard and surfaces them in the trigger-picker UI.
+  {
+    source: 'beacon',
+    event_type: 'beacon.attachment.uploaded',
+    description: 'Fired when an attachment is uploaded to a Beacon knowledge entry.',
+    payload_schema: [
+      { name: 'beacon.id', type: 'uuid', description: 'Beacon entry ID' },
+      { name: 'beacon.slug', type: 'string?', description: 'Beacon slug' },
+      { name: 'beacon.title', type: 'string?', description: 'Beacon title' },
+      { name: 'attachment.id', type: 'uuid', description: 'Attachment ID' },
+      { name: 'attachment.filename', type: 'string', description: 'Original filename' },
+      { name: 'attachment.content_type', type: 'string', description: 'MIME type' },
+      { name: 'attachment.size_bytes', type: 'number', description: 'File size in bytes' },
+      { name: 'attachment.uploaded_by', type: 'uuid', description: 'Uploader user ID' },
+      { name: 'actor', type: 'object', description: 'User who uploaded' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'beacon',
+    event_type: 'beacon.comment.created',
+    description: 'Fired when a comment is posted on a Beacon knowledge entry.',
+    payload_schema: [
+      { name: 'beacon.id', type: 'uuid', description: 'Beacon entry ID' },
+      { name: 'beacon.slug', type: 'string?', description: 'Beacon slug' },
+      { name: 'beacon.title', type: 'string?', description: 'Beacon title' },
+      { name: 'comment.id', type: 'uuid', description: 'Comment ID' },
+      { name: 'comment.parent_id', type: 'uuid?', description: 'Parent comment ID for replies' },
+      { name: 'comment.author_id', type: 'uuid', description: 'Comment author user ID' },
+      { name: 'comment.body_markdown', type: 'string', description: 'Comment body (markdown)' },
+      { name: 'comment.created_at', type: 'datetime', description: 'When the comment was posted' },
+      { name: 'actor', type: 'object', description: 'User who posted the comment' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'brief',
+    event_type: 'document.promoted',
+    description: 'Fired when a Brief document is promoted to a Beacon knowledge entry.',
+    payload_schema: [
+      { name: 'document.id', type: 'uuid', description: 'Document ID' },
+      { name: 'document.title', type: 'string', description: 'Document title' },
+      { name: 'document.slug', type: 'string?', description: 'Document slug' },
+      { name: 'beacon_id', type: 'uuid', description: 'Newly created Beacon entry ID' },
+      { name: 'beacon_slug', type: 'string', description: 'Newly created Beacon slug' },
+      { name: 'actor', type: 'object', description: 'User who promoted' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'brief',
+    event_type: 'document.embedded',
+    description: 'Fired when a Brief document finishes Qdrant embedding.',
+    payload_schema: [
+      { name: 'document_id', type: 'uuid', description: 'Document ID' },
+      { name: 'chunk_count', type: 'number', description: 'Number of chunks embedded' },
+      { name: 'vector_dim', type: 'number?', description: 'Vector dimension' },
+      { name: 'embedding_model', type: 'string?', description: 'Embedding model identifier' },
+      { name: 'embedded_at', type: 'datetime', description: 'When the embedding finished' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'brief',
+    event_type: 'document.yjs_saved',
+    description: 'Fired when a Brief document Yjs state snapshot is persisted.',
+    payload_schema: [
+      { name: 'document_id', type: 'uuid', description: 'Document ID' },
+      { name: 'bytes', type: 'number', description: 'Size of the persisted Yjs state in bytes' },
+      { name: 'saved_at', type: 'datetime', description: 'When the snapshot was saved' },
+      { name: 'actor', type: 'object', description: 'User who triggered the save' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
