@@ -28,6 +28,13 @@ export const billExpenses = pgTable(
     expense_date: date('expense_date').notNull().defaultNow(),
     receipt_url: text('receipt_url'),
     receipt_filename: varchar('receipt_filename', { length: 255 }),
+    // Added by migration 0087_bill_expense_receipt_metadata.sql.
+    // Populated when a receipt image is uploaded through the multipart
+    // endpoint so the SPA can preview files correctly and we can size-limit
+    // at the service layer.
+    receipt_mime_type: varchar('receipt_mime_type', { length: 100 }),
+    receipt_size_bytes: bigint('receipt_size_bytes', { mode: 'number' }),
+    receipt_uploaded_at: timestamp('receipt_uploaded_at', { withTimezone: true }),
     status: varchar('status', { length: 20 }).notNull().default('pending'),
     approved_by: uuid('approved_by').references(() => users.id),
     billable: boolean('billable').notNull().default(false),

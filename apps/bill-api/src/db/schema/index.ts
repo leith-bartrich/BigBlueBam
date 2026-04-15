@@ -20,3 +20,8 @@ export { billLineItems } from './bill-line-items.js';
 export { billPayments } from './bill-payments.js';
 export { billExpenses } from './bill-expenses.js';
 export { billSettings } from './bill-settings.js';
+export { billWorkerJobs } from './bill-worker-jobs.js';
+export type {
+  BillWorkerJobType,
+  BillWorkerJobStatus,
+} from './bill-worker-jobs.js';
