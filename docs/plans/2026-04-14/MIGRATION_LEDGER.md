@@ -14,7 +14,13 @@ Authoritative registry of migration numbers for the 2026-04-14 recovery orchestr
 
 | Number | File | Plan | Wave | Status |
 |---|---|---|---|---|
-| _(none yet)_ | | | | |
+| 0079 | `0079_beacon_comments_table.sql` | Beacon_Plan.md (G1) | Wave 2.01 | claimed |
+| 0080 | `0080_beacon_attachments_table.sql` | Beacon_Plan.md (G2) | Wave 2.01 | claimed |
+| 0081 | _(unused reserve, Beacon range)_ | Beacon_Plan.md | - | reserved |
+| 0082 | _(unused reserve, Beacon range)_ | Beacon_Plan.md | - | reserved |
+| 0083 | `0083_bearing_watcher_unsubscribe_token.sql` | Bearing_Plan.md (G9 conditional) | Wave 2.02 | conditional |
+| 0084 | `0084_bench_report_delivery_tracking.sql` | Bench_Plan.md | Wave 2.03 | claimed |
+| 0085 | `0085_bench_materialized_view_refresh_tracking.sql` | Bench_Plan.md | Wave 2.03 | claimed |
 
 ## Overflow pool
 
