@@ -36,6 +36,14 @@ Authoritative registry of migration numbers for the 2026-04-14 recovery orchestr
 | 0098 | _(unused reserve, Bolt range)_ | Bolt_Plan.md | - | reserved |
 | 0099 | `0099_bond_import_mappings.sql` | Bond_Plan.md (G1) | Wave 2.09 | claimed |
 | 0100 | `0100_bond_soft_delete.sql` | Bond_Plan.md (G4) | Wave 2.09 | claimed |
+| 0101 | _(unused reserve, Book range)_ | Book_Plan.md | - | reserved |
+| 0102 | _(unused reserve, Book range)_ | Book_Plan.md | - | reserved |
+| 0103 | `0103_brief_yjs_state_tracking.sql` | Brief_Plan.md (G1) | Wave 2.11 | claimed |
+| 0104 | `0104_brief_qdrant_embedded_at.sql` | Brief_Plan.md (G3) | Wave 2.11 | claimed |
+| 0105 | `0105_banter_user_presence.sql` | Banter_Plan.md (G8) | Wave 2.12 | claimed |
+| 0106 | `0106_banter_future_message_partitions.sql` | Banter_Plan.md (G10) | Wave 2.12 | claimed |
+| 0107 | `0107_banter_channel_viewer_role.sql` | Banter_Plan.md | Wave 2.12 | claimed |
+| 0108 | `0108_banter_message_edit_permissions.sql` | Banter_Plan.md | Wave 2.12 | claimed |
 
 ## Overflow pool
 

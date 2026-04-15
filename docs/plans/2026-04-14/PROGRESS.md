@@ -42,9 +42,9 @@ Outputs to `docs/plans/2026-04-14/`. Each plan file consumes its corresponding a
 | Board_Plan.md | Board_Design_Audit.md | **committed** | 0093 (+0094, 0095 reserve) | pending |
 | Bolt_Plan.md | Bolt_Design_Audit.md | **committed** | 0096, 0097 (+0098 reserve) | pending |
 | Bond_Plan.md | Bond_Design_Audit.md | **committed** | 0099, 0100 | pending |
-| Book_Plan.md | Book_Design_Audit.md | pending | | |
-| Brief_Plan.md | Brief_Design_Audit.md | pending | | |
-| Banter_Plan.md | Banter_Design_Audit.md | pending | | |
+| Book_Plan.md | Book_Design_Audit.md | **committed** | none (0101, 0102 reserve) | pending |
+| Brief_Plan.md | Brief_Design_Audit.md | **committed** | 0103, 0104 | pending |
+| Banter_Plan.md | Banter_Design_Audit.md | **committed** | 0105, 0106, 0107, 0108 | pending |
 | Helpdesk_Plan.md | Helpdesk_Design_Audit.md | pending | | |
 | Platform_Plan.md | Platform_Design_Audit.md | pending | | |
 | Cross_Product_Plan.md | all audits | pending | | |
