@@ -9,6 +9,12 @@ import {
   banterSettings,
 } from '../db/schema/index.js';
 import { broadcastToChannel } from '../services/realtime.js';
+import {
+  broadcastPresenceChange,
+  enterCall,
+  getUserOrgId,
+  leaveCall,
+} from '../services/presence.service.js';
 
 /**
  * LiveKit webhook events.
@@ -259,6 +265,17 @@ async function handleParticipantJoined(event: LiveKitWebhookEvent) {
       .set({ peak_participant_count: currentCount })
       .where(eq(banterCalls.id, call.id));
   }
+
+  // Flip the user's presence to in_call and broadcast (fire-and-forget).
+  (async () => {
+    try {
+      const row = await enterCall(participantIdentity, call.channel_id);
+      const orgId = await getUserOrgId(participantIdentity);
+      if (orgId) broadcastPresenceChange(orgId, row);
+    } catch {
+      // Non-critical: presence is best-effort
+    }
+  })();
 }
 
 async function handleParticipantLeft(
@@ -306,6 +323,17 @@ async function handleParticipantLeft(
       data: { call_id: call.id, user_id: participantIdentity },
       timestamp: new Date().toISOString(),
     });
+
+    // Demote presence from in_call back to online (fire-and-forget).
+    (async () => {
+      try {
+        const row = await leaveCall(participantIdentity);
+        const orgId = await getUserOrgId(participantIdentity);
+        if (orgId) broadcastPresenceChange(orgId, row);
+      } catch {
+        // Non-critical: presence is best-effort
+      }
+    })();
   }
 }
 

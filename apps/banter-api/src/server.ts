@@ -26,6 +26,7 @@ import searchRoutes from './routes/search.routes.js';
 import callRoutes from './routes/call.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import internalRoutes from './routes/internal.routes.js';
+import presenceRoutes from './routes/presence.routes.js';
 import { sql } from 'drizzle-orm';
 
 const fastify = Fastify({
@@ -194,6 +195,7 @@ await fastify.register(searchRoutes);
 await fastify.register(callRoutes);
 await fastify.register(webhookRoutes);
 await fastify.register(internalRoutes);
+await fastify.register(presenceRoutes);
 
 // WebSocket handler
 await fastify.register(websocketHandler);

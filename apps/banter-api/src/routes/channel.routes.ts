@@ -63,6 +63,7 @@ const updateChannelSchema = z.object({
 
 const addMembersSchema = z.object({
   user_ids: z.array(z.string().uuid()).min(1).max(100),
+  role: z.enum(['admin', 'member', 'viewer']).optional(),
 });
 
 const markReadSchema = z.object({
@@ -969,7 +970,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
               .values({
                 channel_id: id,
                 user_id: userId,
-                role: 'member',
+                role: body.role ?? 'member',
               })
               .onConflictDoNothing()
               .returning();
@@ -1043,7 +1044,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireScope('read_write'), requireChannelMember, requireChannelOwner] },
     async (request, reply) => {
       const { id, userId } = request.params as { id: string; userId: string };
-      const body = z.object({ role: z.enum(['admin', 'member']) }).parse(request.body);
+      const body = z
+        .object({ role: z.enum(['admin', 'member', 'viewer']) })
+        .parse(request.body);
 
       // Verify target membership exists
       const [targetMembership] = await db
