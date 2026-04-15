@@ -178,6 +178,30 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         request.params.id,
         request.user!.org_id,
       );
+      // deleteEvent is a soft-cancel: the row still exists with status set
+      // to 'cancelled', so enriching after the call still yields the full
+      // event context (title, attendees, organizer) plus the cancelled status.
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1)
+      Promise.all([
+        enrichEvent(event.id),
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+      ])
+        .then(([enriched, actor, org]) => {
+          publishBoltEvent(
+            'event.cancelled',
+            'book',
+            {
+              event: enriched ?? { id: event.id, title: event.title },
+              actor,
+              org,
+            },
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          );
+        })
+        .catch(() => {});
       return reply.send({ data: event });
     },
   );
@@ -194,6 +218,34 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         request.user!.id,
         body.response_status,
       );
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1)
+      Promise.all([
+        enrichEvent(request.params.id),
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+      ])
+        .then(([enriched, actor, org]) => {
+          publishBoltEvent(
+            'event.rsvp',
+            'book',
+            {
+              event: enriched ?? { id: request.params.id },
+              respondent: {
+                user_id: request.user!.id,
+                attendee_id: attendee.id,
+                email: attendee.email,
+                name: attendee.name ?? null,
+              },
+              response_status: body.response_status,
+              actor,
+              org,
+            },
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          );
+        })
+        .catch(() => {});
       return reply.send({ data: attendee });
     },
   );
