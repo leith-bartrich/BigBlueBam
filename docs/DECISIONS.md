@@ -78,3 +78,22 @@ New entries append to the end. Never edit or delete prior entries without explic
 **Rationale.** Read-only parallelism is safe. Putting writes in the orchestrator centralizes commit discipline and keeps the "commit as you go" rule in one code path. Audit documents at 600-900 words are sufficient for the planning phase that consumes them — the audit template does not require deep prose, just structured lists and citations.
 
 **Revert.** If the audit depth proves too thin, individual audits can be re-run through a deeper general-purpose agent that takes the Explore agent's draft as input and expands it. Alternatively the pattern flips to Option (a) or (c) for the remaining batches.
+
+## D-006: Detached HEAD after commit auto-recovery pattern (2026-04-14 Step 1)
+
+**Concern.** During Step 1, Batches 2 and 4 unexpectedly committed onto a detached HEAD at `a8fb19a` instead of branch `recovery`, despite `git branch --show-current` returning `recovery` immediately before the commit. Whatever mechanism is reparenting HEAD happens between the branch check and `git commit`, and the pattern repeats deterministically. Root cause is still unidentified (hypothesis: one of the harness's internal git operations temporarily detaches HEAD as part of agent orchestration, and my commits land in that detached state).
+
+**Options.**
+- (a) Diagnose the root cause before proceeding. Requires instrumenting git hooks or tracing harness behavior. High time cost, unclear success.
+- (b) Accept the detachment as an environmental given, and bake auto-recovery into every commit. Each commit is followed by a branch check; if HEAD is detached, the commit is cherry-picked back onto `recovery` and the detached commit is abandoned.
+- (c) Use `git commit --branch recovery` or similar. Git has no such flag; this option does not exist.
+- (d) Force-move `recovery` to HEAD with `git branch -f recovery HEAD` after each commit. Fragile if `recovery` has advanced concurrently.
+
+**Choice.** (b). Every commit in Step 1 Batch 5 onward uses a one-liner shell check: after `git commit`, check `git branch --show-current`. If it is not `recovery`, capture the commit SHA, `git checkout recovery`, `git cherry-pick <sha>`. Works deterministically without requiring understanding of what causes the detachment.
+
+**Rationale.** The recovery is cheap (a single cherry-pick) and idempotent. The root cause investigation would consume significant context and time for marginal benefit. Auto-recovery keeps work on `recovery` regardless of what happens to HEAD in between commits.
+
+**Revert.** None needed. If the detached-HEAD behavior stops happening on its own, the auto-recovery becomes a harmless no-op.
+
+**Scope.** This pattern is used for the rest of Step 1, Step 2, and Step 3. Every commit that writes orchestrator-owned files or creates new tree state goes through the same pattern.
+
