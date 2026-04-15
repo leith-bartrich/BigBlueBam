@@ -28,6 +28,14 @@ Authoritative registry of migration numbers for the 2026-04-14 recovery orchestr
 | 0090 | `0090_blank_submission_event_emission.sql` | Blank_Plan.md | Wave 2.05 | claimed |
 | 0091 | `0091_blast_engagement_event_indexes.sql` | Blast_Plan.md | Wave 2.06 | claimed |
 | 0092 | `0092_blast_campaign_completion_tracking.sql` | Blast_Plan.md | Wave 2.06 | claimed |
+| 0093 | `0093_board_template_content.sql` | Board_Plan.md (G4) | Wave 2.07 | claimed |
+| 0094 | `0094_board_element_count_tracking.sql` | Board_Plan.md (G10, P1) | Wave 2.07 | claimed (P1) |
+| 0095 | _(unused reserve, Board range)_ | Board_Plan.md | - | reserved |
+| 0096 | `0096_bolt_event_naming_migration.sql` | Bolt_Plan.md (G3) | Wave 2.08 | claimed |
+| 0097 | `0097_bolt_notify_owner_on_failure.sql` | Bolt_Plan.md (G8) | Wave 2.08 | claimed |
+| 0098 | _(unused reserve, Bolt range)_ | Bolt_Plan.md | - | reserved |
+| 0099 | `0099_bond_import_mappings.sql` | Bond_Plan.md (G1) | Wave 2.09 | claimed |
+| 0100 | `0100_bond_soft_delete.sql` | Bond_Plan.md (G4) | Wave 2.09 | claimed |
 
 ## Overflow pool
 
