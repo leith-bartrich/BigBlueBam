@@ -1499,6 +1499,339 @@ const blankEvents: EventDefinition[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Wave 1.B additions (Cross_Product_Plan.md) - events emitted by Wave 2
+// per-app implementations. These complete the set of triggers needed for the
+// canary Bam -> Bond -> Bolt -> Beacon automation loop.
+// ---------------------------------------------------------------------------
+
+const wave1bEvents: EventDefinition[] = [
+  {
+    source: 'blank',
+    event_type: 'form.closed',
+    description: 'Fired when a published form is closed and stops accepting submissions.',
+    payload_schema: [
+      { name: 'form.id', type: 'uuid', description: 'Form ID' },
+      { name: 'form.slug', type: 'string', description: 'Form slug' },
+      { name: 'form.title', type: 'string', description: 'Form title' },
+      { name: 'form.total_submissions', type: 'number', description: 'Total submissions received before closing' },
+      { name: 'actor', type: 'object', description: 'Full actor object (id/name/email)' },
+      { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
+    ],
+  },
+  {
+    source: 'blast',
+    event_type: 'engagement.opened',
+    description: 'Fired when a recipient opens a Blast email.',
+    payload_schema: [
+      { name: 'engagement.id', type: 'uuid', description: 'Engagement event ID' },
+      { name: 'campaign.id', type: 'uuid', description: 'Campaign ID' },
+      { name: 'contact.id', type: 'uuid?', description: 'Recipient contact ID if known' },
+      { name: 'engagement.occurred_at', type: 'datetime', description: 'When the open was tracked' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'blast',
+    event_type: 'engagement.clicked',
+    description: 'Fired when a recipient clicks a link in a Blast email.',
+    payload_schema: [
+      { name: 'engagement.id', type: 'uuid', description: 'Engagement event ID' },
+      { name: 'campaign.id', type: 'uuid', description: 'Campaign ID' },
+      { name: 'contact.id', type: 'uuid?', description: 'Recipient contact ID if known' },
+      { name: 'engagement.clicked_url', type: 'string', description: 'URL that was clicked' },
+      { name: 'engagement.occurred_at', type: 'datetime', description: 'When the click was tracked' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'blast',
+    event_type: 'engagement.unsubscribed',
+    description: 'Fired when a recipient unsubscribes from a Blast campaign.',
+    payload_schema: [
+      { name: 'engagement.id', type: 'uuid', description: 'Engagement event ID' },
+      { name: 'campaign.id', type: 'uuid', description: 'Campaign ID' },
+      { name: 'contact.id', type: 'uuid?', description: 'Recipient contact ID if known' },
+      { name: 'engagement.occurred_at', type: 'datetime', description: 'When the unsubscribe happened' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'blast',
+    event_type: 'engagement.bounced',
+    description: 'Fired when a Blast email bounces.',
+    payload_schema: [
+      { name: 'engagement.id', type: 'uuid', description: 'Engagement event ID' },
+      { name: 'campaign.id', type: 'uuid', description: 'Campaign ID' },
+      { name: 'contact.id', type: 'uuid?', description: 'Recipient contact ID if known' },
+      { name: 'engagement.bounce_type', type: 'string', description: 'soft or hard' },
+      { name: 'engagement.occurred_at', type: 'datetime', description: 'When the bounce was recorded' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'blast',
+    event_type: 'campaign.completed',
+    description: 'Fired when a Blast campaign finishes sending to all recipients.',
+    payload_schema: [
+      { name: 'campaign.id', type: 'uuid', description: 'Campaign ID' },
+      { name: 'campaign.name', type: 'string', description: 'Campaign name' },
+      { name: 'campaign.total_sent', type: 'number', description: 'Total messages sent' },
+      { name: 'campaign.total_delivered', type: 'number', description: 'Total messages delivered' },
+      { name: 'campaign.total_bounced', type: 'number', description: 'Total bounces' },
+      { name: 'campaign.total_opened', type: 'number', description: 'Total unique opens' },
+      { name: 'campaign.total_clicked', type: 'number', description: 'Total unique clicks' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'goal.status_changed',
+    description: 'Fired when a Bearing goal changes status.',
+    payload_schema: [
+      { name: 'goal.id', type: 'uuid', description: 'Goal ID' },
+      { name: 'goal.name', type: 'string', description: 'Goal name' },
+      { name: 'goal.old_status', type: 'string', description: 'Previous status' },
+      { name: 'goal.new_status', type: 'string', description: 'New status' },
+      { name: 'actor', type: 'object', description: 'Who changed the status' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'goal.achieved',
+    description: 'Fired when a Bearing goal is marked achieved.',
+    payload_schema: [
+      { name: 'goal.id', type: 'uuid', description: 'Goal ID' },
+      { name: 'goal.name', type: 'string', description: 'Goal name' },
+      { name: 'actor', type: 'object', description: 'Who marked it achieved' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'goal.deleted',
+    description: 'Fired when a Bearing goal is deleted.',
+    payload_schema: [
+      { name: 'goal.id', type: 'uuid', description: 'Goal ID' },
+      { name: 'goal.name', type: 'string', description: 'Goal name' },
+      { name: 'actor', type: 'object', description: 'Who deleted it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'goal.watcher_added',
+    description: 'Fired when a user is added as a watcher on a goal.',
+    payload_schema: [
+      { name: 'goal.id', type: 'uuid', description: 'Goal ID' },
+      { name: 'watcher.id', type: 'uuid', description: 'Watcher user ID' },
+      { name: 'actor', type: 'object', description: 'Who added the watcher' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'goal.watcher_removed',
+    description: 'Fired when a user is removed from the watchers on a goal.',
+    payload_schema: [
+      { name: 'goal.id', type: 'uuid', description: 'Goal ID' },
+      { name: 'watcher.id', type: 'uuid', description: 'Watcher user ID' },
+      { name: 'actor', type: 'object', description: 'Who removed the watcher' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'kr.created',
+    description: 'Fired when a Bearing key result is created.',
+    payload_schema: [
+      { name: 'kr.id', type: 'uuid', description: 'Key result ID' },
+      { name: 'goal.id', type: 'uuid', description: 'Parent goal ID' },
+      { name: 'kr.name', type: 'string', description: 'Key result name' },
+      { name: 'actor', type: 'object', description: 'Creator' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'kr.updated',
+    description: 'Fired when a Bearing key result is updated.',
+    payload_schema: [
+      { name: 'kr.id', type: 'uuid', description: 'Key result ID' },
+      { name: 'goal.id', type: 'uuid', description: 'Parent goal ID' },
+      { name: 'kr.changes', type: 'object', description: 'Changed fields' },
+      { name: 'actor', type: 'object', description: 'Editor' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'kr.value_updated',
+    description: 'Fired when a Bearing key result progress value is updated.',
+    payload_schema: [
+      { name: 'kr.id', type: 'uuid', description: 'Key result ID' },
+      { name: 'goal.id', type: 'uuid', description: 'Parent goal ID' },
+      { name: 'kr.old_value', type: 'number', description: 'Previous value' },
+      { name: 'kr.new_value', type: 'number', description: 'New value' },
+      { name: 'actor', type: 'object', description: 'Who updated it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'kr.linked',
+    description: 'Fired when a Bearing key result is linked to an external entity.',
+    payload_schema: [
+      { name: 'kr.id', type: 'uuid', description: 'Key result ID' },
+      { name: 'goal.id', type: 'uuid', description: 'Parent goal ID' },
+      { name: 'kr.link_type', type: 'string', description: 'Type of linked entity' },
+      { name: 'kr.linked_entity_id', type: 'uuid', description: 'Linked entity ID' },
+      { name: 'actor', type: 'object', description: 'Who linked it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'kr.deleted',
+    description: 'Fired when a Bearing key result is deleted.',
+    payload_schema: [
+      { name: 'kr.id', type: 'uuid', description: 'Key result ID' },
+      { name: 'goal.id', type: 'uuid', description: 'Parent goal ID' },
+      { name: 'actor', type: 'object', description: 'Who deleted it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'period.activated',
+    description: 'Fired when a Bearing period is activated.',
+    payload_schema: [
+      { name: 'period.id', type: 'uuid', description: 'Period ID' },
+      { name: 'period.name', type: 'string', description: 'Period name' },
+      { name: 'actor', type: 'object', description: 'Who activated it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'period.completed',
+    description: 'Fired when a Bearing period is completed.',
+    payload_schema: [
+      { name: 'period.id', type: 'uuid', description: 'Period ID' },
+      { name: 'period.name', type: 'string', description: 'Period name' },
+      { name: 'actor', type: 'object', description: 'Who completed it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'bearing',
+    event_type: 'period.archived',
+    description: 'Fired when a Bearing period is archived.',
+    payload_schema: [
+      { name: 'period.id', type: 'uuid', description: 'Period ID' },
+      { name: 'period.name', type: 'string', description: 'Period name' },
+      { name: 'actor', type: 'object', description: 'Who archived it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'board',
+    event_type: 'board.locked',
+    description: 'Fired when a Board is locked to prevent edits.',
+    payload_schema: [
+      { name: 'board.id', type: 'uuid', description: 'Board ID' },
+      { name: 'board.name', type: 'string', description: 'Board name' },
+      { name: 'board.locked', type: 'boolean', description: 'New locked state' },
+      { name: 'board.locked_by', type: 'uuid', description: 'User who locked' },
+      { name: 'board.locked_at', type: 'datetime', description: 'When locked' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'board',
+    event_type: 'board.elements_promoted',
+    description: 'Fired when board elements are promoted to Bam tasks.',
+    payload_schema: [
+      { name: 'board.id', type: 'uuid', description: 'Board ID' },
+      { name: 'board.element_count', type: 'number', description: 'Number of elements promoted' },
+      { name: 'board.task_ids', type: 'array', description: 'Task IDs created in Bam' },
+      { name: 'board.promoted_by', type: 'uuid', description: 'User who performed promotion' },
+      { name: 'board.promoted_at', type: 'datetime', description: 'When promoted' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'book',
+    event_type: 'event.cancelled',
+    description: 'Fired when a Book event is cancelled.',
+    payload_schema: [
+      { name: 'event.id', type: 'uuid', description: 'Event ID' },
+      { name: 'event.title', type: 'string', description: 'Event title' },
+      { name: 'actor', type: 'object', description: 'Who cancelled it' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'book',
+    event_type: 'event.rsvp',
+    description: 'Fired when someone responds to a Book event invitation.',
+    payload_schema: [
+      { name: 'event.id', type: 'uuid', description: 'Event ID' },
+      { name: 'event.title', type: 'string', description: 'Event title' },
+      { name: 'response.status', type: 'string', description: 'yes, no, or maybe' },
+      { name: 'respondent', type: 'object', description: 'Person who responded' },
+      { name: 'actor', type: 'object', description: 'Actor (may equal respondent)' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'helpdesk',
+    event_type: 'ticket.message_posted',
+    description: 'Fired when a message is posted on a helpdesk ticket.',
+    payload_schema: [
+      { name: 'ticket.id', type: 'uuid', description: 'Ticket ID' },
+      { name: 'message.id', type: 'uuid', description: 'Message ID' },
+      { name: 'message.author_id', type: 'uuid', description: 'Author user ID' },
+      { name: 'message.is_internal', type: 'boolean', description: 'Whether the message is agent-only' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'helpdesk',
+    event_type: 'ticket.closed',
+    description: 'Fired when a helpdesk ticket is closed.',
+    payload_schema: [
+      { name: 'ticket.id', type: 'uuid', description: 'Ticket ID' },
+      { name: 'ticket.closed_by', type: 'uuid', description: 'User who closed it' },
+      { name: 'ticket.closed_at', type: 'datetime', description: 'When it was closed' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'helpdesk',
+    event_type: 'ticket.reopened',
+    description: 'Fired when a helpdesk ticket is reopened.',
+    payload_schema: [
+      { name: 'ticket.id', type: 'uuid', description: 'Ticket ID' },
+      { name: 'ticket.reopened_by', type: 'uuid', description: 'User who reopened it' },
+      { name: 'ticket.reopened_at', type: 'datetime', description: 'When it was reopened' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+  {
+    source: 'helpdesk',
+    event_type: 'ticket.sla_breached',
+    description: 'Fired when a helpdesk ticket breaches an SLA.',
+    payload_schema: [
+      { name: 'ticket.id', type: 'uuid', description: 'Ticket ID' },
+      { name: 'ticket.sla_type', type: 'string', description: 'first_response or resolution' },
+      { name: 'ticket.breached_at', type: 'datetime', description: 'When the breach occurred' },
+      { name: 'org', type: 'object', description: 'Full org context' },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -1516,6 +1849,7 @@ const ALL_EVENTS: EventDefinition[] = [
   ...billEvents,
   ...bookEvents,
   ...blankEvents,
+  ...wave1bEvents,
 ];
 
 export function getAllEvents(): EventDefinition[] {
