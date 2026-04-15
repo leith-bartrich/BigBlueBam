@@ -44,6 +44,18 @@ Authoritative registry of migration numbers for the 2026-04-14 recovery orchestr
 | 0106 | `0106_banter_future_message_partitions.sql` | Banter_Plan.md (G10) | Wave 2.12 | claimed |
 | 0107 | `0107_banter_channel_viewer_role.sql` | Banter_Plan.md | Wave 2.12 | claimed |
 | 0108 | `0108_banter_message_edit_permissions.sql` | Banter_Plan.md | Wave 2.12 | claimed |
+| 0109 | `0109_helpdesk_users_org_id.sql` | Helpdesk_Plan.md (G2) | Wave 2.13 | claimed |
+| 0110 | `0110_helpdesk_users_org_id_constraint.sql` | Helpdesk_Plan.md (G2) | Wave 2.13 | claimed |
+| 0111 | `0111_helpdesk_sla_tracking.sql` | Helpdesk_Plan.md (G4) | Wave 2.13 | claimed |
+| 0112 | `0112_helpdesk_ticket_fulltext.sql` | Helpdesk_Plan.md (G5) | Wave 2.13 | claimed |
+| 0113 | `0113_helpdesk_email_verification_hashing.sql` | Helpdesk_Plan.md (G7) | Wave 2.13 | claimed |
+| 0114 | `0114_helpdesk_ticket_attachments.sql` | Helpdesk_Plan.md (G6) | Wave 2.13 | claimed |
+| 0115 | `0115_helpdesk_ticket_events_bolt.sql` | Helpdesk_Plan.md (G3) | Wave 2.13 | claimed |
+| 0116 | `0116_rls_foundation.sql` | Platform_Plan.md (G1) | Wave 1.A | claimed |
+| 0117 | `0117_api_key_rotation.sql` | Platform_Plan.md (G3) | Wave 1.A | claimed |
+| 0118 | `0118_oauth_providers.sql` | Platform_Plan.md (G2) | Wave 1.A | claimed |
+| 0119 | `0119_oauth_user_links.sql` | Platform_Plan.md (G2) | Wave 1.A | claimed |
+| 0120-0129 | _(reserved for Cross_Product follow-ups)_ | Cross_Product_Plan.md | - | reserved |
 
 ## Overflow pool
 
