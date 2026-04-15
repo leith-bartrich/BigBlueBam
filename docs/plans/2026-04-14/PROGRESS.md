@@ -51,17 +51,28 @@ Outputs to `docs/plans/2026-04-14/`. Each plan file consumes its corresponding a
 | Platform_Plan.md | Platform_Design_Audit.md | **committed** | 0116, 0117, 0118, 0119 | pending |
 | Cross_Product_Plan.md | all audits | **committed** | none (0120-0129 reserve) | pending |
 
-## Step 3 - Implementation orchestration - PENDING
+## Step 3 - Implementation orchestration - IN PROGRESS (Wave 0)
 
-Waves execute in dependency order. Populated by the reconciliation pass at the end of Step 2.
+Waves execute in dependency order.
 
 | Wave | Items | Status |
 |---|---|---|
-| Wave 0 - Foundation | Platform unblockers, MCP tools/call, bolt-events consolidation, event-naming sweep | pending |
+| Wave 0.1 - Platform infra baseline | CI workflows, migrate bootstrap hook, biome unification | **already in tree at a8fb19a** |
+| Wave 0.2 - MCP /tools/call HTTP route | Bolt_Plan G1 |  pending |
+| Wave 0.3 - Canonical publishBoltEvent | packages/shared/src/bolt-events.ts created at 3b96332 | **partial** (file landed; 13 per-service copies still need refactor to re-export) |
+| Wave 0.4 - Event naming sweep | Migration 0096 landed; apps/worker/src/jobs/bond-stale-deals.job.ts still emits prefixed name and uses old signature | **partial** |
 | Wave 1 - Platform and shared schemas | RLS, OAuth, API key rotation, catalog entries, shared schemas, shared packages | pending |
 | Wave 2 - Per-app implementations | 13 per-app plans | pending |
 | Wave 3 - Cross-product integration | Cross-app linking, notification fan-out, integration harness | pending |
 | Wave 4 - Housekeeping | CLAUDE.md refresh, POSTMORTEM.md, `recovery` to `main` promotion decision | pending |
+
+## Wave 0 resume notes
+
+**Wave 0.3 remaining work:** refactor each `apps/*/src/lib/bolt-events.ts` (13 files) plus `apps/worker/src/utils/bolt-events.ts` to re-export from `@bigbluebam/shared` instead of defining locally. The worker's current utility has a different argument shape (options object as 4th arg) and all call sites in `apps/worker/src/jobs/` pass that shape - those call sites also need renormalizing to the canonical 6+1-arg signature in the same commit.
+
+**Wave 0.4 remaining work:** Migration 0096 is present and idempotent. Still needed: update `apps/worker/src/jobs/bond-stale-deals.job.ts:115` to emit `'deal.rotting'` instead of `'bond.deal.rotting'` and to use the canonical signature via `@bigbluebam/shared`. That change is coupled with the Wave 0.3 refactor of the worker's bolt-events utility, so they should land together.
+
+**Wave 0.2 status:** the existing `apps/mcp-server/src/server.ts` at recovery tip was inspected during Step 2 planning but the `/tools/call` HTTP route was not implemented. See Bolt_Plan.md G1 for the full route skeleton including the microtask-ordering guard and service account bootstrap.
 
 ## Git state checkpoints
 
