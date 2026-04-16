@@ -23,6 +23,7 @@ export interface SubmitInput {
 export async function listSubmissions(formId: string, orgId: string, params: {
   cursor?: string;
   limit?: number;
+  file_processing_status?: string;
 }) {
   const limit = params.limit ?? 50;
 
@@ -33,6 +34,10 @@ export async function listSubmissions(formId: string, orgId: string, params: {
 
   if (params.cursor) {
     conditions.push(sql`${blankSubmissions.submitted_at} < (SELECT submitted_at FROM blank_submissions WHERE id = ${params.cursor})`);
+  }
+
+  if (params.file_processing_status) {
+    conditions.push(eq(blankSubmissions.file_processing_status, params.file_processing_status));
   }
 
   const submissions = await db
