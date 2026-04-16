@@ -19,16 +19,18 @@ type Crumb = { label: string; href?: string };
 
 function breadcrumbsFor(route: ActiveRoute): Crumb[] {
   switch (route.page) {
+    case 'dashboard':
+      return [{ label: 'Dashboard' }];
     case 'invoices':
       return [{ label: 'Invoices' }];
     case 'invoice-new':
-      return [{ label: 'Invoices', href: '/' }, { label: 'New Invoice' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'New Invoice' }];
     case 'invoice-from-time':
-      return [{ label: 'Invoices', href: '/' }, { label: 'From Time Entries' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'From Time Entries' }];
     case 'invoice-detail':
-      return [{ label: 'Invoices', href: '/' }, { label: 'Invoice Detail' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'Invoice Detail' }];
     case 'invoice-edit':
-      return [{ label: 'Invoices', href: '/' }, { label: 'Edit Invoice' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'Edit Invoice' }];
     case 'clients':
       return [{ label: 'Clients' }];
     case 'client-detail':

@@ -6,7 +6,7 @@ import {
   BarChart3,
   Settings,
   Plus,
-  Clock,
+  LayoutDashboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +16,8 @@ interface BillSidebarProps {
 }
 
 const navItems = [
-  { label: 'Invoices', icon: FileText, path: '/', page: 'invoices' },
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/', page: 'dashboard' },
+  { label: 'Invoices', icon: FileText, path: '/invoices', page: 'invoices' },
   { label: 'Clients', icon: Users, path: '/clients', page: 'clients' },
   { label: 'Expenses', icon: Receipt, path: '/expenses', page: 'expenses' },
   { label: 'Rates', icon: DollarSign, path: '/rates', page: 'rates' },
