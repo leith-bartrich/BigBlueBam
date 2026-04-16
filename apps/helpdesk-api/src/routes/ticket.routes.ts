@@ -211,13 +211,71 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Look up helpdesk settings for default project/phase
-    const [settings] = await db
-      .select()
-      .from(helpdeskSettings)
-      .limit(1);
+    // D-010: resolve target project via tenant context. Precedence:
+    //   1. X-Project-Slug resolved to a project id (per-project portal).
+    //   2. helpdesk_settings.default_project_id scoped to X-Org-Slug.
+    //   3. Oldest project in the org (persisted back to
+    //      helpdesk_settings.default_project_id so the next ticket skips
+    //      the fallback query).
+    // Legacy path (no X-Org-Slug header, direct API client): fall back to
+    // the historical "first settings row" lookup so existing automations
+    // keep working while the SPA rolls out the path-based portal.
+    let settings: typeof helpdeskSettings.$inferSelect | undefined;
+    if (request.tenantContext.orgId) {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .where(eq(helpdeskSettings.org_id, request.tenantContext.orgId))
+        .limit(1);
+      settings = rows[0];
+    } else {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .limit(1);
+      settings = rows[0];
+    }
 
-    const projectId: string | null = settings?.default_project_id ?? null;
+    let projectId: string | null =
+      request.tenantContext.projectId ?? settings?.default_project_id ?? null;
+
+    // Oldest-project fallback with write-back, but only when we know the
+    // owning org. If we somehow got this far without an org id (legacy
+    // callers that hit a stack with no helpdesk_settings row) we skip the
+    // fallback entirely; the downstream code already tolerates NULL
+    // projectId by leaving the ticket unlinked.
+    if (!projectId && request.tenantContext.orgId) {
+      const [oldestProject] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(
+          and(
+            eq(projects.org_id, request.tenantContext.orgId),
+            eq(projects.is_archived, false),
+          ),
+        )
+        .orderBy(asc(projects.created_at))
+        .limit(1);
+
+      if (oldestProject) {
+        projectId = oldestProject.id;
+        if (settings) {
+          // Persist the choice so the next ticket in this org does not
+          // re-run the fallback query. Failure is non-fatal (a later
+          // ticket will just re-pick the same oldest project).
+          await db
+            .update(helpdeskSettings)
+            .set({ default_project_id: projectId, updated_at: new Date() })
+            .where(eq(helpdeskSettings.id, settings.id))
+            .catch((err: unknown) => {
+              request.log.warn(
+                { err, orgId: request.tenantContext.orgId, projectId },
+                'Failed to persist fallback default_project_id; non-fatal',
+              );
+            });
+        }
+      }
+    }
 
     // HB-7: Task creation now goes through Bam's /internal/helpdesk/* API
     // rather than direct SQL. The request ordering is: (1) persist the

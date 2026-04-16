@@ -128,22 +128,30 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const data = registerSchema.parse(request.body);
 
-    // Look up helpdesk settings up front so we can both (a) scope the
-    // duplicate-email check by org_id (G2) and (b) read the configured
-    // verification/domain rules below. There is only one settings row per
-    // org today; we pick the first one and treat its owning org as the
-    // host org for new helpdesk customer signups.
-    const settings = await db
-      .select()
-      .from(helpdeskSettings)
-      .limit(1);
+    // D-010: Resolve helpdesk_settings from the X-Org-Slug header (set by
+    // the SPA from the URL path), not `LIMIT 1`. Registrations that arrive
+    // with no org context fall back to the legacy "first settings row"
+    // behavior so direct API clients built before path-based routing
+    // continue to work; the SPA will always supply the header.
+    let orgSettings: typeof helpdeskSettings.$inferSelect | undefined;
+    let registrationOrgId: string | null = null;
 
-    const orgSettings = settings[0];
-    // G2 / HB-5: new registrations MUST be tenanted. If no helpdesk_settings
-    // row exists (fresh install with no org configured) we still permit the
-    // insert with a NULL org_id so local dev works, but production stacks
-    // will always have at least one settings row from first admin bootstrap.
-    const registrationOrgId: string | null = orgSettings?.org_id ?? null;
+    if (request.tenantContext.orgId) {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .where(eq(helpdeskSettings.org_id, request.tenantContext.orgId))
+        .limit(1);
+      orgSettings = rows[0];
+      registrationOrgId = request.tenantContext.orgId;
+    } else {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .limit(1);
+      orgSettings = rows[0];
+      registrationOrgId = orgSettings?.org_id ?? null;
+    }
 
     // G2: scope the existing-email check by org_id so the same customer
     // email can legitimately register under a different BBB org. Migration
@@ -277,15 +285,21 @@ export default async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // G2 / HB-5: resolve the host org from helpdesk_settings so login
-    // matches the email under the same tenant used at registration time.
-    // Falls back to a global email lookup when no settings row exists,
-    // matching the bootstrap path in /register.
-    const [loginOrgSettings] = await db
-      .select({ org_id: helpdeskSettings.org_id })
-      .from(helpdeskSettings)
-      .limit(1);
-    const loginOrgId = loginOrgSettings?.org_id ?? null;
+    // D-010: resolve the host org from X-Org-Slug (SPA-set) first; fall
+    // back to "first settings row" only when no tenant header is present
+    // so direct API clients continue working during rollout. When the
+    // header is present, the resolved orgId is authoritative and a
+    // same-email account under a different org cannot be logged into.
+    let loginOrgId: string | null = null;
+    if (request.tenantContext.orgId) {
+      loginOrgId = request.tenantContext.orgId;
+    } else {
+      const [loginOrgSettings] = await db
+        .select({ org_id: helpdeskSettings.org_id })
+        .from(helpdeskSettings)
+        .limit(1);
+      loginOrgId = loginOrgSettings?.org_id ?? null;
+    }
 
     const [user] = await db
       .select()

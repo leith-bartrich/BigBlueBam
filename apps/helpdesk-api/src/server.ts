@@ -10,6 +10,7 @@ import { db, connection } from './db/index.js';
 import helpdeskAuthPlugin from './plugins/auth.js';
 import redisPlugin from './plugins/redis.js';
 import csrfPlugin from './plugins/csrf.js';
+import resolveTenantPlugin from './middleware/resolve-tenant.js';
 import authRoutes from './routes/auth.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
 import agentRoutes from './routes/agent.routes.js';
@@ -134,6 +135,12 @@ await fastify.register(redisPlugin);
 
 // HB-52: CSRF protection — must run BEFORE routes.
 await fastify.register(csrfPlugin);
+
+// D-010: Tenant resolution from X-Org-Slug / X-Project-Slug headers.
+// Must run BEFORE routes so request.tenantContext is populated for every
+// preHandler that consults it. Registered after CSRF so the tenant hook
+// never fires on requests that CSRF has already rejected.
+await fastify.register(resolveTenantPlugin);
 
 // Auth plugin
 await fastify.register(helpdeskAuthPlugin);
