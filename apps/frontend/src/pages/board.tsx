@@ -128,6 +128,18 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
   const boardPhases = useBoardStore((s) => s.phases);
   const setBoardState = useBoardStore.setState;
 
+  // When the user navigates between projects via the sidebar, React keeps
+  // this component mounted and only swaps the `projectId` prop. Any local
+  // state tied to the previous project (selected sprint, filters, the
+  // active task drawer) would otherwise persist and point at rows that
+  // do not belong to the new project. Reset the project-scoped bits
+  // whenever projectId changes so the active sprint resolves freshly.
+  useEffect(() => {
+    setSelectedSprintId(undefined);
+    setSelectedTaskId(null);
+    setFilters({});
+  }, [projectId]);
+
   useEffect(() => {
     if (boardData) {
       setBoardState({
