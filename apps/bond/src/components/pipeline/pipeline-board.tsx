@@ -9,18 +9,46 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Search, Filter, Plus } from 'lucide-react';
+import { Search, Plus } from 'lucide-react';
 import { StageColumn } from '@/components/pipeline/stage-column';
 import { DealCard } from '@/components/pipeline/deal-card';
 import { CreateDealDialog } from '@/components/pipeline/create-deal-dialog';
-import { Input } from '@/components/common/input';
 import { Button } from '@/components/common/button';
-import { usePipeline, type Pipeline } from '@/hooks/use-pipelines';
+import { usePipeline } from '@/hooks/use-pipelines';
 import { useDeals, useMoveDealStage, type Deal } from '@/hooks/use-deals';
 import { usePipelineStore } from '@/stores/pipeline.store';
 import { usePipelineSummary } from '@/hooks/use-analytics';
-import { formatCurrencyCompact } from '@/lib/utils';
+import { cn, formatCurrencyCompact } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
+
+type SwimlaneMode = 'none' | 'owner' | 'close_month';
+
+const SWIMLANE_NONE_KEY = '__none__';
+const SWIMLANE_NONE_LABEL = 'Unassigned';
+
+function laneKeyFor(deal: Deal, mode: SwimlaneMode): string {
+  if (mode === 'owner') {
+    return deal.owner_id ?? SWIMLANE_NONE_KEY;
+  }
+  if (mode === 'close_month') {
+    if (!deal.expected_close_date) return SWIMLANE_NONE_KEY;
+    return deal.expected_close_date.slice(0, 7); // YYYY-MM
+  }
+  return SWIMLANE_NONE_KEY;
+}
+
+function laneLabelFor(deal: Deal, mode: SwimlaneMode): string {
+  if (mode === 'owner') {
+    return deal.owner_name ?? SWIMLANE_NONE_LABEL;
+  }
+  if (mode === 'close_month') {
+    if (!deal.expected_close_date) return 'No close date';
+    const [y, m] = deal.expected_close_date.slice(0, 7).split('-');
+    const d = new Date(Number(y), Number(m) - 1, 1);
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }
+  return SWIMLANE_NONE_LABEL;
+}
 
 interface PipelineBoardProps {
   onNavigate: (path: string) => void;
@@ -48,6 +76,7 @@ export function PipelineBoard({ onNavigate, pipelineId: propPipelineId }: Pipeli
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createStageId, setCreateStageId] = useState<string>('');
+  const [swimlaneMode, setSwimlaneMode] = useState<SwimlaneMode>('none');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -79,6 +108,52 @@ export function PipelineBoard({ onNavigate, pipelineId: propPipelineId }: Pipeli
     }
     return map;
   }, [deals, stages, search]);
+
+  // Compute an ordered list of swimlane keys observed across filtered deals.
+  // Ordering: owner-mode lanes by label (alpha), close_month lanes by key
+  // (chronological since keys are YYYY-MM), with unassigned lane pinned last.
+  const swimlaneOrder = useMemo(() => {
+    if (swimlaneMode === 'none') {
+      return [{ key: SWIMLANE_NONE_KEY, label: SWIMLANE_NONE_LABEL }];
+    }
+    const seen = new Map<string, string>();
+    for (const [, list] of dealsByStage) {
+      for (const deal of list) {
+        const key = laneKeyFor(deal, swimlaneMode);
+        if (!seen.has(key)) seen.set(key, laneLabelFor(deal, swimlaneMode));
+      }
+    }
+    const entries = Array.from(seen.entries())
+      .filter(([k]) => k !== SWIMLANE_NONE_KEY)
+      .map(([key, label]) => ({ key, label }));
+    if (swimlaneMode === 'close_month') {
+      entries.sort((a, b) => a.key.localeCompare(b.key));
+    } else {
+      entries.sort((a, b) => a.label.localeCompare(b.label));
+    }
+    if (seen.has(SWIMLANE_NONE_KEY)) {
+      entries.push({ key: SWIMLANE_NONE_KEY, label: SWIMLANE_NONE_LABEL });
+    }
+    if (entries.length === 0) {
+      entries.push({ key: SWIMLANE_NONE_KEY, label: SWIMLANE_NONE_LABEL });
+    }
+    return entries;
+  }, [dealsByStage, swimlaneMode]);
+
+  const dealsByStageAndLane = useMemo(() => {
+    const nested = new Map<string, Map<string, Deal[]>>();
+    for (const [stageId, list] of dealsByStage) {
+      const inner = new Map<string, Deal[]>();
+      for (const lane of swimlaneOrder) inner.set(lane.key, []);
+      for (const deal of list) {
+        const laneKey = swimlaneMode === 'none' ? SWIMLANE_NONE_KEY : laneKeyFor(deal, swimlaneMode);
+        const bucket = inner.get(laneKey);
+        if (bucket) bucket.push(deal);
+      }
+      nested.set(stageId, inner);
+    }
+    return nested;
+  }, [dealsByStage, swimlaneMode, swimlaneOrder]);
 
   const activeDragDeal = activeDragId ? deals.find((d) => d.id === activeDragId) : null;
 
@@ -164,6 +239,26 @@ export function PipelineBoard({ onNavigate, pipelineId: propPipelineId }: Pipeli
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Swimlane grouping */}
+          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-800">
+            <label className="sr-only" htmlFor="bond-swimlane-mode">Group by</label>
+            <span className="px-2 text-xs text-zinc-500 select-none">Group</span>
+            {(['none', 'owner', 'close_month'] as const).map((mode) => (
+              <button
+                key={mode}
+                id={mode === 'none' ? 'bond-swimlane-mode' : undefined}
+                onClick={() => setSwimlaneMode(mode)}
+                className={cn(
+                  'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  swimlaneMode === mode
+                    ? 'bg-primary-600 text-white'
+                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700',
+                )}
+              >
+                {mode === 'none' ? 'None' : mode === 'owner' ? 'Owner' : 'Close month'}
+              </button>
+            ))}
+          </div>
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
             <input
@@ -195,15 +290,30 @@ export function PipelineBoard({ onNavigate, pipelineId: propPipelineId }: Pipeli
           onDragEnd={handleDragEnd}
         >
           <div className="flex gap-4 h-full p-4 min-w-max">
-            {stages.map((stage) => (
-              <StageColumn
-                key={stage.id}
-                stage={stage}
-                deals={dealsByStage.get(stage.id) ?? []}
-                onOpenDeal={handleOpenDeal}
-                onAddDeal={handleAddDeal}
-              />
-            ))}
+            {stages.map((stage) => {
+              const stageDeals = dealsByStage.get(stage.id) ?? [];
+              const laneMap = dealsByStageAndLane.get(stage.id);
+              const laneGroups =
+                swimlaneMode === 'none' || !laneMap
+                  ? null
+                  : swimlaneOrder
+                      .map((lane) => ({
+                        key: lane.key,
+                        label: lane.label,
+                        deals: laneMap.get(lane.key) ?? [],
+                      }))
+                      .filter((g) => g.deals.length > 0);
+              return (
+                <StageColumn
+                  key={stage.id}
+                  stage={stage}
+                  deals={stageDeals}
+                  swimlanes={laneGroups}
+                  onOpenDeal={handleOpenDeal}
+                  onAddDeal={handleAddDeal}
+                />
+              );
+            })}
           </div>
 
           <DragOverlay>
