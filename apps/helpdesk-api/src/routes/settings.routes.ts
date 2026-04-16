@@ -173,7 +173,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       return reply.send({ data: updated });
     }
 
-    // Create new — D-010: prefer the orgId from the tenant header so a
+    // Create new. D-010: prefer the orgId from the tenant header so a
     // fresh org's first settings PATCH does not accidentally land on
     // whatever `SELECT organizations LIMIT 1` happens to return. Falls
     // back to the legacy "first org" behavior only when the header is
@@ -211,7 +211,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     return reply.status(201).send({ data: created });
   });
 
-  // GET /helpdesk/admin/projects — list the tenant org's projects with
+  // GET /helpdesk/admin/projects: list the tenant org's projects with
   // their uuids, for admin surfaces that need to populate a "default
   // project" picker. Requires admin auth AND X-Org-Slug to pin the org.
   // D-010: without X-Org-Slug we fall back to the PATCH /helpdesk/settings

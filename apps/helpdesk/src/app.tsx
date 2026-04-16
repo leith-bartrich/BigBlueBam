@@ -122,7 +122,7 @@ export function App() {
   const { isAuthenticated, isLoading, fetchMe } = useAuthStore();
   const tenantStore = useTenantStore();
 
-  // Initial parse — set slugs before fetchMe fires so the first /auth/me
+  // Initial parse: set slugs before fetchMe fires so the first /auth/me
   // request already carries the X-Org-Slug header.
   const [route, setRoute] = useState<Route>(() => {
     const { orgSlug, projectSlug } = parseTenantFromPath(window.location.pathname);
