@@ -11,9 +11,11 @@
  * in the canvas page's own onChange handler.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import { reconcileElements } from '@/lib/scene-sync';
+
+export type BoardConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 export function useBoardSync(
   boardId: string,
@@ -24,6 +26,12 @@ export function useBoardSync(
   const joinedRef = useRef(false);
   const mountedRef = useRef(true);
   const applyingRemoteRef = useRef(false);
+  const [status, setStatus] = useState<BoardConnectionStatus>('connecting');
+  // Track distinct collaborator userIds seen via cursor_update / user_left
+  // so the toolbar can show a live "N editors" count without each caller
+  // wiring its own collaborators map.
+  const [peerCount, setPeerCount] = useState(0);
+  const peersRef = useRef<Set<string>>(new Set());
 
   // Buffer: accumulate remote elements between apply ticks
   const pendingRemoteRef = useRef<any[]>([]);
@@ -87,6 +95,7 @@ export function useBoardSync(
 
       ws.addEventListener('open', () => {
         retries = 0;
+        setStatus('connected');
       });
 
       ws.addEventListener('message', (event) => {
@@ -128,6 +137,12 @@ export function useBoardSync(
             const api = getAPI();
             if (!api) break;
 
+            // Track peer set so the toolbar badge reflects live editors
+            if (!peersRef.current.has(d.userId)) {
+              peersRef.current.add(d.userId);
+              setPeerCount(peersRef.current.size);
+            }
+
             // Create a NEW Map so Excalidraw detects the change
             const next = new Map(collaboratorsRef.current);
             next.set(d.userId, {
@@ -153,6 +168,9 @@ export function useBoardSync(
           case 'user_left': {
             const leftId = msg.data?.id;
             if (leftId) {
+              if (peersRef.current.delete(leftId)) {
+                setPeerCount(peersRef.current.size);
+              }
               const next = new Map(collaboratorsRef.current);
               next.delete(leftId);
               collaboratorsRef.current = next;
@@ -169,10 +187,16 @@ export function useBoardSync(
       ws.addEventListener('close', () => {
         clearInterval(pingTimer);
         joinedRef.current = false;
+        peersRef.current.clear();
+        setPeerCount(0);
+        setStatus('disconnected');
         if (!mountedRef.current) return;
         const delay = Math.min(1000 * 2 ** retries, 30_000);
         retries++;
-        reconnectTimer = setTimeout(connect, delay);
+        reconnectTimer = setTimeout(() => {
+          setStatus('connecting');
+          connect();
+        }, delay);
       });
 
       ws.addEventListener('error', () => {
@@ -276,5 +300,5 @@ export function useBoardSync(
     return () => clearTimeout(sendTimerRef.current);
   }, []);
 
-  return { sendChanges, sendPointer };
+  return { sendChanges, sendPointer, status, peerCount };
 }
