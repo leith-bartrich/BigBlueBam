@@ -8,6 +8,7 @@ import { FormResponsesPage } from '@/pages/form-responses';
 import { FormAnalyticsPage } from '@/pages/form-analytics';
 import { FormSettingsPage } from '@/pages/form-settings';
 import { SettingsPage } from '@/pages/settings';
+import { PublicFormPage } from '@/pages/public-form';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -17,7 +18,8 @@ type Route =
   | { page: 'form-responses'; id: string }
   | { page: 'form-analytics'; id: string }
   | { page: 'form-settings'; id: string }
-  | { page: 'settings' };
+  | { page: 'settings' }
+  | { page: 'public-form'; slug: string };
 
 const BASE_PATH = '/blank';
 
@@ -33,6 +35,10 @@ function parseRoute(path: string): Route {
 
   if (p === '/' || p === '') return { page: 'forms' };
   if (p === '/settings') return { page: 'settings' };
+
+  // /f/:slug — public form render (no auth required)
+  const publicMatch = p.match(/^\/f\/([^/]+)$/);
+  if (publicMatch) return { page: 'public-form', slug: publicMatch[1]! };
 
   // /forms/new
   if (p === '/forms/new') return { page: 'form-builder', id: 'new' };
@@ -94,6 +100,12 @@ export function App() {
     setRoute(parseRoute(fullPath));
   }, []);
 
+  // Public form render bypasses auth entirely. A public form URL should
+  // work for anonymous browsers with no BigBlueBam session cookie.
+  if (route.page === 'public-form') {
+    return <PublicFormPage slug={route.slug} />;
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -137,6 +149,9 @@ export function App() {
         return <FormSettingsPage formId={route.id} onNavigate={navigate} />;
       case 'settings':
         return <SettingsPage onNavigate={navigate} />;
+      case 'public-form':
+        // Handled by the early return above; fallback for type-exhaustiveness.
+        return <PublicFormPage slug={route.slug} />;
       default:
         return null;
     }
