@@ -326,6 +326,34 @@ See the [Permissions Guide](permissions.md) for the complete authorization
 model, and the [Development Guide](development.md#local-admin-superuser-and-impersonation)
 for how to use the `/b3/superuser` console and test impersonation locally.
 
+### Step 5b: Seeding demo data (optional but recommended)
+
+Once the first admin/org exists you can populate the stack with demo
+content across every app in one shot. The master orchestrator at
+`scripts/seed-all.mjs` resolves the target org once and runs every
+per-app seeder in dependency order, finishing with a cross-app "Acme
+lead to delivery" scenario that threads through 9 surfaces (Bond, Bolt,
+Bam, Book, Brief, Bill, Helpdesk, Banter, Beacon).
+
+```bash
+# Inside the Docker stack (preferred, isolated, no host Node required)
+docker compose --profile seed run --rm seed
+
+# Or from the host if you have Node 22 installed and DATABASE_URL pointed
+# at the compose postgres service:
+SEED_ORG_SLUG=my-organization DATABASE_URL=postgres://... \
+  node scripts/seed-all.mjs
+
+# Or via the workspace shortcut
+pnpm seed
+```
+
+The seed orchestrator is idempotent. Re-running it is safe. It reads
+`SEED_ORG_SLUG` from the env, falls back to `--org-slug=<slug>`, and
+finally to the first organization by `created_at` if neither is set.
+Every child seeder pre-checks existing rows via `SELECT ... LIMIT 1`
+or `ON CONFLICT DO NOTHING`; no script issues `DELETE FROM`.
+
 ### Step 6: Access the Application
 
 Open your browser and navigate to the application.
