@@ -315,6 +315,26 @@ export function ReportsPage({ onNavigate }: ReportsPageProps) {
                 <div className="text-xs text-zinc-400 shrink-0">
                   {report.last_sent_at ? `Last sent ${formatRelativeTime(report.last_sent_at)}` : 'Never sent'}
                 </div>
+                {(() => {
+                  const s = report.last_delivery_status;
+                  if (!s) return null;
+                  const cls =
+                    s === 'sent'
+                      ? 'bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400'
+                      : s === 'queued'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
+                        : s === 'failed'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400'
+                          : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400';
+                  return (
+                    <div
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold ${cls}`}
+                      title={report.last_delivery_error ?? undefined}
+                    >
+                      {s}
+                    </div>
+                  );
+                })()}
                 <div className={`px-2 py-0.5 rounded text-[10px] font-semibold ${report.enabled ? 'bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-700'}`}>
                   {report.enabled ? 'Active' : 'Paused'}
                 </div>
