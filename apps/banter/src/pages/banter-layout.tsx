@@ -45,6 +45,8 @@ function breadcrumbsFor(route: ActiveRoute, channelName?: string): Crumb[] {
       return [{ label: 'Settings' }];
     case 'admin':
       return [{ label: 'Admin' }];
+    case 'call':
+      return [{ label: 'Calls' }, { label: 'Playback' }];
     default:
       return [];
   }

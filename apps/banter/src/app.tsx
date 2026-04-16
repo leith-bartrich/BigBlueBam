@@ -7,6 +7,7 @@ import { BookmarksPage } from '@/pages/bookmarks';
 import { SearchPage } from '@/pages/search';
 import { PreferencesPage } from '@/pages/preferences';
 import { AdminPage } from '@/pages/admin';
+import { CallPlaybackPage } from '@/pages/call-playback';
 import { ws } from '@/lib/websocket';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { Loader2 } from 'lucide-react';
@@ -19,6 +20,7 @@ type Route =
   | { page: 'search' }
   | { page: 'settings' }
   | { page: 'admin' }
+  | { page: 'call'; id: string }
   | { page: 'redirect' };
 
 const BASE_PATH = '/banter';
@@ -41,6 +43,11 @@ function parseRoute(path: string): Route {
   const dmMatch = p.match(/^\/dm\/([^/]+)$/);
   if (dmMatch) {
     return { page: 'dm', id: dmMatch[1]! };
+  }
+
+  const callMatch = p.match(/^\/calls\/([^/]+)$/);
+  if (callMatch) {
+    return { page: 'call', id: callMatch[1]! };
   }
 
   if (p === '/browse') return { page: 'browse' };
@@ -147,6 +154,8 @@ export function App() {
         return <PreferencesPage onNavigate={navigate} />;
       case 'admin':
         return <AdminPage onNavigate={navigate} />;
+      case 'call':
+        return <CallPlaybackPage callId={route.id} onNavigate={navigate} />;
       default:
         return null;
     }
