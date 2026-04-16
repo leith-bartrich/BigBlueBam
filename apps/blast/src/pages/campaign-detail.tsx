@@ -1,5 +1,12 @@
-import { ArrowLeft, Send, Pause, XCircle, BarChart3 } from 'lucide-react';
-import { useCampaign, useCampaignAnalytics, useSendCampaign } from '@/hooks/use-campaigns';
+import { useState } from 'react';
+import { ArrowLeft, Send, CheckCircle2, AlertCircle, MailX, Clock } from 'lucide-react';
+import {
+  useCampaign,
+  useCampaignAnalytics,
+  useCampaignRecipients,
+  useSendCampaign,
+  type CampaignRecipient,
+} from '@/hooks/use-campaigns';
 import { campaignStatusLabel, campaignStatusColor, formatDate, formatNumber, formatPercentage } from '@/lib/utils';
 
 interface CampaignDetailPageProps {
@@ -17,13 +24,53 @@ function MetricCard({ label, value, subValue }: { label: string; value: string |
   );
 }
 
+const RECIPIENTS_PAGE_SIZE = 25;
+
+function formatEventTime(value: string | null): string {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return value;
+  }
+}
+
+function statusIcon(r: CampaignRecipient) {
+  const status = r.status;
+  if (r.bounced_at || status === 'bounced') {
+    return { icon: MailX, color: 'text-red-500', label: r.bounce_type ? `Bounced (${r.bounce_type})` : 'Bounced' };
+  }
+  if (status === 'failed' || status === 'error') {
+    return { icon: AlertCircle, color: 'text-red-500', label: 'Failed' };
+  }
+  if (status === 'delivered' || r.delivered_at) {
+    return { icon: CheckCircle2, color: 'text-green-500', label: 'Delivered' };
+  }
+  if (status === 'sent' || r.sent_at) {
+    return { icon: Send, color: 'text-blue-500', label: 'Sent' };
+  }
+  return { icon: Clock, color: 'text-zinc-400', label: status || 'Pending' };
+}
+
 export function CampaignDetailPage({ campaignId, onNavigate }: CampaignDetailPageProps) {
   const { data: campaignData, isLoading } = useCampaign(campaignId);
   const { data: analyticsData } = useCampaignAnalytics(campaignId);
+  const [recipientsOffset, setRecipientsOffset] = useState(0);
+  const { data: recipientsData } = useCampaignRecipients(campaignId, {
+    limit: RECIPIENTS_PAGE_SIZE,
+    offset: recipientsOffset,
+  });
   const sendCampaign = useSendCampaign();
 
   const campaign = campaignData?.data;
   const analytics = analyticsData?.data;
+  const recipients = recipientsData?.data ?? [];
+  const recipientsTotal = recipientsData?.total ?? 0;
 
   if (isLoading) {
     return <div className="p-6 text-center text-zinc-500">Loading campaign...</div>;
@@ -133,6 +180,77 @@ export function CampaignDetailPage({ campaignId, onNavigate }: CampaignDetailPag
           <dd className="text-zinc-900 dark:text-zinc-100">{formatDate(campaign.created_at)}</dd>
         </dl>
       </div>
+
+      {/* Per-recipient engagement timeline */}
+      {recipientsTotal > 0 && (
+        <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Recipients</h3>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {formatNumber(recipientsTotal)} total — showing {recipients.length
+                  ? `${recipientsOffset + 1}-${recipientsOffset + recipients.length}`
+                  : 0}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setRecipientsOffset(Math.max(0, recipientsOffset - RECIPIENTS_PAGE_SIZE))}
+                disabled={recipientsOffset === 0}
+                className="text-xs px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 disabled:opacity-40 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => setRecipientsOffset(recipientsOffset + RECIPIENTS_PAGE_SIZE)}
+                disabled={recipientsOffset + recipients.length >= recipientsTotal}
+                className="text-xs px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 disabled:opacity-40 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 dark:bg-zinc-800/30">
+              <tr>
+                <th className="text-left px-4 py-2 text-xs font-medium text-zinc-500">Email</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-zinc-500">Status</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-zinc-500">Sent</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-zinc-500">Delivered</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-zinc-500">Bounced</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {recipients.map((r) => {
+                const info = statusIcon(r);
+                const Icon = info.icon;
+                return (
+                  <tr key={r.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
+                    <td className="px-4 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-xs">
+                      {r.to_email}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className={`inline-flex items-center gap-1 text-xs ${info.color}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                        {info.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-xs text-zinc-500">
+                      {formatEventTime(r.sent_at)}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-zinc-500">
+                      {formatEventTime(r.delivered_at)}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-zinc-500">
+                      {formatEventTime(r.bounced_at)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

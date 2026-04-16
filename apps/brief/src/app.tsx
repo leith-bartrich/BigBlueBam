@@ -12,7 +12,7 @@ import { Loader2 } from 'lucide-react';
 
 type Route =
   | { page: 'home' }
-  | { page: 'documents' }
+  | { page: 'documents'; folderId?: string | null }
   | { page: 'detail'; idOrSlug: string }
   | { page: 'edit'; idOrSlug: string }
   | { page: 'templates' }
@@ -29,11 +29,16 @@ function stripBase(path: string): string {
   return path;
 }
 
-function parseRoute(path: string): Route {
-  const p = stripBase(path);
+function parseRoute(pathWithQuery: string): Route {
+  // Split off query string for route parsing, but keep search params available
+  // for the documents page (folder filter).
+  const [path, queryStr = ''] = pathWithQuery.split('?', 2);
+  const p = stripBase(path ?? '');
+  const qp = new URLSearchParams(queryStr);
+  const folderId = qp.get('folder');
 
   if (p === '/' || p === '') return { page: 'home' };
-  if (p === '/documents') return { page: 'documents' };
+  if (p === '/documents') return { page: 'documents', folderId: folderId || null };
   if (p === '/templates') return { page: 'templates' };
   if (p === '/search') return { page: 'search' };
   if (p === '/new') return { page: 'new' };
@@ -54,7 +59,9 @@ function parseRoute(path: string): Route {
 
 export function App() {
   const { isAuthenticated, isLoading, fetchMe } = useAuthStore();
-  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
+  const [route, setRoute] = useState<Route>(() =>
+    parseRoute(window.location.pathname + window.location.search),
+  );
 
   useEffect(() => {
     fetchMe();
@@ -74,7 +81,7 @@ export function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setRoute(parseRoute(window.location.pathname));
+      setRoute(parseRoute(window.location.pathname + window.location.search));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -118,7 +125,7 @@ export function App() {
       case 'home':
         return <HomePage onNavigate={navigate} />;
       case 'documents':
-        return <DocumentListPage onNavigate={navigate} />;
+        return <DocumentListPage onNavigate={navigate} folderId={route.folderId ?? null} />;
       case 'detail':
         return <DocumentDetailPage idOrSlug={route.idOrSlug} onNavigate={navigate} />;
       case 'edit':

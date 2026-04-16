@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Plus, Search, Loader2, FolderOpen } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Search, Loader2, FolderOpen, X } from 'lucide-react';
 import { useDocumentList, type DocumentStatus, type DocumentListFilters } from '@/hooks/use-documents';
+import { useFolders } from '@/hooks/use-folders';
 import { DocumentCard } from '@/components/document/document-card';
 import { Button } from '@/components/common/button';
 import { cn } from '@/lib/utils';
@@ -9,6 +10,7 @@ import { useProjectName } from '@/hooks/use-projects';
 
 interface DocumentListPageProps {
   onNavigate: (path: string) => void;
+  folderId?: string | null;
 }
 
 const STATUS_CHIPS: { value: DocumentStatus | 'all'; label: string }[] = [
@@ -19,16 +21,22 @@ const STATUS_CHIPS: { value: DocumentStatus | 'all'; label: string }[] = [
   { value: 'archived', label: 'Archived' },
 ];
 
-export function DocumentListPage({ onNavigate }: DocumentListPageProps) {
+export function DocumentListPage({ onNavigate, folderId }: DocumentListPageProps) {
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | 'all'>('all');
   const [searchText, setSearchText] = useState('');
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeProjectName = useProjectName(activeProjectId);
+  const { data: folders } = useFolders(activeProjectId);
+  const activeFolder = useMemo(
+    () => (folderId ? folders?.find((f) => f.id === folderId) : null),
+    [folders, folderId],
+  );
 
   const filters: DocumentListFilters = {};
   if (statusFilter !== 'all') filters.status = statusFilter;
   if (searchText.trim()) filters.search = searchText.trim();
   if (activeProjectId) filters.project_id = activeProjectId;
+  if (folderId) filters.folder_id = folderId;
 
   const {
     data,
@@ -84,6 +92,20 @@ export function DocumentListPage({ onNavigate }: DocumentListPageProps) {
                 : 'Showing all org documents'}
             </span>
           </div>
+
+          {/* Folder filter chip */}
+          {activeFolder && (
+            <button
+              type="button"
+              onClick={() => onNavigate('/documents')}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 text-xs font-medium hover:bg-primary-200 dark:hover:bg-primary-900/60"
+              title="Clear folder filter"
+            >
+              <FolderOpen className="h-3 w-3" />
+              {activeFolder.name}
+              <X className="h-3 w-3" />
+            </button>
+          )}
         </div>
 
         <Button size="sm" onClick={() => onNavigate('/new')}>
