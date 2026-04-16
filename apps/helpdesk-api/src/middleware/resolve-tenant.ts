@@ -34,17 +34,29 @@ declare module 'fastify' {
   }
 }
 
-const EMPTY_CONTEXT: TenantContext = {
-  orgId: null,
-  orgSlug: null,
-  orgName: null,
-  projectId: null,
-  projectSlug: null,
-  projectName: null,
-};
+function emptyContext(): TenantContext {
+  return {
+    orgId: null,
+    orgSlug: null,
+    orgName: null,
+    projectId: null,
+    projectSlug: null,
+    projectName: null,
+  };
+}
 
 async function resolveTenantPlugin(fastify: FastifyInstance) {
-  fastify.decorateRequest('tenantContext', EMPTY_CONTEXT);
+  // Fastify v5 rejects `decorateRequest('name', objectLiteral)` because a
+  // single literal would be shared across every request. Seed with a
+  // primitive (null) and rely on onRequest to install a fresh per-request
+  // TenantContext before any handler reads the field. The TypeScript
+  // declaration above promises non-null; every handler that reads it
+  // runs after onRequest so that promise holds at runtime.
+  fastify.decorateRequest('tenantContext', null as unknown as TenantContext);
+
+  fastify.addHook('onRequest', async (request: FastifyRequest) => {
+    request.tenantContext = emptyContext();
+  });
 
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     const orgSlugHeader = request.headers['x-org-slug'];
