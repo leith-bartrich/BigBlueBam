@@ -13,6 +13,7 @@ import {
 import { useBoard, useUpdateBoard, useToggleLock } from '@/hooks/use-boards';
 import { Button } from '@/components/common/button';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
+import { IconPicker } from '@/components/common/icon-picker';
 import { cn } from '@/lib/utils';
 import { AudioControls } from './audio-controls';
 
@@ -65,6 +66,13 @@ export function BoardToolbar({ boardId, onNavigate, onToggleChat, chatOpen }: Bo
         </button>
 
         <div className="flex items-center gap-2 rounded-lg bg-white/90 dark:bg-zinc-800/90 backdrop-blur shadow-sm border border-zinc-200 dark:border-zinc-700 px-3 py-1.5">
+          <IconPicker
+            value={board?.icon ?? null}
+            onChange={(icon) => updateBoard.mutate({ icon })}
+            triggerSize="sm"
+            tone="blue"
+          />
+
           {editingName ? (
             <input
               ref={nameInputRef}

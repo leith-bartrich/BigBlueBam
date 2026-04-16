@@ -1937,6 +1937,22 @@ const wave1bEvents: EventDefinition[] = [
       { name: 'org', type: 'object', description: 'Full org context' },
     ],
   },
+  {
+    source: 'platform',
+    event_type: 'approval.requested',
+    description: 'Fired when a user requests approval from another user on any subject. Emitted by the platform POST /v1/approvals endpoint; consumed by the Banter approval-DM automation template (and by any future approval-durability service).',
+    payload_schema: [
+      { name: 'approval_id', type: 'uuid', description: 'Unique id for this approval request' },
+      { name: 'subject_type', type: 'string', description: 'Free-form identifier for what is being approved (e.g. "bill.invoice", "brief.document")' },
+      { name: 'subject_id', type: 'uuid', description: 'Entity id being approved' },
+      { name: 'approver.id', type: 'uuid', description: 'User who should approve' },
+      { name: 'approver.name', type: 'string?', description: 'Approver display name' },
+      { name: 'approver.email', type: 'string?', description: 'Approver email' },
+      { name: 'body', type: 'string', description: 'Human-readable prompt for the approver' },
+      { name: 'url', type: 'string?', description: 'Deep link for the approver' },
+      { name: 'requester.id', type: 'uuid', description: 'User who requested the approval' },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -759,6 +759,82 @@ async function seedBeacon(ctx) {
   };
 }
 
+// ─── step 6.5: Platform approval.requested ────────────────────────────────
+
+async function seedApproval(ctx) {
+  const { orgId, adminId } = ctx;
+
+  // Resolve the approver. Prefer alice@example.com if she is a member of
+  // the target org; otherwise fall back to the admin (self-approval).
+  const users = await sql`
+    SELECT u.id, u.display_name, u.email
+    FROM users u
+    JOIN organization_memberships m ON m.user_id = u.id
+    WHERE m.org_id = ${orgId}
+    ORDER BY m.joined_at
+  `;
+  const alice = users.find((u) => u.email === 'alice@example.com');
+  const approver = alice ?? users.find((u) => u.id === adminId) ?? users[0];
+  if (!approver) {
+    return { skipped: true, reason: 'no org members to approve' };
+  }
+
+  // Route discovery: publishBoltEvent in @bigbluebam/shared reads
+  // BOLT_API_INTERNAL_URL / BOLT_API_URL (seed sidecar has the former
+  // set from docker-compose). INTERNAL_SERVICE_SECRET must be present
+  // for Bolt ingest to accept the event.
+  const boltUrl =
+    process.env.BOLT_API_INTERNAL_URL ??
+    process.env.BOLT_API_URL ??
+    'http://bolt-api:4006';
+  const secret = process.env.INTERNAL_SERVICE_SECRET ?? '';
+
+  const payload = {
+    approval_id: `acme-approval-${ctx.invoiceId ?? 'scenario'}`,
+    subject_type: 'bill.invoice',
+    subject_id: ctx.invoiceId ?? null,
+    approver: {
+      id: approver.id,
+      name: approver.display_name,
+      email: approver.email,
+    },
+    body:
+      `Please approve the Acme MSA invoice INV-2026-0042 (Acme Corp enterprise contract). ${SCENARIO}.`,
+    url: '/bill/invoices/INV-2026-0042',
+    requester: { id: adminId },
+  };
+
+  try {
+    const res = await fetch(`${boltUrl}/v1/events/ingest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Secret': secret,
+      },
+      body: JSON.stringify({
+        event_type: 'approval.requested',
+        source: 'platform',
+        payload,
+        org_id: orgId,
+        actor_id: adminId,
+        actor_type: 'user',
+      }),
+    });
+    if (!res.ok) {
+      return {
+        skipped: true,
+        reason: `bolt-api /v1/events/ingest returned ${res.status}`,
+      };
+    }
+    return { note: `approver=${approver.email}` };
+  } catch (err) {
+    return {
+      skipped: true,
+      reason: `bolt ingest unreachable: ${err instanceof Error ? err.message : err}`,
+    };
+  }
+}
+
 // ─── main ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -822,7 +898,18 @@ async function main() {
   await safeStep('5. Brief (Acme MSA Draft v1)', () => seedBrief(ctx));
 
   // Step 6 - Bill
-  await safeStep('6. Bill (INV-2026-0042)', () => seedBill(ctx));
+  const bill = await safeStep('6. Bill (INV-2026-0042)', () => seedBill(ctx));
+  ctx.invoiceId = bill?.invoiceId ?? null;
+
+  // Step 6.5 - Approval request (emits approval.requested for the Bill
+  // invoice, routed to Alice as the approver). This exercises the
+  // Banter approval-DM Bolt template end-to-end: the event arrives in
+  // bolt-api, the template matches, and if a matching Banter DM
+  // automation is enabled it fires a DM to Alice. Best-effort only;
+  // failures here do not break the scenario.
+  await safeStep('6.5. Platform (approval.requested for MSA invoice)', () =>
+    seedApproval(ctx),
+  );
 
   // Step 7 - Helpdesk
   await safeStep('7. Helpdesk (Cannot sign MSA PDF)', () => seedHelpdesk(ctx));

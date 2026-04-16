@@ -18,11 +18,37 @@ BEGIN
   -- Resolve a project for this org (orchestrator does not substitute :project_id).
   SELECT id INTO v_proj FROM projects WHERE org_id = v_org ORDER BY created_at LIMIT 1;
 
-  -- Idempotency guard
-  IF EXISTS (SELECT 1 FROM boards WHERE organization_id = v_org LIMIT 1) THEN
-    RAISE NOTICE 'Board seed: boards already exist for this org, skipping.';
+  -- Idempotency guard: skip only if every one of the 8 seeded boards already
+  -- has elements. If any of them is missing or empty (e.g. a prior partial
+  -- run that rolled back element inserts), purge just the seeded board
+  -- names and re-create them. User-created boards (any name not in the
+  -- seed list) are left untouched.
+  IF (
+    SELECT COUNT(*)
+    FROM boards b
+    WHERE b.organization_id = v_org
+      AND b.name IN (
+        'Sprint 15 Retrospective', 'Q2 Feature Brainstorm',
+        'System Architecture v2', 'User Onboarding Flow',
+        'Product Roadmap', 'Team SWOT Analysis',
+        'Design Sprint Board', 'Weekly Standup Notes'
+      )
+      AND EXISTS (SELECT 1 FROM board_elements e WHERE e.board_id = b.id)
+  ) = 8 THEN
+    RAISE NOTICE 'Board seed: all 8 seeded boards already populated, skipping.';
     RETURN;
   END IF;
+
+  -- Purge any partially-seeded board so the fresh insert below lands cleanly.
+  -- CASCADE from boards to elements, collaborators, stars, chats.
+  DELETE FROM boards
+  WHERE organization_id = v_org
+    AND name IN (
+      'Sprint 15 Retrospective', 'Q2 Feature Brainstorm',
+      'System Architecture v2', 'User Onboarding Flow',
+      'Product Roadmap', 'Team SWOT Analysis',
+      'Design Sprint Board', 'Weekly Standup Notes'
+    );
 
   b1 := gen_random_uuid(); b2 := gen_random_uuid(); b3 := gen_random_uuid();
   b4 := gen_random_uuid(); b5 := gen_random_uuid(); b6 := gen_random_uuid();
