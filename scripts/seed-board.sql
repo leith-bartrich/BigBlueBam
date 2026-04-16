@@ -1,27 +1,28 @@
--- Seed Board demo data for Mage Inc
--- Run: docker compose exec -T postgres psql -U bigbluebam < scripts/seed-board.sql
+-- Seed Board demo data
+-- Run via orchestrator: node scripts/seed-all.mjs (substitutes :org_id / :user_N)
+-- idempotent: skip-if-any-board-already-present
 
 DO $$
 DECLARE
-  v_org UUID := '57158e52-227d-4903-b0d8-d9f3c4910f61';
-  v_proj UUID := '650b38cb-3b36-4014-bf96-17f7617b326a';
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';  -- Eddie
-  v_u2 UUID := 'cffb3330-4868-4741-95f4-564efe27836a';  -- Sarah
-  v_u3 UUID := 'f290dd98-65fa-403a-9778-6dbda873fc98';  -- Marcus
-  v_u4 UUID := '138894b9-58ef-4eb4-9d27-bf36fff48885';  -- Priya
-  v_u5 UUID := 'baa36964-d672-4271-ae96-b0cf5b1062a4';  -- Alex
-  v_u6 UUID := '5e77088e-6d83-4821-8f9d-7857d2aefb68';  -- Jordan
+  v_org UUID := :org_id;
+  v_proj UUID;
+  v_u1 UUID := :user_1;
+  v_u2 UUID := :user_2;
+  v_u3 UUID := :user_3;
+  v_u4 UUID := :user_4;
+  v_u5 UUID := :user_5;
+  v_u6 UUID := :user_6;
 
   b1 UUID; b2 UUID; b3 UUID; b4 UUID; b5 UUID; b6 UUID; b7 UUID; b8 UUID;
 BEGIN
-  -- Clean existing board data for this org
-  DELETE FROM board_chat_messages WHERE board_id IN (SELECT id FROM boards WHERE organization_id = v_org);
-  DELETE FROM board_stars WHERE board_id IN (SELECT id FROM boards WHERE organization_id = v_org);
-  DELETE FROM board_collaborators WHERE board_id IN (SELECT id FROM boards WHERE organization_id = v_org);
-  DELETE FROM board_task_links WHERE board_id IN (SELECT id FROM boards WHERE organization_id = v_org);
-  DELETE FROM board_elements WHERE board_id IN (SELECT id FROM boards WHERE organization_id = v_org);
-  DELETE FROM board_versions WHERE board_id IN (SELECT id FROM boards WHERE organization_id = v_org);
-  DELETE FROM boards WHERE organization_id = v_org;
+  -- Resolve a project for this org (orchestrator does not substitute :project_id).
+  SELECT id INTO v_proj FROM projects WHERE org_id = v_org ORDER BY created_at LIMIT 1;
+
+  -- Idempotency guard
+  IF EXISTS (SELECT 1 FROM boards WHERE organization_id = v_org LIMIT 1) THEN
+    RAISE NOTICE 'Board seed: boards already exist for this org, skipping.';
+    RETURN;
+  END IF;
 
   b1 := gen_random_uuid(); b2 := gen_random_uuid(); b3 := gen_random_uuid();
   b4 := gen_random_uuid(); b5 := gen_random_uuid(); b6 := gen_random_uuid();

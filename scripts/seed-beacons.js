@@ -1,27 +1,15 @@
 // scripts/seed-beacons.js
-// Seed 5000 beacons for Mage Inc with varied topics, dates, statuses, tags, and links.
+// Seed ~5000 beacons with varied topics, dates, statuses, tags, and links.
+// Resolves the target org via SEED_ORG_SLUG env var (set by the orchestrator)
+// or --org-slug=<slug> CLI arg, falling back to the oldest org in the DB.
 // Run: docker compose exec api node /app/scripts/seed-beacons.js
-//   or: DATABASE_URL=postgresql://... node scripts/seed-beacons.js
+//   or: DATABASE_URL=postgresql://... SEED_ORG_SLUG=mage-inc node scripts/seed-beacons.js
+// idempotent: skip-if-exists via guard on beacon_entries count for the org.
 
 import postgres from 'postgres';
 import crypto from 'crypto';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const ORG_ID = '57158e52-227d-4903-b0d8-d9f3c4910f61';
-const PROJECT_ID = '650b38cb-3b36-4014-bf96-17f7617b326a';
-const USER_IDS = [
-  '65429e63-65c7-4f74-a19e-977217128edc', // eddie
-  'cffb3330-4868-4741-95f4-564efe27836a', // alex
-  'f290dd98-65fa-403a-9778-6dbda873fc98', // ryan
-  '138894b9-58ef-4eb4-9d27-bf36fff48885', // maya
-  'baa36964-d672-4271-ae96-b0cf5b1062a4', // sam
-  '5e77088e-6d83-4821-8f9d-7857d2aefb68', // jordan
-  '851ecd19-c928-4263-9869-e1904b554276', // taylor
-  'dd98bdfe-7ee4-4bd3-b6ee-70fb8fc0efc8', // casey
-  '0d79e8fa-d206-4f0a-90df-5669e9fab286', // drew
-  '969d36a7-a10d-4a64-99dc-f2a95fe2b038', // avery
-];
-
 const TOTAL_BEACONS = 5000;
 const BATCH_SIZE = 500;
 const NOW = new Date();
@@ -539,6 +527,46 @@ async function main() {
   // Verify connection
   const [{ now }] = await sql`SELECT now()`;
   console.log(`Connected. Server time: ${now}`);
+
+  // ── Resolve target org dynamically ─────────────────────────────────────
+  const orgSlug = process.env.SEED_ORG_SLUG
+    ?? process.argv.find((a) => a.startsWith('--org-slug='))?.split('=')[1];
+  const [org] = orgSlug
+    ? await sql`SELECT id, name FROM organizations WHERE slug = ${orgSlug} LIMIT 1`
+    : await sql`SELECT id, name FROM organizations ORDER BY created_at LIMIT 1`;
+  if (!org) {
+    console.error('No org found, run create-admin first');
+    await sql.end();
+    process.exit(1);
+  }
+  const ORG_ID = org.id;
+  console.log(`Using org: ${org.name} (${org.id})`);
+
+  const users = await sql`SELECT id, email, display_name FROM users WHERE org_id = ${org.id} ORDER BY created_at`;
+  if (users.length === 0) {
+    console.error('No users in org, run create-admin first');
+    await sql.end();
+    process.exit(1);
+  }
+  const USER_IDS = users.map((u) => u.id);
+  console.log(`User pool: ${USER_IDS.length} users`);
+
+  // Pick an available project. Beacons optionally scope to a project; falling back to NULL is fine.
+  const projects = await sql`SELECT id, name FROM projects WHERE org_id = ${org.id} ORDER BY created_at LIMIT 1`;
+  const PROJECT_ID = projects.length > 0 ? projects[0].id : null;
+  if (PROJECT_ID) {
+    console.log(`Using project: ${projects[0].name} (${PROJECT_ID}) for ~80% of beacons`);
+  } else {
+    console.log('No project found; all beacons will be org-scoped (project_id=NULL).');
+  }
+
+  // Idempotency guard: skip if the org already has beacons seeded.
+  const [{ count: existingCount }] = await sql`SELECT COUNT(*)::int AS count FROM beacon_entries WHERE organization_id = ${ORG_ID}`;
+  if (existingCount > 0) {
+    console.log(`Beacon seed: ${existingCount} beacon_entries already exist for this org, skipping.`);
+    await sql.end();
+    return;
+  }
 
   // ── Generate beacons ───────────────────────────────────────────────────
   console.log(`Generating ${TOTAL_BEACONS} beacons...`);

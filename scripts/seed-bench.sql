@@ -1,11 +1,12 @@
--- Seed Bench (Dashboards & Analytics) demo data for Mage Inc
--- Run: docker compose exec -T postgres psql -U bigbluebam < scripts/seed-bench.sql
+-- Seed Bench (Dashboards & Analytics) demo data
+-- Run via orchestrator: node scripts/seed-all.mjs (substitutes :org_id / :user_N)
+-- idempotent: skip-if-any-dashboard-already-present
 
 DO $$
 DECLARE
-  v_org UUID := '57158e52-227d-4903-b0d8-d9f3c4910f61';
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';  -- Eddie
-  v_u2 UUID := 'cffb3330-4868-4741-95f4-564efe27836a';  -- Sarah
+  v_org UUID := :org_id;
+  v_u1 UUID := :user_1;
+  v_u2 UUID := :user_2;
 
   -- Dashboards
   d1 UUID; d2 UUID; d3 UUID;
@@ -15,13 +16,11 @@ DECLARE
   w6 UUID; w7 UUID; w8 UUID; w9 UUID; w10 UUID;
 
 BEGIN
-  -- ══════════════════════════════════════════════════════════════
-  -- Clean existing Bench data for this org
-  -- ══════════════════════════════════════════════════════════════
-  DELETE FROM bench_widgets WHERE dashboard_id IN (SELECT id FROM bench_dashboards WHERE organization_id = v_org);
-  DELETE FROM bench_scheduled_reports WHERE organization_id = v_org;
-  DELETE FROM bench_dashboards WHERE organization_id = v_org;
-  DELETE FROM bench_saved_queries WHERE organization_id = v_org;
+  -- Idempotency guard: if this org already has any bench_dashboards, skip the whole seed.
+  IF EXISTS (SELECT 1 FROM bench_dashboards WHERE organization_id = v_org LIMIT 1) THEN
+    RAISE NOTICE 'Bench seed: dashboards already exist for this org, skipping.';
+    RETURN;
+  END IF;
 
   -- ══════════════════════════════════════════════════════════════
   -- Dashboard 1: Engineering Overview (org-wide)

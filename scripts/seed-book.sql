@@ -1,11 +1,12 @@
--- Seed Book (Scheduling & Calendar) demo data for Mage Inc
--- Run: docker compose exec -T postgres psql -U bigbluebam < scripts/seed-book.sql
+-- Seed Book (Scheduling & Calendar) demo data
+-- Run via orchestrator: node scripts/seed-all.mjs (substitutes :org_id / :user_N)
+-- idempotent: skip-if-any-calendar-already-present
 
 DO $$
 DECLARE
-  v_org UUID := '57158e52-227d-4903-b0d8-d9f3c4910f61';
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';  -- Eddie
-  v_u2 UUID := 'cffb3330-4868-4741-95f4-564efe27836a';  -- Sarah
+  v_org UUID := :org_id;
+  v_u1 UUID := :user_1;
+  v_u2 UUID := :user_2;
 
   -- Calendars
   cal1 UUID; cal2 UUID;
@@ -20,15 +21,11 @@ DECLARE
   bp1 UUID;
 
 BEGIN
-  -- ══════════════════════════════════════════════════════════════
-  -- Clean existing Book data for this org
-  -- ══════════════════════════════════════════════════════════════
-  DELETE FROM book_event_attendees WHERE event_id IN (SELECT id FROM book_events WHERE organization_id = v_org);
-  DELETE FROM book_events WHERE organization_id = v_org;
-  DELETE FROM book_booking_pages WHERE organization_id = v_org;
-  DELETE FROM book_working_hours WHERE user_id IN (v_u1, v_u2);
-  DELETE FROM book_ical_tokens WHERE user_id IN (v_u1, v_u2);
-  DELETE FROM book_calendars WHERE organization_id = v_org;
+  -- Idempotency guard
+  IF EXISTS (SELECT 1 FROM book_calendars WHERE organization_id = v_org LIMIT 1) THEN
+    RAISE NOTICE 'Book seed: calendars already exist for this org, skipping.';
+    RETURN;
+  END IF;
 
   -- ══════════════════════════════════════════════════════════════
   -- 1. CALENDARS (2)

@@ -1,11 +1,12 @@
--- Seed Blank (Forms & Surveys) demo data for Mage Inc
--- Run: docker compose exec -T postgres psql -U bigbluebam < scripts/seed-blank.sql
+-- Seed Blank (Forms & Surveys) demo data
+-- Run via orchestrator: node scripts/seed-all.mjs (substitutes :org_id / :user_N)
+-- idempotent: skip-if-any-form-already-present
 
 DO $$
 DECLARE
-  v_org UUID := '57158e52-227d-4903-b0d8-d9f3c4910f61';
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';  -- Eddie
-  v_u2 UUID := 'cffb3330-4868-4741-95f4-564efe27836a';  -- Sarah
+  v_org UUID := :org_id;
+  v_u1 UUID := :user_1;
+  v_u2 UUID := :user_2;
 
   -- Forms
   f1 UUID; f2 UUID; f3 UUID; f4 UUID; f5 UUID;
@@ -14,12 +15,11 @@ DECLARE
   fl UUID;
 
 BEGIN
-  -- ══════════════════════════════════════════════════════════════
-  -- Clean existing Blank data for this org
-  -- ══════════════════════════════════════════════════════════════
-  DELETE FROM blank_submissions WHERE organization_id = v_org;
-  DELETE FROM blank_form_fields WHERE form_id IN (SELECT id FROM blank_forms WHERE organization_id = v_org);
-  DELETE FROM blank_forms WHERE organization_id = v_org;
+  -- Idempotency guard
+  IF EXISTS (SELECT 1 FROM blank_forms WHERE organization_id = v_org LIMIT 1) THEN
+    RAISE NOTICE 'Blank seed: forms already exist for this org, skipping.';
+    RETURN;
+  END IF;
 
   -- ══════════════════════════════════════════════════════════════
   -- Form 1: Customer Feedback Survey (published)
