@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
 import agentRoutes from './routes/agent.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import publicTenantRoutes from './routes/public-tenant.routes.js';
 import helpdeskUploadRoutes from './routes/upload.routes.js';
 import attachmentRoutes from './routes/attachments.routes.js';
 import websocketHandler from './ws/handler.js';
@@ -191,6 +192,7 @@ await fastify.register(ticketRoutes);
 // under the same nginx rewrite and the agent routes are unreachable.
 await fastify.register(agentRoutes, { prefix: '/helpdesk/agents' });
 await fastify.register(settingsRoutes);
+await fastify.register(publicTenantRoutes);
 await fastify.register(helpdeskUploadRoutes);
 // G6: ticket-scoped attachments. Shares the @fastify/multipart plugin
 // registered inside upload.routes.ts.
