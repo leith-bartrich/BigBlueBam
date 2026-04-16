@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, Folder, FolderPlus, Loader2 } from 'lucide-react';
+import { ChevronRight, Folder, FolderPlus, FolderOpen, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/project.store';
 import {
@@ -93,6 +93,19 @@ export function FolderTree({ onNavigate, activeFolderId }: FolderTreeProps) {
 
       {tree.length === 0 && !isLoading && creatingName === null && (
         <p className="px-3 py-1.5 text-xs text-zinc-500 italic">No folders yet.</p>
+      )}
+
+      {/* All-documents shortcut, only shown when a folder is active so the
+          tree does not grow a redundant row in the common case. */}
+      {activeFolderId && (
+        <button
+          type="button"
+          onClick={() => onNavigate('/documents')}
+          className="flex items-center gap-1.5 w-full rounded-md px-3 py-1 text-xs text-zinc-500 hover:bg-sidebar-hover hover:text-zinc-200 transition-colors mb-1"
+        >
+          <FolderOpen className="h-3 w-3 shrink-0" />
+          All documents
+        </button>
       )}
 
       <ul className="space-y-0.5">
