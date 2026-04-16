@@ -436,6 +436,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -35,6 +35,7 @@ const ingestEventSchema = z.object({
     'bill',
     'book',
     'blank',
+    'platform',
   ]),
   payload: z.record(z.unknown()),
   org_id: z.string().uuid(),
