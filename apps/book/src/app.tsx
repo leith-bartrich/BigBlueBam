@@ -12,6 +12,7 @@ import { BookingPageEditorPage } from '@/pages/booking-page-editor';
 import { WorkingHoursPage } from '@/pages/working-hours';
 import { ConnectionsPage } from '@/pages/connections';
 import { CalendarsPage } from '@/pages/calendars';
+import { MeetPage } from '@/pages/meet';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -26,7 +27,8 @@ type Route =
   | { page: 'booking-page-edit'; id: string }
   | { page: 'working-hours' }
   | { page: 'connections' }
-  | { page: 'calendars' };
+  | { page: 'calendars' }
+  | { page: 'meet'; slug: string };
 
 const BASE_PATH = '/book';
 
@@ -44,6 +46,10 @@ function parseRoute(path: string): Route {
   if (p === '/day') return { page: 'day' };
   if (p === '/timeline') return { page: 'timeline' };
   if (p === '/booking-pages') return { page: 'booking-pages' };
+
+  // /meet/:slug — public booking page (no auth required)
+  const meetMatch = p.match(/^\/meet\/([^/]+)$/);
+  if (meetMatch) return { page: 'meet', slug: meetMatch[1]! };
   if (p === '/settings/working-hours') return { page: 'working-hours' };
   if (p === '/settings/connections') return { page: 'connections' };
   if (p === '/settings/calendars') return { page: 'calendars' };
@@ -101,6 +107,11 @@ export function App() {
     setRoute(parseRoute(fullPath));
   }, []);
 
+  // Public booking page bypasses auth so anonymous visitors can book.
+  if (route.page === 'meet') {
+    return <MeetPage slug={route.slug} />;
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -154,6 +165,9 @@ export function App() {
         return <ConnectionsPage onNavigate={navigate} />;
       case 'calendars':
         return <CalendarsPage onNavigate={navigate} />;
+      case 'meet':
+        // Handled by early return above.
+        return <MeetPage slug={route.slug} />;
       default:
         return null;
     }
