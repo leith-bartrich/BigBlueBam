@@ -540,6 +540,33 @@ async function main() {
     if (p.isNew) console.log(`  + project ${p.slug} (${p.name})`);
   }
 
+  // ── Enroll every org user as a member of every project ────────────────
+  // Without this, Bam's listProjects uses an inner-join on
+  // project_memberships and returns "No projects yet" for anyone who
+  // hasn't been explicitly added. For a demo environment we want every
+  // seeded user to see every seeded project, plus the admin who was
+  // created by cli.js create-admin.
+  const [adminByEmail] = await sql`
+    SELECT id FROM users WHERE email = 'admin@example.com' LIMIT 1
+  `;
+  const memberIds = new Set(users.map((u) => u.id));
+  if (adminByEmail?.id) memberIds.add(adminByEmail.id);
+  let membershipsInserted = 0;
+  for (const p of projects) {
+    for (const uid of memberIds) {
+      const res = await sql`
+        INSERT INTO project_memberships (project_id, user_id, role)
+        VALUES (${p.id}, ${uid}, 'admin')
+        ON CONFLICT (project_id, user_id) DO NOTHING
+        RETURNING id
+      `;
+      if (res.length > 0) membershipsInserted++;
+    }
+  }
+  if (membershipsInserted > 0) {
+    console.log(`  + ${membershipsInserted} project_memberships`);
+  }
+
   // ── Phases, states, sprints, tasks per project ─────────────────────────
   let totalTasksInserted = 0;
   for (const project of projects) {
