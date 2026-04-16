@@ -209,6 +209,23 @@ async function seedBond(ctx) {
     `;
   }
 
+  // Record an import-mapping row so the `bond_import_mappings` surface has
+  // at least one demo row. Represents the Acme contact having originally
+  // landed via an imaginary `express-interest` form submission that the
+  // Bond import pipeline wired to this contact.
+  if (await tableExists('bond_import_mappings')) {
+    await sql`
+      INSERT INTO bond_import_mappings (
+        organization_id, source_system, source_id, bond_entity_type, bond_entity_id
+      )
+      VALUES (
+        ${orgId}, 'express-interest', 'acme-ellen-ames-2026-04-01',
+        'contact', ${contact.id}
+      )
+      ON CONFLICT (organization_id, source_system, source_id) DO NOTHING
+    `;
+  }
+
   return {
     pipelineId: pipeline.id,
     stageId: deal.stage_id ?? negotiateStage.id,

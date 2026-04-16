@@ -66,7 +66,11 @@ const REPORT_TABLES = [
   'book_events',
   'blast_campaigns',
   'blank_forms',
-  'bench_saved_reports',
+  'bench_dashboards',
+  'bench_widgets',
+  'bench_saved_queries',
+  'bench_scheduled_reports',
+  'bench_materialized_views',
   'bill_invoices',
   'brief_documents',
 ];
