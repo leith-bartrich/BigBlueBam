@@ -30,13 +30,18 @@ const envSchema = z.object({
   MCP_RATE_LIMIT_RPM: z.coerce.number().int().positive().default(120),
   // Wave 0.2: shared secret for the internal POST /tools/call HTTP route.
   // Must match INTERNAL_SERVICE_SECRET on the calling services (bolt-api,
-  // worker, api). Absent or short means /tools/call returns 503.
-  INTERNAL_SERVICE_SECRET: z.string().min(32).optional(),
+  // worker, api). Absent, empty, or short means /tools/call returns 503.
+  // Empty string is normalized to undefined because docker-compose
+  // interpolation turns unset references into empty strings by default.
+  INTERNAL_SERVICE_SECRET: z
+    .preprocess((v) => (typeof v === 'string' && v.length === 0 ? undefined : v), z.string().min(32).optional()),
   // Bearer token minted via `cli create-service-account` that the internal
   // /tools/call route hands to the per-request ApiClient. The service
   // account is org-bound, so this token provides the org scoping for any
-  // tool invocation that flows through /tools/call.
-  MCP_INTERNAL_API_TOKEN: z.string().min(1).optional(),
+  // tool invocation that flows through /tools/call. Empty string is
+  // normalized to undefined for the same docker-compose reason as above.
+  MCP_INTERNAL_API_TOKEN: z
+    .preprocess((v) => (typeof v === 'string' && v.length === 0 ? undefined : v), z.string().min(1).optional()),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
