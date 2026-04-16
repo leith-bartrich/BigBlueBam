@@ -322,7 +322,8 @@ BEGIN
     -- Board 7: Design Sprint (design team + PM)
     (b7, v_u4, 'edit'), (b7, v_u5, 'edit'), (b7, v_u2, 'view'),
     -- Board 8: Standup Notes (whole team)
-    (b8, v_u1, 'edit'), (b8, v_u2, 'edit'), (b8, v_u3, 'edit'), (b8, v_u6, 'edit');
+    (b8, v_u1, 'edit'), (b8, v_u2, 'edit'), (b8, v_u3, 'edit'), (b8, v_u6, 'edit')
+  ON CONFLICT (board_id, user_id) DO NOTHING;
 
   -- ══════════════════════════════════════════════════════════════════════════
   -- STARS

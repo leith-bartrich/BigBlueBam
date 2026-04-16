@@ -124,10 +124,11 @@ async function main() {
   console.log(`Using organization: "${org.name}" (${org.id})`);
 
   const users = await sql`
-    SELECT id, email, display_name
-    FROM users
-    WHERE org_id = ${org.id}
-    ORDER BY created_at
+    SELECT u.id, u.email, u.display_name
+    FROM users u
+    JOIN organization_memberships m ON m.user_id = u.id
+    WHERE m.org_id = ${org.id}
+    ORDER BY m.joined_at
   `;
   if (users.length < 2) {
     console.error('Need at least 2 users in the org for Banter seed; aborting.');

@@ -201,11 +201,17 @@ async function resolveOrg() {
 
 async function resolveUserPool(orgId) {
   // Round-robin pool used when substituting :user_N placeholders in .sql
-  // seed files. Returns whatever users exist today in creation order.
+  // seed files. Joins through organization_memberships so users whose
+  // primary users.org_id is a different org (but who have a membership
+  // in this org) are included, not just users whose primary org equals
+  // the target. Returns in membership-join order, which is stable enough
+  // for round-robin across re-runs.
   const rows = await sql`
-    SELECT id FROM users
-    WHERE org_id = ${orgId} AND is_active = true
-    ORDER BY created_at
+    SELECT u.id
+    FROM users u
+    JOIN organization_memberships m ON m.user_id = u.id
+    WHERE m.org_id = ${orgId} AND u.is_active = true
+    ORDER BY m.joined_at
     LIMIT 20
   `;
   return rows.map((r) => r.id);

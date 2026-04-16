@@ -489,9 +489,11 @@ async function main() {
   // Pull every user in the org, including the pre-existing admin, for the
   // round-robin assignment pool.
   const allUsersRows = await sql`
-    SELECT id, email, display_name, role FROM users
-    WHERE org_id = ${org.id} AND is_active = true
-    ORDER BY created_at
+    SELECT u.id, u.email, u.display_name, u.role
+    FROM users u
+    JOIN organization_memberships m ON m.user_id = u.id
+    WHERE m.org_id = ${org.id} AND u.is_active = true
+    ORDER BY m.joined_at
   `;
   const users = allUsersRows.map((u) => ({
     id: u.id,
@@ -503,7 +505,11 @@ async function main() {
 
   // The admin from create-admin is the canonical reporter / creator.
   const [adminUser] = await sql`
-    SELECT id FROM users WHERE org_id = ${org.id} AND role = 'owner' ORDER BY created_at LIMIT 1
+    SELECT u.id FROM users u
+    JOIN organization_memberships m ON m.user_id = u.id
+    WHERE m.org_id = ${org.id} AND (u.role = 'owner' OR m.role = 'owner')
+    ORDER BY m.joined_at
+    LIMIT 1
   `;
   const creatorId = adminUser?.id ?? users[0].id;
 

@@ -381,7 +381,7 @@ async function seedBook(ctx) {
       ${`Kickoff discussion with Acme. ${SCENARIO}.`},
       'Video call',
       ${startAt}, ${endAt}, 'UTC', 'confirmed', 'busy',
-      ${taskId ? 'task' : null}, ${taskId ?? null}, ${adminId}
+      ${taskId ? 'bam_task' : null}, ${taskId ?? null}, ${adminId}
     )
     RETURNING id
   `;

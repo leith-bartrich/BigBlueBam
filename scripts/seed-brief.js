@@ -770,7 +770,7 @@ async function seed() {
 
   // Idempotency guard: skip if the org already has Brief documents seeded.
   // We intentionally do NOT delete existing rows; re-runs are a no-op.
-  const [{ count: existingDocs }] = await sql`SELECT COUNT(*)::int AS count FROM brief_documents WHERE organization_id = ${ORG_ID}`;
+  const [{ count: existingDocs }] = await sql`SELECT COUNT(*)::int AS count FROM brief_documents WHERE org_id = ${ORG_ID}`;
   if (existingDocs > 0) {
     console.log(`Brief seed: ${existingDocs} documents already exist for this org, skipping.`);
     await sql.end();
@@ -782,7 +782,7 @@ async function seed() {
   for (const f of FOLDERS) {
     const id = uuid();
     await sql`
-      INSERT INTO brief_folders (id, organization_id, project_id, name, slug, sort_order, created_by)
+      INSERT INTO brief_folders (id, org_id, project_id, name, slug, sort_order, created_by)
       VALUES (${id}, ${ORG_ID}, ${PROJECT_ID}, ${f.name}, ${f.slug}, ${FOLDERS.indexOf(f)}, ${USER_IDS[0]})
       ON CONFLICT DO NOTHING
     `;
@@ -793,7 +793,7 @@ async function seed() {
   // ── Insert templates ──
   for (const t of TEMPLATES) {
     await sql`
-      INSERT INTO brief_templates (id, organization_id, name, description, icon, category, yjs_state, sort_order, created_by)
+      INSERT INTO brief_templates (id, org_id, name, description, icon, category, yjs_state, sort_order, created_by)
       VALUES (${uuid()}, NULL, ${t.name}, ${t.description}, ${t.icon}, ${t.category}, ${Buffer.from('{}')}, ${TEMPLATES.indexOf(t)}, ${USER_IDS[0]})
       ON CONFLICT DO NOTHING
     `;
@@ -813,7 +813,7 @@ async function seed() {
 
     await sql`
       INSERT INTO brief_documents (
-        id, organization_id, project_id, folder_id, title, slug,
+        id, org_id, project_id, folder_id, title, slug,
         plain_text, html_snapshot, icon, status, visibility, pinned,
         word_count, created_by, updated_by, created_at, updated_at
       ) VALUES (
