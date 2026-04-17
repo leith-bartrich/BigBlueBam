@@ -17,7 +17,12 @@ const ticketShape = z.object({
 
 export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdeskApiUrl: string): void {
   /** Helper to make requests to the helpdesk-api service */
-  async function helpdeskRequest(method: string, path: string, body?: unknown) {
+  async function helpdeskRequest(
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ) {
     const url = `${helpdeskApiUrl}${path}`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
@@ -25,6 +30,12 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
     const token = (api as unknown as { token?: string }).token;
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    if (extraHeaders) {
+      for (const [k, v] of Object.entries(extraHeaders)) {
+        headers[k] = v;
+      }
     }
 
     const init: RequestInit = { method, headers };
@@ -295,6 +306,128 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
         isError: !result.ok ? true : undefined,
+      };
+    },
+  });
+
+  registerTool(server, {
+    name: 'helpdesk_set_default_project',
+    description:
+      'Set the default project for incoming helpdesk tickets for a specific organization. Identifies the org by slug (e.g. "mage-inc") and the project by slug (e.g. "support-backlog"). Future tickets submitted at /helpdesk/<org-slug>/ (no project segment) will land in this project. Per-project portal URLs (/helpdesk/<org-slug>/<project-slug>/) override this default. Requires admin authentication.',
+    input: {
+      org_slug: z.string().min(1).max(100).describe('Organization slug (from organizations.slug).'),
+      project_slug: z
+        .string()
+        .min(1)
+        .max(100)
+        .describe('Project slug (from projects.slug). Must belong to the named org.'),
+    },
+    returns: z.object({}).passthrough(),
+    handler: async ({ org_slug, project_slug }) => {
+      // Use the public discovery endpoint to resolve the project slug to
+      // its uuid without requiring admin auth for the lookup itself. The
+      // subsequent PATCH does require admin auth.
+      const discovery = await helpdeskRequest(
+        'GET',
+        `/helpdesk/public/orgs/${encodeURIComponent(org_slug)}`,
+      );
+      if (!discovery.ok) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Could not find organization "${org_slug}": ${JSON.stringify(discovery.data)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const payload = discovery.data as {
+        data?: { projects?: Array<{ slug: string; name: string }> };
+      };
+      const projects = payload.data?.projects ?? [];
+      const match = projects.find((p) => p.slug === project_slug);
+      if (!match) {
+        const available = projects.map((p) => p.slug).join(', ') || '(none)';
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `No project "${project_slug}" in org "${org_slug}". Available project slugs: ${available}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Resolve the project slug to a uuid via the admin-scoped helpdesk
+      // projects listing, which returns { id, slug, name } for the
+      // X-Org-Slug tenant. This tool inherits admin auth from the
+      // caller's MCP credentials (the helpdesk PATCH route also requires
+      // admin auth, so if we can PATCH we can list).
+      const projectsRes = await helpdeskRequest(
+        'GET',
+        '/helpdesk/admin/projects',
+        undefined,
+        { 'X-Org-Slug': org_slug },
+      );
+      if (!projectsRes.ok) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Could not list projects for "${org_slug}": ${JSON.stringify(projectsRes.data)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      const projectList = (
+        projectsRes.data as { data?: Array<{ id: string; slug: string }> }
+      ).data ?? [];
+      const projectHit = projectList.find((p) => p.slug === project_slug);
+      const projectId = projectHit?.id ?? null;
+
+      if (!projectId) {
+        const available = projectList.map((p) => p.slug).join(', ') || '(none)';
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Project "${project_slug}" not found in org "${org_slug}". Available slugs: ${available}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const result = await helpdeskRequest(
+        'PATCH',
+        '/helpdesk/settings',
+        { default_project_id: projectId },
+        { 'X-Org-Slug': org_slug },
+      );
+
+      if (!result.ok) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Failed to update default project: ${JSON.stringify(result.data)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Default project for org "${org_slug}" set to "${project_slug}" (${projectId}).\n${JSON.stringify(result.data, null, 2)}`,
+          },
+        ],
       };
     },
   });

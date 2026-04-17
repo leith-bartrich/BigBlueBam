@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/auth.store';
+import { useTenantStore } from '@/stores/tenant.store';
 import { generateAvatarInitials } from '@/lib/utils';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { LogOut, User, LifeBuoy } from 'lucide-react';
@@ -9,6 +10,7 @@ interface HeaderProps {
 
 export function Header({ onNavigate }: HeaderProps) {
   const { user, logout } = useAuthStore();
+  const { orgName, projectName } = useTenantStore();
 
   const handleLogout = async () => {
     await logout();
@@ -27,9 +29,13 @@ export function Header({ onNavigate }: HeaderProps) {
             B
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-zinc-900 dark:text-zinc-100">BigBlueBam</span>
+            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+              {orgName ?? 'BigBlueBam'}
+            </span>
             <LifeBuoy className="h-3.5 w-3.5 text-primary-500" />
-            <span className="text-sm text-zinc-500">Helpdesk</span>
+            <span className="text-sm text-zinc-500">
+              {projectName ? `${projectName} support` : 'Helpdesk'}
+            </span>
           </div>
         </button>
 

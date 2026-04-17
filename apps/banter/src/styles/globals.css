@@ -22,6 +22,7 @@
   --color-presence-online: #22c55e;
   --color-presence-idle: #eab308;
   --color-presence-dnd: #ef4444;
+  --color-presence-in-call: #3b82f6;
   --color-presence-offline: #71717a;
 
   --animate-slide-in-right: slide-in-right 0.25s ease-out;

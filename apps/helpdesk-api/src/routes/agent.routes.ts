@@ -20,6 +20,7 @@ import {
 } from '../services/realtime.js';
 import { mirrorTicketMessageToTask, mirrorTicketClosedToTask } from '../lib/task-sync.js';
 import { logTicketActivity } from '../lib/ticket-activity.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
 
 const updateTicketSchema = z.object({
   status: z.enum(['open', 'in_progress', 'waiting_on_customer', 'resolved', 'closed']).optional(),
@@ -551,7 +552,12 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     // Verify ticket exists
     const [ticket] = await db
-      .select({ id: tickets.id, task_id: tickets.task_id })
+      .select({
+        id: tickets.id,
+        task_id: tickets.task_id,
+        first_response_at: tickets.first_response_at,
+        status: tickets.status,
+      })
       .from(tickets)
       .where(eq(tickets.id, id))
       .limit(1);
@@ -719,6 +725,36 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // G4 / SLA tracking: stamp first_response_at on the ticket the first
+    // time an agent posts a PUBLIC (non-internal) message. This is the
+    // field the SLA breach sweeper (out-of-scope for Wave 2) will use to
+    // decide whether the first-response SLA was met.
+    if (message && message.is_internal === false && ticket.first_response_at === null) {
+      await db
+        .update(tickets)
+        .set({ first_response_at: message.created_at ?? new Date(), updated_at: new Date() })
+        .where(eq(tickets.id, id));
+    }
+
+    // G3: ticket.message_posted Bolt event for agent replies (including
+    // internal notes, so Bolt rules can fan out on internal annotations).
+    if (message) {
+      void publishBoltEvent(
+        'ticket.message_posted',
+        'helpdesk',
+        {
+          ticket_id: id,
+          message_id: message.id,
+          author_type: 'agent',
+          author_id: authorId,
+          is_internal: message.is_internal,
+        },
+        scopeOrgId,
+        authorId,
+        'agent',
+      );
+    }
+
     // TODO: If not internal and notify_on_agent_reply is enabled, queue email to client
 
     return reply.status(201).send({ data: message });
@@ -876,6 +912,58 @@ export default async function agentRoutes(fastify: FastifyInstance) {
           logger: request.log,
         });
       }
+
+      // G3: Bolt events matching the activity log rows above. Emitted only
+      // on real transitions (from !== to) so Bolt rules don't fire on
+      // no-op PATCHes.
+      const nowIso = new Date().toISOString();
+      if (data.status !== undefined && data.status !== existing.status) {
+        void publishBoltEvent(
+          'ticket.status_changed',
+          'helpdesk',
+          {
+            ticket_id: id,
+            from: existing.status,
+            to: data.status,
+          },
+          scopeOrgId,
+          agentActorId ?? undefined,
+          'agent',
+        );
+        if (data.status === 'closed') {
+          void publishBoltEvent(
+            'ticket.closed',
+            'helpdesk',
+            {
+              ticket_id: id,
+              'ticket.closed_by': agentActorId,
+              'ticket.closed_at': nowIso,
+              from: existing.status,
+            },
+            scopeOrgId,
+            agentActorId ?? undefined,
+            'agent',
+          );
+        } else if (
+          (existing.status === 'closed' || existing.status === 'resolved') &&
+          (data.status === 'open' || data.status === 'in_progress')
+        ) {
+          void publishBoltEvent(
+            'ticket.reopened',
+            'helpdesk',
+            {
+              ticket_id: id,
+              'ticket.reopened_by': agentActorId,
+              'ticket.reopened_at': nowIso,
+              from: existing.status,
+              to: data.status,
+            },
+            scopeOrgId,
+            agentActorId ?? undefined,
+            'agent',
+          );
+        }
+      }
     }
 
     return reply.send({ data: updated });
@@ -963,6 +1051,35 @@ export default async function agentRoutes(fastify: FastifyInstance) {
         details: { from: ticket.status },
         logger: request.log,
       });
+
+      // G3: ticket.closed (+ status_changed when it was a real transition).
+      void publishBoltEvent(
+        'ticket.closed',
+        'helpdesk',
+        {
+          ticket_id: id,
+          'ticket.closed_by': request.agentUserId,
+          'ticket.closed_at': new Date().toISOString(),
+          from: ticket.status,
+        },
+        scopeOrgId,
+        request.agentUserId ?? undefined,
+        'agent',
+      );
+      if (ticket.status !== 'closed') {
+        void publishBoltEvent(
+          'ticket.status_changed',
+          'helpdesk',
+          {
+            ticket_id: id,
+            from: ticket.status,
+            to: 'closed',
+          },
+          scopeOrgId,
+          request.agentUserId ?? undefined,
+          'agent',
+        );
+      }
     }
 
     return reply.send({ data: updated });

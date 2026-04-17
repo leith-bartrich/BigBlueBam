@@ -3,11 +3,21 @@
 
 DO $$
 DECLARE
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';
+  v_u1 UUID;
   v_sort INTEGER := 0;
 BEGIN
-  -- Clean existing system templates
-  DELETE FROM brief_templates WHERE org_id IS NULL;
+  -- Resolve any active user as the creator of the system templates.
+  -- System templates belong to org_id IS NULL so they surface to every installation.
+  SELECT id INTO v_u1 FROM users WHERE is_active = true ORDER BY created_at LIMIT 1;
+  IF v_u1 IS NULL THEN
+    RAISE EXCEPTION 'seed-brief-templates: no active users found. Run create-admin first.';
+  END IF;
+
+  -- Idempotency: only seed if no system templates exist yet.
+  IF EXISTS (SELECT 1 FROM brief_templates WHERE org_id IS NULL LIMIT 1) THEN
+    RAISE NOTICE 'Brief templates seed: system templates already exist, skipping.';
+    RETURN;
+  END IF;
 
   -- =====================================================================
   -- BUSINESS OPERATIONS

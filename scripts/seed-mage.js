@@ -1,11 +1,23 @@
 const http = require('http');
 const fs = require('fs');
 
-const API_KEY = process.argv[2] || 'pSZWxak-0dDbqKDJuh1aH_ygpYC83rzbr2rA_RYKN48';
+// Accepted env/CLI knobs (no hardcoded ORG_ID / USER_IDS block — this seeder
+// creates the project and engineers via the API + MCP, so the target org is
+// determined by whichever session/API key is in use):
+//   SEED_ORG_SLUG=<slug>  - hint for the orchestrator; logged for parity.
+//   SEED_API_KEY=<bbam_…> - overrides the default MCP API key.
+const SEED_ORG_SLUG_HINT = process.env.SEED_ORG_SLUG
+  ?? process.argv.find((a) => a.startsWith('--org-slug='))?.split('=')[1];
+
+const API_KEY = process.env.SEED_API_KEY || process.argv[2] || 'pSZWxak-0dDbqKDJuh1aH_ygpYC83rzbr2rA_RYKN48';
 const COOKIE_PATH = process.argv[3] || '/tmp/mage.jar';
 
 let SESSION_ID = '';
 let reqId = 0;
+
+if (SEED_ORG_SLUG_HINT) {
+  console.log(`seed-mage: SEED_ORG_SLUG=${SEED_ORG_SLUG_HINT} noted; org is selected by the API key / session used.`);
+}
 
 function mcpCall(method, params) {
   return new Promise((resolve, reject) => {

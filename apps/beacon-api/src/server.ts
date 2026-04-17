@@ -137,6 +137,8 @@ import linkRoutes from './routes/link.routes.js';
 import policyRoutes from './routes/policy.routes.js';
 import searchRoutes from './routes/search.routes.js';
 import graphRoutes from './routes/graph.routes.js';
+import commentsRoutes from './routes/comments.routes.js';
+import attachmentsRoutes from './routes/attachments.routes.js';
 
 await fastify.register(beaconRoutes, { prefix: '/v1' });
 await fastify.register(versionRoutes, { prefix: '/v1' });
@@ -145,6 +147,8 @@ await fastify.register(linkRoutes, { prefix: '/v1' });
 await fastify.register(policyRoutes, { prefix: '/v1' });
 await fastify.register(searchRoutes, { prefix: '/v1' });
 await fastify.register(graphRoutes, { prefix: '/v1' });
+await fastify.register(commentsRoutes, { prefix: '/v1' });
+await fastify.register(attachmentsRoutes, { prefix: '/v1' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

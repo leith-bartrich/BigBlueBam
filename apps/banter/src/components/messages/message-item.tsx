@@ -11,6 +11,8 @@ import {
   Phone,
   PhoneOff,
   PhoneMissed,
+  Lock,
+  Crown,
 } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useChannelStore } from '@/stores/channel.store';
@@ -44,6 +46,13 @@ export function MessageItem({ message, channelId, grouped, onNavigate }: Message
   const deleteMessage = useDeleteMessage();
 
   const isOwn = currentUser?.id === message.author_id;
+  // Enforce the server's edit_permission policy in the UI too. 'none'
+  // hides the Edit action entirely; 'thread_starter' only matters when
+  // the row belongs to a thread (server-side check is authoritative) —
+  // conservatively hide Edit unless the current user authored the row,
+  // since the UI doesn't know the thread-starter identity here.
+  const editPermission = message.edit_permission ?? 'own';
+  const canEdit = isOwn && editPermission !== 'none';
 
   // System messages: centered, muted — with special call event styling
   if (message.is_system) {
@@ -137,6 +146,22 @@ export function MessageItem({ message, channelId, grouped, onNavigate }: Message
             </span>
             {message.is_edited && (
               <span className="text-xs text-zinc-400 italic">(edited)</span>
+            )}
+            {message.edit_permission === 'none' && (
+              <span
+                title="This message is locked — nobody may edit it."
+                className="inline-flex items-center gap-0.5 text-zinc-400"
+              >
+                <Lock className="h-3 w-3" />
+              </span>
+            )}
+            {message.edit_permission === 'thread_starter' && (
+              <span
+                title="Only the thread starter may edit this message."
+                className="inline-flex items-center gap-0.5 text-amber-500"
+              >
+                <Crown className="h-3 w-3" />
+              </span>
             )}
           </div>
         )}
@@ -257,7 +282,7 @@ export function MessageItem({ message, channelId, grouped, onNavigate }: Message
                 sideOffset={4}
                 align="end"
               >
-                {isOwn && (
+                {canEdit && (
                   <DropdownMenu.Item className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 outline-none">
                     <Pencil className="h-4 w-4" />
                     Edit message

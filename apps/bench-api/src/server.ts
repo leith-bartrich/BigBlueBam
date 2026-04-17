@@ -142,11 +142,13 @@ import dashboardRoutes from './routes/dashboards.routes.js';
 import widgetRoutes from './routes/widgets.routes.js';
 import dataSourceRoutes from './routes/data-sources.routes.js';
 import reportRoutes from './routes/reports.routes.js';
+import materializedViewsRoutes from './routes/materialized-views.routes.js';
 
 await fastify.register(dashboardRoutes, { prefix: '/v1' });
 await fastify.register(widgetRoutes, { prefix: '/v1' });
 await fastify.register(dataSourceRoutes, { prefix: '/v1' });
 await fastify.register(reportRoutes, { prefix: '/v1' });
+await fastify.register(materializedViewsRoutes, { prefix: '/v1' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

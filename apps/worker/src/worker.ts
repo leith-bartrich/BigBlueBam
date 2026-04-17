@@ -17,8 +17,45 @@ import { processBearingSnapshotJob, type BearingSnapshotJobData } from './jobs/b
 import { processBearingRecomputeJob, type BearingRecomputeJobData } from './jobs/bearing-recompute.job.js';
 import { processBearingDigestJob, type BearingDigestJobData } from './jobs/bearing-digest.job.js';
 import { processBoltExecuteJob, type BoltExecuteJobData } from './jobs/bolt-execute.job.js';
+import {
+  processBoltScheduleTickJob,
+  type BoltScheduleTickJobData,
+} from './jobs/bolt-schedule-tick.job.js';
 import { processBlastSendJob, type BlastSendJobData } from './jobs/blast-send.job.js';
 import { processBondStaleDealsJob, type BondStaleDealsJobData } from './jobs/bond-stale-deals.job.js';
+import {
+  processBillPdfGenerateJob,
+  type BillPdfGenerateJobData,
+} from './jobs/bill-pdf-generate.job.js';
+import {
+  processBillEmailSendJob,
+  type BillEmailSendJobData,
+} from './jobs/bill-email-send.job.js';
+import {
+  processBillOverdueReminderJob,
+  type BillOverdueReminderJobData,
+} from './jobs/bill-overdue-reminder.job.js';
+import {
+  processBlankConfirmationEmailJob,
+  type BlankConfirmationEmailJobData,
+} from './jobs/blank-confirmation-email.job.js';
+import {
+  processBlankFileProcessJob,
+  type BlankFileProcessJobData,
+} from './jobs/blank-file-process.job.js';
+import {
+  processBenchReportDeliverJob,
+  type BenchReportDeliverJobData,
+} from './jobs/bench-report-deliver.job.js';
+import {
+  processBenchMvRefreshJob,
+  type BenchMvRefreshJobData,
+} from './jobs/bench-mv-refresh.job.js';
+import { processBriefEmbedJob, type BriefEmbedJobData } from './jobs/brief-embed.job.js';
+import {
+  processHelpdeskSlaMonitorJob,
+  type HelpdeskSlaMonitorJobData,
+} from './jobs/helpdesk-sla-monitor.job.js';
 
 const env = loadEnv();
 
@@ -283,6 +320,32 @@ boltExecuteWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'bolt-execute', err }, 'Job failed');
 });
 
+// Bolt schedule tick worker (G2 — scans bolt_schedules every minute and fires
+// synthetic cron.fired events for due rows)
+const boltScheduleTickWorker = new Worker<BoltScheduleTickJobData>(
+  'bolt-schedule',
+  async (job: Job<BoltScheduleTickJobData>) => {
+    await processBoltScheduleTickJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+
+boltScheduleTickWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bolt-schedule' }, 'Job completed');
+});
+
+boltScheduleTickWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bolt-schedule', err }, 'Job failed');
+});
+
+// Schedule bolt schedule-tick as a once-a-minute repeating job
+const boltScheduleQueue = new Queue('bolt-schedule', { connection: redis });
+boltScheduleQueue.upsertJobScheduler(
+  'bolt-schedule-tick',
+  { pattern: '* * * * *' }, // every minute
+  { name: 'tick', data: {} },
+).catch((err) => logger.error({ err }, 'Failed to register bolt schedule tick scheduler'));
+
 // Blast send worker (processes campaign email delivery)
 const blastSendWorker = new Worker<BlastSendJobData>(
   'blast-send',
@@ -326,6 +389,212 @@ bondStaleDealsQueue.upsertJobScheduler(
   { name: 'daily-sweep', data: {} },
 ).catch((err) => logger.error({ err }, 'Failed to register bond stale-deals scheduler'));
 
+// ---------------------------------------------------------------------------
+// Wave 2C deferred workers (Bill, Blank, Bench, Brief, Helpdesk).
+// ---------------------------------------------------------------------------
+
+// Bill PDF-generate worker. Handles direct {workerJobId} jobs and runs a
+// repeatable sweep every 2 minutes against pending bill_worker_jobs rows.
+const billPdfGenerateWorker = new Worker<BillPdfGenerateJobData>(
+  'bill-pdf-generate',
+  async (job: Job<BillPdfGenerateJobData>) => {
+    await processBillPdfGenerateJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+billPdfGenerateWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bill-pdf-generate' }, 'Job completed');
+});
+billPdfGenerateWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bill-pdf-generate', err }, 'Job failed');
+});
+const billPdfGenerateQueue = new Queue('bill-pdf-generate', { connection: redis });
+billPdfGenerateQueue
+  .upsertJobScheduler(
+    'bill-pdf-generate-sweep',
+    { pattern: '*/2 * * * *' },
+    { name: 'sweep', data: { sweep: true } },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bill-pdf-generate sweep scheduler'));
+
+// Bill email-send worker.
+const billEmailSendWorker = new Worker<BillEmailSendJobData>(
+  'bill-email-send',
+  async (job: Job<BillEmailSendJobData>) => {
+    await processBillEmailSendJob(job, env, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+billEmailSendWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bill-email-send' }, 'Job completed');
+});
+billEmailSendWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bill-email-send', err }, 'Job failed');
+});
+const billEmailSendQueue = new Queue('bill-email-send', { connection: redis });
+billEmailSendQueue
+  .upsertJobScheduler(
+    'bill-email-send-sweep',
+    { pattern: '*/2 * * * *' },
+    { name: 'sweep', data: { sweep: true } },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bill-email-send sweep scheduler'));
+
+// Bill overdue-reminder worker (daily at 09:00 UTC).
+const billOverdueReminderWorker = new Worker<BillOverdueReminderJobData>(
+  'bill-overdue-reminder',
+  async (job: Job<BillOverdueReminderJobData>) => {
+    await processBillOverdueReminderJob(job, env, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+billOverdueReminderWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bill-overdue-reminder' }, 'Job completed');
+});
+billOverdueReminderWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bill-overdue-reminder', err }, 'Job failed');
+});
+const billOverdueReminderQueue = new Queue('bill-overdue-reminder', { connection: redis });
+billOverdueReminderQueue
+  .upsertJobScheduler(
+    'bill-overdue-reminder-daily',
+    { pattern: '0 9 * * *' },
+    { name: 'daily', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bill-overdue-reminder scheduler'));
+
+// Blank confirmation-email worker.
+const blankConfirmationEmailWorker = new Worker<BlankConfirmationEmailJobData>(
+  'blank-confirmation-email',
+  async (job: Job<BlankConfirmationEmailJobData>) => {
+    await processBlankConfirmationEmailJob(job, env, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+blankConfirmationEmailWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'blank-confirmation-email' }, 'Job completed');
+});
+blankConfirmationEmailWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'blank-confirmation-email', err }, 'Job failed');
+});
+const blankConfirmationEmailQueue = new Queue('blank-confirmation-email', { connection: redis });
+blankConfirmationEmailQueue
+  .upsertJobScheduler(
+    'blank-confirmation-email-sweep',
+    { pattern: '*/2 * * * *' },
+    { name: 'sweep', data: { sweep: true } },
+  )
+  .catch((err) =>
+    logger.error({ err }, 'Failed to register blank-confirmation-email sweep scheduler'),
+  );
+
+// Blank file-processing worker.
+const blankFileProcessWorker = new Worker<BlankFileProcessJobData>(
+  'blank-file-process',
+  async (job: Job<BlankFileProcessJobData>) => {
+    await processBlankFileProcessJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+blankFileProcessWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'blank-file-process' }, 'Job completed');
+});
+blankFileProcessWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'blank-file-process', err }, 'Job failed');
+});
+const blankFileProcessQueue = new Queue('blank-file-process', { connection: redis });
+blankFileProcessQueue
+  .upsertJobScheduler(
+    'blank-file-process-sweep',
+    { pattern: '*/5 * * * *' },
+    { name: 'sweep', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register blank-file-process sweep scheduler'));
+
+// Bench scheduled-report delivery worker.
+const benchReportDeliverWorker = new Worker<BenchReportDeliverJobData>(
+  'bench-report-deliver',
+  async (job: Job<BenchReportDeliverJobData>) => {
+    await processBenchReportDeliverJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+benchReportDeliverWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bench-report-deliver' }, 'Job completed');
+});
+benchReportDeliverWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bench-report-deliver', err }, 'Job failed');
+});
+
+// Bench materialized-view refresh scheduler (every 5 minutes).
+const benchMvRefreshWorker = new Worker<BenchMvRefreshJobData>(
+  'bench-mv-refresh',
+  async (job: Job<BenchMvRefreshJobData>) => {
+    await processBenchMvRefreshJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+benchMvRefreshWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bench-mv-refresh' }, 'Job completed');
+});
+benchMvRefreshWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bench-mv-refresh', err }, 'Job failed');
+});
+const benchMvRefreshQueue = new Queue('bench-mv-refresh', { connection: redis });
+benchMvRefreshQueue
+  .upsertJobScheduler(
+    'bench-mv-refresh-tick',
+    { pattern: '*/5 * * * *' },
+    { name: 'tick', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bench-mv-refresh scheduler'));
+
+// Brief document embedding worker (every 5 minutes).
+const briefEmbedWorker = new Worker<BriefEmbedJobData>(
+  'brief-embed',
+  async (job: Job<BriefEmbedJobData>) => {
+    await processBriefEmbedJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+briefEmbedWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'brief-embed' }, 'Job completed');
+});
+briefEmbedWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'brief-embed', err }, 'Job failed');
+});
+const briefEmbedQueue = new Queue('brief-embed', { connection: redis });
+briefEmbedQueue
+  .upsertJobScheduler(
+    'brief-embed-tick',
+    { pattern: '*/5 * * * *' },
+    { name: 'tick', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register brief-embed scheduler'));
+
+// Helpdesk SLA monitor (every 5 minutes).
+const helpdeskSlaMonitorWorker = new Worker<HelpdeskSlaMonitorJobData>(
+  'helpdesk-sla-monitor',
+  async (job: Job<HelpdeskSlaMonitorJobData>) => {
+    await processHelpdeskSlaMonitorJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+helpdeskSlaMonitorWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'helpdesk-sla-monitor' }, 'Job completed');
+});
+helpdeskSlaMonitorWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'helpdesk-sla-monitor', err }, 'Job failed');
+});
+const helpdeskSlaMonitorQueue = new Queue('helpdesk-sla-monitor', { connection: redis });
+helpdeskSlaMonitorQueue
+  .upsertJobScheduler(
+    'helpdesk-sla-monitor-tick',
+    { pattern: '*/5 * * * *' },
+    { name: 'tick', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register helpdesk-sla-monitor scheduler'));
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -347,10 +616,66 @@ analyticsWorker.on('failed', (job, err) => {
 });
 
 // Collect all workers for graceful shutdown
-const workers = [emailWorker, notificationWorker, sprintCloseWorker, exportWorker, banterNotificationWorker, banterRetentionWorker, helpdeskTaskCreateWorker, beaconVectorSyncWorker, beaconExpirySweepWorker, bearingSnapshotWorker, bearingRecomputeWorker, bearingDigestWorker, boltExecuteWorker, blastSendWorker, bondStaleDealsWorker, analyticsWorker];
+const workers = [
+  emailWorker,
+  notificationWorker,
+  sprintCloseWorker,
+  exportWorker,
+  banterNotificationWorker,
+  banterRetentionWorker,
+  helpdeskTaskCreateWorker,
+  beaconVectorSyncWorker,
+  beaconExpirySweepWorker,
+  bearingSnapshotWorker,
+  bearingRecomputeWorker,
+  bearingDigestWorker,
+  boltExecuteWorker,
+  boltScheduleTickWorker,
+  blastSendWorker,
+  bondStaleDealsWorker,
+  billPdfGenerateWorker,
+  billEmailSendWorker,
+  billOverdueReminderWorker,
+  blankConfirmationEmailWorker,
+  blankFileProcessWorker,
+  benchReportDeliverWorker,
+  benchMvRefreshWorker,
+  briefEmbedWorker,
+  helpdeskSlaMonitorWorker,
+  analyticsWorker,
+];
 
 logger.info(
-  { queues: ['email', 'notifications', 'sprint-close', 'export', 'banter-notifications', 'banter-retention', 'helpdesk-task-create', 'beacon-vector-sync', 'beacon-expiry-sweep', 'bearing-snapshot', 'bearing-recompute', 'bearing-digest', 'bolt-execute', 'blast-send', 'bond-stale-deals', 'analytics'] },
+  {
+    queues: [
+      'email',
+      'notifications',
+      'sprint-close',
+      'export',
+      'banter-notifications',
+      'banter-retention',
+      'helpdesk-task-create',
+      'beacon-vector-sync',
+      'beacon-expiry-sweep',
+      'bearing-snapshot',
+      'bearing-recompute',
+      'bearing-digest',
+      'bolt-execute',
+      'bolt-schedule',
+      'blast-send',
+      'bond-stale-deals',
+      'bill-pdf-generate',
+      'bill-email-send',
+      'bill-overdue-reminder',
+      'blank-confirmation-email',
+      'blank-file-process',
+      'bench-report-deliver',
+      'bench-mv-refresh',
+      'brief-embed',
+      'helpdesk-sla-monitor',
+      'analytics',
+    ],
+  },
   'All workers started',
 );
 

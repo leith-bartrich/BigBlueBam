@@ -1,10 +1,10 @@
 import { eq, and, desc, sql, gte, lte, inArray } from 'drizzle-orm';
+import type Redis from 'ioredis';
 import { db } from '../db/index.js';
 import {
   billInvoices,
   billLineItems,
   billPayments,
-  billInvoiceSequences,
   billSettings,
   billClients,
   timeEntries,
@@ -12,8 +12,9 @@ import {
   users,
   bondDeals,
 } from '../db/schema/index.js';
-import { notFound, badRequest, formatInvoiceNumber } from '../lib/utils.js';
+import { notFound, badRequest } from '../lib/utils.js';
 import { resolveRate } from './rate.service.js';
+import { reserveInvoiceNumber } from './sequence.service.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -229,55 +230,33 @@ export async function deleteInvoice(id: string, orgId: string) {
 // Finalize (assign number, lock edits)
 // ---------------------------------------------------------------------------
 
-export async function finalizeInvoice(id: string, orgId: string) {
+export async function finalizeInvoice(
+  id: string,
+  orgId: string,
+  redis: Redis | null = null,
+) {
   const existing = await getInvoice(id, orgId);
   if (existing.status !== 'draft') {
     throw badRequest('Invoice is already finalized');
   }
 
-  // Get or create sequence
-  let [seq] = await db
-    .select()
-    .from(billInvoiceSequences)
-    .where(eq(billInvoiceSequences.organization_id, orgId))
-    .limit(1);
-
-  if (!seq) {
-    const [settings] = await db
-      .select()
-      .from(billSettings)
-      .where(eq(billSettings.organization_id, orgId))
-      .limit(1);
-
-    [seq] = await db
-      .insert(billInvoiceSequences)
-      .values({
-        organization_id: orgId,
-        prefix: settings?.invoice_prefix ?? 'INV',
-        next_number: 1,
-      })
-      .returning();
-  }
-
-  // BILL-003: Atomic increment to prevent race condition — the RETURNING clause
-  // gives us the value *before* increment (next_number is the old value, new value
-  // is next_number + 1).
-  const [updated] = await db
-    .update(billInvoiceSequences)
-    .set({ next_number: sql`${billInvoiceSequences.next_number} + 1` })
-    .where(eq(billInvoiceSequences.organization_id, orgId))
-    .returning({ prefix: billInvoiceSequences.prefix, next_number: sql<number>`${billInvoiceSequences.next_number} - 1` });
-
-  const invoiceNumber = formatInvoiceNumber(updated!.prefix, updated!.next_number);
+  // G3: Reserve the invoice number under a Redis lock scoped to the org.
+  // The lock is best-effort and gracefully falls through to the SQL path
+  // if Redis is unavailable, so finalize never fails just because the
+  // cache is down. See services/sequence.service.ts for the full story.
+  const reservation = await reserveInvoiceNumber(redis, orgId);
 
   // Recalculate totals
   await recalculateInvoiceTotals(id);
 
-  // Update invoice
+  // Finalize moves draft to "sent" as the historical behavior: the current
+  // status enum in the SPA and bill_invoices CHECK constraint do not have a
+  // distinct "finalized" state. sendInvoice is a no-op state-wise for
+  // already-sent invoices and remains useful for re-triggering delivery.
   const [finalized] = await db
     .update(billInvoices)
     .set({
-      invoice_number: invoiceNumber,
+      invoice_number: reservation.invoice_number,
       status: 'sent',
       sent_at: new Date(),
       updated_at: new Date(),

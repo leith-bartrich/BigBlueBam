@@ -52,6 +52,8 @@ export const bondContacts = pgTable(
       .references(() => users.id),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    // Soft-delete: NULL for active rows. Added in 0100_bond_soft_delete.sql.
+    deleted_at: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [
     index('idx_bond_contacts_org').on(table.organization_id),

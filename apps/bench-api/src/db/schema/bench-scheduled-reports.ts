@@ -28,6 +28,11 @@ export const benchScheduledReports = pgTable(
     export_format: varchar('export_format', { length: 10 }).notNull().default('pdf'),
     enabled: boolean('enabled').notNull().default(true),
     last_sent_at: timestamp('last_sent_at', { withTimezone: true }),
+    // Added in migration 0084 to track per-attempt delivery results so worker
+    // jobs can record outcomes without overwriting prior successful sends.
+    last_delivery_attempt_at: timestamp('last_delivery_attempt_at', { withTimezone: true }),
+    last_delivery_status: varchar('last_delivery_status', { length: 20 }),
+    last_delivery_error: text('last_delivery_error'),
     created_by: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -36,5 +41,8 @@ export const benchScheduledReports = pgTable(
   },
   (table) => [
     index('idx_bench_reports_org').on(table.organization_id),
+    // Migration 0084 partial index: enabled reports ordered by last_sent_at,
+    // used by the report generation worker to pick up due reports.
+    index('idx_bench_reports_scheduled_enabled').on(table.enabled, table.last_sent_at),
   ],
 );

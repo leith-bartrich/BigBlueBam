@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { BillLayout } from '@/components/layout/bill-layout';
+import { DashboardPage } from '@/pages/dashboard';
 import { InvoiceListPage } from '@/pages/invoice-list';
 import { InvoiceNewPage } from '@/pages/invoice-new';
 import { InvoiceFromTimePage } from '@/pages/invoice-from-time';
@@ -16,6 +17,7 @@ import { SettingsPage } from '@/pages/settings';
 import { Loader2 } from 'lucide-react';
 
 type Route =
+  | { page: 'dashboard' }
   | { page: 'invoices' }
   | { page: 'invoice-new' }
   | { page: 'invoice-from-time' }
@@ -41,7 +43,8 @@ function stripBase(path: string): string {
 function parseRoute(path: string): Route {
   const p = stripBase(path);
 
-  if (p === '/' || p === '') return { page: 'invoices' };
+  if (p === '/' || p === '') return { page: 'dashboard' };
+  if (p === '/invoices') return { page: 'invoices' };
   if (p === '/invoices/new') return { page: 'invoice-new' };
   if (p === '/invoices/from-time') return { page: 'invoice-from-time' };
   if (p === '/clients') return { page: 'clients' };
@@ -60,7 +63,7 @@ function parseRoute(path: string): Route {
   const clientDetailMatch = p.match(/^\/clients\/([^/]+)$/);
   if (clientDetailMatch) return { page: 'client-detail', id: clientDetailMatch[1]! };
 
-  return { page: 'invoices' };
+  return { page: 'dashboard' };
 }
 
 export function App() {
@@ -125,6 +128,8 @@ export function App() {
 
   const renderPage = () => {
     switch (route.page) {
+      case 'dashboard':
+        return <DashboardPage onNavigate={navigate} />;
       case 'invoices':
         return <InvoiceListPage onNavigate={navigate} />;
       case 'invoice-new':

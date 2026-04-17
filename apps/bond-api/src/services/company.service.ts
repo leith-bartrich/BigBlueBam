@@ -1,4 +1,4 @@
-import { eq, and, ilike, sql, desc, asc, or } from 'drizzle-orm';
+import { eq, and, ilike, sql, desc, asc, or, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bondCompanies,
@@ -49,7 +49,10 @@ export interface UpdateCompanyInput extends Partial<CreateCompanyInput> {}
 // ---------------------------------------------------------------------------
 
 export async function listCompanies(filters: CompanyFilters) {
-  const conditions = [eq(bondCompanies.organization_id, filters.organization_id)];
+  const conditions = [
+    eq(bondCompanies.organization_id, filters.organization_id),
+    isNull(bondCompanies.deleted_at),
+  ];
 
   if (filters.industry) {
     conditions.push(eq(bondCompanies.industry, filters.industry));
@@ -118,7 +121,13 @@ export async function getCompany(id: string, orgId: string) {
   const [company] = await db
     .select()
     .from(bondCompanies)
-    .where(and(eq(bondCompanies.id, id), eq(bondCompanies.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondCompanies.id, id),
+        eq(bondCompanies.organization_id, orgId),
+        isNull(bondCompanies.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!company) throw notFound('Company not found');
@@ -137,7 +146,7 @@ export async function getCompany(id: string, orgId: string) {
     .innerJoin(bondContacts, eq(bondContactCompanies.contact_id, bondContacts.id))
     .where(eq(bondContactCompanies.company_id, id));
 
-  // Fetch deals with this company
+  // Fetch deals with this company (exclude soft-deleted)
   const deals = await db
     .select({
       id: bondDeals.id,
@@ -147,7 +156,7 @@ export async function getCompany(id: string, orgId: string) {
       closed_at: bondDeals.closed_at,
     })
     .from(bondDeals)
-    .where(eq(bondDeals.company_id, id))
+    .where(and(eq(bondDeals.company_id, id), isNull(bondDeals.deleted_at)))
     .orderBy(desc(bondDeals.created_at));
 
   return { ...company, contacts, deals };
@@ -204,7 +213,13 @@ export async function updateCompany(
       ...input,
       updated_at: new Date(),
     })
-    .where(and(eq(bondCompanies.id, id), eq(bondCompanies.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondCompanies.id, id),
+        eq(bondCompanies.organization_id, orgId),
+        isNull(bondCompanies.deleted_at),
+      ),
+    )
     .returning();
 
   if (!updated) throw notFound('Company not found');
@@ -216,13 +231,36 @@ export async function updateCompany(
 // ---------------------------------------------------------------------------
 
 export async function deleteCompany(id: string, orgId: string) {
+  // Soft-delete: see contact.service.deleteContact for rationale.
   const [deleted] = await db
-    .delete(bondCompanies)
-    .where(and(eq(bondCompanies.id, id), eq(bondCompanies.organization_id, orgId)))
+    .update(bondCompanies)
+    .set({ deleted_at: new Date(), updated_at: new Date() })
+    .where(
+      and(
+        eq(bondCompanies.id, id),
+        eq(bondCompanies.organization_id, orgId),
+        isNull(bondCompanies.deleted_at),
+      ),
+    )
     .returning({ id: bondCompanies.id });
 
   if (!deleted) throw notFound('Company not found');
   return deleted;
+}
+
+// ---------------------------------------------------------------------------
+// Restore (undelete) company — admin-only via the routes layer
+// ---------------------------------------------------------------------------
+
+export async function restoreCompany(id: string, orgId: string) {
+  const [restored] = await db
+    .update(bondCompanies)
+    .set({ deleted_at: null, updated_at: new Date() })
+    .where(and(eq(bondCompanies.id, id), eq(bondCompanies.organization_id, orgId)))
+    .returning();
+
+  if (!restored) throw notFound('Company not found');
+  return restored;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +280,7 @@ export async function searchCompanies(
     .where(
       and(
         eq(bondCompanies.organization_id, orgId),
+        isNull(bondCompanies.deleted_at),
         or(
           ilike(bondCompanies.name, pattern),
           ilike(bondCompanies.domain, pattern),
@@ -258,11 +297,17 @@ export async function searchCompanies(
 // ---------------------------------------------------------------------------
 
 export async function getCompanyContacts(companyId: string, orgId: string) {
-  // Verify company belongs to org
+  // Verify company belongs to org and is not soft-deleted.
   const [company] = await db
     .select({ id: bondCompanies.id })
     .from(bondCompanies)
-    .where(and(eq(bondCompanies.id, companyId), eq(bondCompanies.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondCompanies.id, companyId),
+        eq(bondCompanies.organization_id, orgId),
+        isNull(bondCompanies.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!company) throw notFound('Company not found');
@@ -282,6 +327,103 @@ export async function getCompanyContacts(companyId: string, orgId: string) {
     })
     .from(bondContactCompanies)
     .innerJoin(bondContacts, eq(bondContactCompanies.contact_id, bondContacts.id))
-    .where(eq(bondContactCompanies.company_id, companyId))
+    .where(
+      and(
+        eq(bondContactCompanies.company_id, companyId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .orderBy(asc(bondContacts.last_name));
+}
+
+// ---------------------------------------------------------------------------
+// Get deals for a company (paginated) — G3
+// ---------------------------------------------------------------------------
+
+export interface CompanyDealsOptions {
+  limit?: number;
+  offset?: number;
+  sort?: string;
+}
+
+export async function getCompanyDeals(
+  companyId: string,
+  orgId: string,
+  options: CompanyDealsOptions = {},
+) {
+  // Verify company belongs to org and is not soft-deleted.
+  const [company] = await db
+    .select({ id: bondCompanies.id })
+    .from(bondCompanies)
+    .where(
+      and(
+        eq(bondCompanies.id, companyId),
+        eq(bondCompanies.organization_id, orgId),
+        isNull(bondCompanies.deleted_at),
+      ),
+    )
+    .limit(1);
+
+  if (!company) throw notFound('Company not found');
+
+  const limit = Math.min(options.limit ?? 50, 100);
+  const offset = options.offset ?? 0;
+
+  const conditions = [
+    eq(bondDeals.company_id, companyId),
+    eq(bondDeals.organization_id, orgId),
+    isNull(bondDeals.deleted_at),
+  ];
+
+  let orderBy;
+  switch (options.sort) {
+    case 'expected_close_date':
+      orderBy = [asc(bondDeals.expected_close_date)];
+      break;
+    case '-expected_close_date':
+      orderBy = [desc(bondDeals.expected_close_date)];
+      break;
+    case 'value':
+      orderBy = [asc(bondDeals.value)];
+      break;
+    case '-value':
+      orderBy = [desc(bondDeals.value)];
+      break;
+    case 'name':
+      orderBy = [asc(bondDeals.name)];
+      break;
+    case '-created_at':
+      orderBy = [desc(bondDeals.created_at)];
+      break;
+    default:
+      orderBy = [desc(bondDeals.created_at)];
+  }
+
+  const [rows, countResult, totalsResult] = await Promise.all([
+    db
+      .select()
+      .from(bondDeals)
+      .where(and(...conditions))
+      .orderBy(...orderBy)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(bondDeals)
+      .where(and(...conditions)),
+    db
+      .select({
+        total_value: sql<number>`COALESCE(sum(${bondDeals.value}), 0)::bigint`,
+      })
+      .from(bondDeals)
+      .where(and(...conditions)),
+  ]);
+
+  return {
+    deals: rows,
+    total_count: countResult[0]?.count ?? 0,
+    total_value: Number(totalsResult[0]?.total_value ?? 0),
+    limit,
+    offset,
+  };
 }

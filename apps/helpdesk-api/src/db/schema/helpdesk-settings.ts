@@ -21,6 +21,13 @@ export const helpdeskSettings = pgTable('helpdesk_settings', {
   auto_close_days: integer('auto_close_days').default(0).notNull(),
   notify_on_status_change: boolean('notify_on_status_change').default(true).notNull(),
   notify_on_agent_reply: boolean('notify_on_agent_reply').default(true).notNull(),
+  // G4 / SLA tracking (migration 0111). Minutes from ticket.created_at
+  // to first agent public reply before the first-response SLA is breached,
+  // and minutes to resolution before the resolution SLA is breached.
+  // Defaults target an 8-hour business-day first-response SLA and a 48-
+  // hour resolution SLA; admins adjust per-org via PATCH /helpdesk/settings.
+  sla_first_response_minutes: integer('sla_first_response_minutes').default(480).notNull(),
+  sla_resolution_minutes: integer('sla_resolution_minutes').default(2880).notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

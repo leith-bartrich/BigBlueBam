@@ -32,6 +32,7 @@ const createMessageSchema = z.object({
   content_format: z.enum(['html', 'markdown', 'plain']).default('html'),
   thread_parent_id: z.string().uuid().optional(),
   metadata: z.record(z.unknown()).optional(),
+  edit_permission: z.enum(['own', 'thread_starter', 'none']).optional(),
 });
 
 const updateMessageSchema = z.object({
@@ -158,6 +159,27 @@ export default async function messageRoutes(fastify: FastifyInstance) {
       const user = request.user!;
       const body = createMessageSchema.parse(request.body);
 
+      // Viewer role is read-only at the channel scope. Org-level admins /
+      // owners / superusers are not affected (they bypass channel roles in
+      // other places too, and requireChannelMember will have synthesized a
+      // fake 'owner' membership for them).
+      const viewerCtx = request.channelContext;
+      if (
+        viewerCtx &&
+        viewerCtx.membership.role === 'viewer' &&
+        !user.is_superuser &&
+        !['owner', 'admin'].includes(user.role)
+      ) {
+        return reply.status(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Viewer role is read-only in this channel',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
       // Sanitize content with DOMPurify (allowlisted tags/attributes only)
       const sanitizedContent = sanitizeContent(body.content);
 
@@ -174,6 +196,7 @@ export default async function messageRoutes(fastify: FastifyInstance) {
           content_plain: contentPlain,
           content_format: body.content_format,
           metadata: body.metadata ?? {},
+          edit_permission: body.edit_permission ?? 'own',
         })
         .returning();
 
@@ -578,11 +601,52 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         });
       }
 
-      if (existing.author_id !== user.id) {
+      // Message-level edit_permission controls who can mutate this row.
+      //   - 'own' (default): only the author.
+      //   - 'thread_starter': the author, plus the starter of the thread
+      //     this message belongs to (if any).
+      //   - 'none': nobody can edit (not even the author).
+      // Org admins / owners / superusers can always edit (they have
+      // moderation powers independent of the per-message setting).
+      const editPermission = (existing.edit_permission ?? 'own') as
+        | 'own'
+        | 'thread_starter'
+        | 'none';
+      const isOrgStaff =
+        user.is_superuser || ['owner', 'admin'].includes(user.role);
+
+      let canEdit = false;
+      if (isOrgStaff) {
+        canEdit = true;
+      } else if (editPermission === 'none') {
+        canEdit = false;
+      } else if (editPermission === 'own') {
+        canEdit = existing.author_id === user.id;
+      } else if (editPermission === 'thread_starter') {
+        if (existing.author_id === user.id) {
+          canEdit = true;
+        } else if (existing.thread_parent_id) {
+          const [threadRoot] = await db
+            .select({ author_id: banterMessages.author_id })
+            .from(banterMessages)
+            .where(eq(banterMessages.id, existing.thread_parent_id))
+            .limit(1);
+          canEdit = !!threadRoot && threadRoot.author_id === user.id;
+        } else {
+          canEdit = false;
+        }
+      }
+
+      if (!canEdit) {
         return reply.status(403).send({
           error: {
             code: 'FORBIDDEN',
-            message: 'Can only edit your own messages',
+            message:
+              editPermission === 'none'
+                ? 'Editing is disabled for this message'
+                : editPermission === 'thread_starter'
+                  ? 'Only the author or the thread starter can edit this message'
+                  : 'Can only edit your own messages',
             details: [],
             request_id: request.id,
           },

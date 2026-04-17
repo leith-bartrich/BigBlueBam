@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useTickets, useRealtimeTicketsList } from '@/hooks/use-tickets';
 import { Button } from '@/components/common/button';
 import { StatusBadge, PriorityBadge } from '@/components/common/badge';
 import { formatRelativeTime } from '@/lib/utils';
-import { Plus, Inbox } from 'lucide-react';
+import { Plus, Inbox, Search } from 'lucide-react';
 
 interface TicketsListPageProps {
   onNavigate: (path: string) => void;
@@ -32,9 +33,24 @@ function isUnread(ticketId: string, updatedAt: string): boolean {
   return new Date(updatedAt).getTime() > new Date(viewedAt).getTime();
 }
 
+const STATUS_FILTERS = ['', 'open', 'awaiting_customer', 'in_progress', 'awaiting_internal', 'resolved', 'closed'] as const;
+
 export function TicketsListPage({ onNavigate }: TicketsListPageProps) {
   const { data: tickets, isLoading, error } = useTickets();
   useRealtimeTicketsList();
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+
+  const q = query.trim().toLowerCase();
+  const filtered = (tickets ?? []).filter((t) => {
+    if (statusFilter && t.status !== statusFilter) return false;
+    if (!q) return true;
+    return (
+      t.subject.toLowerCase().includes(q) ||
+      String(t.ticket_number).includes(q) ||
+      (t.category ?? '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div>
@@ -45,6 +61,35 @@ export function TicketsListPage({ onNavigate }: TicketsListPageProps) {
           <Plus className="h-4 w-4" />
           New Ticket
         </Button>
+      </div>
+
+      {/* Search + status filter */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[240px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search subject, number, or category..."
+            className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 pl-9 pr-3 py-2 text-sm text-zinc-900 dark:text-zinc-100"
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          {STATUS_FILTERS.map((s) => (
+            <button
+              key={s || 'all'}
+              onClick={() => setStatusFilter(s)}
+              className={`px-2 py-1 rounded-md text-xs font-medium ${
+                statusFilter === s
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              {s ? s.replace('_', ' ') : 'all'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Loading - skeleton rows */}
@@ -86,8 +131,15 @@ export function TicketsListPage({ onNavigate }: TicketsListPageProps) {
         </div>
       )}
 
+      {/* No search match */}
+      {tickets && tickets.length > 0 && filtered.length === 0 && (
+        <div className="text-center py-12 text-sm text-zinc-500">
+          No tickets match your search.
+        </div>
+      )}
+
       {/* Ticket list */}
-      {tickets && tickets.length > 0 && (
+      {tickets && tickets.length > 0 && filtered.length > 0 && (
         <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
           {/* Table header */}
           <div className="hidden sm:grid sm:grid-cols-[60px_1fr_120px_90px_110px_120px] gap-4 px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -100,7 +152,7 @@ export function TicketsListPage({ onNavigate }: TicketsListPageProps) {
           </div>
 
           {/* Rows */}
-          {tickets.map((ticket) => {
+          {filtered.map((ticket) => {
             const unread = isUnread(ticket.id, ticket.updated_at);
             return (
               <button

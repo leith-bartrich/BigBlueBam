@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, unique, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, unique, index, varchar } from 'drizzle-orm/pg-core';
 import { users } from './bbb-refs.js';
 import { bearingGoals } from './bearing-goals.js';
 
@@ -7,6 +7,10 @@ export const bearingGoalWatchers = pgTable('bearing_goal_watchers', {
   goal_id: uuid('goal_id').notNull().references(() => bearingGoals.id, { onDelete: 'cascade' }),
   user_id: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  // Added by migration 0083. Populated lazily when a watcher notification
+  // email is generated so recipients can one-click unsubscribe without
+  // logging in. Nullable until first use.
+  unsubscribe_token: varchar('unsubscribe_token', { length: 64 }),
 }, (table) => [
   unique('bearing_goal_watchers_goal_user').on(table.goal_id, table.user_id),
   index('idx_bearing_goal_watchers_goal').on(table.goal_id),

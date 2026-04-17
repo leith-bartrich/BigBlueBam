@@ -12,6 +12,9 @@ interface Report {
   export_format: string;
   enabled: boolean;
   last_sent_at: string | null;
+  last_delivery_attempt_at?: string | null;
+  last_delivery_status?: string | null;
+  last_delivery_error?: string | null;
   created_at: string;
 }
 

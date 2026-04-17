@@ -292,11 +292,35 @@ export default async function boardRoutes(fastify: FastifyInstance) {
     '/boards/:id/lock',
     { preHandler: [requireAuth, requireBoardEditAccess(), requireScope('read_write')] },
     async (request, reply) => {
-      const board = await boardService.toggleLock(
+      const { board, previousLocked } = await boardService.toggleLock(
         (request as any).board.id,
         request.user!.id,
         request.user!.org_id,
       );
+      try {
+        const payload = await buildBoardEventPayload(
+          board.id,
+          request.user!.org_id,
+          request.user!.id,
+          {
+            previous_locked: previousLocked,
+            locked: board.locked,
+          },
+        );
+        payload['board.locked'] = board.locked;
+        payload['board.locked_by'] = request.user!.id;
+        payload['board.locked_at'] = board.updated_at;
+        publishBoltEvent(
+          'board.locked',
+          'board',
+          payload,
+          request.user!.org_id,
+          request.user!.id,
+          'user',
+        );
+      } catch {
+        // Enrichment failure must never block the lock toggle — drop the event.
+      }
       return reply.send({ data: board });
     },
   );

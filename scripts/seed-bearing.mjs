@@ -57,21 +57,32 @@ function krProgress(direction, startVal, targetVal, currentVal) {
 async function main() {
   console.log('Bearing seed: connecting to database...');
 
-  // 1. Look up an existing organization
-  const orgs = await sql`SELECT id, name FROM organizations LIMIT 1`;
+  // 1. Look up the target organization (honors SEED_ORG_SLUG env / --org-slug=
+  // CLI flag, else first-by-created-at).
+  const orgSlug =
+    process.env.SEED_ORG_SLUG ??
+    process.argv.find((a) => a.startsWith('--org-slug='))?.split('=')[1];
+  const orgs = orgSlug
+    ? await sql`SELECT id, name FROM organizations WHERE slug = ${orgSlug} LIMIT 1`
+    : await sql`SELECT id, name FROM organizations ORDER BY created_at LIMIT 1`;
   if (orgs.length === 0) {
-    console.error('ERROR: No organizations found in the database. Create one first.');
+    console.error(
+      `ERROR: No organization${orgSlug ? ` with slug "${orgSlug}"` : 's'} found. Run create-admin first.`,
+    );
     process.exit(1);
   }
   const org = orgs[0];
   console.log(`Using organization: "${org.name}" (${org.id})`);
 
-  // 2. Look up existing users in that org
+  // 2. Look up users who are members of this org (join through
+  // organization_memberships so users whose primary users.org_id is
+  // elsewhere but who have a membership here are included).
   const users = await sql`
     SELECT u.id, u.display_name
     FROM users u
-    WHERE u.org_id = ${org.id} AND u.is_active = true
-    ORDER BY u.created_at
+    JOIN organization_memberships m ON m.user_id = u.id
+    WHERE m.org_id = ${org.id} AND u.is_active = true
+    ORDER BY m.joined_at
     LIMIT 10
   `;
   if (users.length === 0) {
@@ -104,9 +115,9 @@ async function main() {
 
   // ─── periods ──────────────────────────────────────────────────────────────
 
-  const periodQ2Id = uuid();
-  const periodQ1Id = uuid();
-  const periodH2Id = uuid();
+  let periodQ2Id = uuid();
+  let periodQ1Id = uuid();
+  let periodH2Id = uuid();
 
   const periodsData = [
     { id: periodQ2Id, name: 'Q2 2026', period_type: 'quarter', starts_at: '2026-04-01', ends_at: '2026-06-30', status: 'active' },
@@ -118,11 +129,27 @@ async function main() {
     const res = await sql`
       INSERT INTO bearing_periods (id, organization_id, name, period_type, starts_at, ends_at, status, created_by)
       VALUES (${p.id}, ${org.id}, ${p.name}, ${p.period_type}, ${p.starts_at}, ${p.ends_at}, ${p.status}, ${creatorId})
-      ON CONFLICT ON CONSTRAINT bearing_periods_org_name DO NOTHING
+      ON CONFLICT (organization_id, name) DO NOTHING
       RETURNING id
     `;
-    if (res.length > 0) periodCount++;
+    if (res.length > 0) {
+      periodCount++;
+    } else {
+      // Period already existed; look up the canonical id so downstream
+      // inserts that reference p.id still find it.
+      const [existing] = await sql`
+        SELECT id FROM bearing_periods WHERE organization_id = ${org.id} AND name = ${p.name} LIMIT 1
+      `;
+      if (existing) p.id = existing.id;
+    }
   }
+
+  // After the loop the three id slots point at the real rows (new or
+  // pre-existing). Re-export them so the goalsSpec references resolve.
+  const [pQ2, pQ1, pH2] = periodsData;
+  periodQ2Id = pQ2.id;
+  periodQ1Id = pQ1.id;
+  periodH2Id = pH2.id;
 
   // ─── goals and key results ────────────────────────────────────────────────
 
@@ -262,7 +289,7 @@ async function main() {
           owner_id, created_by
         ) VALUES (
           ${goalId}, ${org.id}, ${g.period_id}, ${g.scope}, ${g.project_id || null}, ${g.team_name || null},
-          ${g.title}, ${g.icon}, ${g.color}, ${g.status}, true, ${g.progress},
+          ${g.title}, ${g.icon}, ${g.color}, ${g.status}, true, ${g.progress / 100},
           ${ownerIds[g.owner_idx]}, ${creatorId}
         )
       `;
@@ -296,7 +323,7 @@ async function main() {
           ) VALUES (
             ${krId}, ${effectiveGoalId}, ${kr.title}, ${kr.metric_type},
             ${kr.target_value}, ${kr.current_value}, ${kr.start_value},
-            ${kr.unit}, ${kr.direction}, ${progress},
+            ${kr.unit}, ${kr.direction}, ${progress / 100},
             ${ownerIds[(g.owner_idx + i) % ownerIds.length]}, ${i}
           )
         `;
@@ -326,8 +353,13 @@ async function main() {
       `;
       if (existingUpdate.length === 0) {
         await sql`
-          INSERT INTO bearing_updates (id, goal_id, author_id, status, body, created_at)
-          VALUES (${uuid()}, ${effectiveGoalId}, ${ownerIds[g.owner_idx]}, ${g.status}, ${g.update.body}, ${daysAgo(g.update.daysAgo)})
+          INSERT INTO bearing_updates (
+            id, goal_id, author_id, status, status_at_time, progress_at_time, body, created_at
+          )
+          VALUES (
+            ${uuid()}, ${effectiveGoalId}, ${ownerIds[g.owner_idx]}, ${g.status},
+            ${g.status}, ${g.progress / 100}, ${g.update.body}, ${daysAgo(g.update.daysAgo)}
+          )
         `;
         updateCount++;
       }
@@ -348,7 +380,7 @@ async function main() {
       const res = await sql`
         INSERT INTO bearing_goal_watchers (id, goal_id, user_id)
         VALUES (${uuid()}, ${watchGoals[gi]}, ${uid})
-        ON CONFLICT ON CONSTRAINT bearing_goal_watchers_goal_user DO NOTHING
+        ON CONFLICT (goal_id, user_id) DO NOTHING
         RETURNING id
       `;
       if (res.length > 0) watcherCount++;
@@ -385,7 +417,7 @@ async function main() {
         id: uuid(),
         key_result_id: kr.id,
         value,
-        progress,
+        progress: progress / 100,
         recorded_at: recordedAt,
       });
     }

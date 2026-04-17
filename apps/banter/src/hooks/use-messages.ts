@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
+export type MessageEditPermission = 'own' | 'thread_starter' | 'none';
+
 export interface Message {
   id: string;
   channel_id: string;
@@ -12,6 +14,10 @@ export interface Message {
   is_system: boolean;
   is_bot: boolean;
   is_pinned: boolean;
+  /** Who may edit this message. 'own' (default) = author only;
+   *  'thread_starter' = the root author of the thread this message belongs to;
+   *  'none' = locked, nobody may edit. Seeded on a handful of demo rows. */
+  edit_permission?: MessageEditPermission;
   thread_reply_count: number;
   thread_latest_reply_at: string | null;
   reactions: Reaction[];

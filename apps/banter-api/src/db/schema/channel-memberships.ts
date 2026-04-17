@@ -38,7 +38,7 @@ export const banterChannelMemberships = pgTable(
     index('banter_channel_memberships_channel_idx').on(table.channel_id),
     check(
       'banter_channel_memberships_role_check',
-      sql`role IN ('owner', 'admin', 'member')`,
+      sql`role IN ('owner', 'admin', 'member', 'viewer')`,
     ),
   ],
 );

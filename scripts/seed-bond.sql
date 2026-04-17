@@ -1,15 +1,16 @@
--- Seed Bond (CRM) demo data for Mage Inc
--- Run: docker compose exec -T postgres psql -U bigbluebam < scripts/seed-bond.sql
+-- Seed Bond (CRM) demo data
+-- Run via orchestrator: node scripts/seed-all.mjs (substitutes :org_id / :user_N)
+-- idempotent: skip-if-any-pipeline-already-present
 
 DO $$
 DECLARE
-  v_org UUID := '57158e52-227d-4903-b0d8-d9f3c4910f61';
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';  -- Eddie
-  v_u2 UUID := 'cffb3330-4868-4741-95f4-564efe27836a';  -- Sarah
-  v_u3 UUID := 'f290dd98-65fa-403a-9778-6dbda873fc98';  -- Dev
-  v_u4 UUID := '138894b9-58ef-4eb4-9d27-bf36fff48885';  -- Alex
-  v_u5 UUID := 'baa36964-d672-4271-ae96-b0cf5b1062a4';  -- Morgan
-  v_u6 UUID := '5e77088e-6d83-4821-8f9d-7857d2aefb68';  -- Jordan
+  v_org UUID := :org_id;
+  v_u1 UUID := :user_1;
+  v_u2 UUID := :user_2;
+  v_u3 UUID := :user_3;
+  v_u4 UUID := :user_4;
+  v_u5 UUID := :user_5;
+  v_u6 UUID := :user_6;
 
   -- Pipelines
   p_sales UUID; p_partner UUID;
@@ -40,20 +41,11 @@ DECLARE
   d11 UUID; d12 UUID; d13 UUID; d14 UUID; d15 UUID;
 
 BEGIN
-  -- ══════════════════════════════════════════════════════════════
-  -- Clean existing Bond data for this org
-  -- ══════════════════════════════════════════════════════════════
-  DELETE FROM bond_lead_scoring_rules WHERE organization_id = v_org;
-  DELETE FROM bond_activities WHERE organization_id = v_org;
-  DELETE FROM bond_deal_stage_history WHERE deal_id IN (SELECT id FROM bond_deals WHERE organization_id = v_org);
-  DELETE FROM bond_deal_contacts WHERE deal_id IN (SELECT id FROM bond_deals WHERE organization_id = v_org);
-  DELETE FROM bond_deals WHERE organization_id = v_org;
-  DELETE FROM bond_contact_companies WHERE contact_id IN (SELECT id FROM bond_contacts WHERE organization_id = v_org);
-  DELETE FROM bond_pipeline_stages WHERE pipeline_id IN (SELECT id FROM bond_pipelines WHERE organization_id = v_org);
-  DELETE FROM bond_pipelines WHERE organization_id = v_org;
-  DELETE FROM bond_contacts WHERE organization_id = v_org;
-  DELETE FROM bond_companies WHERE organization_id = v_org;
-  DELETE FROM bond_custom_field_definitions WHERE organization_id = v_org;
+  -- Idempotency guard
+  IF EXISTS (SELECT 1 FROM bond_pipelines WHERE organization_id = v_org LIMIT 1) THEN
+    RAISE NOTICE 'Bond seed: pipelines already exist for this org, skipping.';
+    RETURN;
+  END IF;
 
   -- ══════════════════════════════════════════════════════════════
   -- 1. PIPELINES (2)

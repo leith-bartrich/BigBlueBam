@@ -36,6 +36,7 @@ import { registerMeTools } from './tools/me-tools.js';
 import { registerPlatformTools } from './tools/platform-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
+import { handleToolsCall } from './routes/tools-call.js';
 
 const env = loadEnv();
 
@@ -167,6 +168,21 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
   // Health endpoint
   if (url.pathname === '/health' && req.method === 'GET') {
     sendJson(res, 200, { status: 'ok', server: 'BigBlueBam MCP', version: '1.0.0' });
+    return;
+  }
+
+  // Internal POST /tools/call direct-invocation route (Wave 0.2).
+  // Shared-secret auth, bypasses the Streamable-HTTP session machinery so
+  // service-to-service callers (bolt-api, worker, api) can invoke MCP tools
+  // without establishing a real MCP session. See apps/mcp-server/src/routes/tools-call.ts.
+  if (url.pathname === '/tools/call' && req.method === 'POST') {
+    await handleToolsCall(req, res, {
+      logger,
+      internalSecret: env.INTERNAL_SERVICE_SECRET ?? '',
+      apiInternalUrl: env.API_INTERNAL_URL,
+      mcpInternalApiToken: env.MCP_INTERNAL_API_TOKEN ?? '',
+      createMcpServer,
+    });
     return;
   }
 

@@ -3,10 +3,12 @@ import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/project.store';
 import { useProjects } from '@/hooks/use-projects';
 import { useState, useRef, useEffect } from 'react';
+import { FolderTree } from '@/components/layout/folder-tree';
 
 interface BriefSidebarProps {
   onNavigate: (path: string) => void;
   activePage: string;
+  activeFolderId?: string | null;
 }
 
 const navItems = [
@@ -101,7 +103,7 @@ function ProjectScopeSelector() {
   );
 }
 
-export function BriefSidebar({ onNavigate, activePage }: BriefSidebarProps) {
+export function BriefSidebar({ onNavigate, activePage, activeFolderId }: BriefSidebarProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Logo area */}
@@ -119,7 +121,7 @@ export function BriefSidebar({ onNavigate, activePage }: BriefSidebarProps) {
       <ProjectScopeSelector />
 
       {/* Nav items */}
-      <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+      <nav className="px-2 py-2 space-y-0.5 shrink-0">
         {navItems.map((item) => {
           const isActive = activePage === item.page;
           const Icon = item.icon;
@@ -140,6 +142,11 @@ export function BriefSidebar({ onNavigate, activePage }: BriefSidebarProps) {
           );
         })}
       </nav>
+
+      {/* Folder tree */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <FolderTree onNavigate={onNavigate} activeFolderId={activeFolderId} />
+      </div>
     </div>
   );
 }

@@ -137,13 +137,26 @@ export default async function dealRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // DELETE /deals/:id — Delete deal
+  // DELETE /deals/:id — Delete deal (soft-delete via deleted_at)
   fastify.delete<{ Params: { id: string } }>(
     '/deals/:id',
     { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
       await dealService.deleteDeal(request.params.id, request.user!.org_id);
       return reply.send({ data: { deleted: true } });
+    },
+  );
+
+  // POST /deals/:id/restore — Undelete a soft-deleted deal (G4)
+  fastify.post<{ Params: { id: string } }>(
+    '/deals/:id/restore',
+    { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
+    async (request, reply) => {
+      const deal = await dealService.restoreDeal(
+        request.params.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: deal });
     },
   );
 

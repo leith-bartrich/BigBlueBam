@@ -56,6 +56,17 @@ export const billInvoices = pgTable(
     viewed_at: timestamp('viewed_at', { withTimezone: true }),
     paid_at: timestamp('paid_at', { withTimezone: true }),
     overdue_reminder_sent_at: timestamp('overdue_reminder_sent_at', { withTimezone: true }),
+    // Added by migration 0086_bill_pdf_storage_and_locks.sql.
+    // pdf_generation_locked_* lets a worker claim a row for async PDF generation
+    // without racing another worker; overdue_reminder_* tracks idempotent
+    // overdue reminder fan-out so we never spam a customer twice in the same
+    // window.
+    pdf_generation_locked_at: timestamp('pdf_generation_locked_at', { withTimezone: true }),
+    pdf_generation_locked_by: varchar('pdf_generation_locked_by', { length: 100 }),
+    overdue_reminder_count: integer('overdue_reminder_count').notNull().default(0),
+    overdue_reminder_last_sent_at: timestamp('overdue_reminder_last_sent_at', {
+      withTimezone: true,
+    }),
     created_by: uuid('created_by')
       .notNull()
       .references(() => users.id),

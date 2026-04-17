@@ -4,6 +4,7 @@ import { ProgressBar } from '@/components/common/ProgressBar';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
+import { KeyResultSparkline } from './KeyResultSparkline';
 import { useSetKrValue, useDeleteKeyResult, type KeyResult, type MetricType } from '@/hooks/useKeyResults';
 
 interface KeyResultRowProps {
@@ -67,6 +68,7 @@ export function KeyResultRow({ kr, goalId, onEdit }: KeyResultRowProps) {
         <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{kr.title}</p>
         <div className="flex items-center gap-3 mt-1.5">
           <ProgressBar value={kr.progress} size="sm" className="flex-1 max-w-[180px]" />
+          <KeyResultSparkline keyResultId={kr.id} showTooltip />
           <span className="text-xs text-zinc-500 whitespace-nowrap">
             {formatMetricValue(kr.current_value, kr.metric_type, kr.unit)}
             {' / '}

@@ -51,6 +51,9 @@ export async function listReports(orgId: string, search?: string) {
       export_format: benchScheduledReports.export_format,
       enabled: benchScheduledReports.enabled,
       last_sent_at: benchScheduledReports.last_sent_at,
+      last_delivery_attempt_at: benchScheduledReports.last_delivery_attempt_at,
+      last_delivery_status: benchScheduledReports.last_delivery_status,
+      last_delivery_error: benchScheduledReports.last_delivery_error,
       created_at: benchScheduledReports.created_at,
       updated_at: benchScheduledReports.updated_at,
     })
@@ -132,7 +135,7 @@ export async function deleteReport(id: string, orgId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Send now (trigger immediate generation)
+// Send now (mark report as queued for worker pickup)
 // ---------------------------------------------------------------------------
 
 export async function sendReportNow(id: string, orgId: string) {
@@ -144,13 +147,76 @@ export async function sendReportNow(id: string, orgId: string) {
 
   if (!report) throw notFound('Report not found');
 
-  // Update last_sent_at
+  // Record the attempt without overwriting last_sent_at. The worker job
+  // (apps/worker/src/jobs/bench-report-generation.job.ts) is responsible
+  // for flipping last_delivery_status to sent or failed and setting
+  // last_sent_at only on success. See Bench_Plan.md G1 and migration 0084.
+  const now = new Date();
   await db
     .update(benchScheduledReports)
-    .set({ last_sent_at: new Date() })
+    .set({
+      last_delivery_attempt_at: now,
+      last_delivery_status: 'queued',
+      last_delivery_error: null,
+      updated_at: now,
+    })
     .where(eq(benchScheduledReports.id, id));
 
-  // In production, this would enqueue a BullMQ job for report generation.
-  // For now, we return a confirmation.
-  return { report_id: id, status: 'queued', queued_at: new Date().toISOString() };
+  return {
+    report_id: id,
+    status: 'queued',
+    queued_at: now.toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Record delivery outcome (called by worker job after attempting delivery)
+// ---------------------------------------------------------------------------
+
+export type DeliveryOutcome =
+  | { status: 'sent' }
+  | { status: 'failed'; error: string }
+  | { status: 'pending' }
+  | { status: 'queued' };
+
+export async function recordDeliveryOutcome(
+  id: string,
+  orgId: string,
+  outcome: DeliveryOutcome,
+) {
+  const now = new Date();
+  const updateData: Record<string, unknown> = {
+    last_delivery_attempt_at: now,
+    last_delivery_status: outcome.status,
+    updated_at: now,
+  };
+
+  if (outcome.status === 'sent') {
+    updateData.last_sent_at = now;
+    updateData.last_delivery_error = null;
+  } else if (outcome.status === 'failed') {
+    updateData.last_delivery_error = outcome.error;
+  } else {
+    updateData.last_delivery_error = null;
+  }
+
+  const [updated] = await db
+    .update(benchScheduledReports)
+    .set(updateData)
+    .where(and(eq(benchScheduledReports.id, id), eq(benchScheduledReports.organization_id, orgId)))
+    .returning();
+
+  if (!updated) throw notFound('Report not found');
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
+// List reports due for delivery (used by worker scheduler tick)
+// ---------------------------------------------------------------------------
+
+export async function listEnabledReports() {
+  return db
+    .select()
+    .from(benchScheduledReports)
+    .where(eq(benchScheduledReports.enabled, true));
 }

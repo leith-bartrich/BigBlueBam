@@ -11,7 +11,10 @@ import {
 // ---------------------------------------------------------------------------
 
 export async function pipelineSummary(orgId: string, pipelineId?: string) {
-  const conditions = [eq(bondDeals.organization_id, orgId)];
+  const conditions = [
+    eq(bondDeals.organization_id, orgId),
+    isNull(bondDeals.deleted_at),
+  ];
   if (pipelineId) {
     conditions.push(eq(bondDeals.pipeline_id, pipelineId));
   }
@@ -98,6 +101,7 @@ export async function conversionRates(
     JOIN bond_deals d ON d.id = h.deal_id
     WHERE d.organization_id = ${orgId}
       AND d.pipeline_id = ${pipelineId}
+      AND d.deleted_at IS NULL
       ${startDate ? sql`AND h.changed_at >= ${startDate}::timestamptz` : sql``}
       ${endDate ? sql`AND h.changed_at <= ${endDate}::timestamptz` : sql``}
       AND h.from_stage_id IS NOT NULL
@@ -137,6 +141,7 @@ export async function dealVelocity(orgId: string, pipelineId: string) {
     JOIN bond_pipeline_stages s ON s.id = h.from_stage_id
     WHERE d.organization_id = ${orgId}
       AND d.pipeline_id = ${pipelineId}
+      AND d.deleted_at IS NULL
       AND h.duration_in_stage IS NOT NULL
       AND h.from_stage_id IS NOT NULL
     GROUP BY h.to_stage_id, s.name, s.sort_order
@@ -166,6 +171,7 @@ export async function dealVelocity(orgId: string, pipelineId: string) {
         eq(bondDeals.organization_id, orgId),
         eq(bondDeals.pipeline_id, pipelineId),
         isNotNull(bondDeals.closed_at),
+        isNull(bondDeals.deleted_at),
       ),
     );
 
@@ -191,6 +197,7 @@ export async function forecast(orgId: string, pipelineId?: string) {
   const conditions = [
     eq(bondDeals.organization_id, orgId),
     isNull(bondDeals.closed_at),
+    isNull(bondDeals.deleted_at),
   ];
   if (pipelineId) {
     conditions.push(eq(bondDeals.pipeline_id, pipelineId));
@@ -252,6 +259,7 @@ export async function staleDeals(orgId: string, pipelineId?: string) {
   const conditions = [
     eq(bondDeals.organization_id, orgId),
     isNull(bondDeals.closed_at),
+    isNull(bondDeals.deleted_at),
   ];
   if (pipelineId) {
     conditions.push(eq(bondDeals.pipeline_id, pipelineId));
@@ -314,6 +322,7 @@ export async function winLossRate(
   const conditions = [
     eq(bondDeals.organization_id, orgId),
     isNotNull(bondDeals.closed_at),
+    isNull(bondDeals.deleted_at),
   ];
   if (pipelineId) {
     conditions.push(eq(bondDeals.pipeline_id, pipelineId));

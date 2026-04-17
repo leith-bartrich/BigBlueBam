@@ -364,6 +364,7 @@ export async function processBoltExecuteJob(
       max_chain_depth: boltAutomations.max_chain_depth,
       created_by: boltAutomations.created_by,
       template_strict: boltAutomations.template_strict,
+      notify_owner_on_failure: boltAutomations.notify_owner_on_failure,
     })
     .from(boltAutomations)
     .where(eq(boltAutomations.id, automation_id))
@@ -609,6 +610,63 @@ export async function processBoltExecuteJob(
         error_step = ${failedStepIndex}
     WHERE id = ${execution_id}
   `);
+
+  // 7. G8 — if execution failed AND automation opted in, write a unified
+  //    notification row for the automation owner. We write the DB row directly
+  //    (rather than POSTing to Banter HTTP) because the worker shares the
+  //    database with every B-app and notifications land in the global bell.
+  //    Failure of the notification insert must never block the execution
+  //    bookkeeping above, so the whole block is wrapped in try/catch.
+  if (
+    (finalStatus === 'failed' || finalStatus === 'partial') &&
+    automation.notify_owner_on_failure === true
+  ) {
+    try {
+      const title = `Automation "${automation.name}" failed`;
+      const body = (failureMessage ?? 'Execution failed without a recorded error message').slice(
+        0,
+        500,
+      );
+      await db.execute(sql`
+        INSERT INTO notifications (
+          id, user_id, org_id, type, title, body, is_read, created_at, metadata,
+          source_app, category, deep_link
+        )
+        VALUES (
+          gen_random_uuid(),
+          ${automation.created_by},
+          ${automation.org_id},
+          'bolt_execution_failed',
+          ${title},
+          ${body},
+          false,
+          NOW(),
+          ${JSON.stringify({
+            execution_id,
+            automation_id,
+            status: finalStatus,
+            error_step: failedStepIndex,
+          })}::jsonb,
+          'bolt',
+          'execution_failed',
+          ${`/bolt/executions/${execution_id}`}
+        )
+      `);
+      logger.info(
+        { execution_id, automation_id, owner_id: automation.created_by },
+        'Bolt execution: failure notification delivered to owner',
+      );
+    } catch (err) {
+      logger.error(
+        {
+          execution_id,
+          automation_id,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'Bolt execution: failed to write owner failure notification',
+      );
+    }
+  }
 
   logger.info(
     {

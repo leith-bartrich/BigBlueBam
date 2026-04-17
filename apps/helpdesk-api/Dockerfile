@@ -8,6 +8,7 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml* ./
 COPY apps/helpdesk-api/package.json ./apps/helpdesk-api/
+COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --no-frozen-lockfile
 
@@ -15,10 +16,13 @@ RUN pnpm install --no-frozen-lockfile
 FROM deps AS build
 
 COPY tsconfig.base.json ./
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json packages/shared/tsup.config.ts ./packages/shared/
 COPY apps/helpdesk-api/src ./apps/helpdesk-api/src
 COPY apps/helpdesk-api/tsconfig.json apps/helpdesk-api/tsup.config.ts ./apps/helpdesk-api/
 
-RUN pnpm --filter @bigbluebam/helpdesk-api build
+RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/helpdesk-api build
 
 # Create a deploy-ready directory with all prod deps
 RUN pnpm --filter @bigbluebam/helpdesk-api deploy --prod /app/deployed
@@ -28,6 +32,7 @@ RUN pnpm --filter @bigbluebam/helpdesk-api deploy --prod /app/deployed
 FROM deps AS dev
 
 COPY tsconfig.base.json ./
+COPY packages/shared/ ./packages/shared/
 COPY apps/helpdesk-api/ ./apps/helpdesk-api/
 
 WORKDIR /app/apps/helpdesk-api
