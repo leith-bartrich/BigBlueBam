@@ -32,6 +32,7 @@
     "lint:migrations": "node scripts/lint-migrations.mjs",
     "db:generate": "pnpm --filter @bigbluebam/api db:generate",
     "db:push": "pnpm --filter @bigbluebam/api db:push",
+    "docs:screenshots": "node scripts/docs/capture.mjs",
     "docs:extract": "node scripts/docs/extract.mjs",
     "docs:compose": "node scripts/docs/compose.mjs",
     "docs:publish": "node scripts/docs/publish.mjs",
