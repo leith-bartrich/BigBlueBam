@@ -5,7 +5,7 @@ import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireBoardAccess, requireBoardEditAccess } from '../middleware/authorize.js';
 import * as elementService from '../services/element.service.js';
 import { loadScene, saveScene, type SceneData } from '../ws/persistence.js';
-import { sceneToSvg } from '../services/export.service.js';
+import { sceneToSvg, sceneToPng } from '../services/export.service.js';
 import {
   BOARD_ELEMENT_SOFT_LIMIT,
   BOARD_ELEMENT_HARD_LIMIT,
@@ -323,7 +323,7 @@ export default async function elementRoutes(fastify: FastifyInstance) {
   );
 
   // GET /boards/:id/export/:format -- Server-side export (svg, png)
-  // PNG is deferred; requests for png currently return SVG with a note.
+  // PNG rendering uses sharp to rasterize the server-generated SVG.
   fastify.get<{ Params: { id: string; format: string } }>(
     '/boards/:id/export/:format',
     { preHandler: [requireAuth, requireBoardAccess()] },
@@ -345,6 +345,14 @@ export default async function elementRoutes(fastify: FastifyInstance) {
       const scene = await loadScene(board.id, request.user!.org_id);
 
       if (!scene || !scene.elements || (scene.elements as unknown[]).length === 0) {
+        const emptyScene: SceneData = { elements: [], appState: {}, files: {} };
+        if (format === 'png') {
+          const pngBuffer = await sceneToPng(emptyScene, board.name);
+          return reply
+            .header('Content-Type', 'image/png')
+            .header('Content-Disposition', `inline; filename="${board.name || 'board'}.png"`)
+            .send(pngBuffer);
+        }
         const emptySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><text x="400" y="300" text-anchor="middle" font-family="sans-serif" fill="#9ca3af">Empty board</text></svg>`;
         return reply
           .header('Content-Type', 'image/svg+xml')
@@ -355,13 +363,11 @@ export default async function elementRoutes(fastify: FastifyInstance) {
       const svg = sceneToSvg(scene, board.name);
 
       if (format === 'png') {
-        // PNG rendering requires a headless renderer (deferred).
-        // Return SVG with a header noting the limitation.
+        const pngBuffer = await sceneToPng(scene, board.name);
         return reply
-          .header('Content-Type', 'image/svg+xml')
-          .header('X-Export-Note', 'PNG export deferred; returning SVG instead')
-          .header('Content-Disposition', `inline; filename="${board.name || 'board'}.svg"`)
-          .send(svg);
+          .header('Content-Type', 'image/png')
+          .header('Content-Disposition', `inline; filename="${board.name || 'board'}.png"`)
+          .send(pngBuffer);
       }
 
       return reply

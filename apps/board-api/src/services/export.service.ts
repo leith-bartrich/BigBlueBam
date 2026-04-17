@@ -1,5 +1,5 @@
 /**
- * Board export service -- generates SVG from board elements.
+ * Board export service -- generates SVG and PNG from board elements.
  *
  * Excalidraw scenes cannot be rendered server-side without a browser, so
  * we build a lightweight SVG representation that faithfully positions each
@@ -7,11 +7,12 @@
  * quick previews; pixel-perfect fidelity requires client-side rendering
  * via @excalidraw/utils exportToSvg.
  *
- * PNG export is deferred -- it would require a headless renderer (e.g.
- * sharp/resvg-js).  Callers requesting PNG currently receive SVG with a
- * note.
+ * PNG export uses `sharp` to rasterize the generated SVG into pixel data.
+ * Basic shapes, text, and lines are rendered accurately; hand-drawn
+ * Excalidraw strokes and custom fonts are approximated.
  */
 
+import sharp from 'sharp';
 import type { SceneData } from '../ws/persistence.js';
 
 // ---------------------------------------------------------------------------
@@ -174,4 +175,28 @@ export function sceneToThumbnailSvg(scene: SceneData): string {
     /width="[^"]*" height="[^"]*"/,
     'width="300" height="200"',
   );
+}
+
+/**
+ * Convert a board scene to a PNG Buffer via sharp.
+ *
+ * Sharp natively supports SVG input (via librsvg/resvg internally).
+ * The resulting PNG faithfully renders rectangles, ellipses, text, lines,
+ * and other basic SVG elements produced by `sceneToSvg`. Complex
+ * Excalidraw-specific features (hand-drawn strokes, custom fonts) are
+ * approximated; pixel-perfect fidelity still requires client-side
+ * rendering via @excalidraw/utils.
+ */
+export async function sceneToPng(
+  scene: SceneData,
+  boardName?: string,
+): Promise<Buffer> {
+  const svg = sceneToSvg(scene, boardName);
+  const svgBuffer = Buffer.from(svg, 'utf-8');
+
+  const png = await sharp(svgBuffer)
+    .png()
+    .toBuffer();
+
+  return png;
 }
