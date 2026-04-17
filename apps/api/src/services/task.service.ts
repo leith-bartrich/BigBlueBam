@@ -13,6 +13,7 @@ import { env } from '../env.js';
 import { escapeLike } from '../lib/escape-like.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 import { enrichTask, loadActor, loadOrg, loadPhase } from './bolt-event-enricher.service.js';
+import { fanoutNotification } from './notification-fanout.service.js';
 
 /** Look up org_id for a project (used for Bolt event publishing). */
 async function getProjectOrgId(projectId: string): Promise<string | null> {
@@ -258,6 +259,29 @@ export async function updateTask(taskId: string, data: UpdateTaskInput, actorId?
         actorId,
         actorId ? 'user' : 'system',
       );
+
+      // Cross-product notification fan-out: when a task is assigned,
+      // notify the new assignee via email + Banter DM (G6).
+      if (
+        data.assignee_id &&
+        enriched.assignee &&
+        data.assignee_id !== actorId
+      ) {
+        fanoutNotification(
+          {
+            recipient_user_id: data.assignee_id,
+            recipient_email: enriched.assignee.email ?? undefined,
+            subject: `Task assigned: ${task.title}`,
+            body: `${actor?.name ?? 'Someone'} assigned you to "${task.title}" in project ${enriched.project?.name ?? 'unknown'}.`,
+            url: `/b3/tasks/${task.id}`,
+            org_id: orgId,
+            actor_name: actor?.name ?? undefined,
+          },
+          ['email', 'banter_dm'],
+        ).catch(() => {
+          // Fire-and-forget; never block task updates on notification failures.
+        });
+      }
     }).catch(() => {});
   }
 
