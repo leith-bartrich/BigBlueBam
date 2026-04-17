@@ -8,6 +8,7 @@ import { WidgetWizardPage } from '@/pages/widget-wizard';
 import { WidgetEditPage } from '@/pages/widget-edit';
 import { ExplorerPage } from '@/pages/explorer';
 import { ReportsPage } from '@/pages/reports';
+import { SavedQueriesPage } from '@/pages/saved-queries';
 import { SettingsPage } from '@/pages/settings';
 import { Loader2 } from 'lucide-react';
 
@@ -19,6 +20,7 @@ type Route =
   | { page: 'widget-edit'; id: string }
   | { page: 'explorer' }
   | { page: 'reports' }
+  | { page: 'saved-queries' }
   | { page: 'settings' };
 
 const BASE_PATH = '/bench';
@@ -36,6 +38,7 @@ function parseRoute(path: string): Route {
   if (p === '/' || p === '') return { page: 'dashboards' };
   if (p === '/explorer') return { page: 'explorer' };
   if (p === '/reports') return { page: 'reports' };
+  if (p === '/saved-queries') return { page: 'saved-queries' };
   if (p === '/settings') return { page: 'settings' };
   // /dashboards/:id/widgets/new
   const widgetNewMatch = p.match(/^\/dashboards\/([^/]+)\/widgets\/new$/);
@@ -136,6 +139,8 @@ export function App() {
         return <ExplorerPage onNavigate={navigate} />;
       case 'reports':
         return <ReportsPage onNavigate={navigate} />;
+      case 'saved-queries':
+        return <SavedQueriesPage onNavigate={navigate} />;
       case 'settings':
         return <SettingsPage onNavigate={navigate} />;
       default:

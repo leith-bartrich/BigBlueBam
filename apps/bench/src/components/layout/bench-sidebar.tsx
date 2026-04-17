@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Compass,
   FileBarChart,
+  Database,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ const navItems = [
   { label: 'Dashboards', icon: LayoutDashboard, path: '/', page: 'dashboards' },
   { label: 'Explorer', icon: Compass, path: '/explorer', page: 'explorer' },
   { label: 'Reports', icon: FileBarChart, path: '/reports', page: 'reports' },
+  { label: 'Saved Queries', icon: Database, path: '/saved-queries', page: 'saved-queries' },
   { label: 'Settings', icon: Settings, path: '/settings', page: 'settings' },
 ];
 
