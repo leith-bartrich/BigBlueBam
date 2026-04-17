@@ -1,0 +1,13 @@
+{
+  "app": "bearing",
+  "nginx_path": "/bearing/",
+  "api_port": 4007,
+  "api_dir": "bearing-api",
+  "route_files": 4,
+  "schema_modules": 9,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "b91265189d50ecb4014805926bfbcc8c0af4b36543f06e2d93a4bddf2aacf5f8",
+  "generated_at": "2026-04-17T06:14:28.883Z",
+  "mcp_tool_count": 12
+}

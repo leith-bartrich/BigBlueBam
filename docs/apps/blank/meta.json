@@ -1,0 +1,13 @@
+{
+  "app": "blank",
+  "nginx_path": "/blank/",
+  "api_port": 4013,
+  "api_dir": "blank-api",
+  "route_files": 4,
+  "schema_modules": 5,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "aea0b2e27574320c4bef7305e3a2aaa10c0707e8863a3d00e331b81198abe75a",
+  "generated_at": "2026-04-17T06:14:30.207Z",
+  "mcp_tool_count": 11
+}

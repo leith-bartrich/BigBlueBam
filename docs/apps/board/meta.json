@@ -1,0 +1,13 @@
+{
+  "app": "board",
+  "nginx_path": "/board/",
+  "api_port": 4008,
+  "api_dir": "board-api",
+  "route_files": 9,
+  "schema_modules": 10,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "98d6f228347ff1ab8c34427a6b60665e5690809d6c2f0e77a5799772d9068758",
+  "generated_at": "2026-04-17T06:14:31.574Z",
+  "mcp_tool_count": 14
+}

@@ -1,0 +1,13 @@
+{
+  "app": "helpdesk",
+  "nginx_path": "/helpdesk/",
+  "api_port": 4001,
+  "api_dir": "helpdesk-api",
+  "route_files": 7,
+  "schema_modules": 12,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "afae9422f46e1dc00909bfacf80a82ad32487f4ced35fc038e1938f06b3e0b6e",
+  "generated_at": "2026-04-17T06:14:34.265Z",
+  "mcp_tool_count": 10
+}

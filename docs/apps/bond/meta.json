@@ -1,0 +1,13 @@
+{
+  "app": "bond",
+  "nginx_path": "/bond/",
+  "api_port": 4009,
+  "api_dir": "bond-api",
+  "route_files": 9,
+  "schema_modules": 14,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "1358ac2e10ebd67b4233b1d40a273f164a606484c316c4bda49eca111bdf8053",
+  "generated_at": "2026-04-17T06:14:32.668Z",
+  "mcp_tool_count": 22
+}

@@ -1,0 +1,13 @@
+{
+  "app": "brief",
+  "nginx_path": "/brief/",
+  "api_port": 4005,
+  "api_dir": "brief-api",
+  "route_files": 9,
+  "schema_modules": 10,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "e15c1c710ed92c1b0688d2f6fe6aacc453985c8cf4916273a026a5a367ef1ce1",
+  "generated_at": "2026-04-17T06:14:33.743Z",
+  "mcp_tool_count": 18
+}

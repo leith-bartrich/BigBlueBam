@@ -1,0 +1,13 @@
+{
+  "app": "beacon",
+  "nginx_path": "/beacon/",
+  "api_port": 4004,
+  "api_dir": "beacon-api",
+  "route_files": 9,
+  "schema_modules": 12,
+  "has_seeder": false,
+  "has_frontend": true,
+  "src_hash": "30586750dc1a6a6542a8a859363fa4d1b861c1c6ec33241b43953b052062b22a",
+  "generated_at": "2026-04-17T06:14:28.473Z",
+  "mcp_tool_count": 29
+}

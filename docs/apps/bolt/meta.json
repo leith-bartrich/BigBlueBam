@@ -1,0 +1,13 @@
+{
+  "app": "bolt",
+  "nginx_path": "/bolt/",
+  "api_port": 4006,
+  "api_dir": "bolt-api",
+  "route_files": 6,
+  "schema_modules": 10,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "8ccc4c73d3ca90f7d4646ae78127ecb761657f988f6d5b96cb4af96bbe76e568",
+  "generated_at": "2026-04-17T06:14:32.088Z",
+  "mcp_tool_count": 13
+}

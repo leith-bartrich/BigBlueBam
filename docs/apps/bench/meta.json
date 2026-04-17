@@ -1,0 +1,13 @@
+{
+  "app": "bench",
+  "nginx_path": "/bench/",
+  "api_port": 4011,
+  "api_dir": "bench-api",
+  "route_files": 6,
+  "schema_modules": 7,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "7f5e7efc31aa1eb298b2f2572d33ca1aea0b9d1c572ba1fe7d04d63a7d4fd4f9",
+  "generated_at": "2026-04-17T06:14:29.250Z",
+  "mcp_tool_count": 11
+}

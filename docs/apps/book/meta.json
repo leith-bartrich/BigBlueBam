@@ -1,0 +1,13 @@
+{
+  "app": "book",
+  "nginx_path": "/book/",
+  "api_port": 4012,
+  "api_dir": "book-api",
+  "route_files": 8,
+  "schema_modules": 10,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "d74698ab34a75bc0bc8cb8f057ff8acf1fdb7d2ce2490f853ebbcc8dec51fcb0",
+  "generated_at": "2026-04-17T06:14:33.099Z",
+  "mcp_tool_count": 10
+}

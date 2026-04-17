@@ -1,0 +1,13 @@
+{
+  "app": "blast",
+  "nginx_path": "/blast/",
+  "api_port": 4010,
+  "api_dir": "blast-api",
+  "route_files": 7,
+  "schema_modules": 9,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "527f7f28f5bb043fc5fb6291bcc36ed03b2822ae9d5cf607163285b9eba88a94",
+  "generated_at": "2026-04-17T06:14:30.649Z",
+  "mcp_tool_count": 14
+}

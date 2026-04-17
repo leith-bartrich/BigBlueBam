@@ -1,0 +1,13 @@
+{
+  "app": "bam",
+  "nginx_path": "/b3/",
+  "api_port": 4000,
+  "api_dir": "api",
+  "route_files": 42,
+  "schema_modules": 38,
+  "has_seeder": false,
+  "has_frontend": false,
+  "src_hash": "72acfbe486d36f3b8adf9dcd526e4adfd7c783a03a6c719bfa4c84ea2758a61e",
+  "generated_at": "2026-04-17T06:14:26.730Z",
+  "mcp_tool_count": 63
+}

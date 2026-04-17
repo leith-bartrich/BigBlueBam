@@ -1,0 +1,13 @@
+{
+  "app": "bill",
+  "nginx_path": "/bill/",
+  "api_port": 4014,
+  "api_dir": "bill-api",
+  "route_files": 8,
+  "schema_modules": 11,
+  "has_seeder": true,
+  "has_frontend": true,
+  "src_hash": "929f9b7233d34a37141dd6e8af518b2eb789b2a04a3cc4f550952c31be6f3f4b",
+  "generated_at": "2026-04-17T06:14:29.882Z",
+  "mcp_tool_count": 16
+}
