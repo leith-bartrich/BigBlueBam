@@ -11,7 +11,7 @@ import {
 } from '../db/schema/index.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireChannelMember, requireChannelAdmin, requireChannelOwner } from '../middleware/channel-auth.js';
-import { broadcastToOrg, broadcastToChannel } from '../services/realtime.js';
+import { broadcastToOrg, broadcastToChannel, broadcastToUser } from '../services/realtime.js';
 import { getEffectiveBanterPermissions } from '../services/org-permissions-bridge.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 import { loadEnrichedActor, loadEnrichedOrg } from '../lib/bolt-enrich.js';
@@ -1122,11 +1122,13 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const user = request.user!;
       const body = markReadSchema.parse(request.body);
 
+      const now = new Date();
+
       await db
         .update(banterChannelMemberships)
         .set({
           last_read_message_id: body.message_id,
-          last_read_at: new Date(),
+          last_read_at: now,
         })
         .where(
           and(
@@ -1134,6 +1136,26 @@ export default async function channelRoutes(fastify: FastifyInstance) {
             eq(banterChannelMemberships.user_id, user.id),
           ),
         );
+
+      // Cache the read position in Redis for fast cross-device lookups
+      const redis = (fastify as any).redis as import('ioredis').default | undefined;
+      if (redis) {
+        const cacheKey = `banter:read:${user.id}:${id}`;
+        await redis
+          .set(cacheKey, JSON.stringify({ message_id: body.message_id, at: now.toISOString() }), 'EX', 86400)
+          .catch(() => {});
+      }
+
+      // Broadcast to the user's other devices so they sync the read cursor
+      broadcastToUser(user.id, {
+        type: 'channel.read_cursor_synced',
+        data: {
+          channel_id: id,
+          message_id: body.message_id,
+          read_at: now.toISOString(),
+        },
+        timestamp: now.toISOString(),
+      });
 
       return reply.send({ data: { success: true } });
     },

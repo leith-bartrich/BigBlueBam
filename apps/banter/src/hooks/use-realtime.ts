@@ -103,6 +103,7 @@ export function useRealtimeChannel(channelId: string) {
  */
 export function useRealtimeGlobal() {
   const queryClient = useQueryClient();
+  const setUnreadCount = useChannelStore((s) => s.setUnreadCount);
 
   useEffect(() => {
     ws.joinRoom('global');
@@ -115,10 +116,26 @@ export function useRealtimeGlobal() {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
     });
 
+    // Cross-device read cursor sync: when this user marks a channel as
+    // read on another device/tab, update unread counts here immediately.
+    const unsubReadSync = ws.on('channel.read_cursor_synced', (event) => {
+      const payload = event.payload as {
+        channel_id: string;
+        message_id: string;
+      };
+      if (payload.channel_id) {
+        // Reset unread count for the synced channel and refresh from server
+        setUnreadCount(payload.channel_id, 0, 0);
+        queryClient.invalidateQueries({ queryKey: ['unread-counts'] });
+        queryClient.invalidateQueries({ queryKey: ['channels'] });
+      }
+    });
+
     return () => {
       ws.leaveRoom('global');
       unsubChannels();
       unsubCreated();
+      unsubReadSync();
     };
-  }, [queryClient]);
+  }, [queryClient, setUnreadCount]);
 }
