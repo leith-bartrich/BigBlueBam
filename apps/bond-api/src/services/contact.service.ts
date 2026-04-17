@@ -30,6 +30,7 @@ export interface ContactFilters {
   lead_score_min?: number;
   lead_score_max?: number;
   search?: string;
+  include_deleted?: boolean;
   limit?: number;
   offset?: number;
   sort?: string;
@@ -65,8 +66,10 @@ export interface UpdateContactInput extends Partial<CreateContactInput> {}
 export async function listContacts(filters: ContactFilters) {
   const conditions = [
     eq(bondContacts.organization_id, filters.organization_id),
-    isNull(bondContacts.deleted_at),
   ];
+  if (!filters.include_deleted) {
+    conditions.push(isNull(bondContacts.deleted_at));
+  }
 
   if (filters.lifecycle_stage) {
     conditions.push(eq(bondContacts.lifecycle_stage, filters.lifecycle_stage));

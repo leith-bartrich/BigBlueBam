@@ -39,6 +39,7 @@ export interface DealFilters {
   expected_close_before?: string;
   stale?: boolean;
   search?: string;
+  include_deleted?: boolean;
   limit?: number;
   offset?: number;
   sort?: string;
@@ -79,8 +80,10 @@ export interface UpdateDealInput {
 export async function listDeals(filters: DealFilters) {
   const conditions = [
     eq(bondDeals.organization_id, filters.organization_id),
-    isNull(bondDeals.deleted_at),
   ];
+  if (!filters.include_deleted) {
+    conditions.push(isNull(bondDeals.deleted_at));
+  }
 
   if (filters.pipeline_id) {
     conditions.push(eq(bondDeals.pipeline_id, filters.pipeline_id));

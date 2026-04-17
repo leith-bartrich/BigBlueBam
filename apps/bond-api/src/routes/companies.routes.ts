@@ -33,6 +33,7 @@ const listQuerySchema = z.object({
   size_bucket: z.string().optional(),
   owner_id: z.string().uuid().optional(),
   search: z.string().max(200).optional(),
+  include_deleted: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   sort: z.string().optional(),
@@ -63,6 +64,7 @@ export default async function companyRoutes(fastify: FastifyInstance) {
       const result = await companyService.listCompanies({
         organization_id: request.user!.org_id,
         ...query,
+        include_deleted: query.include_deleted === 'true',
       });
       return reply.send(result);
     },

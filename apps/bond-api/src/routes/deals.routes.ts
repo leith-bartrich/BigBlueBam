@@ -62,6 +62,7 @@ const listQuerySchema = z.object({
   expected_close_before: z.string().optional(),
   stale: z.coerce.boolean().optional(),
   search: z.string().max(200).optional(),
+  include_deleted: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   sort: z.string().optional(),
@@ -84,6 +85,7 @@ export default async function dealRoutes(fastify: FastifyInstance) {
       const result = await dealService.listDeals({
         organization_id: request.user!.org_id,
         ...query,
+        include_deleted: query.include_deleted === 'true',
         visibility_owner_id: isRestrictedRole ? request.user!.id : undefined,
       });
       return reply.send(result);
@@ -291,6 +293,99 @@ export default async function dealRoutes(fastify: FastifyInstance) {
         deal_id: request.params.id,
       });
       return reply.send(result);
+    },
+  );
+
+  // GET /deals/:id/related — Cross-product links for a deal
+  // Aggregates related records from Bill (invoices), Book (events), and
+  // Bam (tasks). Each source is best-effort: if an internal service call
+  // fails, that section returns an empty array.
+  fastify.get<{ Params: { id: string } }>(
+    '/deals/:id/related',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const dealId = request.params.id;
+      const orgId = request.user!.org_id;
+
+      // Verify the deal exists and belongs to the caller's org
+      const deal = await dealService.getDeal(dealId, orgId);
+      if (!deal) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Deal not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const { env } = await import('../env.js');
+      const cookieHeader = request.headers.cookie ?? '';
+      const internalHeaders: Record<string, string> = {
+        cookie: cookieHeader,
+      };
+      if (env.INTERNAL_SERVICE_SECRET) {
+        internalHeaders['x-internal-secret'] = env.INTERNAL_SERVICE_SECRET;
+      }
+
+      // Fetch related invoices from Bill API
+      const invoicesPromise = (async () => {
+        try {
+          const url = `${env.BBB_API_INTERNAL_URL}/internal/bill/invoices?bond_deal_id=${dealId}`;
+          const res = await fetch(url, {
+            headers: internalHeaders,
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!res.ok) return [];
+          const body = (await res.json()) as { data?: unknown[] };
+          return body.data ?? [];
+        } catch {
+          return [];
+        }
+      })();
+
+      // Fetch related Book events via internal query
+      const eventsPromise = (async () => {
+        try {
+          const url = `${env.BBB_API_INTERNAL_URL}/internal/book/events?linked_entity_type=bond_deal&linked_entity_id=${dealId}`;
+          const res = await fetch(url, {
+            headers: internalHeaders,
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!res.ok) return [];
+          const body = (await res.json()) as { data?: unknown[] };
+          return body.data ?? [];
+        } catch {
+          return [];
+        }
+      })();
+
+      // Fetch related Bam tasks (custom_fields->>'bond_deal_id' = dealId)
+      const tasksPromise = (async () => {
+        try {
+          const url = `${env.BBB_API_INTERNAL_URL}/internal/bond/tasks?bond_deal_id=${dealId}`;
+          const res = await fetch(url, {
+            headers: internalHeaders,
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!res.ok) return [];
+          const body = (await res.json()) as { data?: unknown[] };
+          return body.data ?? [];
+        } catch {
+          return [];
+        }
+      })();
+
+      const [invoices, events, tasks] = await Promise.all([
+        invoicesPromise,
+        eventsPromise,
+        tasksPromise,
+      ]);
+
+      return reply.send({
+        data: { invoices, events, tasks },
+      });
     },
   );
 }

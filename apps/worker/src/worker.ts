@@ -72,6 +72,10 @@ import {
   processBoltExecutionCleanupJob,
   type BoltExecutionCleanupJobData,
 } from './jobs/bolt-execution-cleanup.job.js';
+import {
+  processBondBulkScoreJob,
+  type BondBulkScoreJobData,
+} from './jobs/bond-bulk-score.job.js';
 
 const env = loadEnv();
 
@@ -760,6 +764,29 @@ boltExecutionCleanupQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register bolt-execution-cleanup scheduler'));
 
+// Bond bulk lead-score recalculation worker (daily at 05:00 UTC).
+const bondBulkScoreWorker = new Worker<BondBulkScoreJobData>(
+  'bond-bulk-score',
+  async (job: Job<BondBulkScoreJobData>) => {
+    await processBondBulkScoreJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+bondBulkScoreWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bond-bulk-score' }, 'Job completed');
+});
+bondBulkScoreWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bond-bulk-score', err }, 'Job failed');
+});
+const bondBulkScoreQueue = new Queue('bond-bulk-score', { connection: redis });
+bondBulkScoreQueue
+  .upsertJobScheduler(
+    'bond-bulk-score-daily',
+    { pattern: '0 5 * * *' }, // 5 AM daily
+    { name: 'daily-score', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bond-bulk-score scheduler'));
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -813,6 +840,7 @@ const workers = [
   helpdeskSlaMonitorWorker,
   boardThumbnailWorker,
   boltExecutionCleanupWorker,
+  bondBulkScoreWorker,
   analyticsWorker,
 ];
 
@@ -851,6 +879,7 @@ logger.info(
       'helpdesk-sla-monitor',
       'board-thumbnail',
       'bolt-execution-cleanup',
+      'bond-bulk-score',
       'analytics',
     ],
   },
