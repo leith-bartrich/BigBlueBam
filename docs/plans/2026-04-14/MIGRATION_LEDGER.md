@@ -16,8 +16,8 @@ Authoritative registry of migration numbers for the 2026-04-14 recovery orchestr
 |---|---|---|---|---|
 | 0079 | `0079_beacon_comments_table.sql` | Beacon_Plan.md (G1) | Wave 2.01 | claimed |
 | 0080 | `0080_beacon_attachments_table.sql` | Beacon_Plan.md (G2) | Wave 2.01 | claimed |
-| 0081 | _(unused reserve, Beacon range)_ | Beacon_Plan.md | - | reserved |
-| 0082 | _(unused reserve, Beacon range)_ | Beacon_Plan.md | - | reserved |
+| 0081 | _(released, was Beacon reserve)_ | Beacon_Plan.md | - | released |
+| 0082 | _(released, was Beacon reserve)_ | Beacon_Plan.md | - | released |
 | 0083 | `0083_bearing_watcher_unsubscribe_token.sql` | Bearing_Plan.md (G9 conditional) | Wave 2.02 | conditional |
 | 0084 | `0084_bench_report_delivery_tracking.sql` | Bench_Plan.md | Wave 2.03 | claimed |
 | 0085 | `0085_bench_materialized_view_refresh_tracking.sql` | Bench_Plan.md | Wave 2.03 | claimed |
@@ -30,14 +30,14 @@ Authoritative registry of migration numbers for the 2026-04-14 recovery orchestr
 | 0092 | `0092_blast_campaign_completion_tracking.sql` | Blast_Plan.md | Wave 2.06 | claimed |
 | 0093 | `0093_board_template_content.sql` | Board_Plan.md (G4) | Wave 2.07 | claimed |
 | 0094 | `0094_board_element_count_tracking.sql` | Board_Plan.md (G10, P1) | Wave 2.07 | claimed (P1) |
-| 0095 | _(unused reserve, Board range)_ | Board_Plan.md | - | reserved |
+| 0095 | _(released, was Board reserve)_ | Board_Plan.md | - | released |
 | 0096 | `0096_bolt_event_naming_migration.sql` | Bolt_Plan.md (G3) | Wave 2.08 | claimed |
 | 0097 | `0097_bolt_notify_owner_on_failure.sql` | Bolt_Plan.md (G8) | Wave 2.08 | claimed |
-| 0098 | _(unused reserve, Bolt range)_ | Bolt_Plan.md | - | reserved |
+| 0098 | _(released, was Bolt reserve)_ | Bolt_Plan.md | - | released |
 | 0099 | `0099_bond_import_mappings.sql` | Bond_Plan.md (G1) | Wave 2.09 | claimed |
 | 0100 | `0100_bond_soft_delete.sql` | Bond_Plan.md (G4) | Wave 2.09 | claimed |
-| 0101 | _(unused reserve, Book range)_ | Book_Plan.md | - | reserved |
-| 0102 | _(unused reserve, Book range)_ | Book_Plan.md | - | reserved |
+| 0101 | _(released, was Book reserve)_ | Book_Plan.md | - | released |
+| 0102 | _(released, was Book reserve)_ | Book_Plan.md | - | released |
 | 0103 | `0103_brief_yjs_state_tracking.sql` | Brief_Plan.md (G1) | Wave 2.11 | claimed |
 | 0104 | `0104_brief_qdrant_embedded_at.sql` | Brief_Plan.md (G3) | Wave 2.11 | claimed |
 | 0105 | `0105_banter_user_presence.sql` | Banter_Plan.md (G8) | Wave 2.12 | claimed |
