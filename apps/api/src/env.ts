@@ -75,6 +75,9 @@ const envSchema = z.object({
 
   // Bolt workflow automation engine URL (fire-and-forget event publishing)
   BOLT_API_INTERNAL_URL: z.string().default('http://bolt-api:4006'),
+
+  // Helpdesk API internal URL for agent queue proxy
+  HELPDESK_API_INTERNAL_URL: z.string().default('http://helpdesk-api:4001'),
 }).transform((data) => ({
   ...data,
   // BAM-010: Default COOKIE_SECURE to true in production when not explicitly set

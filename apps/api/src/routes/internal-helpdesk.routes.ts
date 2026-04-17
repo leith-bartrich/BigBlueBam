@@ -20,8 +20,10 @@ import { phases } from '../db/schema/phases.js';
 import { labels } from '../db/schema/labels.js';
 import { comments } from '../db/schema/comments.js';
 import { requireServiceAuth } from '../middleware/require-service-auth.js';
+import { requireAuth } from '../plugins/auth.js';
 import { HELPDESK_SYSTEM_USER_ID } from '../lib/constants.js';
 import { logActivity } from '../services/activity.service.js';
+import { env } from '../env.js';
 
 const createTaskSchema = z.object({
   project_id: z.string().uuid(),
@@ -433,6 +435,68 @@ export default async function internalHelpdeskRoutes(fastify: FastifyInstance) {
         request.log.error({ err, caller: 'helpdesk-api' }, 'internal-helpdesk: reopen failed');
         return reply.status(500).send({
           error: { code: 'INTERNAL_ERROR', message: 'Failed to reopen task', details: [], request_id: request.id },
+        });
+      }
+    },
+  );
+
+  // ── GET /internal/helpdesk/queue ──────────────────────────────────────
+  // Session-authenticated proxy: the Bam frontend (helpdesk-agent-queue
+  // page) calls this to fetch the ticket queue from helpdesk-api.  Auth
+  // is the caller's Bam session cookie (requireAuth), NOT the service
+  // token. We forward the request to helpdesk-api with the shared
+  // INTERNAL_HELPDESK_SECRET so helpdesk-api trusts the call.
+  fastify.get(
+    '/queue',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const url = new URL('/helpdesk/agents/queue', env.HELPDESK_API_INTERNAL_URL);
+
+        // Forward query-string filters from the frontend
+        const qs = request.url.split('?')[1];
+        if (qs) {
+          for (const [k, v] of new URLSearchParams(qs)) {
+            url.searchParams.set(k, v);
+          }
+        }
+
+        const res = await fetch(url.toString(), {
+          method: 'GET',
+          headers: {
+            'x-internal-token': env.INTERNAL_HELPDESK_SECRET,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => '');
+          request.log.warn(
+            { status: res.status, body: errBody.slice(0, 300) },
+            'internal-helpdesk: queue proxy upstream error',
+          );
+          return reply.status(res.status).send({
+            error: {
+              code: 'UPSTREAM_ERROR',
+              message: `Helpdesk API returned HTTP ${res.status}`,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+
+        const body = await res.json();
+        return reply.send(body);
+      } catch (err) {
+        request.log.error({ err }, 'internal-helpdesk: queue proxy failed');
+        return reply.status(502).send({
+          error: {
+            code: 'UPSTREAM_ERROR',
+            message: 'Failed to reach helpdesk API',
+            details: [],
+            request_id: request.id,
+          },
         });
       }
     },
