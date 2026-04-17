@@ -5,6 +5,11 @@ import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireBoardAccess, requireBoardEditAccess } from '../middleware/authorize.js';
 import * as elementService from '../services/element.service.js';
 import { loadScene, saveScene, type SceneData } from '../ws/persistence.js';
+import { sceneToSvg } from '../services/export.service.js';
+import {
+  BOARD_ELEMENT_SOFT_LIMIT,
+  BOARD_ELEMENT_HARD_LIMIT,
+} from '../services/element-snapshot.service.js';
 
 // ---------------------------------------------------------------------------
 // Schemas for write endpoints
@@ -135,6 +140,24 @@ export default async function elementRoutes(fastify: FastifyInstance) {
       const scene = await loadScene(board.id, request.user!.org_id);
       const currentElements = scene?.elements ?? [];
 
+      // Element count enforcement
+      const liveCount = (currentElements as Record<string, unknown>[]).filter(
+        (e) => e && e.isDeleted !== true,
+      ).length;
+      if (liveCount + 2 > BOARD_ELEMENT_HARD_LIMIT) {
+        return reply.status(413).send({
+          error: {
+            code: 'ELEMENT_LIMIT_EXCEEDED',
+            message: `Board has ${liveCount} elements, exceeding the hard limit of ${BOARD_ELEMENT_HARD_LIMIT}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      if (liveCount + 2 > BOARD_ELEMENT_SOFT_LIMIT) {
+        reply.header('X-Board-Element-Warning', `Board has ${liveCount + 2} elements (soft limit: ${BOARD_ELEMENT_SOFT_LIMIT})`);
+      }
+
       const updatedScene: SceneData = {
         elements: [...(currentElements as unknown[]), stickyRect, stickyText],
         appState: scene?.appState ?? {},
@@ -202,6 +225,24 @@ export default async function elementRoutes(fastify: FastifyInstance) {
       // Load current scene, append the new element, and save back
       const scene = await loadScene(board.id, request.user!.org_id);
       const currentElements = scene?.elements ?? [];
+
+      // Element count enforcement
+      const liveCount = (currentElements as Record<string, unknown>[]).filter(
+        (e) => e && e.isDeleted !== true,
+      ).length;
+      if (liveCount + 1 > BOARD_ELEMENT_HARD_LIMIT) {
+        return reply.status(413).send({
+          error: {
+            code: 'ELEMENT_LIMIT_EXCEEDED',
+            message: `Board has ${liveCount} elements, exceeding the hard limit of ${BOARD_ELEMENT_HARD_LIMIT}`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      if (liveCount + 1 > BOARD_ELEMENT_SOFT_LIMIT) {
+        reply.header('X-Board-Element-Warning', `Board has ${liveCount + 1} elements (soft limit: ${BOARD_ELEMENT_SOFT_LIMIT})`);
+      }
 
       const updatedScene: SceneData = {
         elements: [...(currentElements as unknown[]), textElement],
@@ -278,6 +319,55 @@ export default async function elementRoutes(fastify: FastifyInstance) {
           note: `Export format '${body.format}' requires client-side rendering. Use @excalidraw/utils exportToSvg or exportToBlob with the returned scene data.`,
         },
       });
+    },
+  );
+
+  // GET /boards/:id/export/:format -- Server-side export (svg, png)
+  // PNG is deferred; requests for png currently return SVG with a note.
+  fastify.get<{ Params: { id: string; format: string } }>(
+    '/boards/:id/export/:format',
+    { preHandler: [requireAuth, requireBoardAccess()] },
+    async (request, reply) => {
+      const board = (request as any).board;
+      const format = request.params.format;
+
+      if (format !== 'svg' && format !== 'png') {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: `Unsupported export format: ${format}. Supported: svg, png`,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const scene = await loadScene(board.id, request.user!.org_id);
+
+      if (!scene || !scene.elements || (scene.elements as unknown[]).length === 0) {
+        const emptySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><text x="400" y="300" text-anchor="middle" font-family="sans-serif" fill="#9ca3af">Empty board</text></svg>`;
+        return reply
+          .header('Content-Type', 'image/svg+xml')
+          .header('Content-Disposition', `inline; filename="${board.name || 'board'}.svg"`)
+          .send(emptySvg);
+      }
+
+      const svg = sceneToSvg(scene, board.name);
+
+      if (format === 'png') {
+        // PNG rendering requires a headless renderer (deferred).
+        // Return SVG with a header noting the limitation.
+        return reply
+          .header('Content-Type', 'image/svg+xml')
+          .header('X-Export-Note', 'PNG export deferred; returning SVG instead')
+          .header('Content-Disposition', `inline; filename="${board.name || 'board'}.svg"`)
+          .send(svg);
+      }
+
+      return reply
+        .header('Content-Type', 'image/svg+xml')
+        .header('Content-Disposition', `inline; filename="${board.name || 'board'}.svg"`)
+        .send(svg);
     },
   );
 }

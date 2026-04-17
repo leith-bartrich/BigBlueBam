@@ -636,6 +636,29 @@ helpdeskSlaMonitorQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register helpdesk-sla-monitor scheduler'));
 
+// Board thumbnail generation worker (on-demand + daily sweep at 04:00 UTC).
+const boardThumbnailWorker = new Worker<BoardThumbnailJobData>(
+  'board-thumbnail',
+  async (job: Job<BoardThumbnailJobData>) => {
+    await processBoardThumbnailJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+boardThumbnailWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'board-thumbnail' }, 'Job completed');
+});
+boardThumbnailWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'board-thumbnail', err }, 'Job failed');
+});
+const boardThumbnailQueue = new Queue('board-thumbnail', { connection: redis });
+boardThumbnailQueue
+  .upsertJobScheduler(
+    'board-thumbnail-sweep-daily',
+    { pattern: '0 4 * * *' }, // 4 AM daily
+    { name: 'sweep', data: { sweep: true } },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register board-thumbnail sweep scheduler'));
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -684,6 +707,7 @@ const workers = [
   benchMvRefreshWorker,
   briefEmbedWorker,
   helpdeskSlaMonitorWorker,
+  boardThumbnailWorker,
   analyticsWorker,
 ];
 
@@ -717,6 +741,7 @@ logger.info(
       'bench-mv-refresh',
       'brief-embed',
       'helpdesk-sla-monitor',
+      'board-thumbnail',
       'analytics',
     ],
   },
