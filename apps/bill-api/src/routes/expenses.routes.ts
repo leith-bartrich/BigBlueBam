@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as expenseService from '../services/expense.service.js';
+import * as receiptService from '../services/receipt.service.js';
 
 const createExpenseSchema = z.object({
   project_id: z.string().uuid().optional(),
@@ -98,6 +99,40 @@ export default async function expenseRoutes(fastify: FastifyInstance) {
         request.user!.id,
       );
       return reply.send({ data: expense });
+    },
+  );
+
+  // POST /expenses/:id/receipt -- Upload receipt file to MinIO
+  fastify.post<{ Params: { id: string } }>(
+    '/expenses/:id/receipt',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')],
+    },
+    async (request, reply) => {
+      const file = await request.file();
+      if (!file) {
+        return reply.status(400).send({
+          error: {
+            code: 'MISSING_FILE',
+            message: 'No file uploaded. Send a multipart form with a file field.',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const result = await receiptService.uploadReceipt(
+        request.params.id,
+        request.user!.org_id,
+        {
+          filename: file.filename,
+          mimetype: file.mimetype,
+          file: file.file,
+        },
+      );
+
+      return reply.send({ data: result });
     },
   );
 }

@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
+import multipart from '@fastify/multipart';
 import { env } from './env.js';
 import { createErrorHandler } from '@bigbluebam/logging';
 import { healthCheckPlugin } from '@bigbluebam/service-health';
@@ -50,6 +51,10 @@ await fastify.register(cookie, {
 await fastify.register(rateLimit, {
   max: env.RATE_LIMIT_MAX,
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
+});
+
+await fastify.register(multipart, {
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 
 // Security headers
