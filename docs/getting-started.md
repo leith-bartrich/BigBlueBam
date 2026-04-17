@@ -354,6 +354,70 @@ finally to the first organization by `created_at` if neither is set.
 Every child seeder pre-checks existing rows via `SELECT ... LIMIT 1`
 or `ON CONFLICT DO NOTHING`; no script issues `DELETE FROM`.
 
+#### What gets seeded
+
+After a successful `seed-all.mjs` run, expect at least these row counts:
+
+| Table | Minimum rows | Surface |
+|---|---|---|
+| `organizations` | 1 | Platform |
+| `users` | 6 | Platform |
+| `projects` | 2 | Bam |
+| `tasks` | 15 | Bam |
+| `sprints` | 2 | Bam |
+| `beacon_entries` | 100 | Beacon |
+| `beacon_comments` | 5 | Beacon |
+| `bearing_goals` | 4 | Bearing |
+| `banter_channels` | 6 | Banter |
+| `banter_messages` | 10 | Banter |
+| `tickets` | 12 | Helpdesk |
+| `bond_companies` | 3 | Bond |
+| `bond_contacts` | 5 | Bond |
+| `bond_deals` | 3 | Bond |
+| `bolt_automations` | 3 | Bolt |
+| `book_events` | 2 | Book |
+| `blast_campaigns` | 2 | Blast |
+| `blank_forms` | 2 | Blank |
+| `bench_dashboards` | 1 | Bench |
+| `bill_invoices` | 2 | Bill |
+| `brief_documents` | 2 | Brief |
+
+Use `scripts/seed-verify.mjs` to assert these counts programmatically:
+
+```bash
+DATABASE_URL=postgres://bigbluebam:pw@localhost:5432/bigbluebam \
+  node scripts/seed-verify.mjs
+```
+
+#### Re-seeding after a wipe
+
+If you ran `docker compose down -v` (which destroys volumes) or otherwise
+lost your database, rebuild from scratch:
+
+```bash
+# 1. Bring the stack up (migrate service re-creates the schema)
+docker compose up -d
+
+# 2. Create the bootstrap admin + org
+docker compose exec api node dist/cli.js create-admin \
+  --email admin@example.com --password your-admin-password \
+  --name "Admin User" --org "My Organization"
+
+# 3. Re-run the full seed orchestrator
+docker compose --profile seed run --rm seed
+
+# 4. Verify seeds landed
+DATABASE_URL=postgres://bigbluebam:pw@localhost:5432/bigbluebam \
+  node scripts/seed-verify.mjs
+```
+
+The seed orchestrator resolves the target org automatically (first org by
+`created_at` unless `SEED_ORG_SLUG` is set). Every child seeder is
+idempotent, so partial re-runs are safe.
+
+See [Seeding Smoke Test](seeding-smoke-test.md) for a 14-URL click-through
+checklist that visually confirms seed data across all surfaces.
+
 ### Step 6: Access the Application
 
 Open your browser and navigate to the application.
