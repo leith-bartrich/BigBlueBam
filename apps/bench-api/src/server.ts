@@ -78,10 +78,12 @@ await fastify.register(healthCheckPlugin, {
 import { CacheService } from './services/cache.service.js';
 import { setCacheService } from './services/widget.service.js';
 import { setDashboardCacheService } from './services/dashboard.service.js';
+import { setQueryCacheService } from './services/query.service.js';
 
 const cacheService = new CacheService(fastify.redis, env.CACHE_TTL_SECONDS);
 setCacheService(cacheService);
 setDashboardCacheService(cacheService);
+setQueryCacheService(cacheService);
 
 // Routes
 import dashboardRoutes from './routes/dashboards.routes.js';
@@ -95,6 +97,9 @@ await fastify.register(widgetRoutes, { prefix: '/v1' });
 await fastify.register(dataSourceRoutes, { prefix: '/v1' });
 await fastify.register(reportRoutes, { prefix: '/v1' });
 await fastify.register(materializedViewsRoutes, { prefix: '/v1' });
+
+import savedQueryRoutes from './routes/saved-queries.routes.js';
+await fastify.register(savedQueryRoutes, { prefix: '/v1' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
