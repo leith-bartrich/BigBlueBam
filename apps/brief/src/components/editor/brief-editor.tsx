@@ -21,6 +21,20 @@ import { common, createLowlight } from 'lowlight';
 import type * as Y from 'yjs';
 import type { WebsocketProvider } from 'y-websocket';
 
+// Brief-specific extensions
+import { Mention } from '../../extensions/mention.js';
+import { TaskEmbed } from '../../extensions/task-embed.js';
+import { BeaconEmbed } from '../../extensions/beacon-embed.js';
+import { Callout } from '../../extensions/callout.js';
+import { SlashCommand } from '../../extensions/slash-command.js';
+import { ChannelLink } from '../../extensions/channel-link.js';
+// bubble-menu-config is a UI component config, not an extension -- it is
+// consumed by the toolbar/BubbleMenu wrapper, not added to the extensions
+// array. Imported here for re-export convenience.
+export { bubbleMenuConfig, BubbleMenu } from '../../extensions/bubble-menu-config.js';
+
+import { createSuggestionRenderer } from './suggestion-popup.js';
+
 const lowlight = createLowlight(common);
 
 interface BriefEditorProps {
@@ -84,6 +98,37 @@ function buildExtensions(options?: {
       lowlight,
     }),
     HorizontalRule,
+
+    // Brief-specific extensions -------------------------------------------
+
+    // @mention with suggestion popup
+    Mention.configure({
+      suggestion: {
+        char: '@',
+        allowSpaces: false,
+        items: async () => [],
+        render: createSuggestionRenderer,
+      },
+    }),
+
+    // Inline task embed node
+    TaskEmbed,
+
+    // Inline Beacon knowledge base embed node
+    BeaconEmbed,
+
+    // Block-level callout container (info/warning/tip/success)
+    Callout,
+
+    // Slash command palette (triggered by '/')
+    SlashCommand.configure({
+      suggestion: {
+        render: createSuggestionRenderer,
+      },
+    }),
+
+    // Inline #channel link node
+    ChannelLink,
   ];
 
   if (options?.ydoc) {
