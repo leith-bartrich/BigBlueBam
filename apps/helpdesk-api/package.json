@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@bigbluebam/db-stubs": "workspace:*",
     "@bigbluebam/logging": "workspace:*",
     "@bigbluebam/service-health": "workspace:*",
     "@bigbluebam/shared": "workspace:*",

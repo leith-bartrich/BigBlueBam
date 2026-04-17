@@ -12,6 +12,7 @@
     "lint": "biome check ./src"
   },
   "dependencies": {
+    "@bigbluebam/db-stubs": "workspace:*",
     "@bigbluebam/logging": "workspace:*",
     "@bigbluebam/service-health": "workspace:*",
     "@fastify/cookie": "^11.0.0",
