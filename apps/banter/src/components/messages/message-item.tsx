@@ -27,6 +27,7 @@ import {
   generateAvatarInitials,
 } from '@/lib/utils';
 import { UserProfilePopover } from '@/components/common/user-profile-popover';
+import { CrossProductEmbeds } from './cross-product-embed';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '👀', '🚀'];
 
@@ -171,6 +172,11 @@ export function MessageItem({ message, channelId, grouped, onNavigate }: Message
           className="rich-text-content text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed"
           dangerouslySetInnerHTML={{ __html: renderedHtml }}
         />
+
+        {/* Cross-product embeds (Bam task, Bond deal previews) */}
+        {!message.is_system && (
+          <CrossProductEmbeds content={message.content} />
+        )}
 
         {/* Attachments */}
         {message.attachments.length > 0 && (
