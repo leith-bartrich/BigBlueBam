@@ -36,6 +36,13 @@ function slugify(text: string): string {
     .slice(0, 100);
 }
 
+/** Slugs reserved by SPA route segments (Helpdesk, platform, etc). */
+const RESERVED_ORG_SLUGS = new Set([
+  'login', 'register', 'verify', 'tickets',
+  'admin', 'api', 'auth', 'health', 'mcp',
+  'files', 'static', 'assets',
+]);
+
 function printUsage() {
   console.log(`
 BigBlueBam CLI
@@ -155,6 +162,11 @@ async function createAdmin(flags: Record<string, string>) {
   try {
     const passwordHash = await argon2.hash(password!);
     const orgSlug = slugify(orgName!);
+
+    if (RESERVED_ORG_SLUGS.has(orgSlug)) {
+      console.error(`Error: slug "${orgSlug}" is reserved. Choose a different org name.`);
+      process.exit(1);
+    }
 
     const [org] = await db
       .insert(organizations)

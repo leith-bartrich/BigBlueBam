@@ -506,4 +506,47 @@ export default async function automationRoutes(fastify: FastifyInstance) {
       return reply.send({ data: result });
     },
   );
+
+  // ── Automation versioning ─────────────────────────────────────────────
+
+  // GET /automations/:id/versions — List versions for an automation
+  fastify.get<{ Params: { id: string } }>(
+    '/automations/:id/versions',
+    { preHandler: [requireAuth, requireAutomationAccess()] },
+    async (request, reply) => {
+      const versions = await automationService.listAutomationVersions(
+        (request as any).automation.id,
+      );
+      return reply.send({ data: versions });
+    },
+  );
+
+  // POST /automations/:id/versions/:vid/restore — Restore a version
+  fastify.post<{ Params: { id: string; vid: string } }>(
+    '/automations/:id/versions/:vid/restore',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      preHandler: [requireAuth, requireAutomationEditAccess(), requireScope('read_write')],
+    },
+    async (request, reply) => {
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_REGEX.test(request.params.vid)) {
+        return reply.status(400).send({
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'Valid version id is required',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      const restored = await automationService.restoreAutomationVersion(
+        (request as any).automation.id,
+        request.params.vid,
+        request.user!.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: restored });
+    },
+  );
 }

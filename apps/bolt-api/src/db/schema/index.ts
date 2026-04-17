@@ -16,3 +16,4 @@ export { boltActions, boltOnErrorEnum } from './bolt-actions.js';
 export { boltExecutions, boltExecutionStatusEnum } from './bolt-executions.js';
 export { boltExecutionSteps, boltStepStatusEnum } from './bolt-execution-steps.js';
 export { boltSchedules } from './bolt-schedules.js';
+export { boltAutomationVersions } from './bolt-automation-versions.js';
