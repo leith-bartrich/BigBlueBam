@@ -217,6 +217,16 @@ banterTranscriptionWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'banter-transcription', err }, 'Job failed');
 });
 
+// Schedule banter retention as a daily cron (1 AM UTC, offset from other sweeps)
+const banterRetentionQueue = new Queue('banter-retention', { connection: redis });
+banterRetentionQueue
+  .upsertJobScheduler(
+    'banter-retention-daily',
+    { pattern: '0 1 * * *' }, // 1 AM daily
+    { name: 'daily-retention', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register banter retention scheduler'));
+
 // Helpdesk task-create worker (HB-23 — async fallback for ticket→task creation)
 const helpdeskTaskCreateWorker = new Worker<HelpdeskTaskCreateJobData>(
   'helpdesk-task-create',
