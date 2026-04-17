@@ -69,41 +69,97 @@ async function loadScenes() {
   }
 
   console.log('[init] Using inline scene definitions (docs-capture package not built)');
+
+  // Helper: click first matching element, wait for navigation to settle
+  const click = async (page, selector, waitMs = 2000) => {
+    const el = page.locator(selector).first();
+    if ((await el.count()) > 0) {
+      await el.click();
+      await page.waitForTimeout(waitMs);
+    }
+  };
+
   return {
     bam: [
-      { id: '01-board', label: 'Kanban board', route: '/b3/', waitFor: 'main' },
-      { id: '02-sprint-board', label: 'Sprint board', route: '/b3/', waitFor: 'main' },
-      { id: '03-task-detail', label: 'Task detail', route: '/b3/', waitFor: 'main' },
+      { id: '01-board', label: 'Kanban board', route: '/b3/', waitFor: 'main',
+        setup: async (p) => {
+          // Dashboard shows project cards as <button> elements in a grid.
+          // Click the first project card to navigate into the board.
+          const card = p.locator('button.group').first();
+          if ((await card.count()) > 0) { await card.click(); await p.waitForTimeout(3000); }
+        } },
+      { id: '02-sprint-board', label: 'Sprint board', route: '/b3/', waitFor: 'main',
+        setup: async (p) => {
+          // Navigate into first project
+          const card = p.locator('button.group').first();
+          if ((await card.count()) > 0) { await card.click(); await p.waitForTimeout(3000); }
+          // Click sprint selector button if present (top bar dropdown)
+          await click(p, 'button:has-text("Sprint"), [class*="sprint"]');
+        } },
+      { id: '03-task-detail', label: 'Task detail', route: '/b3/', waitFor: 'main',
+        setup: async (p) => {
+          // Navigate into first project
+          const card = p.locator('button.group').first();
+          if ((await card.count()) > 0) { await card.click(); await p.waitForTimeout(3000); }
+          // Click the first task card (has data-task-id attribute)
+          await click(p, '[data-task-id]');
+        } },
       { id: '04-people', label: 'People management', route: '/b3/people', waitFor: 'main' },
       { id: '05-settings', label: 'Project settings', route: '/b3/settings', waitFor: 'main' },
     ],
     banter: [
       { id: '01-channels', label: 'Channel list', route: '/banter/', waitFor: 'main' },
-      { id: '02-channel-view', label: 'Channel conversation', route: '/banter/', waitFor: 'main' },
-      { id: '03-threads', label: 'Thread view', route: '/banter/', waitFor: 'main' },
-      { id: '04-dms', label: 'Direct messages', route: '/banter/dms', waitFor: 'main' },
+      { id: '02-channel-view', label: 'Channel conversation', route: '/banter/channels/general', waitFor: 'main' },
+      { id: '03-threads', label: 'Thread view', route: '/banter/channels/general', waitFor: 'main',
+        setup: async (p) => {
+          // Look for any message that has reply count text to open a thread panel
+          await click(p, 'button:has-text("repl")');
+        } },
+      { id: '04-dms', label: 'Direct messages', route: '/banter/channels/general', waitFor: 'main',
+        setup: async (p) => {
+          // Click a DM entry in the sidebar (DM items in the sidebar list)
+          const dmItem = p.locator('aside button').filter({ hasText: /^(?!#)/ }).first();
+          if ((await dmItem.count()) > 0) { await dmItem.click(); await p.waitForTimeout(2000); }
+        } },
     ],
     beacon: [
       { id: '01-home', label: 'Knowledge Home', route: '/beacon/', waitFor: 'main' },
-      { id: '02-browse', label: 'Article list', route: '/beacon/', waitFor: 'main' },
-      { id: '03-detail', label: 'Article detail', route: '/beacon/', waitFor: 'main' },
-      { id: '04-graph', label: 'Knowledge graph explorer', route: '/beacon/', waitFor: 'main' },
-      { id: '05-dashboard', label: 'Governance dashboard', route: '/beacon/', waitFor: 'main' },
-      { id: '06-search', label: 'Search results', route: '/beacon/', waitFor: 'main' },
+      { id: '02-browse', label: 'Article list', route: '/beacon/list', waitFor: 'main' },
+      { id: '03-detail', label: 'Article detail', route: '/beacon/', waitFor: 'main',
+        setup: async (p) => {
+          // Home page has "Recent Activity" section with clickable button rows.
+          // Each row is a <button> with onClick navigating to /<slug>.
+          const row = p.locator('section button.w-full').first();
+          if ((await row.count()) > 0) { await row.click(); await p.waitForTimeout(2000); }
+        } },
+      { id: '04-graph', label: 'Knowledge graph explorer', route: '/beacon/graph', waitFor: 'main' },
+      { id: '05-dashboard', label: 'Governance dashboard', route: '/beacon/dashboard', waitFor: 'main' },
+      { id: '06-search', label: 'Search results', route: '/beacon/search', waitFor: 'main' },
     ],
     bearing: [
       { id: '01-dashboard', label: 'Goal dashboard', route: '/bearing/', waitFor: 'main' },
-      { id: '02-goal-detail', label: 'Goal detail', route: '/bearing/', waitFor: 'main' },
-      { id: '03-timeline', label: 'Timeline view', route: '/bearing/timeline', waitFor: 'main' },
-      { id: '04-reports', label: 'Progress reports', route: '/bearing/reports', waitFor: 'main' },
+      { id: '02-goal-detail', label: 'Goal detail', route: '/bearing/', waitFor: 'main',
+        setup: async (p) => {
+          // GoalCard is a div with class "group rounded-xl" and cursor-pointer.
+          // Click the first goal card to navigate to /goals/:id.
+          const goalCard = p.locator('div.group.cursor-pointer').first();
+          if ((await goalCard.count()) > 0) { await goalCard.click(); await p.waitForTimeout(2000); }
+        } },
+      { id: '03-periods', label: 'Period list', route: '/bearing/periods', waitFor: 'main' },
+      { id: '04-at-risk', label: 'At-risk goals', route: '/bearing/at-risk', waitFor: 'main' },
     ],
     bench: [
       { id: '01-dashboard-list', label: 'Dashboard list', route: '/bench/', waitFor: 'main' },
-      { id: '02-dashboard-view', label: 'Dashboard view', route: '/bench/', waitFor: 'main' },
+      { id: '02-dashboard-view', label: 'Dashboard view', route: '/bench/', waitFor: 'main',
+        setup: async (p) => {
+          // Dashboard cards are div.group with cursor-pointer, onClick navigates to /dashboards/:id
+          const card = p.locator('div.group.cursor-pointer').first();
+          if ((await card.count()) > 0) { await card.click(); await p.waitForTimeout(2000); }
+        } },
       { id: '03-explorer', label: 'Ad-hoc explorer', route: '/bench/explorer', waitFor: 'main' },
       { id: '04-reports', label: 'Scheduled reports', route: '/bench/reports', waitFor: 'main' },
       { id: '05-settings', label: 'Settings', route: '/bench/settings', waitFor: 'main' },
-      { id: '06-widget-wizard', label: 'Widget wizard', route: '/bench/widgets/new', waitFor: 'main' },
+      { id: '06-saved-queries', label: 'Saved queries', route: '/bench/saved-queries', waitFor: 'main' },
     ],
     bill: [
       { id: '01-invoice-list', label: 'Invoice list', route: '/bill/', waitFor: 'main' },
@@ -116,8 +172,30 @@ async function loadScenes() {
     ],
     blank: [
       { id: '01-form-list', label: 'Form list', route: '/blank/', waitFor: 'main' },
-      { id: '02-form-builder', label: 'Form builder', route: '/blank/', waitFor: 'main' },
-      { id: '03-form-preview', label: 'Form preview', route: '/blank/', waitFor: 'main' },
+      { id: '02-form-builder', label: 'Form builder', route: '/blank/', waitFor: 'main',
+        setup: async (p) => {
+          // Form cards are div.group with cursor-pointer, onClick navigates to /forms/:id/edit
+          const card = p.locator('div.group.cursor-pointer').first();
+          if ((await card.count()) > 0) { await card.click(); await p.waitForTimeout(2000); }
+        } },
+      { id: '03-form-preview', label: 'Form preview', route: '/blank/', waitFor: 'main',
+        setup: async (p) => {
+          // First get a form id by reading the href from the card click target.
+          // Form cards navigate to /forms/:id/edit; we want /forms/:id/preview instead.
+          // Click a card, wait for builder, then rewrite URL to preview.
+          const card = p.locator('div.group.cursor-pointer').first();
+          if ((await card.count()) > 0) {
+            await card.click();
+            await p.waitForTimeout(2000);
+            // Now on /blank/forms/:id/edit, swap to preview
+            const url = p.url();
+            const previewUrl = url.replace(/\/edit$/, '/preview');
+            if (previewUrl !== url) {
+              await p.goto(previewUrl, { waitUntil: 'networkidle', timeout: 15000 });
+              await p.waitForTimeout(2000);
+            }
+          }
+        } },
       { id: '04-settings', label: 'Settings', route: '/blank/settings', waitFor: 'main' },
     ],
     blast: [
@@ -131,20 +209,61 @@ async function loadScenes() {
     ],
     board: [
       { id: '01-list', label: 'Board grid view', route: '/board/', waitFor: 'main' },
-      { id: '02-canvas', label: 'Board canvas', route: '/board/', waitFor: 'main' },
-      { id: '03-templates', label: 'Board templates', route: '/board/', waitFor: 'main' },
+      { id: '02-canvas', label: 'Board canvas', route: '/board/', waitFor: 'main',
+        setup: async (p) => {
+          // BoardCard is a div.group with cursor-pointer, onClick navigates to /:boardId
+          const card = p.locator('div.group.cursor-pointer').first();
+          if ((await card.count()) > 0) { await card.click(); await p.waitForTimeout(3000); }
+        } },
+      { id: '03-templates', label: 'Board templates', route: '/board/templates', waitFor: 'main' },
     ],
     bolt: [
       { id: '01-automations', label: 'Automation list', route: '/bolt/', waitFor: 'main' },
       { id: '02-editor', label: 'Automation builder', route: '/bolt/new', waitFor: 'main' },
-      { id: '03-detail', label: 'Automation detail', route: '/bolt/', waitFor: 'main' },
+      { id: '03-detail', label: 'Automation detail', route: '/bolt/', waitFor: 'main',
+        setup: async (p) => {
+          // AutomationCard is a div with cursor-pointer class, onClick navigates to /automations/:id
+          const card = p.locator('div.cursor-pointer').first();
+          if ((await card.count()) > 0) { await card.click(); await p.waitForTimeout(2000); }
+        } },
       { id: '04-executions', label: 'Execution log', route: '/bolt/executions', waitFor: 'main' },
       { id: '05-templates', label: 'Automation templates', route: '/bolt/templates', waitFor: 'main' },
     ],
     bond: [
-      { id: '01-pipeline', label: 'Pipeline board', route: '/bond/', waitFor: 'main' },
+      { id: '01-pipeline', label: 'Pipeline board', route: '/bond/', waitFor: 'main',
+        setup: async (p) => {
+          // The PipelineScopeSelector in the sidebar shows the active pipeline name
+          // with a ChevronDown. Click to open the dropdown, then pick first pipeline.
+          const selectorBtn = p.locator('aside button:has(svg)').filter({ hasText: /Pipeline|Default/ }).first();
+          if ((await selectorBtn.count()) > 0) {
+            await selectorBtn.click();
+            await p.waitForTimeout(500);
+            // Pick the first pipeline from the dropdown list
+            const firstPipeline = p.locator('aside .absolute button').first();
+            if ((await firstPipeline.count()) > 0) {
+              await firstPipeline.click();
+              await p.waitForTimeout(2000);
+            }
+          }
+        } },
       { id: '02-contacts', label: 'Contacts list', route: '/bond/contacts', waitFor: 'main' },
-      { id: '03-deal-detail', label: 'Deal detail', route: '/bond/', waitFor: 'main' },
+      { id: '03-deal-detail', label: 'Deal detail', route: '/bond/', waitFor: 'main',
+        setup: async (p) => {
+          // First select a pipeline (same as 01)
+          const selectorBtn = p.locator('aside button:has(svg)').filter({ hasText: /Pipeline|Default/ }).first();
+          if ((await selectorBtn.count()) > 0) {
+            await selectorBtn.click();
+            await p.waitForTimeout(500);
+            const firstPipeline = p.locator('aside .absolute button').first();
+            if ((await firstPipeline.count()) > 0) {
+              await firstPipeline.click();
+              await p.waitForTimeout(2000);
+            }
+          }
+          // Click the first deal card (DealCard is a div with role="button" and cursor-pointer)
+          const dealCard = p.locator('div[role="button"].cursor-pointer').first();
+          if ((await dealCard.count()) > 0) { await dealCard.click(); await p.waitForTimeout(2000); }
+        } },
       { id: '04-analytics', label: 'Analytics dashboard', route: '/bond/analytics', waitFor: 'main' },
       { id: '05-companies', label: 'Companies list', route: '/bond/companies', waitFor: 'main' },
     ],
@@ -158,18 +277,61 @@ async function loadScenes() {
     ],
     brief: [
       { id: '01-home', label: 'Brief home', route: '/brief/', waitFor: 'main' },
-      { id: '02-documents', label: 'Document list', route: '/brief/', waitFor: 'main' },
-      { id: '03-detail', label: 'Document detail', route: '/brief/', waitFor: 'main' },
+      { id: '02-documents', label: 'Document list', route: '/brief/documents', waitFor: 'main' },
+      { id: '03-detail', label: 'Document detail', route: '/brief/', waitFor: 'main',
+        setup: async (p) => {
+          // Home page has "Recent Documents" section with <button> rows.
+          // Each row navigates to /documents/:slug on click.
+          const docRow = p.locator('section button.w-full').first();
+          if ((await docRow.count()) > 0) { await docRow.click(); await p.waitForTimeout(2000); }
+        } },
       { id: '04-editor', label: 'Document editor', route: '/brief/new', waitFor: 'main' },
       { id: '05-templates', label: 'Template browser', route: '/brief/templates', waitFor: 'main' },
       { id: '06-starred', label: 'Starred documents', route: '/brief/starred', waitFor: 'main' },
     ],
     helpdesk: [
-      { id: '01-portal', label: 'Support portal', route: '/helpdesk/', waitFor: 'main' },
-      { id: '02-ticket-list', label: 'Ticket list', route: '/helpdesk/tickets', waitFor: 'main' },
-      { id: '03-new-ticket', label: 'New ticket form', route: '/helpdesk/tickets/new', waitFor: 'main' },
-      { id: '04-ticket-detail', label: 'Ticket detail', route: '/helpdesk/tickets', waitFor: 'main' },
-      { id: '05-knowledge-base', label: 'Knowledge base', route: '/helpdesk/kb', waitFor: 'main' },
+      { id: '01-portal', label: 'Support portal', route: '/helpdesk/mage-inc/', waitFor: 'main' },
+      { id: '02-login', label: 'Login screen', route: '/helpdesk/mage-inc/login', waitFor: 'main' },
+      { id: '03-ticket-list', label: 'Ticket list', route: '/helpdesk/mage-inc/', waitFor: 'main',
+        setup: async (p) => {
+          // Helpdesk has its own auth (separate from Bam session).
+          // Seeded customer user from seed-mage.js uses password "customer12345678".
+          // The login form has input#email and input#password (from the Input component).
+          const emailInput = p.locator('input#email').first();
+          if ((await emailInput.count()) > 0) {
+            await p.fill('input#email', 'ellen@acme.example');
+            await p.fill('input#password', 'customer12345678');
+            await click(p, 'button[type=submit]');
+            await p.waitForTimeout(3000);
+          }
+        } },
+      { id: '04-ticket-detail', label: 'Ticket detail', route: '/helpdesk/mage-inc/', waitFor: 'main',
+        setup: async (p) => {
+          // Login first
+          const emailInput = p.locator('input#email').first();
+          if ((await emailInput.count()) > 0) {
+            await p.fill('input#email', 'ellen@acme.example');
+            await p.fill('input#password', 'customer12345678');
+            await click(p, 'button[type=submit]');
+            await p.waitForTimeout(3000);
+          }
+          // Click the first ticket row (ticket rows are <button> with grid layout)
+          const ticketRow = p.locator('button.w-full.text-left').first();
+          if ((await ticketRow.count()) > 0) { await ticketRow.click(); await p.waitForTimeout(2000); }
+        } },
+      { id: '05-new-ticket', label: 'New ticket form', route: '/helpdesk/mage-inc/', waitFor: 'main',
+        setup: async (p) => {
+          // Login first, then navigate to new ticket
+          const emailInput = p.locator('input#email').first();
+          if ((await emailInput.count()) > 0) {
+            await p.fill('input#email', 'ellen@acme.example');
+            await p.fill('input#password', 'customer12345678');
+            await click(p, 'button[type=submit]');
+            await p.waitForTimeout(3000);
+          }
+          // Navigate to new ticket by clicking "New Ticket" button
+          await click(p, 'button:has-text("New Ticket")');
+        } },
     ],
   };
 }
