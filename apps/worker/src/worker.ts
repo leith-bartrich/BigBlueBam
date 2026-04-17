@@ -10,6 +10,7 @@ import { processSprintCloseJob, type SprintCloseJobData } from './jobs/sprint-cl
 import { processExportJob, type ExportJobData } from './jobs/export.job.js';
 import { processBanterNotificationJob, type BanterNotificationJobData } from './jobs/banter-notification.job.js';
 import { processBanterRetentionJob, type BanterRetentionJobData } from './jobs/banter-retention.job.js';
+import { processBanterTranscriptionJob, type BanterTranscriptionJobData } from './jobs/banter-transcription.job.js';
 import { processHelpdeskTaskCreateJob, type HelpdeskTaskCreateJobData } from './jobs/helpdesk-task-create.job.js';
 import { processBeaconVectorSyncJob, type BeaconVectorSyncJobData } from './jobs/beacon-vector-sync.job.js';
 import { processBeaconExpirySweepJob, type BeaconExpirySweepJobData } from './jobs/beacon-expiry-sweep.job.js';
@@ -182,6 +183,23 @@ banterRetentionWorker.on('completed', (job) => {
 
 banterRetentionWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'banter-retention', err }, 'Job failed');
+});
+
+// Banter call transcription worker (post-call STT via voice-agent)
+const banterTranscriptionWorker = new Worker<BanterTranscriptionJobData>(
+  'banter-transcription',
+  async (job: Job<BanterTranscriptionJobData>) => {
+    await processBanterTranscriptionJob(job, logger);
+  },
+  { ...connection, concurrency: 2 },
+);
+
+banterTranscriptionWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'banter-transcription' }, 'Job completed');
+});
+
+banterTranscriptionWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'banter-transcription', err }, 'Job failed');
 });
 
 // Helpdesk task-create worker (HB-23 — async fallback for ticket→task creation)
@@ -654,6 +672,7 @@ logger.info(
       'export',
       'banter-notifications',
       'banter-retention',
+      'banter-transcription',
       'helpdesk-task-create',
       'beacon-vector-sync',
       'beacon-expiry-sweep',

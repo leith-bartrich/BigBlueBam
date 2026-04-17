@@ -15,7 +15,11 @@ import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { common, createLowlight } from 'lowlight';
+import type * as Y from 'yjs';
+import type { WebsocketProvider } from 'y-websocket';
 
 const lowlight = createLowlight(common);
 
@@ -24,6 +28,82 @@ interface BriefEditorProps {
   onUpdate: (html: string) => void;
   editable?: boolean;
   onEditorReady?: (editor: Editor) => void;
+}
+
+/**
+ * Shared set of Tiptap extensions used by both standalone and collaborative
+ * modes. The caller passes `collaborative` options when a Yjs document and
+ * provider are available; otherwise the editor runs in single-user mode.
+ */
+function buildExtensions(options?: {
+  ydoc?: Y.Doc;
+  provider?: WebsocketProvider | null;
+  fieldName?: string;
+}) {
+  const extensions = [
+    StarterKit.configure({
+      heading: { levels: [1, 2, 3, 4] },
+      codeBlock: false,
+      horizontalRule: false,
+      // When collaborative mode is active, Yjs handles history (undo/redo).
+      // Disable the built-in history extension to avoid conflicts.
+      ...(options?.ydoc ? { history: false } : {}),
+    }),
+    Placeholder.configure({
+      placeholder: 'Start writing...',
+    }),
+    Image.configure({
+      inline: false,
+      allowBase64: true,
+    }),
+    Link.configure({
+      autolink: true,
+      openOnClick: true,
+      HTMLAttributes: {
+        rel: 'noopener noreferrer',
+        target: '_blank',
+      },
+    }),
+    Table.configure({
+      resizable: true,
+    }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    TaskList,
+    TaskItem.configure({
+      nested: true,
+    }),
+    Highlight,
+    Typography,
+    Underline,
+    TextAlign.configure({
+      types: ['heading', 'paragraph'],
+    }),
+    CodeBlockLowlight.configure({
+      lowlight,
+    }),
+    HorizontalRule,
+  ];
+
+  if (options?.ydoc) {
+    extensions.push(
+      Collaboration.configure({
+        document: options.ydoc,
+        field: options.fieldName ?? 'default',
+      }) as any,
+    );
+
+    if (options.provider) {
+      extensions.push(
+        CollaborationCursor.configure({
+          provider: options.provider,
+        }) as any,
+      );
+    }
+  }
+
+  return extensions;
 }
 
 export function useBriefEditor({
@@ -39,48 +119,7 @@ export function useBriefEditor({
   key?: string;
 }) {
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3, 4] },
-        codeBlock: false,
-        horizontalRule: false,
-      }),
-      Placeholder.configure({
-        placeholder: 'Start writing...',
-      }),
-      Image.configure({
-        inline: false,
-        allowBase64: true,
-      }),
-      Link.configure({
-        autolink: true,
-        openOnClick: true,
-        HTMLAttributes: {
-          rel: 'noopener noreferrer',
-          target: '_blank',
-        },
-      }),
-      Table.configure({
-        resizable: true,
-      }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      TaskList,
-      TaskItem.configure({
-        nested: true,
-      }),
-      Highlight,
-      Typography,
-      Underline,
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-      }),
-      CodeBlockLowlight.configure({
-        lowlight,
-      }),
-      HorizontalRule,
-    ],
+    extensions: buildExtensions(),
     content,
     editable,
     editorProps: {
@@ -92,6 +131,51 @@ export function useBriefEditor({
       onUpdate(e.getHTML());
     },
   });
+
+  return editor;
+}
+
+/**
+ * Collaborative variant of the Brief editor hook. Binds to a shared Y.Doc
+ * so all connected clients see edits in real time.
+ *
+ * When `ydoc` is provided the editor skips the `content` prop (Yjs owns the
+ * initial document state). Non-collaborative fallback: pass ydoc=undefined.
+ */
+export function useCollaborativeEditor({
+  ydoc,
+  provider,
+  onUpdate,
+  editable = true,
+  fieldName,
+}: {
+  ydoc: Y.Doc | undefined;
+  provider: WebsocketProvider | null | undefined;
+  onUpdate: (html: string) => void;
+  editable?: boolean;
+  fieldName?: string;
+}) {
+  const editor = useEditor(
+    {
+      extensions: buildExtensions(
+        ydoc ? { ydoc, provider: provider ?? null, fieldName } : undefined,
+      ),
+      // When collaborative, the content comes from Yjs. Passing empty string
+      // avoids overwriting the shared document with stale HTML.
+      content: ydoc ? '' : undefined,
+      editable,
+      editorProps: {
+        attributes: {
+          class: 'prose-editor focus:outline-none',
+        },
+      },
+      onUpdate: ({ editor: e }) => {
+        onUpdate(e.getHTML());
+      },
+    },
+    // Re-create the editor when the ydoc or provider instance changes
+    [ydoc, provider],
+  );
 
   return editor;
 }
