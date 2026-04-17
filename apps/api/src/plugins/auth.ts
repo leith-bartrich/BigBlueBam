@@ -412,8 +412,23 @@ async function authPlugin(fastify: FastifyInstance) {
         } catch (err) {
           request.log.warn({ err, api_key_id: candidate.apiKey.id }, 'argon2.verify threw on api key candidate; treating as invalid');
         }
-        if (candidate.apiKey.expires_at && new Date(candidate.apiKey.expires_at) < new Date()) {
-          continue;
+        // Expiry check with rotation grace-period honoring.
+        // If the key has been rotated (rotated_at IS NOT NULL) and its
+        // rotation_grace_expires_at is still in the future, the predecessor
+        // key remains valid during the grace window so callers can roll over
+        // without downtime. Once the grace window closes, reject normally.
+        const now = new Date();
+        if (candidate.apiKey.expires_at && new Date(candidate.apiKey.expires_at) < now) {
+          // Key is past its normal expiry. Check grace window.
+          if (
+            candidate.apiKey.rotated_at &&
+            candidate.apiKey.rotation_grace_expires_at &&
+            new Date(candidate.apiKey.rotation_grace_expires_at) > now
+          ) {
+            // Inside grace window -- allow through.
+          } else {
+            continue;
+          }
         }
         if (valid && candidate.user.is_active) {
           // P2-8: pass the key's org_id — for non-SuperUser keys this
