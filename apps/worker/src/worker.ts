@@ -76,6 +76,10 @@ import {
   processBondBulkScoreJob,
   type BondBulkScoreJobData,
 } from './jobs/bond-bulk-score.job.js';
+import {
+  processHelpdeskEmailNotifyJob,
+  type HelpdeskEmailNotifyJobData,
+} from './jobs/helpdesk-email-notify.job.js';
 
 const env = loadEnv();
 
@@ -787,6 +791,21 @@ bondBulkScoreQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register bond-bulk-score scheduler'));
 
+// Helpdesk email notification worker.
+const helpdeskEmailNotifyWorker = new Worker<HelpdeskEmailNotifyJobData>(
+  'helpdesk-email-notify',
+  async (job: Job<HelpdeskEmailNotifyJobData>) => {
+    await processHelpdeskEmailNotifyJob(job, env, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+helpdeskEmailNotifyWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'helpdesk-email-notify' }, 'Job completed');
+});
+helpdeskEmailNotifyWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'helpdesk-email-notify', err }, 'Job failed');
+});
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -841,6 +860,7 @@ const workers = [
   boardThumbnailWorker,
   boltExecutionCleanupWorker,
   bondBulkScoreWorker,
+  helpdeskEmailNotifyWorker,
   analyticsWorker,
 ];
 
@@ -880,6 +900,7 @@ logger.info(
       'board-thumbnail',
       'bolt-execution-cleanup',
       'bond-bulk-score',
+      'helpdesk-email-notify',
       'analytics',
     ],
   },
