@@ -1,7 +1,7 @@
 ---
 title: "Beacon (Knowledge Base) Guide"
 app: beacon
-generated: "2026-04-17T14:51:16.736Z"
+generated: "2026-04-17T16:45:01.943Z"
 ---
 
 # Beacon (Knowledge Base) Guide

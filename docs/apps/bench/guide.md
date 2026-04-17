@@ -1,7 +1,7 @@
 ---
 title: "Bench (Analytics) Guide"
 app: bench
-generated: "2026-04-17T14:51:16.948Z"
+generated: "2026-04-17T16:45:02.044Z"
 ---
 
 # Bench (Analytics) Guide
@@ -48,6 +48,10 @@ Open Bench from the Launchpad. Create a new dashboard, then add widgets using th
 ### Settings
 
 ![Settings](screenshots/light/05-settings.png)
+
+### Saved Queries
+
+![Saved Queries](screenshots/light/06-saved-queries.png)
 
 ### Widget Wizard
 

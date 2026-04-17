@@ -1,7 +1,7 @@
 ---
 title: "Bearing (Goals & OKRs) Guide"
 app: bearing
-generated: "2026-04-17T14:51:16.848Z"
+generated: "2026-04-17T16:45:01.995Z"
 ---
 
 # Bearing (Goals & OKRs) Guide
@@ -37,9 +37,17 @@ Open Bearing from the Launchpad. Create a time period (such as Q2 2026), then ad
 
 ![Goal Detail](screenshots/light/02-goal-detail.png)
 
+### Periods
+
+![Periods](screenshots/light/03-periods.png)
+
 ### Timeline
 
 ![Timeline](screenshots/light/03-timeline.png)
+
+### At Risk
+
+![At Risk](screenshots/light/04-at-risk.png)
 
 ### Reports
 

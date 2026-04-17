@@ -4,40 +4,40 @@
     "label": "Kanban board",
     "theme": "light",
     "file": "docs\\apps\\bam\\screenshots\\light\\01-board.png",
-    "sha256": "73c2fc47a2f8a5bd945ac80181b1dd5090f059ede6e57b24b24e4884b31a80b8",
+    "sha256": "fa50323400cf47b0edd3d42e319cec12176d87cdc7e5bf0ae46e3662aca47ba2",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:12.722Z"
+    "captured_at": "2026-04-17T16:42:42.249Z"
   },
   {
     "id": "02-sprint-board",
     "label": "Sprint board",
     "theme": "light",
     "file": "docs\\apps\\bam\\screenshots\\light\\02-sprint-board.png",
-    "sha256": "73c2fc47a2f8a5bd945ac80181b1dd5090f059ede6e57b24b24e4884b31a80b8",
+    "sha256": "a839746e8626c246ea98f5499216cacac9309484e838dec3f78e1044727807b2",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:15.425Z"
+    "captured_at": "2026-04-17T16:42:50.126Z"
   },
   {
     "id": "03-task-detail",
     "label": "Task detail",
     "theme": "light",
     "file": "docs\\apps\\bam\\screenshots\\light\\03-task-detail.png",
-    "sha256": "73c2fc47a2f8a5bd945ac80181b1dd5090f059ede6e57b24b24e4884b31a80b8",
+    "sha256": "605522a1cc165dcac57c3521ecfa75033c829a1d5a53c2dd55f8e413cb53f320",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:18.193Z"
+    "captured_at": "2026-04-17T16:42:58.041Z"
   },
   {
     "id": "04-people",
     "label": "People management",
     "theme": "light",
     "file": "docs\\apps\\bam\\screenshots\\light\\04-people.png",
-    "sha256": "22da2f2024095e8c93c3a33715456e3ac17890b36925b1763b7438e39b1024af",
+    "sha256": "29db61aaad03917c85193724feffc020f7e7c0be7e0a02ba88f397feaa4833aa",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:20.936Z"
+    "captured_at": "2026-04-17T16:43:00.846Z"
   },
   {
     "id": "05-settings",
@@ -47,47 +47,37 @@
     "sha256": "cabf44adee9baa818e75ea2d0430aa0665707aa9dea63b8d4921b56596dfe839",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:23.671Z"
+    "captured_at": "2026-04-17T16:43:03.586Z"
   },
   {
     "id": "01-board",
     "label": "Kanban board",
     "theme": "dark",
     "file": "docs\\apps\\bam\\screenshots\\dark\\01-board.png",
-    "sha256": "1d76cc97773704764dd107f3ab582db64e15643eff5b2b68c5dc69144de1c4c6",
+    "sha256": "8c7f56b8a9389bda47da2e680d3f7103a3646903f6a69503ccbbbd848fe8942e",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:31.164Z"
-  },
-  {
-    "id": "02-sprint-board",
-    "label": "Sprint board",
-    "theme": "dark",
-    "file": "docs\\apps\\bam\\screenshots\\dark\\02-sprint-board.png",
-    "sha256": "1d76cc97773704764dd107f3ab582db64e15643eff5b2b68c5dc69144de1c4c6",
-    "width": 1440,
-    "height": 900,
-    "captured_at": "2026-04-17T14:39:33.905Z"
+    "captured_at": "2026-04-17T16:43:14.125Z"
   },
   {
     "id": "03-task-detail",
     "label": "Task detail",
     "theme": "dark",
     "file": "docs\\apps\\bam\\screenshots\\dark\\03-task-detail.png",
-    "sha256": "1d76cc97773704764dd107f3ab582db64e15643eff5b2b68c5dc69144de1c4c6",
+    "sha256": "b5c1ca50bd26d981284bdd8199b14097908e097a6e174e335a244b75d558ad7e",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:36.607Z"
+    "captured_at": "2026-04-17T16:43:42.067Z"
   },
   {
     "id": "04-people",
     "label": "People management",
     "theme": "dark",
     "file": "docs\\apps\\bam\\screenshots\\dark\\04-people.png",
-    "sha256": "f781b4778ae98c8066f60bc09247b5a5cd01859604858266866678629bd48a26",
+    "sha256": "3ddfcbdc15e568c7b29b1a85278ebe71dde0b66ab59075bcd28bb123ad7a7dc0",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:39.399Z"
+    "captured_at": "2026-04-17T16:43:44.823Z"
   },
   {
     "id": "05-settings",
@@ -97,6 +87,6 @@
     "sha256": "e7c51755d2d80047e3fcebfa23190fb6bdc6d05a65e1ef435465be0fa274c4c7",
     "width": 1440,
     "height": 900,
-    "captured_at": "2026-04-17T14:39:42.162Z"
+    "captured_at": "2026-04-17T16:43:47.583Z"
   }
 ]

@@ -1,7 +1,7 @@
 ---
 title: "Bolt (Workflow Automation) Guide"
 app: bolt
-generated: "2026-04-17T14:51:17.487Z"
+generated: "2026-04-17T16:45:02.217Z"
 ---
 
 # Bolt (Workflow Automation) Guide

@@ -1,7 +1,7 @@
 ---
 title: "Helpdesk (Support Portal) Guide"
 app: helpdesk
-generated: "2026-04-17T14:51:17.925Z"
+generated: "2026-04-17T16:45:02.497Z"
 ---
 
 # Helpdesk (Support Portal) Guide
@@ -34,6 +34,10 @@ End users navigate to the Helpdesk URL for their organization (e.g., /helpdesk/y
 
 ![Portal](screenshots/light/01-portal.png)
 
+### Login
+
+![Login](screenshots/light/02-login.png)
+
 ### Ticket List
 
 ![Ticket List](screenshots/light/02-ticket-list.png)
@@ -42,6 +46,10 @@ End users navigate to the Helpdesk URL for their organization (e.g., /helpdesk/y
 
 ![New Ticket](screenshots/light/03-new-ticket.png)
 
+### Ticket List
+
+![Ticket List](screenshots/light/03-ticket-list.png)
+
 ### Ticket Detail
 
 ![Ticket Detail](screenshots/light/04-ticket-detail.png)
@@ -49,6 +57,10 @@ End users navigate to the Helpdesk URL for their organization (e.g., /helpdesk/y
 ### Knowledge Base
 
 ![Knowledge Base](screenshots/light/05-knowledge-base.png)
+
+### New Ticket
+
+![New Ticket](screenshots/light/05-new-ticket.png)
 
 
 ## MCP Tools

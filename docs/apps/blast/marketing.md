@@ -1,7 +1,7 @@
 ---
 title: "Blast (Email Campaigns)"
 app: blast
-generated: "2026-04-17T14:51:17.299Z"
+generated: "2026-04-17T16:45:02.180Z"
 ---
 
 # Blast (Email Campaigns)

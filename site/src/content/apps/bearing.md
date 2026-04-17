@@ -1,7 +1,7 @@
 ---
 title: "Bearing (Goals & OKRs)"
 app: bearing
-generated: "2026-04-17T14:51:16.891Z"
+generated: "2026-04-17T16:45:02.009Z"
 ---
 
 # Bearing (Goals & OKRs)
@@ -21,7 +21,7 @@ Track objectives and key results with progress rollup and at-risk alerts.
 
 ![Goal Detail](screenshots/light/02-goal-detail.png)
 
-![Timeline](screenshots/light/03-timeline.png)
+![Periods](screenshots/light/03-periods.png)
 
 ---
 

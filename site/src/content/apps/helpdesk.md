@@ -1,7 +1,7 @@
 ---
 title: "Helpdesk (Support Portal)"
 app: helpdesk
-generated: "2026-04-17T14:51:17.995Z"
+generated: "2026-04-17T16:45:02.517Z"
 ---
 
 # Helpdesk (Support Portal)
@@ -19,9 +19,9 @@ A customer support portal with ticket tracking and conversation threads.
 ![Portal](screenshots/light/01-portal.png)
 
 
-![Ticket List](screenshots/light/02-ticket-list.png)
+![Login](screenshots/light/02-login.png)
 
-![New Ticket](screenshots/light/03-new-ticket.png)
+![Ticket List](screenshots/light/02-ticket-list.png)
 
 ---
 

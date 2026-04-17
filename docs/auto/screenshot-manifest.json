@@ -1,37 +1,37 @@
 {
-  "generated_at": "2026-04-17T14:51:23.694Z",
+  "generated_at": "2026-04-17T16:45:04.041Z",
   "screenshots": [
     {
       "app": "bam",
       "theme": "light",
       "file": "01-board.png",
       "path": "docs/apps/bam/screenshots/light/01-board.png",
-      "size": 41417,
-      "hash": "73c2fc47a2f8a5bd945ac80181b1dd5090f059ede6e57b24b24e4884b31a80b8"
+      "size": 52111,
+      "hash": "fa50323400cf47b0edd3d42e319cec12176d87cdc7e5bf0ae46e3662aca47ba2"
     },
     {
       "app": "bam",
       "theme": "light",
       "file": "02-sprint-board.png",
       "path": "docs/apps/bam/screenshots/light/02-sprint-board.png",
-      "size": 41417,
-      "hash": "73c2fc47a2f8a5bd945ac80181b1dd5090f059ede6e57b24b24e4884b31a80b8"
+      "size": 54247,
+      "hash": "a839746e8626c246ea98f5499216cacac9309484e838dec3f78e1044727807b2"
     },
     {
       "app": "bam",
       "theme": "light",
       "file": "03-task-detail.png",
       "path": "docs/apps/bam/screenshots/light/03-task-detail.png",
-      "size": 41417,
-      "hash": "73c2fc47a2f8a5bd945ac80181b1dd5090f059ede6e57b24b24e4884b31a80b8"
+      "size": 87405,
+      "hash": "605522a1cc165dcac57c3521ecfa75033c829a1d5a53c2dd55f8e413cb53f320"
     },
     {
       "app": "bam",
       "theme": "light",
       "file": "04-people.png",
       "path": "docs/apps/bam/screenshots/light/04-people.png",
-      "size": 82927,
-      "hash": "22da2f2024095e8c93c3a33715456e3ac17890b36925b1763b7438e39b1024af"
+      "size": 82818,
+      "hash": "29db61aaad03917c85193724feffc020f7e7c0be7e0a02ba88f397feaa4833aa"
     },
     {
       "app": "bam",
@@ -46,8 +46,8 @@
       "theme": "dark",
       "file": "01-board.png",
       "path": "docs/apps/bam/screenshots/dark/01-board.png",
-      "size": 41131,
-      "hash": "1d76cc97773704764dd107f3ab582db64e15643eff5b2b68c5dc69144de1c4c6"
+      "size": 52148,
+      "hash": "8c7f56b8a9389bda47da2e680d3f7103a3646903f6a69503ccbbbd848fe8942e"
     },
     {
       "app": "bam",
@@ -62,16 +62,16 @@
       "theme": "dark",
       "file": "03-task-detail.png",
       "path": "docs/apps/bam/screenshots/dark/03-task-detail.png",
-      "size": 41131,
-      "hash": "1d76cc97773704764dd107f3ab582db64e15643eff5b2b68c5dc69144de1c4c6"
+      "size": 87010,
+      "hash": "b5c1ca50bd26d981284bdd8199b14097908e097a6e174e335a244b75d558ad7e"
     },
     {
       "app": "bam",
       "theme": "dark",
       "file": "04-people.png",
       "path": "docs/apps/bam/screenshots/dark/04-people.png",
-      "size": 85008,
-      "hash": "f781b4778ae98c8066f60bc09247b5a5cd01859604858266866678629bd48a26"
+      "size": 84312,
+      "hash": "3ddfcbdc15e568c7b29b1a85278ebe71dde0b66ab59075bcd28bb123ad7a7dc0"
     },
     {
       "app": "bam",
@@ -94,24 +94,24 @@
       "theme": "light",
       "file": "02-channel-view.png",
       "path": "docs/apps/banter/screenshots/light/02-channel-view.png",
-      "size": 94951,
-      "hash": "f1ec268a1f314bfc2d2a7e1288049891e78aebd9862cc907cd2a72917620e8ff"
+      "size": 94952,
+      "hash": "8b7e8029faa2c110306298821b504d208e9b2ed5e32d38b906de4a7c941d6f7a"
     },
     {
       "app": "banter",
       "theme": "light",
       "file": "03-threads.png",
       "path": "docs/apps/banter/screenshots/light/03-threads.png",
-      "size": 94948,
-      "hash": "f158d4b583193259d22ff3fba8071cca05b727f6eea7618d36463915ffc6db93"
+      "size": 94951,
+      "hash": "f1ec268a1f314bfc2d2a7e1288049891e78aebd9862cc907cd2a72917620e8ff"
     },
     {
       "app": "banter",
       "theme": "light",
       "file": "04-dms.png",
       "path": "docs/apps/banter/screenshots/light/04-dms.png",
-      "size": 94955,
-      "hash": "883f94d2c0fce51c5692ed336ae4b67eeae45e0a7911bbda3369bd0ffc7d8411"
+      "size": 92694,
+      "hash": "152ba670db703f8d96b4345d94042b084ed3742161f6306e280dadd07091ba70"
     },
     {
       "app": "banter",
@@ -119,127 +119,127 @@
       "file": "01-channels.png",
       "path": "docs/apps/banter/screenshots/dark/01-channels.png",
       "size": 90930,
-      "hash": "aafd021f6d080dc06040cdfe100242eb60f3c8b08c32d14989447b85cd53752e"
+      "hash": "c8b8e356aa6211a163253e68dafbe321a99690f6faded59ccaa9063b497a2a7b"
     },
     {
       "app": "banter",
       "theme": "dark",
       "file": "02-channel-view.png",
       "path": "docs/apps/banter/screenshots/dark/02-channel-view.png",
-      "size": 90930,
-      "hash": "aafd021f6d080dc06040cdfe100242eb60f3c8b08c32d14989447b85cd53752e"
+      "size": 90917,
+      "hash": "11105ff48699c044184765c43702b921da4de4e312cb6a28569143207948916e"
     },
     {
       "app": "banter",
       "theme": "dark",
       "file": "03-threads.png",
       "path": "docs/apps/banter/screenshots/dark/03-threads.png",
-      "size": 90932,
-      "hash": "127881151227d45e3e27367f5a1ec06ab66a7d48279392adf20f758060ed6be3"
+      "size": 90918,
+      "hash": "27fa45c399b45d8fd109a2507b4ab09f8ecc956182c1efb3bf795197a956e281"
     },
     {
       "app": "banter",
       "theme": "dark",
       "file": "04-dms.png",
       "path": "docs/apps/banter/screenshots/dark/04-dms.png",
-      "size": 90917,
-      "hash": "11105ff48699c044184765c43702b921da4de4e312cb6a28569143207948916e"
+      "size": 88117,
+      "hash": "0e8b7f5ba8a75061f7969cf3fa048711d1180459c67ac23cd5d6c8d533267604"
     },
     {
       "app": "beacon",
       "theme": "light",
       "file": "01-home.png",
       "path": "docs/apps/beacon/screenshots/light/01-home.png",
-      "size": 58613,
-      "hash": "c6dd341e8f3308a62328a0b91e3ec343a98d029de0d0840af5d93b2383ea1413"
+      "size": 58612,
+      "hash": "53ab28fdaee5d81581c72af121b674db9bf6f4835554e9bb6a5289b046380af9"
     },
     {
       "app": "beacon",
       "theme": "light",
       "file": "02-browse.png",
       "path": "docs/apps/beacon/screenshots/light/02-browse.png",
-      "size": 58612,
-      "hash": "53ab28fdaee5d81581c72af121b674db9bf6f4835554e9bb6a5289b046380af9"
+      "size": 44771,
+      "hash": "1517f1c3c5a21a7acc529f8b605e0a4d3d86262fb4dc5ecd4235f0c32c34c6e6"
     },
     {
       "app": "beacon",
       "theme": "light",
       "file": "03-detail.png",
       "path": "docs/apps/beacon/screenshots/light/03-detail.png",
-      "size": 58614,
-      "hash": "f8303fbdb7fc6702497a410f777d56b17cb11485ba50b1c3592791635437f71b"
+      "size": 77436,
+      "hash": "aa39e801b7fc9178c10c38ba83aa7941af4748ca802ab14ec0c4ed79ddffc9b8"
     },
     {
       "app": "beacon",
       "theme": "light",
       "file": "04-graph.png",
       "path": "docs/apps/beacon/screenshots/light/04-graph.png",
-      "size": 58612,
-      "hash": "53ab28fdaee5d81581c72af121b674db9bf6f4835554e9bb6a5289b046380af9"
+      "size": 59234,
+      "hash": "57c8150989947655c98dbbdd7f36e99e3a72c4461b284b7222b4fd4d26e78044"
     },
     {
       "app": "beacon",
       "theme": "light",
       "file": "05-dashboard.png",
       "path": "docs/apps/beacon/screenshots/light/05-dashboard.png",
-      "size": 58612,
-      "hash": "53ab28fdaee5d81581c72af121b674db9bf6f4835554e9bb6a5289b046380af9"
+      "size": 50075,
+      "hash": "721ac8d63bd5170d7dc079c88558f3bc5fcc467f28e418352e84e181ac51a0eb"
     },
     {
       "app": "beacon",
       "theme": "light",
       "file": "06-search.png",
       "path": "docs/apps/beacon/screenshots/light/06-search.png",
-      "size": 58574,
-      "hash": "9473395a628d19ae5ea80a37c94eecccebcc3b20ab319cad8471ea5bfdf3f146"
+      "size": 42182,
+      "hash": "61733d15632f1fe7bc7bb4e6f4a6e6f9643383d426090d21da14098512ab0d04"
     },
     {
       "app": "beacon",
       "theme": "dark",
       "file": "01-home.png",
       "path": "docs/apps/beacon/screenshots/dark/01-home.png",
-      "size": 58448,
-      "hash": "97b9c3b42db1973d13872a6a9e1c3af1f4aa3763d3df23efd94255b3696a5872"
+      "size": 58411,
+      "hash": "cb0c7556873baee0aebc360b00b13c48851641e8be49d19b7c490b050c1cac1e"
     },
     {
       "app": "beacon",
       "theme": "dark",
       "file": "02-browse.png",
       "path": "docs/apps/beacon/screenshots/dark/02-browse.png",
-      "size": 58448,
-      "hash": "97b9c3b42db1973d13872a6a9e1c3af1f4aa3763d3df23efd94255b3696a5872"
+      "size": 44831,
+      "hash": "d4b7dbfe6dba3c64c7f01544c7a878ea691461db2c1a37baee9d9b0cdfc85120"
     },
     {
       "app": "beacon",
       "theme": "dark",
       "file": "03-detail.png",
       "path": "docs/apps/beacon/screenshots/dark/03-detail.png",
-      "size": 58448,
-      "hash": "97b9c3b42db1973d13872a6a9e1c3af1f4aa3763d3df23efd94255b3696a5872"
+      "size": 77423,
+      "hash": "0502474db6ebbf7c662942308c192fc0224449365415ce3ae81f51a634f07c20"
     },
     {
       "app": "beacon",
       "theme": "dark",
       "file": "04-graph.png",
       "path": "docs/apps/beacon/screenshots/dark/04-graph.png",
-      "size": 58453,
-      "hash": "e05f4f057de05faced603058303f396a9ced6f317d82d0016d082dbfa81731b4"
+      "size": 59030,
+      "hash": "41ea4a10c8532de61c752de8f0ae85d82bf40d4324fd08fafa090dcb918084e5"
     },
     {
       "app": "beacon",
       "theme": "dark",
       "file": "05-dashboard.png",
       "path": "docs/apps/beacon/screenshots/dark/05-dashboard.png",
-      "size": 58452,
-      "hash": "c1d7793d61cc519b35651455f8f517502dea6928c6a55631904c2ef3e037607f"
+      "size": 49965,
+      "hash": "2639dc978a657a2eee25279c9d8de50d8a4247aae92b436d94a57f8a6e027c19"
     },
     {
       "app": "beacon",
       "theme": "dark",
       "file": "06-search.png",
       "path": "docs/apps/beacon/screenshots/dark/06-search.png",
-      "size": 58453,
-      "hash": "188dda15532e2bb671652d0ddc71b5a9706dd2af38d03463bb9756a3f38bd42a"
+      "size": 41814,
+      "hash": "8a6ce4ca666717a83ae103a8e0279754664bdf57a3e8b953bf0c9ba68342c795"
     },
     {
       "app": "bearing",
@@ -254,16 +254,32 @@
       "theme": "light",
       "file": "02-goal-detail.png",
       "path": "docs/apps/bearing/screenshots/light/02-goal-detail.png",
-      "size": 78841,
-      "hash": "02d6bde4d31131fa743817ed1c4071354c3c3cc813028f89a3aef78bf48b2e4b"
+      "size": 5852,
+      "hash": "ada1c8335b7e4c00ac861c0c41861a40aef73910e88f343280760e9c22fdbf9e"
+    },
+    {
+      "app": "bearing",
+      "theme": "light",
+      "file": "03-periods.png",
+      "path": "docs/apps/bearing/screenshots/light/03-periods.png",
+      "size": 39138,
+      "hash": "9e358d7e52470cc89af4a885433f178485a1be72fa18ea3121a91d3efe9e8208"
     },
     {
       "app": "bearing",
       "theme": "light",
       "file": "03-timeline.png",
       "path": "docs/apps/bearing/screenshots/light/03-timeline.png",
-      "size": 78841,
-      "hash": "02d6bde4d31131fa743817ed1c4071354c3c3cc813028f89a3aef78bf48b2e4b"
+      "size": 78870,
+      "hash": "f3d819cbed768fa7a94d21c4d1ae0ef9f5ac6259824b5a624da3f4645e28c5af"
+    },
+    {
+      "app": "bearing",
+      "theme": "light",
+      "file": "04-at-risk.png",
+      "path": "docs/apps/bearing/screenshots/light/04-at-risk.png",
+      "size": 67718,
+      "hash": "ae8740cbdc3e842a1a45abc2a47604880c50f005617ac81707f6fbe9d30ec562"
     },
     {
       "app": "bearing",
@@ -286,8 +302,16 @@
       "theme": "dark",
       "file": "02-goal-detail.png",
       "path": "docs/apps/bearing/screenshots/dark/02-goal-detail.png",
-      "size": 78829,
-      "hash": "6a2e43a618e0d805d1d33e0f833dab4c11261865b20f634ac4877e35b1a0d1d6"
+      "size": 5853,
+      "hash": "da853562f5c0c097acd4131c409c7df8b9c7a6672b3bef1230ebaebbea1ea572"
+    },
+    {
+      "app": "bearing",
+      "theme": "dark",
+      "file": "03-periods.png",
+      "path": "docs/apps/bearing/screenshots/dark/03-periods.png",
+      "size": 39196,
+      "hash": "a70f8cba6850eefc1bb5cd99a739e70c3b5cd3e1562ad25e5530648734429450"
     },
     {
       "app": "bearing",
@@ -300,26 +324,34 @@
     {
       "app": "bearing",
       "theme": "dark",
+      "file": "04-at-risk.png",
+      "path": "docs/apps/bearing/screenshots/dark/04-at-risk.png",
+      "size": 67754,
+      "hash": "df55d39a7db53437e730c5aef509e7ecc5707a5ae1d34431f5571da31bbb196e"
+    },
+    {
+      "app": "bearing",
+      "theme": "dark",
       "file": "04-reports.png",
       "path": "docs/apps/bearing/screenshots/dark/04-reports.png",
-      "size": 78829,
-      "hash": "6a2e43a618e0d805d1d33e0f833dab4c11261865b20f634ac4877e35b1a0d1d6"
+      "size": 78803,
+      "hash": "e32f985383f95f77d06287fc583b69cd5947df6b26d593d8bf429123c6f30156"
     },
     {
       "app": "bench",
       "theme": "light",
       "file": "01-dashboard-list.png",
       "path": "docs/apps/bench/screenshots/light/01-dashboard-list.png",
-      "size": 42593,
-      "hash": "a4e98f9d874d0b42b5b74c307d9bcfc8357b92f7f30e9f30f26f17a1205a83b7"
+      "size": 42041,
+      "hash": "db72122a9883ea413006f937307a959ce9d72fea16f6c15cf617894e2db33cbf"
     },
     {
       "app": "bench",
       "theme": "light",
       "file": "02-dashboard-view.png",
       "path": "docs/apps/bench/screenshots/light/02-dashboard-view.png",
-      "size": 42593,
-      "hash": "a4e98f9d874d0b42b5b74c307d9bcfc8357b92f7f30e9f30f26f17a1205a83b7"
+      "size": 40527,
+      "hash": "03aca15df800a5ab8b0ecf5c7f7c02860953a26e6405101f9efc4a6fd3256dde"
     },
     {
       "app": "bench",
@@ -348,6 +380,14 @@
     {
       "app": "bench",
       "theme": "light",
+      "file": "06-saved-queries.png",
+      "path": "docs/apps/bench/screenshots/light/06-saved-queries.png",
+      "size": 42670,
+      "hash": "60d3569a665683e1f1554d2a0b871d2f8c09aad825dafddf14935006f38a7b87"
+    },
+    {
+      "app": "bench",
+      "theme": "light",
       "file": "06-widget-wizard.png",
       "path": "docs/apps/bench/screenshots/light/06-widget-wizard.png",
       "size": 42593,
@@ -358,16 +398,16 @@
       "theme": "dark",
       "file": "01-dashboard-list.png",
       "path": "docs/apps/bench/screenshots/dark/01-dashboard-list.png",
-      "size": 42727,
-      "hash": "28370ca1c6de86f305baccdaa08ece52914ccff082fa72ac3897322513f62e15"
+      "size": 42269,
+      "hash": "dedfb371f3b956b0976043ce85752de0c3c336c955d360664d12a419818dea7a"
     },
     {
       "app": "bench",
       "theme": "dark",
       "file": "02-dashboard-view.png",
       "path": "docs/apps/bench/screenshots/dark/02-dashboard-view.png",
-      "size": 42727,
-      "hash": "28370ca1c6de86f305baccdaa08ece52914ccff082fa72ac3897322513f62e15"
+      "size": 40460,
+      "hash": "61782536178d2471c9f2d4fdec460bcf3c3614811024fff74759d072be5941ec"
     },
     {
       "app": "bench",
@@ -392,6 +432,14 @@
       "path": "docs/apps/bench/screenshots/dark/05-settings.png",
       "size": 66528,
       "hash": "94c12a646c046f7aa87080f498d4f425b5f2110fb471593fb352274f312fedb5"
+    },
+    {
+      "app": "bench",
+      "theme": "dark",
+      "file": "06-saved-queries.png",
+      "path": "docs/apps/bench/screenshots/dark/06-saved-queries.png",
+      "size": 42983,
+      "hash": "a53f973eb457620a13178c765c7ef263b39062e9055a0b7c390b9949e6fb4874"
     },
     {
       "app": "bench",
@@ -430,8 +478,8 @@
       "theme": "light",
       "file": "04-expenses.png",
       "path": "docs/apps/bill/screenshots/light/04-expenses.png",
-      "size": 89642,
-      "hash": "c2d1daab19da1bf7ed02483a4da4ecd4d4d95290f00cbc703911aa0c6d84eeda"
+      "size": 89640,
+      "hash": "f914c02c3fde226660a7ec1edb1aae2066a0b166f49337a7042f7fe0e715675b"
     },
     {
       "app": "bill",
@@ -447,7 +495,7 @@
       "file": "06-reports.png",
       "path": "docs/apps/bill/screenshots/light/06-reports.png",
       "size": 76923,
-      "hash": "6f1cf010fe979081385847ac827a1e67ae835a5f3427a8dcc4c00744b0393b30"
+      "hash": "3808e84cd3346a9a9b7af49e1528600149e71a0cca1e2b8fb9679c7e173e1140"
     },
     {
       "app": "bill",
@@ -502,8 +550,8 @@
       "theme": "dark",
       "file": "06-reports.png",
       "path": "docs/apps/bill/screenshots/dark/06-reports.png",
-      "size": 76769,
-      "hash": "1c452fa2a47005e2c71e7e8521fd9528bc1affd985d681c59be8cf22bbf4e860"
+      "size": 76764,
+      "hash": "11bea212b14d58f42b739f32c9166e7eeedbcb9e2fcb6583092425764c7f78c9"
     },
     {
       "app": "bill",
@@ -518,24 +566,24 @@
       "theme": "light",
       "file": "01-form-list.png",
       "path": "docs/apps/blank/screenshots/light/01-form-list.png",
-      "size": 50280,
-      "hash": "dca8566480776984a0e2febadc0728ba5ce93e770ff89c7f335df3da02afb3f2"
+      "size": 49321,
+      "hash": "fc6487a39b66b0ca847e6c11017431acb8b54acf9fcf32a6a8cab42b529946c2"
     },
     {
       "app": "blank",
       "theme": "light",
       "file": "02-form-builder.png",
       "path": "docs/apps/blank/screenshots/light/02-form-builder.png",
-      "size": 50280,
-      "hash": "dca8566480776984a0e2febadc0728ba5ce93e770ff89c7f335df3da02afb3f2"
+      "size": 68040,
+      "hash": "e9fc74fea79d51a1b89faf89d69e1dc6fdb1a331a85c748d53fc2be59a7c4c0d"
     },
     {
       "app": "blank",
       "theme": "light",
       "file": "03-form-preview.png",
       "path": "docs/apps/blank/screenshots/light/03-form-preview.png",
-      "size": 50280,
-      "hash": "dca8566480776984a0e2febadc0728ba5ce93e770ff89c7f335df3da02afb3f2"
+      "size": 47753,
+      "hash": "e05bd266c9ddf9995357ef5da75cc55a783f4897861772d3e5d44d986bad3f9f"
     },
     {
       "app": "blank",
@@ -550,24 +598,24 @@
       "theme": "dark",
       "file": "01-form-list.png",
       "path": "docs/apps/blank/screenshots/dark/01-form-list.png",
-      "size": 50152,
-      "hash": "e9319548b83ff685edf8618a1efc2e44add34f59ce268f88c30ed176d06c37f4"
+      "size": 49173,
+      "hash": "fd4ef4fe45133046244ba4592251c8540f3d9118e65ed53512a6cdb751f5e5be"
     },
     {
       "app": "blank",
       "theme": "dark",
       "file": "02-form-builder.png",
       "path": "docs/apps/blank/screenshots/dark/02-form-builder.png",
-      "size": 50152,
-      "hash": "e9319548b83ff685edf8618a1efc2e44add34f59ce268f88c30ed176d06c37f4"
+      "size": 68188,
+      "hash": "34696e66895789fd0af6634dc173b1a01390674cbffab3632d15ba6d8ace38a7"
     },
     {
       "app": "blank",
       "theme": "dark",
       "file": "03-form-preview.png",
       "path": "docs/apps/blank/screenshots/dark/03-form-preview.png",
-      "size": 50152,
-      "hash": "e9319548b83ff685edf8618a1efc2e44add34f59ce268f88c30ed176d06c37f4"
+      "size": 47699,
+      "hash": "0fda936e0f259b314735cc4fee14fd19394a23b2ada39fc0feaf7947fd5fe892"
     },
     {
       "app": "blank",
@@ -598,8 +646,8 @@
       "theme": "light",
       "file": "03-templates.png",
       "path": "docs/apps/blast/screenshots/light/03-templates.png",
-      "size": 56506,
-      "hash": "72cf85108778725d4b9c17a43b9b6f4d5fc35b73375afe545d25a3aee469200f"
+      "size": 55018,
+      "hash": "f6242ec346ebb2186cb1aee9a9babf45e399e3a836014f5a7b448901f7f352be"
     },
     {
       "app": "blast",
@@ -614,8 +662,8 @@
       "theme": "light",
       "file": "05-segments.png",
       "path": "docs/apps/blast/screenshots/light/05-segments.png",
-      "size": 53173,
-      "hash": "9078eecf20f67b3ed51897e3c21b51b33fb8beb98d6feea3f103ebb037f9c3c1"
+      "size": 51989,
+      "hash": "a2e1178a9079829b93199038f51a9eb7ad637c8b562a6154dfd8acefb2d2b669"
     },
     {
       "app": "blast",
@@ -654,8 +702,8 @@
       "theme": "dark",
       "file": "03-templates.png",
       "path": "docs/apps/blast/screenshots/dark/03-templates.png",
-      "size": 56329,
-      "hash": "cde9728e4da80c1441466b5ac2ecc0c41abb4536b5f0e770b9af697f3314abef"
+      "size": 54796,
+      "hash": "6f63d42d52210065ef5aa4b7d17ca10eab7c225f2b89bf3af1e31b36ae3ef1b4"
     },
     {
       "app": "blast",
@@ -670,8 +718,8 @@
       "theme": "dark",
       "file": "05-segments.png",
       "path": "docs/apps/blast/screenshots/dark/05-segments.png",
-      "size": 53196,
-      "hash": "0d34149a312b88d5931240ea2bf7bc5da8fd2d27148c98b96591042840398516"
+      "size": 52164,
+      "hash": "3f1b998162579edc4ec7e0c859fd7aa1241213f5082b082748d745d058236097"
     },
     {
       "app": "blast",
@@ -686,88 +734,88 @@
       "theme": "dark",
       "file": "07-analytics.png",
       "path": "docs/apps/blast/screenshots/dark/07-analytics.png",
-      "size": 58631,
-      "hash": "537d5faa0db9aecc817726a629e8255e1c703696c3e2e122869e61b3190791e0"
+      "size": 58573,
+      "hash": "68f752653456c6a088224f6a038197bdfea5f2b27d7a2a8839119825b9d7afe0"
     },
     {
       "app": "board",
       "theme": "light",
       "file": "01-list.png",
       "path": "docs/apps/board/screenshots/light/01-list.png",
-      "size": 71368,
-      "hash": "e9241ed517c1ef21039155ad31228d405df0f3cb0b5a94ae6eb6200d42bd7264"
+      "size": 71394,
+      "hash": "10808b846769ae6a47fe4a03ec53ee937546278440c794f5ad1046bcbadd3a38"
     },
     {
       "app": "board",
       "theme": "light",
       "file": "02-canvas.png",
       "path": "docs/apps/board/screenshots/light/02-canvas.png",
-      "size": 71368,
-      "hash": "e9241ed517c1ef21039155ad31228d405df0f3cb0b5a94ae6eb6200d42bd7264"
+      "size": 30162,
+      "hash": "8217e512e7fc38561d5b47f7ae4f536deb33578c486f002747bd117ee3efadb9"
     },
     {
       "app": "board",
       "theme": "light",
       "file": "03-templates.png",
       "path": "docs/apps/board/screenshots/light/03-templates.png",
-      "size": 71368,
-      "hash": "e9241ed517c1ef21039155ad31228d405df0f3cb0b5a94ae6eb6200d42bd7264"
+      "size": 73281,
+      "hash": "58e32239a68e46d8fa64dd8b5a0e801796be34bd5190b5e2428587213c53f9a8"
     },
     {
       "app": "board",
       "theme": "dark",
       "file": "01-list.png",
       "path": "docs/apps/board/screenshots/dark/01-list.png",
-      "size": 71455,
-      "hash": "882ed32ca176e770a6ec32f5b404555d850123ff8d1448dd9f8eaaffe70adda9"
+      "size": 71487,
+      "hash": "f42610702148aafdf277bbbe0bf510d1f5ec5c151e79e0c739f401c276e75efa"
     },
     {
       "app": "board",
       "theme": "dark",
       "file": "02-canvas.png",
       "path": "docs/apps/board/screenshots/dark/02-canvas.png",
-      "size": 71455,
-      "hash": "882ed32ca176e770a6ec32f5b404555d850123ff8d1448dd9f8eaaffe70adda9"
+      "size": 29958,
+      "hash": "fca2e2e86cb91716c65d7fadddf71246205da37191fb03ca926a3360db8deb7d"
     },
     {
       "app": "board",
       "theme": "dark",
       "file": "03-templates.png",
       "path": "docs/apps/board/screenshots/dark/03-templates.png",
-      "size": 71455,
-      "hash": "882ed32ca176e770a6ec32f5b404555d850123ff8d1448dd9f8eaaffe70adda9"
+      "size": 72470,
+      "hash": "05307280c3bfb75963f704e3aae0083a66f229bb633dd0ff88f6e184f182eabe"
     },
     {
       "app": "bolt",
       "theme": "light",
       "file": "01-automations.png",
       "path": "docs/apps/bolt/screenshots/light/01-automations.png",
-      "size": 94672,
-      "hash": "47ee2ddd85e61598fa939f34f981441b8a3b4efd28625c901d75a106be2a376f"
+      "size": 94228,
+      "hash": "91bcd9931889cc115de4f534bc3a3b27f0c899f2efd76d5b5c1b9a4b6ff3b73e"
     },
     {
       "app": "bolt",
       "theme": "light",
       "file": "02-editor.png",
       "path": "docs/apps/bolt/screenshots/light/02-editor.png",
-      "size": 68742,
-      "hash": "424708a15405830740d574a90336dcdb066259342d8787e45f4b35e85aea1da9"
+      "size": 70503,
+      "hash": "c64698bb47ae5672a96a33dc34108f8e399715283f15b6531f282a752c36108f"
     },
     {
       "app": "bolt",
       "theme": "light",
       "file": "03-detail.png",
       "path": "docs/apps/bolt/screenshots/light/03-detail.png",
-      "size": 94672,
-      "hash": "47ee2ddd85e61598fa939f34f981441b8a3b4efd28625c901d75a106be2a376f"
+      "size": 85852,
+      "hash": "bf4c6040b9f83c8b1719de50df39af3b10d7a7c69b80dbec3022448531f867c6"
     },
     {
       "app": "bolt",
       "theme": "light",
       "file": "04-executions.png",
       "path": "docs/apps/bolt/screenshots/light/04-executions.png",
-      "size": 77876,
-      "hash": "c990f84363d2d0b510e6fea60236ebae9e35a99114c506c694b09704d7adf244"
+      "size": 77379,
+      "hash": "c21d6afe2375752cd62ec2da42aab9da00c2e0a7f36cbcfde54f7b2a981b93dd"
     },
     {
       "app": "bolt",
@@ -775,15 +823,15 @@
       "file": "05-templates.png",
       "path": "docs/apps/bolt/screenshots/light/05-templates.png",
       "size": 98676,
-      "hash": "6421712156e6656d6f1f27d310c9fba85b625d3a0f031aa9279c9b471e22afab"
+      "hash": "b5f98d8604adace36880f59009a7435ff2e916978d60302187dc6956653b6391"
     },
     {
       "app": "bolt",
       "theme": "dark",
       "file": "01-automations.png",
       "path": "docs/apps/bolt/screenshots/dark/01-automations.png",
-      "size": 94602,
-      "hash": "8daef79499f2c54be2979544218af83b302c1a128bc383f55f100cd9009dd9fd"
+      "size": 94154,
+      "hash": "44713dc3ad20005cb1345d42c9c5d41d69cc043081062389fe3248da2889099b"
     },
     {
       "app": "bolt",
@@ -798,48 +846,48 @@
       "theme": "dark",
       "file": "03-detail.png",
       "path": "docs/apps/bolt/screenshots/dark/03-detail.png",
-      "size": 94602,
-      "hash": "8daef79499f2c54be2979544218af83b302c1a128bc383f55f100cd9009dd9fd"
+      "size": 87887,
+      "hash": "7e1843225d245064a4d09fcd7a7187158bf9b5e7e08eee3d85dcd14542816711"
     },
     {
       "app": "bolt",
       "theme": "dark",
       "file": "04-executions.png",
       "path": "docs/apps/bolt/screenshots/dark/04-executions.png",
-      "size": 78076,
-      "hash": "1662bab6a5b6045859f7adfe4f62dae0a5b67098ddd09efc7691f41d137d664b"
+      "size": 77544,
+      "hash": "469acb92adf98529fcdc0e068a583c8e806d23526a9d29998323bed2f7d7a844"
     },
     {
       "app": "bolt",
       "theme": "dark",
       "file": "05-templates.png",
       "path": "docs/apps/bolt/screenshots/dark/05-templates.png",
-      "size": 94484,
-      "hash": "415816268e65a26d10e36654a2484826df249298453bbb456576b884db56ccef"
+      "size": 94475,
+      "hash": "e6f0eaa017348c9f7977567364e4cde5a2d8bd2c1038ab42d9d50f6211ae670d"
     },
     {
       "app": "bond",
       "theme": "light",
       "file": "01-pipeline.png",
       "path": "docs/apps/bond/screenshots/light/01-pipeline.png",
-      "size": 30737,
-      "hash": "7bc46aa19a4e504ce35ce4453700f0c2419a5739f75cddfbae7910340b68af0b"
+      "size": 61988,
+      "hash": "6e08c0d8ae8be4a47b63ca3a6aba665fd6117e1035b45b7506386d6733c7a94c"
     },
     {
       "app": "bond",
       "theme": "light",
       "file": "02-contacts.png",
       "path": "docs/apps/bond/screenshots/light/02-contacts.png",
-      "size": 104731,
-      "hash": "0dac06f39033ac5d2d26aaac1a5025213df741121bbbb43e3645c01a3b12e6ae"
+      "size": 104903,
+      "hash": "91220927c3fcaf15fd331c91f9d4965a90cb5795f8face4618d93858077791d3"
     },
     {
       "app": "bond",
       "theme": "light",
       "file": "03-deal-detail.png",
       "path": "docs/apps/bond/screenshots/light/03-deal-detail.png",
-      "size": 30737,
-      "hash": "7bc46aa19a4e504ce35ce4453700f0c2419a5739f75cddfbae7910340b68af0b"
+      "size": 60342,
+      "hash": "d3cd2d7c78c58ba07403de34f9567c4085fb9b4d2018af5fefdc8a4b4310ad4f"
     },
     {
       "app": "bond",
@@ -854,32 +902,32 @@
       "theme": "light",
       "file": "05-companies.png",
       "path": "docs/apps/bond/screenshots/light/05-companies.png",
-      "size": 90409,
-      "hash": "ec8047c44e3e6dd1dc1189dfd6b766c146da9a811f25f4e6ebfcec0f52d8b4bb"
+      "size": 90284,
+      "hash": "c6669bacd47ef9eb36539e09fc780e86ebad9ffbe01cee76207d5c3309e1cb82"
     },
     {
       "app": "bond",
       "theme": "dark",
       "file": "01-pipeline.png",
       "path": "docs/apps/bond/screenshots/dark/01-pipeline.png",
-      "size": 30675,
-      "hash": "70bea721d8f8fe64a81c650e51287ce3348feb8a6c88d7049ab5bb2fe006c6a1"
+      "size": 62446,
+      "hash": "d9b526bf1bf2ac34f021bde9c079e546b241e6a9066a51a02cae2a6aabb445f5"
     },
     {
       "app": "bond",
       "theme": "dark",
       "file": "02-contacts.png",
       "path": "docs/apps/bond/screenshots/dark/02-contacts.png",
-      "size": 105131,
-      "hash": "2738eeed87ec211d4129c93dd771522caf0c32f07bbee5fde78fdb08ce1fc06f"
+      "size": 105130,
+      "hash": "3a671fdde63d695d5caa9ef621a7102a0b53a2ca0f374882b3c223754ae01914"
     },
     {
       "app": "bond",
       "theme": "dark",
       "file": "03-deal-detail.png",
       "path": "docs/apps/bond/screenshots/dark/03-deal-detail.png",
-      "size": 30675,
-      "hash": "70bea721d8f8fe64a81c650e51287ce3348feb8a6c88d7049ab5bb2fe006c6a1"
+      "size": 60036,
+      "hash": "53de6be9faa54bae94c635fe8475d62712f63202e2a4ed52c61a6057d3501f76"
     },
     {
       "app": "bond",
@@ -894,8 +942,8 @@
       "theme": "dark",
       "file": "05-companies.png",
       "path": "docs/apps/bond/screenshots/dark/05-companies.png",
-      "size": 91712,
-      "hash": "3d0df0cb6bb458a526fb3875ccf2c5dcfc7c699116819db769fd466d0c8d0a08"
+      "size": 91665,
+      "hash": "ecef07cb077417e1030ac939fa68ed9cab1f6079556abd91cf74a601dbda6163"
     },
     {
       "app": "book",
@@ -975,7 +1023,7 @@
       "file": "04-timeline.png",
       "path": "docs/apps/book/screenshots/dark/04-timeline.png",
       "size": 40097,
-      "hash": "6ebf257f39a4a8e9efa2e296437786a842108c85d05fe66c1a5e821a4c0c51b8"
+      "hash": "e6758293147430c5a829cc746312ce4fe4fdafaaf1ca379ecbcba20f5f32a740"
     },
     {
       "app": "book",
@@ -998,24 +1046,24 @@
       "theme": "light",
       "file": "01-home.png",
       "path": "docs/apps/brief/screenshots/light/01-home.png",
-      "size": 51653,
-      "hash": "3801468db6e318178d21ee9279037fb7aa67322bdef667413223adfa3bd7ea02"
+      "size": 51219,
+      "hash": "11d47d491e59fc38add84c570fad66c9b9807583b3310a20beeb9ccab417e3d0"
     },
     {
       "app": "brief",
       "theme": "light",
       "file": "02-documents.png",
       "path": "docs/apps/brief/screenshots/light/02-documents.png",
-      "size": 51653,
-      "hash": "3801468db6e318178d21ee9279037fb7aa67322bdef667413223adfa3bd7ea02"
+      "size": 40846,
+      "hash": "e8c593d82e9644f7d379fb361a60a1f23aef8dacde1c1d502598e2f6e9af315f"
     },
     {
       "app": "brief",
       "theme": "light",
       "file": "03-detail.png",
       "path": "docs/apps/brief/screenshots/light/03-detail.png",
-      "size": 51653,
-      "hash": "91c934887f2c046b47fa10586d0db88df4fa534e958b3e91e0ef34e5479bdc38"
+      "size": 58687,
+      "hash": "477bfec4fa3ff4b9e6a0cbe04eb6c76d72274c2c01588bd6f888f31bb2ec0a53"
     },
     {
       "app": "brief",
@@ -1030,8 +1078,8 @@
       "theme": "light",
       "file": "05-templates.png",
       "path": "docs/apps/brief/screenshots/light/05-templates.png",
-      "size": 111105,
-      "hash": "f7c5e20f59c83f2deb4c4c7868d5e33f2e878ee200979d74a8801f7a8489eb64"
+      "size": 112169,
+      "hash": "f31e01ebbdca7e1322cb64c4b72249628079834393117dea02a42f7af1e33b40"
     },
     {
       "app": "brief",
@@ -1046,56 +1094,64 @@
       "theme": "dark",
       "file": "01-home.png",
       "path": "docs/apps/brief/screenshots/dark/01-home.png",
-      "size": 51627,
-      "hash": "423a9428d33387ebae737f41309e1d64e603372dccf16fd11003313062ec7f52"
+      "size": 51229,
+      "hash": "37eb1c32a0d7bd405128affbfcc6b2044edc4bbef961e6cd62d5cfcca38f9837"
     },
     {
       "app": "brief",
       "theme": "dark",
       "file": "02-documents.png",
       "path": "docs/apps/brief/screenshots/dark/02-documents.png",
-      "size": 51627,
-      "hash": "423a9428d33387ebae737f41309e1d64e603372dccf16fd11003313062ec7f52"
+      "size": 41094,
+      "hash": "ecf1b40c915d4be501ab6a57c5f1ee2e07ccb4ebd5e6a4d98e1fe4eb43cb4398"
     },
     {
       "app": "brief",
       "theme": "dark",
       "file": "03-detail.png",
       "path": "docs/apps/brief/screenshots/dark/03-detail.png",
-      "size": 51627,
-      "hash": "423a9428d33387ebae737f41309e1d64e603372dccf16fd11003313062ec7f52"
+      "size": 57648,
+      "hash": "30827b96baab8f5fb30896a216f75edcac835e674012160525f71be2b4a55fde"
     },
     {
       "app": "brief",
       "theme": "dark",
       "file": "04-editor.png",
       "path": "docs/apps/brief/screenshots/dark/04-editor.png",
-      "size": 55915,
-      "hash": "bad6992fd28227bc3cdbec274e8c3dff232a17e9eba69ab730b786860d444660"
+      "size": 55922,
+      "hash": "72a2126fccf5f927ca4fd55f549e6a910ca3b82b93689b58900555bd70977592"
     },
     {
       "app": "brief",
       "theme": "dark",
       "file": "05-templates.png",
       "path": "docs/apps/brief/screenshots/dark/05-templates.png",
-      "size": 111069,
-      "hash": "3ba800d0dc03ba8a0b1ecaa3cd20eace705938b623e1720af958a7dd83719951"
+      "size": 112263,
+      "hash": "20dc10284bfd42b9c221be82a469b89acc6060e2f394039e308b69913e75533a"
     },
     {
       "app": "brief",
       "theme": "dark",
       "file": "06-starred.png",
       "path": "docs/apps/brief/screenshots/dark/06-starred.png",
-      "size": 35588,
-      "hash": "364ce1e3b0d0c00efe34128e563b000bfd1f652fe0d60790b7ad0e627bb0e150"
+      "size": 35593,
+      "hash": "2c06e4836b0d9076193fc2d632dbf902398dc439a472af815342b750473715a4"
     },
     {
       "app": "helpdesk",
       "theme": "light",
       "file": "01-portal.png",
       "path": "docs/apps/helpdesk/screenshots/light/01-portal.png",
-      "size": 27183,
-      "hash": "45a76ef752b7ae022b1647ec18078d498070d5d770a86840aa9b4db5c874c3e6"
+      "size": 23902,
+      "hash": "cef1e415e63d5995d99c1a2d38d1b6bfb2934fa462c98bd7e6a8dbf7c49b804b"
+    },
+    {
+      "app": "helpdesk",
+      "theme": "light",
+      "file": "02-login.png",
+      "path": "docs/apps/helpdesk/screenshots/light/02-login.png",
+      "size": 23902,
+      "hash": "cef1e415e63d5995d99c1a2d38d1b6bfb2934fa462c98bd7e6a8dbf7c49b804b"
     },
     {
       "app": "helpdesk",
@@ -1116,10 +1172,18 @@
     {
       "app": "helpdesk",
       "theme": "light",
+      "file": "03-ticket-list.png",
+      "path": "docs/apps/helpdesk/screenshots/light/03-ticket-list.png",
+      "size": 25219,
+      "hash": "08929ad995ab4705d757e925a747642884c10b39fae119304bdf11dd24ffeaff"
+    },
+    {
+      "app": "helpdesk",
+      "theme": "light",
       "file": "04-ticket-detail.png",
       "path": "docs/apps/helpdesk/screenshots/light/04-ticket-detail.png",
-      "size": 23902,
-      "hash": "cef1e415e63d5995d99c1a2d38d1b6bfb2934fa462c98bd7e6a8dbf7c49b804b"
+      "size": 25219,
+      "hash": "08929ad995ab4705d757e925a747642884c10b39fae119304bdf11dd24ffeaff"
     },
     {
       "app": "helpdesk",
@@ -1131,11 +1195,27 @@
     },
     {
       "app": "helpdesk",
+      "theme": "light",
+      "file": "05-new-ticket.png",
+      "path": "docs/apps/helpdesk/screenshots/light/05-new-ticket.png",
+      "size": 25219,
+      "hash": "08929ad995ab4705d757e925a747642884c10b39fae119304bdf11dd24ffeaff"
+    },
+    {
+      "app": "helpdesk",
       "theme": "dark",
       "file": "01-portal.png",
       "path": "docs/apps/helpdesk/screenshots/dark/01-portal.png",
-      "size": 26756,
-      "hash": "eb30be3035853927aea6d5fe0ac3c1d2e3e00b250cfd8e3ed71222b24b40198c"
+      "size": 23053,
+      "hash": "876313a92639cf6d094f302f74363bc7e402da1a92b0eaf7cf3cd11ff77511c1"
+    },
+    {
+      "app": "helpdesk",
+      "theme": "dark",
+      "file": "02-login.png",
+      "path": "docs/apps/helpdesk/screenshots/dark/02-login.png",
+      "size": 23053,
+      "hash": "876313a92639cf6d094f302f74363bc7e402da1a92b0eaf7cf3cd11ff77511c1"
     },
     {
       "app": "helpdesk",
@@ -1156,10 +1236,18 @@
     {
       "app": "helpdesk",
       "theme": "dark",
+      "file": "03-ticket-list.png",
+      "path": "docs/apps/helpdesk/screenshots/dark/03-ticket-list.png",
+      "size": 24484,
+      "hash": "3579596e20583879dcb9f995b71726a538ce24143930bb12822f6230eca6fcfa"
+    },
+    {
+      "app": "helpdesk",
+      "theme": "dark",
       "file": "04-ticket-detail.png",
       "path": "docs/apps/helpdesk/screenshots/dark/04-ticket-detail.png",
-      "size": 23053,
-      "hash": "876313a92639cf6d094f302f74363bc7e402da1a92b0eaf7cf3cd11ff77511c1"
+      "size": 24484,
+      "hash": "3579596e20583879dcb9f995b71726a538ce24143930bb12822f6230eca6fcfa"
     },
     {
       "app": "helpdesk",
@@ -1168,6 +1256,14 @@
       "path": "docs/apps/helpdesk/screenshots/dark/05-knowledge-base.png",
       "size": 23053,
       "hash": "876313a92639cf6d094f302f74363bc7e402da1a92b0eaf7cf3cd11ff77511c1"
+    },
+    {
+      "app": "helpdesk",
+      "theme": "dark",
+      "file": "05-new-ticket.png",
+      "path": "docs/apps/helpdesk/screenshots/dark/05-new-ticket.png",
+      "size": 25388,
+      "hash": "348c6978521c5aed437b259004b3ad152bd90ec10193d3d264b6b94d8c6a7bc8"
     }
   ]
 }

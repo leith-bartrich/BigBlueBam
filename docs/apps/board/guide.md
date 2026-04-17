@@ -1,7 +1,7 @@
 ---
 title: "Board (Visual Collaboration) Guide"
 app: board
-generated: "2026-04-17T14:51:17.338Z"
+generated: "2026-04-17T16:45:02.193Z"
 ---
 
 # Board (Visual Collaboration) Guide
