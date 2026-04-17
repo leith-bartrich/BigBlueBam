@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { env } from './env.js';
 import { createErrorHandler } from '@bigbluebam/logging';
+import { healthCheckPlugin } from '@bigbluebam/service-health';
 import { db, connection } from './db/index.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -72,38 +73,13 @@ await fastify.register(redisPlugin);
 // Auth plugin
 await fastify.register(authPlugin);
 
-// Health endpoints
-fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
-fastify.get('/health/ready', async (_request, reply) => {
-  const checks: Record<string, string> = {};
-
-  // Check database
-  try {
-    await db.execute(sql`SELECT 1`);
-    checks.database = 'ok';
-  } catch {
-    checks.database = 'error';
-  }
-
-  // Check Redis
-  try {
-    await fastify.redis.ping();
-    checks.redis = 'ok';
-  } catch {
-    checks.redis = 'error';
-  }
-
-  const allOk = Object.values(checks).every((v) => v === 'ok');
-  const statusCode = allOk ? 200 : 503;
-
-  return reply.status(statusCode).send({
-    status: allOk ? 'ready' : 'degraded',
-    checks,
-    timestamp: new Date().toISOString(),
-  });
+// Health + readiness probes (shared plugin)
+await fastify.register(healthCheckPlugin, {
+  service: 'brief-api',
+  checks: {
+    database: async () => { await db.execute(sql`SELECT 1`); },
+    redis: async () => { await fastify.redis.ping(); },
+  },
 });
 
 // Routes
