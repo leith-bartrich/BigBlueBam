@@ -5,6 +5,7 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { env } from './env.js';
+import { createErrorHandler } from '@bigbluebam/logging';
 import { db, connection } from './db/index.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -41,31 +42,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler((error, request, reply) => {
-  // Zod validation errors
-  if (error.name === 'ZodError') {
-    return reply.status(400).send({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Request validation failed',
-        details: (error as any).issues ?? [],
-        request_id: request.id,
-      },
-    });
-  }
-
-  fastify.log.error(error);
-
-  const statusCode = error.statusCode ?? 500;
-  return reply.status(statusCode).send({
-    error: {
-      code: statusCode >= 500 ? 'INTERNAL_ERROR' : 'BAD_REQUEST',
-      message: statusCode >= 500 ? 'Internal server error' : error.message,
-      details: [],
-      request_id: request.id,
-    },
-  });
-});
+fastify.setErrorHandler(createErrorHandler({ serviceName: 'banter-api' }));
 
 // Not found handler — standard error envelope for 404s
 fastify.setNotFoundHandler((request, reply) => {

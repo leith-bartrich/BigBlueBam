@@ -8,7 +8,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { env } from './env.js';
 import { db, connection } from './db/index.js';
-import { errorHandler } from './middleware/error-handler.js';
+import { createErrorHandler } from '@bigbluebam/logging';
 import redisPlugin from './plugins/redis.js';
 import csrfPlugin from './plugins/csrf.js';
 import authPlugin from './plugins/auth.js';
@@ -71,7 +71,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler(errorHandler);
+fastify.setErrorHandler(createErrorHandler({ serviceName: 'api' }));
 
 // 404 handler — return the canonical error envelope for unknown routes
 fastify.setNotFoundHandler((request, reply) => {

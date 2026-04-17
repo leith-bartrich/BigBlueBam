@@ -1,9 +1,10 @@
 import 'dotenv/config';
-import Fastify, { type FastifyError } from 'fastify';
+import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { env } from './env.js';
+import { createErrorHandler } from '@bigbluebam/logging';
 import { db, connection } from './db/index.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -21,39 +22,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler((error: FastifyError, request, reply) => {
-  // Zod validation errors
-  if (error.name === 'ZodError') {
-    return reply.status(400).send({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Request validation failed',
-        details: (error as any).issues ?? [],
-        request_id: request.id,
-      },
-    });
-  }
-
-  fastify.log.error(error);
-
-  const statusCode = error.statusCode ?? 500;
-  // Only expose error message for known app errors; sanitize everything else
-  const isAppError = error.name === 'BeaconError' || (error as any).code;
-  const message =
-    statusCode >= 500
-      ? 'Internal server error'
-      : isAppError
-        ? error.message
-        : 'Bad request';
-  return reply.status(statusCode).send({
-    error: {
-      code: statusCode >= 500 ? 'INTERNAL_ERROR' : (error as any).code ?? 'BAD_REQUEST',
-      message,
-      details: [],
-      request_id: request.id,
-    },
-  });
-});
+fastify.setErrorHandler(createErrorHandler({ serviceName: 'beacon-api' }));
 
 // Not found handler
 fastify.setNotFoundHandler((request, reply) => {
