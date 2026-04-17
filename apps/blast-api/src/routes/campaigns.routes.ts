@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as campaignService from '../services/campaign.service.js';
+import * as analyticsService from '../services/analytics.service.js';
 import { publishBoltEvent, buildCampaignEventPayload } from '../lib/bolt-events.js';
 
 const createCampaignSchema = z.object({
@@ -220,6 +221,19 @@ export default async function campaignRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         query.limit,
         query.offset,
+      );
+      return reply.send(result);
+    },
+  );
+
+  // GET /campaigns/:id/analytics/devices
+  fastify.get<{ Params: { id: string } }>(
+    '/campaigns/:id/analytics/devices',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const result = await analyticsService.getCampaignDeviceAnalytics(
+        request.params.id,
+        request.user!.org_id,
       );
       return reply.send(result);
     },

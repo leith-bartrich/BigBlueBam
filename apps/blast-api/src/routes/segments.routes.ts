@@ -122,4 +122,17 @@ export default async function segmentRoutes(fastify: FastifyInstance) {
       return reply.send({ data: result });
     },
   );
+
+  // POST /segments/:id/evaluate -- Full recipient evaluation for campaign send
+  fastify.post<{ Params: { id: string } }>(
+    '/segments/:id/evaluate',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const result = await segmentService.evaluateSegmentRecipients(
+        request.params.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: result });
+    },
+  );
 }
