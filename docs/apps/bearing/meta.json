@@ -1,13 +1,82 @@
-{
-  "app": "bearing",
-  "nginx_path": "/bearing/",
-  "api_port": 4007,
-  "api_dir": "bearing-api",
-  "route_files": 4,
-  "schema_modules": 9,
-  "has_seeder": true,
-  "has_frontend": true,
-  "src_hash": "b91265189d50ecb4014805926bfbcc8c0af4b36543f06e2d93a4bddf2aacf5f8",
-  "generated_at": "2026-04-17T06:14:28.883Z",
-  "mcp_tool_count": 12
-}
+[
+  {
+    "id": "01-dashboard",
+    "label": "Goal dashboard",
+    "theme": "light",
+    "file": "docs\\apps\\bearing\\screenshots\\light\\01-dashboard.png",
+    "sha256": "f3d819cbed768fa7a94d21c4d1ae0ef9f5ac6259824b5a624da3f4645e28c5af",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:21.662Z"
+  },
+  {
+    "id": "02-goal-detail",
+    "label": "Goal detail",
+    "theme": "light",
+    "file": "docs\\apps\\bearing\\screenshots\\light\\02-goal-detail.png",
+    "sha256": "02d6bde4d31131fa743817ed1c4071354c3c3cc813028f89a3aef78bf48b2e4b",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:24.401Z"
+  },
+  {
+    "id": "03-timeline",
+    "label": "Timeline view",
+    "theme": "light",
+    "file": "docs\\apps\\bearing\\screenshots\\light\\03-timeline.png",
+    "sha256": "02d6bde4d31131fa743817ed1c4071354c3c3cc813028f89a3aef78bf48b2e4b",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:27.080Z"
+  },
+  {
+    "id": "04-reports",
+    "label": "Progress reports",
+    "theme": "light",
+    "file": "docs\\apps\\bearing\\screenshots\\light\\04-reports.png",
+    "sha256": "02d6bde4d31131fa743817ed1c4071354c3c3cc813028f89a3aef78bf48b2e4b",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:29.793Z"
+  },
+  {
+    "id": "01-dashboard",
+    "label": "Goal dashboard",
+    "theme": "dark",
+    "file": "docs\\apps\\bearing\\screenshots\\dark\\01-dashboard.png",
+    "sha256": "6a2e43a618e0d805d1d33e0f833dab4c11261865b20f634ac4877e35b1a0d1d6",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:37.345Z"
+  },
+  {
+    "id": "02-goal-detail",
+    "label": "Goal detail",
+    "theme": "dark",
+    "file": "docs\\apps\\bearing\\screenshots\\dark\\02-goal-detail.png",
+    "sha256": "6a2e43a618e0d805d1d33e0f833dab4c11261865b20f634ac4877e35b1a0d1d6",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:40.084Z"
+  },
+  {
+    "id": "03-timeline",
+    "label": "Timeline view",
+    "theme": "dark",
+    "file": "docs\\apps\\bearing\\screenshots\\dark\\03-timeline.png",
+    "sha256": "e32f985383f95f77d06287fc583b69cd5947df6b26d593d8bf429123c6f30156",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:42.867Z"
+  },
+  {
+    "id": "04-reports",
+    "label": "Progress reports",
+    "theme": "dark",
+    "file": "docs\\apps\\bearing\\screenshots\\dark\\04-reports.png",
+    "sha256": "6a2e43a618e0d805d1d33e0f833dab4c11261865b20f634ac4877e35b1a0d1d6",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:45.628Z"
+  }
+]

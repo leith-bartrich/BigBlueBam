@@ -1,13 +1,82 @@
-{
-  "app": "banter",
-  "nginx_path": "/banter/",
-  "api_port": 4002,
-  "api_dir": "banter-api",
-  "route_files": 18,
-  "schema_modules": 19,
-  "has_seeder": true,
-  "has_frontend": true,
-  "src_hash": "44eee364d80e9a05713b66233f07ecf454a69f732f02a6771318197f87837e8f",
-  "generated_at": "2026-04-17T06:14:27.759Z",
-  "mcp_tool_count": 52
-}
+[
+  {
+    "id": "01-channels",
+    "label": "Channel list",
+    "theme": "light",
+    "file": "docs\\apps\\banter\\screenshots\\light\\01-channels.png",
+    "sha256": "8b7e8029faa2c110306298821b504d208e9b2ed5e32d38b906de4a7c941d6f7a",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:50:43.578Z"
+  },
+  {
+    "id": "02-channel-view",
+    "label": "Channel conversation",
+    "theme": "light",
+    "file": "docs\\apps\\banter\\screenshots\\light\\02-channel-view.png",
+    "sha256": "f1ec268a1f314bfc2d2a7e1288049891e78aebd9862cc907cd2a72917620e8ff",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:50:46.567Z"
+  },
+  {
+    "id": "03-threads",
+    "label": "Thread view",
+    "theme": "light",
+    "file": "docs\\apps\\banter\\screenshots\\light\\03-threads.png",
+    "sha256": "f158d4b583193259d22ff3fba8071cca05b727f6eea7618d36463915ffc6db93",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:50:49.372Z"
+  },
+  {
+    "id": "04-dms",
+    "label": "Direct messages",
+    "theme": "light",
+    "file": "docs\\apps\\banter\\screenshots\\light\\04-dms.png",
+    "sha256": "883f94d2c0fce51c5692ed336ae4b67eeae45e0a7911bbda3369bd0ffc7d8411",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:50:52.288Z"
+  },
+  {
+    "id": "01-channels",
+    "label": "Channel list",
+    "theme": "dark",
+    "file": "docs\\apps\\banter\\screenshots\\dark\\01-channels.png",
+    "sha256": "aafd021f6d080dc06040cdfe100242eb60f3c8b08c32d14989447b85cd53752e",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:51:00.087Z"
+  },
+  {
+    "id": "02-channel-view",
+    "label": "Channel conversation",
+    "theme": "dark",
+    "file": "docs\\apps\\banter\\screenshots\\dark\\02-channel-view.png",
+    "sha256": "aafd021f6d080dc06040cdfe100242eb60f3c8b08c32d14989447b85cd53752e",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:51:02.888Z"
+  },
+  {
+    "id": "03-threads",
+    "label": "Thread view",
+    "theme": "dark",
+    "file": "docs\\apps\\banter\\screenshots\\dark\\03-threads.png",
+    "sha256": "127881151227d45e3e27367f5a1ec06ab66a7d48279392adf20f758060ed6be3",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:51:05.709Z"
+  },
+  {
+    "id": "04-dms",
+    "label": "Direct messages",
+    "theme": "dark",
+    "file": "docs\\apps\\banter\\screenshots\\dark\\04-dms.png",
+    "sha256": "11105ff48699c044184765c43702b921da4de4e312cb6a28569143207948916e",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:51:08.475Z"
+  }
+]

@@ -1,7 +1,7 @@
 ---
 title: "Blank (Forms) Guide"
 app: blank
-generated: "2026-04-17T06:14:43.243Z"
+generated: "2026-04-17T14:51:17.124Z"
 ---
 
 # Blank (Forms) Guide
@@ -27,6 +27,25 @@ Blank form submissions can trigger Bolt automations for workflow routing. Respon
 ## Getting Started
 
 Open Blank from the Launchpad. Create a new form in the builder, add fields, configure validation rules, and publish it. Share the public form URL with respondents. Review submissions in the response viewer and analyze trends in the analytics tab.
+
+## Walkthrough
+
+### Form List
+
+![Form List](screenshots/light/01-form-list.png)
+
+### Form Builder
+
+![Form Builder](screenshots/light/02-form-builder.png)
+
+### Form Preview
+
+![Form Preview](screenshots/light/03-form-preview.png)
+
+### Settings
+
+![Settings](screenshots/light/04-settings.png)
+
 
 ## MCP Tools
 

@@ -1,7 +1,7 @@
 ---
 title: "Board (Visual Collaboration) Guide"
 app: board
-generated: "2026-04-17T06:14:43.413Z"
+generated: "2026-04-17T14:51:17.338Z"
 ---
 
 # Board (Visual Collaboration) Guide
@@ -27,6 +27,21 @@ Board rooms share authentication with all BigBlueBam apps. Shapes can link to Ba
 ## Getting Started
 
 Open Board from the Launchpad. Create a new board or pick a template. The canvas supports zoom, pan, and multi-select. Invite collaborators by sharing the board URL. Use the toolbar to add shapes, connectors, and sticky notes. Press ? for keyboard shortcuts.
+
+## Walkthrough
+
+### List
+
+![List](screenshots/light/01-list.png)
+
+### Canvas
+
+![Canvas](screenshots/light/02-canvas.png)
+
+### Templates
+
+![Templates](screenshots/light/03-templates.png)
+
 
 ## MCP Tools
 

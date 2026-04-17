@@ -392,87 +392,115 @@ Generate an API key from **Settings > Integrations** in the BigBlueBam UI.
 <!-- AUTODOCS:APP_SECTIONS:START -->
 ### Bam (Project Management)
 
-42 routes, 38 schemas, 63 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/bam/guide.md) | [Overview](docs/apps/bam/marketing.md) | [MCP Tools](docs/apps/bam/mcp-tools.md)
+<img src="docs/apps/bam/screenshots/light/01-board.png" width="400" alt="Bam (Project Management)">
+
+[Guide](docs/apps/bam/guide.md) | [Overview](docs/apps/bam/marketing.md)
 
 ### Banter (Team Messaging)
 
-18 routes, 19 schemas, 52 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/banter/guide.md) | [Overview](docs/apps/banter/marketing.md) | [MCP Tools](docs/apps/banter/mcp-tools.md)
+<img src="docs/apps/banter/screenshots/light/01-channels.png" width="400" alt="Banter (Team Messaging)">
+
+[Guide](docs/apps/banter/guide.md) | [Overview](docs/apps/banter/marketing.md)
 
 ### Beacon (Knowledge Base)
 
-9 routes, 12 schemas, 29 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/beacon/guide.md) | [Overview](docs/apps/beacon/marketing.md) | [MCP Tools](docs/apps/beacon/mcp-tools.md)
+<img src="docs/apps/beacon/screenshots/light/01-home.png" width="400" alt="Beacon (Knowledge Base)">
+
+[Guide](docs/apps/beacon/guide.md) | [Overview](docs/apps/beacon/marketing.md)
 
 ### Bearing (Goals & OKRs)
 
-4 routes, 9 schemas, 12 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/bearing/guide.md) | [Overview](docs/apps/bearing/marketing.md) | [MCP Tools](docs/apps/bearing/mcp-tools.md)
+<img src="docs/apps/bearing/screenshots/light/01-dashboard.png" width="400" alt="Bearing (Goals & OKRs)">
+
+[Guide](docs/apps/bearing/guide.md) | [Overview](docs/apps/bearing/marketing.md)
 
 ### Bench (Analytics)
 
-6 routes, 7 schemas, 11 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/bench/guide.md) | [Overview](docs/apps/bench/marketing.md) | [MCP Tools](docs/apps/bench/mcp-tools.md)
+<img src="docs/apps/bench/screenshots/light/01-dashboard-list.png" width="400" alt="Bench (Analytics)">
+
+[Guide](docs/apps/bench/guide.md) | [Overview](docs/apps/bench/marketing.md)
 
 ### Bill (Invoicing)
 
-8 routes, 11 schemas, 16 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/bill/guide.md) | [Overview](docs/apps/bill/marketing.md) | [MCP Tools](docs/apps/bill/mcp-tools.md)
+<img src="docs/apps/bill/screenshots/light/01-invoice-list.png" width="400" alt="Bill (Invoicing)">
+
+[Guide](docs/apps/bill/guide.md) | [Overview](docs/apps/bill/marketing.md)
 
 ### Blank (Forms)
 
-4 routes, 5 schemas, 11 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/blank/guide.md) | [Overview](docs/apps/blank/marketing.md) | [MCP Tools](docs/apps/blank/mcp-tools.md)
+<img src="docs/apps/blank/screenshots/light/01-form-list.png" width="400" alt="Blank (Forms)">
+
+[Guide](docs/apps/blank/guide.md) | [Overview](docs/apps/blank/marketing.md)
 
 ### Blast (Email Campaigns)
 
-7 routes, 9 schemas, 14 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/blast/guide.md) | [Overview](docs/apps/blast/marketing.md) | [MCP Tools](docs/apps/blast/mcp-tools.md)
+<img src="docs/apps/blast/screenshots/light/01-campaigns.png" width="400" alt="Blast (Email Campaigns)">
+
+[Guide](docs/apps/blast/guide.md) | [Overview](docs/apps/blast/marketing.md)
 
 ### Board (Visual Collaboration)
 
-9 routes, 10 schemas, 14 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/board/guide.md) | [Overview](docs/apps/board/marketing.md) | [MCP Tools](docs/apps/board/mcp-tools.md)
+<img src="docs/apps/board/screenshots/light/01-list.png" width="400" alt="Board (Visual Collaboration)">
+
+[Guide](docs/apps/board/guide.md) | [Overview](docs/apps/board/marketing.md)
 
 ### Bolt (Workflow Automation)
 
-6 routes, 10 schemas, 13 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/bolt/guide.md) | [Overview](docs/apps/bolt/marketing.md) | [MCP Tools](docs/apps/bolt/mcp-tools.md)
+<img src="docs/apps/bolt/screenshots/light/01-automations.png" width="400" alt="Bolt (Workflow Automation)">
+
+[Guide](docs/apps/bolt/guide.md) | [Overview](docs/apps/bolt/marketing.md)
 
 ### Bond (CRM)
 
-9 routes, 14 schemas, 22 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/bond/guide.md) | [Overview](docs/apps/bond/marketing.md) | [MCP Tools](docs/apps/bond/mcp-tools.md)
+<img src="docs/apps/bond/screenshots/light/01-pipeline.png" width="400" alt="Bond (CRM)">
+
+[Guide](docs/apps/bond/guide.md) | [Overview](docs/apps/bond/marketing.md)
 
 ### Book (Scheduling)
 
-8 routes, 10 schemas, 10 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/book/guide.md) | [Overview](docs/apps/book/marketing.md) | [MCP Tools](docs/apps/book/mcp-tools.md)
+<img src="docs/apps/book/screenshots/light/01-week-view.png" width="400" alt="Book (Scheduling)">
+
+[Guide](docs/apps/book/guide.md) | [Overview](docs/apps/book/marketing.md)
 
 ### Brief (Documents)
 
-9 routes, 10 schemas, 18 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/brief/guide.md) | [Overview](docs/apps/brief/marketing.md) | [MCP Tools](docs/apps/brief/mcp-tools.md)
+<img src="docs/apps/brief/screenshots/light/01-home.png" width="400" alt="Brief (Documents)">
+
+[Guide](docs/apps/brief/guide.md) | [Overview](docs/apps/brief/marketing.md)
 
 ### Helpdesk (Support Portal)
 
-7 routes, 12 schemas, 10 MCP tools
+undefined routes, undefined schemas
 
-[Guide](docs/apps/helpdesk/guide.md) | [Overview](docs/apps/helpdesk/marketing.md) | [MCP Tools](docs/apps/helpdesk/mcp-tools.md)
+<img src="docs/apps/helpdesk/screenshots/light/01-portal.png" width="400" alt="Helpdesk (Support Portal)">
+
+[Guide](docs/apps/helpdesk/guide.md) | [Overview](docs/apps/helpdesk/marketing.md)
 <!-- AUTODOCS:APP_SECTIONS:END -->
 ---
 

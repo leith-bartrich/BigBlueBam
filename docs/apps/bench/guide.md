@@ -1,7 +1,7 @@
 ---
 title: "Bench (Analytics) Guide"
 app: bench
-generated: "2026-04-17T06:14:43.081Z"
+generated: "2026-04-17T14:51:16.948Z"
 ---
 
 # Bench (Analytics) Guide
@@ -26,6 +26,33 @@ Bench queries span data from Bam (tasks, sprints), Bond (deals, contacts), Blast
 ## Getting Started
 
 Open Bench from the Launchpad. Create a new dashboard, then add widgets using the wizard. Each widget connects to a data source and renders as a chart, table, or single metric. Use the explorer for one-off queries, and save them for reuse.
+
+## Walkthrough
+
+### Dashboard List
+
+![Dashboard List](screenshots/light/01-dashboard-list.png)
+
+### Dashboard View
+
+![Dashboard View](screenshots/light/02-dashboard-view.png)
+
+### Explorer
+
+![Explorer](screenshots/light/03-explorer.png)
+
+### Reports
+
+![Reports](screenshots/light/04-reports.png)
+
+### Settings
+
+![Settings](screenshots/light/05-settings.png)
+
+### Widget Wizard
+
+![Widget Wizard](screenshots/light/06-widget-wizard.png)
+
 
 ## MCP Tools
 

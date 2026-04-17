@@ -1,13 +1,82 @@
-{
-  "app": "blank",
-  "nginx_path": "/blank/",
-  "api_port": 4013,
-  "api_dir": "blank-api",
-  "route_files": 4,
-  "schema_modules": 5,
-  "has_seeder": true,
-  "has_frontend": true,
-  "src_hash": "aea0b2e27574320c4bef7305e3a2aaa10c0707e8863a3d00e331b81198abe75a",
-  "generated_at": "2026-04-17T06:14:30.207Z",
-  "mcp_tool_count": 11
-}
+[
+  {
+    "id": "01-form-list",
+    "label": "Form list",
+    "theme": "light",
+    "file": "docs\\apps\\blank\\screenshots\\light\\01-form-list.png",
+    "sha256": "dca8566480776984a0e2febadc0728ba5ce93e770ff89c7f335df3da02afb3f2",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:23.058Z"
+  },
+  {
+    "id": "02-form-builder",
+    "label": "Form builder",
+    "theme": "light",
+    "file": "docs\\apps\\blank\\screenshots\\light\\02-form-builder.png",
+    "sha256": "dca8566480776984a0e2febadc0728ba5ce93e770ff89c7f335df3da02afb3f2",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:25.743Z"
+  },
+  {
+    "id": "03-form-preview",
+    "label": "Form preview",
+    "theme": "light",
+    "file": "docs\\apps\\blank\\screenshots\\light\\03-form-preview.png",
+    "sha256": "dca8566480776984a0e2febadc0728ba5ce93e770ff89c7f335df3da02afb3f2",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:28.402Z"
+  },
+  {
+    "id": "04-settings",
+    "label": "Settings",
+    "theme": "light",
+    "file": "docs\\apps\\blank\\screenshots\\light\\04-settings.png",
+    "sha256": "a60a47321e5e76e4459f3512d284c3dd8ea195916aeaab8c4a9db1418cdc10c5",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:31.065Z"
+  },
+  {
+    "id": "01-form-list",
+    "label": "Form list",
+    "theme": "dark",
+    "file": "docs\\apps\\blank\\screenshots\\dark\\01-form-list.png",
+    "sha256": "e9319548b83ff685edf8618a1efc2e44add34f59ce268f88c30ed176d06c37f4",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:38.540Z"
+  },
+  {
+    "id": "02-form-builder",
+    "label": "Form builder",
+    "theme": "dark",
+    "file": "docs\\apps\\blank\\screenshots\\dark\\02-form-builder.png",
+    "sha256": "e9319548b83ff685edf8618a1efc2e44add34f59ce268f88c30ed176d06c37f4",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:41.246Z"
+  },
+  {
+    "id": "03-form-preview",
+    "label": "Form preview",
+    "theme": "dark",
+    "file": "docs\\apps\\blank\\screenshots\\dark\\03-form-preview.png",
+    "sha256": "e9319548b83ff685edf8618a1efc2e44add34f59ce268f88c30ed176d06c37f4",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:43.945Z"
+  },
+  {
+    "id": "04-settings",
+    "label": "Settings",
+    "theme": "dark",
+    "file": "docs\\apps\\blank\\screenshots\\dark\\04-settings.png",
+    "sha256": "35ee23c7d62c8d77953423549cf28140a1e5c3c8d905709f39d1da62e383c5c7",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:46.646Z"
+  }
+]

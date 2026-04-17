@@ -1,13 +1,122 @@
-{
-  "app": "beacon",
-  "nginx_path": "/beacon/",
-  "api_port": 4004,
-  "api_dir": "beacon-api",
-  "route_files": 9,
-  "schema_modules": 12,
-  "has_seeder": false,
-  "has_frontend": true,
-  "src_hash": "30586750dc1a6a6542a8a859363fa4d1b861c1c6ec33241b43953b052062b22a",
-  "generated_at": "2026-04-17T06:14:28.473Z",
-  "mcp_tool_count": 29
-}
+[
+  {
+    "id": "01-home",
+    "label": "Knowledge Home",
+    "theme": "light",
+    "file": "docs\\apps\\beacon\\screenshots\\light\\01-home.png",
+    "sha256": "c6dd341e8f3308a62328a0b91e3ec343a98d029de0d0840af5d93b2383ea1413",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:40:39.246Z"
+  },
+  {
+    "id": "02-browse",
+    "label": "Article list",
+    "theme": "light",
+    "file": "docs\\apps\\beacon\\screenshots\\light\\02-browse.png",
+    "sha256": "53ab28fdaee5d81581c72af121b674db9bf6f4835554e9bb6a5289b046380af9",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:40:42.011Z"
+  },
+  {
+    "id": "03-detail",
+    "label": "Article detail",
+    "theme": "light",
+    "file": "docs\\apps\\beacon\\screenshots\\light\\03-detail.png",
+    "sha256": "f8303fbdb7fc6702497a410f777d56b17cb11485ba50b1c3592791635437f71b",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:40:44.762Z"
+  },
+  {
+    "id": "04-graph",
+    "label": "Knowledge graph explorer",
+    "theme": "light",
+    "file": "docs\\apps\\beacon\\screenshots\\light\\04-graph.png",
+    "sha256": "53ab28fdaee5d81581c72af121b674db9bf6f4835554e9bb6a5289b046380af9",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:40:47.440Z"
+  },
+  {
+    "id": "05-dashboard",
+    "label": "Governance dashboard",
+    "theme": "light",
+    "file": "docs\\apps\\beacon\\screenshots\\light\\05-dashboard.png",
+    "sha256": "53ab28fdaee5d81581c72af121b674db9bf6f4835554e9bb6a5289b046380af9",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:40:50.130Z"
+  },
+  {
+    "id": "06-search",
+    "label": "Search results",
+    "theme": "light",
+    "file": "docs\\apps\\beacon\\screenshots\\light\\06-search.png",
+    "sha256": "9473395a628d19ae5ea80a37c94eecccebcc3b20ab319cad8471ea5bfdf3f146",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:40:52.820Z"
+  },
+  {
+    "id": "01-home",
+    "label": "Knowledge Home",
+    "theme": "dark",
+    "file": "docs\\apps\\beacon\\screenshots\\dark\\01-home.png",
+    "sha256": "97b9c3b42db1973d13872a6a9e1c3af1f4aa3763d3df23efd94255b3696a5872",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:00.349Z"
+  },
+  {
+    "id": "02-browse",
+    "label": "Article list",
+    "theme": "dark",
+    "file": "docs\\apps\\beacon\\screenshots\\dark\\02-browse.png",
+    "sha256": "97b9c3b42db1973d13872a6a9e1c3af1f4aa3763d3df23efd94255b3696a5872",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:03.041Z"
+  },
+  {
+    "id": "03-detail",
+    "label": "Article detail",
+    "theme": "dark",
+    "file": "docs\\apps\\beacon\\screenshots\\dark\\03-detail.png",
+    "sha256": "97b9c3b42db1973d13872a6a9e1c3af1f4aa3763d3df23efd94255b3696a5872",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:05.714Z"
+  },
+  {
+    "id": "04-graph",
+    "label": "Knowledge graph explorer",
+    "theme": "dark",
+    "file": "docs\\apps\\beacon\\screenshots\\dark\\04-graph.png",
+    "sha256": "e05f4f057de05faced603058303f396a9ced6f317d82d0016d082dbfa81731b4",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:08.369Z"
+  },
+  {
+    "id": "05-dashboard",
+    "label": "Governance dashboard",
+    "theme": "dark",
+    "file": "docs\\apps\\beacon\\screenshots\\dark\\05-dashboard.png",
+    "sha256": "c1d7793d61cc519b35651455f8f517502dea6928c6a55631904c2ef3e037607f",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:11.056Z"
+  },
+  {
+    "id": "06-search",
+    "label": "Search results",
+    "theme": "dark",
+    "file": "docs\\apps\\beacon\\screenshots\\dark\\06-search.png",
+    "sha256": "188dda15532e2bb671652d0ddc71b5a9706dd2af38d03463bb9756a3f38bd42a",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:13.771Z"
+  }
+]

@@ -1,7 +1,7 @@
 ---
 title: "Bam (Project Management) Guide"
 app: bam
-generated: "2026-04-17T06:14:42.701Z"
+generated: "2026-04-17T14:51:16.463Z"
 ---
 
 # Bam (Project Management) Guide
@@ -26,6 +26,29 @@ Bam shares authentication and organization context with every other BigBlueBam a
 ## Getting Started
 
 After logging in, create your first project from the dashboard. Define your phases (columns) and task states, then start adding tasks to the board. Invite team members through the People page. Use keyboard shortcuts (press ? for this help page, Cmd+K for the command palette) to navigate quickly. Sprint reports and project dashboards give you visibility into velocity, burndown, and workload distribution.
+
+## Walkthrough
+
+### Board
+
+![Board](screenshots/light/01-board.png)
+
+### Sprint Board
+
+![Sprint Board](screenshots/light/02-sprint-board.png)
+
+### Task Detail
+
+![Task Detail](screenshots/light/03-task-detail.png)
+
+### People
+
+![People](screenshots/light/04-people.png)
+
+### Settings
+
+![Settings](screenshots/light/05-settings.png)
+
 
 ## MCP Tools
 

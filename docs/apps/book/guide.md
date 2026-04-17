@@ -1,7 +1,7 @@
 ---
 title: "Book (Scheduling) Guide"
 app: book
-generated: "2026-04-17T06:14:43.673Z"
+generated: "2026-04-17T14:51:17.723Z"
 ---
 
 # Book (Scheduling) Guide
@@ -26,6 +26,33 @@ Book booking pages can be linked from Bond contact records for scheduling sales 
 ## Getting Started
 
 Open Book from the Launchpad. Set your working hours in settings, then optionally connect an external calendar. Create events on the calendar or set up a booking page to share with external contacts. Use the timeline view to see team-wide availability at a glance.
+
+## Walkthrough
+
+### Week View
+
+![Week View](screenshots/light/01-week-view.png)
+
+### Month View
+
+![Month View](screenshots/light/02-month-view.png)
+
+### Day View
+
+![Day View](screenshots/light/03-day-view.png)
+
+### Timeline
+
+![Timeline](screenshots/light/04-timeline.png)
+
+### Booking Pages
+
+![Booking Pages](screenshots/light/05-booking-pages.png)
+
+### Working Hours
+
+![Working Hours](screenshots/light/06-working-hours.png)
+
 
 ## MCP Tools
 

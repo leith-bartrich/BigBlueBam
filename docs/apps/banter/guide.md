@@ -1,7 +1,7 @@
 ---
 title: "Banter (Team Messaging) Guide"
 app: banter
-generated: "2026-04-17T06:14:42.877Z"
+generated: "2026-04-17T14:51:16.612Z"
 ---
 
 # Banter (Team Messaging) Guide
@@ -26,6 +26,25 @@ Banter connects to every other BigBlueBam app through cross-product embeds. Past
 ## Getting Started
 
 Navigate to Banter from the Launchpad. You land in the #general channel by default. Browse available channels, create new ones for your team or project, and start conversations. Use threaded replies for focused discussions. Press ? for this help page at any time.
+
+## Walkthrough
+
+### Channels
+
+![Channels](screenshots/light/01-channels.png)
+
+### Channel View
+
+![Channel View](screenshots/light/02-channel-view.png)
+
+### Threads
+
+![Threads](screenshots/light/03-threads.png)
+
+### Dms
+
+![Dms](screenshots/light/04-dms.png)
+
 
 ## MCP Tools
 

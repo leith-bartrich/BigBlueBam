@@ -1,7 +1,7 @@
 ---
 title: "Helpdesk (Support Portal) Guide"
 app: helpdesk
-generated: "2026-04-17T06:14:43.788Z"
+generated: "2026-04-17T14:51:17.925Z"
 ---
 
 # Helpdesk (Support Portal) Guide
@@ -27,6 +27,29 @@ Helpdesk tickets appear in the Bam agent queue for internal teams using the main
 ## Getting Started
 
 End users navigate to the Helpdesk URL for their organization (e.g., /helpdesk/your-org/). From there they can create an account or log in, then submit a ticket describing their issue. Agents see incoming tickets in the queue and respond through the conversation thread. Ticket status flows from open through in-progress to resolved.
+
+## Walkthrough
+
+### Portal
+
+![Portal](screenshots/light/01-portal.png)
+
+### Ticket List
+
+![Ticket List](screenshots/light/02-ticket-list.png)
+
+### New Ticket
+
+![New Ticket](screenshots/light/03-new-ticket.png)
+
+### Ticket Detail
+
+![Ticket Detail](screenshots/light/04-ticket-detail.png)
+
+### Knowledge Base
+
+![Knowledge Base](screenshots/light/05-knowledge-base.png)
+
 
 ## MCP Tools
 

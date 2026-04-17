@@ -1,7 +1,7 @@
 ---
 title: "Bearing (Goals & OKRs) Guide"
 app: bearing
-generated: "2026-04-17T06:14:43.000Z"
+generated: "2026-04-17T14:51:16.848Z"
 ---
 
 # Bearing (Goals & OKRs) Guide
@@ -26,6 +26,25 @@ Bearing goals can reference Bam project velocity and task completion rates as pr
 ## Getting Started
 
 Open Bearing from the Launchpad. Create a time period (such as Q2 2026), then add objectives with measurable key results. Assign owners to each key result and update progress regularly. The at-risk dashboard flags goals that need attention.
+
+## Walkthrough
+
+### Dashboard
+
+![Dashboard](screenshots/light/01-dashboard.png)
+
+### Goal Detail
+
+![Goal Detail](screenshots/light/02-goal-detail.png)
+
+### Timeline
+
+![Timeline](screenshots/light/03-timeline.png)
+
+### Reports
+
+![Reports](screenshots/light/04-reports.png)
+
 
 ## MCP Tools
 

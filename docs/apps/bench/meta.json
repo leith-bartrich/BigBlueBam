@@ -1,13 +1,122 @@
-{
-  "app": "bench",
-  "nginx_path": "/bench/",
-  "api_port": 4011,
-  "api_dir": "bench-api",
-  "route_files": 6,
-  "schema_modules": 7,
-  "has_seeder": true,
-  "has_frontend": true,
-  "src_hash": "7f5e7efc31aa1eb298b2f2572d33ca1aea0b9d1c572ba1fe7d04d63a7d4fd4f9",
-  "generated_at": "2026-04-17T06:14:29.250Z",
-  "mcp_tool_count": 11
-}
+[
+  {
+    "id": "01-dashboard-list",
+    "label": "Dashboard list",
+    "theme": "light",
+    "file": "docs\\apps\\bench\\screenshots\\light\\01-dashboard-list.png",
+    "sha256": "a4e98f9d874d0b42b5b74c307d9bcfc8357b92f7f30e9f30f26f17a1205a83b7",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:53.154Z"
+  },
+  {
+    "id": "02-dashboard-view",
+    "label": "Dashboard view",
+    "theme": "light",
+    "file": "docs\\apps\\bench\\screenshots\\light\\02-dashboard-view.png",
+    "sha256": "a4e98f9d874d0b42b5b74c307d9bcfc8357b92f7f30e9f30f26f17a1205a83b7",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:55.844Z"
+  },
+  {
+    "id": "03-explorer",
+    "label": "Ad-hoc explorer",
+    "theme": "light",
+    "file": "docs\\apps\\bench\\screenshots\\light\\03-explorer.png",
+    "sha256": "785d4cfb7ed3ca380137306ca1b30c2a31e2ce08d0bfd01ac70e71076291b087",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:41:58.572Z"
+  },
+  {
+    "id": "04-reports",
+    "label": "Scheduled reports",
+    "theme": "light",
+    "file": "docs\\apps\\bench\\screenshots\\light\\04-reports.png",
+    "sha256": "739ec09c320525ea77142a9b6d83422b497f30716f03186de7589da48985a8ad",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:01.302Z"
+  },
+  {
+    "id": "05-settings",
+    "label": "Settings",
+    "theme": "light",
+    "file": "docs\\apps\\bench\\screenshots\\light\\05-settings.png",
+    "sha256": "40896a9b7c1254c68a650146d8bdd1e5d0fbfec7d0c9289beb4490bc362f68a8",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:04.055Z"
+  },
+  {
+    "id": "06-widget-wizard",
+    "label": "Widget wizard",
+    "theme": "light",
+    "file": "docs\\apps\\bench\\screenshots\\light\\06-widget-wizard.png",
+    "sha256": "a4e98f9d874d0b42b5b74c307d9bcfc8357b92f7f30e9f30f26f17a1205a83b7",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:06.710Z"
+  },
+  {
+    "id": "01-dashboard-list",
+    "label": "Dashboard list",
+    "theme": "dark",
+    "file": "docs\\apps\\bench\\screenshots\\dark\\01-dashboard-list.png",
+    "sha256": "28370ca1c6de86f305baccdaa08ece52914ccff082fa72ac3897322513f62e15",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:14.400Z"
+  },
+  {
+    "id": "02-dashboard-view",
+    "label": "Dashboard view",
+    "theme": "dark",
+    "file": "docs\\apps\\bench\\screenshots\\dark\\02-dashboard-view.png",
+    "sha256": "28370ca1c6de86f305baccdaa08ece52914ccff082fa72ac3897322513f62e15",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:17.127Z"
+  },
+  {
+    "id": "03-explorer",
+    "label": "Ad-hoc explorer",
+    "theme": "dark",
+    "file": "docs\\apps\\bench\\screenshots\\dark\\03-explorer.png",
+    "sha256": "9c068727797337c3fc0e86e08ca3938b59a5347956781a2d823ca06abe40452e",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:19.792Z"
+  },
+  {
+    "id": "04-reports",
+    "label": "Scheduled reports",
+    "theme": "dark",
+    "file": "docs\\apps\\bench\\screenshots\\dark\\04-reports.png",
+    "sha256": "c4d10420d76ad1a7bb3babbf47e64274d26433f1edc1bf71d6a449ef51e6839e",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:22.510Z"
+  },
+  {
+    "id": "05-settings",
+    "label": "Settings",
+    "theme": "dark",
+    "file": "docs\\apps\\bench\\screenshots\\dark\\05-settings.png",
+    "sha256": "94c12a646c046f7aa87080f498d4f425b5f2110fb471593fb352274f312fedb5",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:25.187Z"
+  },
+  {
+    "id": "06-widget-wizard",
+    "label": "Widget wizard",
+    "theme": "dark",
+    "file": "docs\\apps\\bench\\screenshots\\dark\\06-widget-wizard.png",
+    "sha256": "28370ca1c6de86f305baccdaa08ece52914ccff082fa72ac3897322513f62e15",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:42:27.880Z"
+  }
+]

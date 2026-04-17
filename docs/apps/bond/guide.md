@@ -1,7 +1,7 @@
 ---
 title: "Bond (CRM) Guide"
 app: bond
-generated: "2026-04-17T06:14:43.572Z"
+generated: "2026-04-17T14:51:17.588Z"
 ---
 
 # Bond (CRM) Guide
@@ -27,6 +27,29 @@ Bond contacts feed into Blast email campaign segments. Deal events trigger Bolt 
 ## Getting Started
 
 Open Bond from the Launchpad. You start on the pipeline board. Create your first pipeline with stages (e.g., Lead, Qualified, Proposal, Closed Won), then add contacts, companies, and deals. Drag deals between stages as they progress. Use the analytics page to track pipeline health and deal velocity.
+
+## Walkthrough
+
+### Pipeline
+
+![Pipeline](screenshots/light/01-pipeline.png)
+
+### Contacts
+
+![Contacts](screenshots/light/02-contacts.png)
+
+### Deal Detail
+
+![Deal Detail](screenshots/light/03-deal-detail.png)
+
+### Analytics
+
+![Analytics](screenshots/light/04-analytics.png)
+
+### Companies
+
+![Companies](screenshots/light/05-companies.png)
+
 
 ## MCP Tools
 

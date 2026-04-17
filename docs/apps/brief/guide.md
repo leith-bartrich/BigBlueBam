@@ -1,7 +1,7 @@
 ---
 title: "Brief (Documents) Guide"
 app: brief
-generated: "2026-04-17T06:14:43.723Z"
+generated: "2026-04-17T14:51:17.849Z"
 ---
 
 # Brief (Documents) Guide
@@ -27,6 +27,33 @@ Brief documents link to Bam tasks for requirements and specifications. Beacon ar
 ## Getting Started
 
 Open Brief from the Launchpad. Create a new document or start from a template. The editor supports slash commands (type /) for inserting blocks. Share documents with team members for real-time co-editing. Use folders to organize your document library and the search bar to find content quickly.
+
+## Walkthrough
+
+### Home
+
+![Home](screenshots/light/01-home.png)
+
+### Documents
+
+![Documents](screenshots/light/02-documents.png)
+
+### Detail
+
+![Detail](screenshots/light/03-detail.png)
+
+### Editor
+
+![Editor](screenshots/light/04-editor.png)
+
+### Templates
+
+![Templates](screenshots/light/05-templates.png)
+
+### Starred
+
+![Starred](screenshots/light/06-starred.png)
+
 
 ## MCP Tools
 

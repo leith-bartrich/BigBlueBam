@@ -1,7 +1,7 @@
 ---
 title: "Blast (Email Campaigns) Guide"
 app: blast
-generated: "2026-04-17T06:14:43.332Z"
+generated: "2026-04-17T14:51:17.236Z"
 ---
 
 # Blast (Email Campaigns) Guide
@@ -27,6 +27,37 @@ Blast pulls contact lists from Bond CRM for targeting. Campaign events (opens, c
 ## Getting Started
 
 Open Blast from the Launchpad. Configure your SMTP settings and sending domain first. Then create a template using the visual editor, build a segment to target your audience, and create a campaign. Preview and test before scheduling or sending.
+
+## Walkthrough
+
+### Campaigns
+
+![Campaigns](screenshots/light/01-campaigns.png)
+
+### Campaign New
+
+![Campaign New](screenshots/light/02-campaign-new.png)
+
+### Templates
+
+![Templates](screenshots/light/03-templates.png)
+
+### Template Editor
+
+![Template Editor](screenshots/light/04-template-editor.png)
+
+### Segments
+
+![Segments](screenshots/light/05-segments.png)
+
+### Segment Builder
+
+![Segment Builder](screenshots/light/06-segment-builder.png)
+
+### Analytics
+
+![Analytics](screenshots/light/07-analytics.png)
+
 
 ## MCP Tools
 

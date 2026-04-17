@@ -1,13 +1,102 @@
-{
-  "app": "bond",
-  "nginx_path": "/bond/",
-  "api_port": 4009,
-  "api_dir": "bond-api",
-  "route_files": 9,
-  "schema_modules": 14,
-  "has_seeder": true,
-  "has_frontend": true,
-  "src_hash": "1358ac2e10ebd67b4233b1d40a273f164a606484c316c4bda49eca111bdf8053",
-  "generated_at": "2026-04-17T06:14:32.668Z",
-  "mcp_tool_count": 22
-}
+[
+  {
+    "id": "01-pipeline",
+    "label": "Pipeline board",
+    "theme": "light",
+    "file": "docs\\apps\\bond\\screenshots\\light\\01-pipeline.png",
+    "sha256": "7bc46aa19a4e504ce35ce4453700f0c2419a5739f75cddfbae7910340b68af0b",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:45:46.070Z"
+  },
+  {
+    "id": "02-contacts",
+    "label": "Contacts list",
+    "theme": "light",
+    "file": "docs\\apps\\bond\\screenshots\\light\\02-contacts.png",
+    "sha256": "0dac06f39033ac5d2d26aaac1a5025213df741121bbbb43e3645c01a3b12e6ae",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:45:48.737Z"
+  },
+  {
+    "id": "03-deal-detail",
+    "label": "Deal detail",
+    "theme": "light",
+    "file": "docs\\apps\\bond\\screenshots\\light\\03-deal-detail.png",
+    "sha256": "7bc46aa19a4e504ce35ce4453700f0c2419a5739f75cddfbae7910340b68af0b",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:45:51.425Z"
+  },
+  {
+    "id": "04-analytics",
+    "label": "Analytics dashboard",
+    "theme": "light",
+    "file": "docs\\apps\\bond\\screenshots\\light\\04-analytics.png",
+    "sha256": "ada1c8335b7e4c00ac861c0c41861a40aef73910e88f343280760e9c22fdbf9e",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:46:04.174Z"
+  },
+  {
+    "id": "05-companies",
+    "label": "Companies list",
+    "theme": "light",
+    "file": "docs\\apps\\bond\\screenshots\\light\\05-companies.png",
+    "sha256": "ec8047c44e3e6dd1dc1189dfd6b766c146da9a811f25f4e6ebfcec0f52d8b4bb",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:46:06.881Z"
+  },
+  {
+    "id": "01-pipeline",
+    "label": "Pipeline board",
+    "theme": "dark",
+    "file": "docs\\apps\\bond\\screenshots\\dark\\01-pipeline.png",
+    "sha256": "70bea721d8f8fe64a81c650e51287ce3348feb8a6c88d7049ab5bb2fe006c6a1",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:46:14.458Z"
+  },
+  {
+    "id": "02-contacts",
+    "label": "Contacts list",
+    "theme": "dark",
+    "file": "docs\\apps\\bond\\screenshots\\dark\\02-contacts.png",
+    "sha256": "2738eeed87ec211d4129c93dd771522caf0c32f07bbee5fde78fdb08ce1fc06f",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:46:17.178Z"
+  },
+  {
+    "id": "03-deal-detail",
+    "label": "Deal detail",
+    "theme": "dark",
+    "file": "docs\\apps\\bond\\screenshots\\dark\\03-deal-detail.png",
+    "sha256": "70bea721d8f8fe64a81c650e51287ce3348feb8a6c88d7049ab5bb2fe006c6a1",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:46:19.923Z"
+  },
+  {
+    "id": "04-analytics",
+    "label": "Analytics dashboard",
+    "theme": "dark",
+    "file": "docs\\apps\\bond\\screenshots\\dark\\04-analytics.png",
+    "sha256": "da853562f5c0c097acd4131c409c7df8b9c7a6672b3bef1230ebaebbea1ea572",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:46:32.704Z"
+  },
+  {
+    "id": "05-companies",
+    "label": "Companies list",
+    "theme": "dark",
+    "file": "docs\\apps\\bond\\screenshots\\dark\\05-companies.png",
+    "sha256": "3d0df0cb6bb458a526fb3875ccf2c5dcfc7c699116819db769fd466d0c8d0a08",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:46:35.407Z"
+  }
+]

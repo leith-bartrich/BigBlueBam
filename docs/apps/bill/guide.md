@@ -1,7 +1,7 @@
 ---
 title: "Bill (Invoicing) Guide"
 app: bill
-generated: "2026-04-17T06:14:43.145Z"
+generated: "2026-04-17T14:51:17.036Z"
 ---
 
 # Bill (Invoicing) Guide
@@ -27,6 +27,37 @@ Bill connects to Bam time entries to generate invoices from tracked work. Bolt a
 ## Getting Started
 
 Open Bill from the Launchpad. Set up your rates and create a client. Then create an invoice manually or generate one from time entries logged in Bam. Track payment status on the dashboard and use reports to monitor outstanding balances.
+
+## Walkthrough
+
+### Invoice List
+
+![Invoice List](screenshots/light/01-invoice-list.png)
+
+### Invoice New
+
+![Invoice New](screenshots/light/02-invoice-new.png)
+
+### Clients
+
+![Clients](screenshots/light/03-clients.png)
+
+### Expenses
+
+![Expenses](screenshots/light/04-expenses.png)
+
+### Rates
+
+![Rates](screenshots/light/05-rates.png)
+
+### Reports
+
+![Reports](screenshots/light/06-reports.png)
+
+### Settings
+
+![Settings](screenshots/light/07-settings.png)
+
 
 ## MCP Tools
 

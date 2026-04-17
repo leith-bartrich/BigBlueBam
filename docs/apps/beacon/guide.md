@@ -1,7 +1,7 @@
 ---
 title: "Beacon (Knowledge Base) Guide"
 app: beacon
-generated: "2026-04-17T06:14:42.925Z"
+generated: "2026-04-17T14:51:16.736Z"
 ---
 
 # Beacon (Knowledge Base) Guide
@@ -26,6 +26,33 @@ Beacon articles can be embedded in Brief documents and referenced in Banter mess
 ## Getting Started
 
 Open Beacon from the Launchpad. Create your first article using the rich text editor, tag it with relevant topics, and link it to related articles. Use the graph explorer to visualize how your knowledge connects. The search bar supports natural language queries.
+
+## Walkthrough
+
+### Home
+
+![Home](screenshots/light/01-home.png)
+
+### Browse
+
+![Browse](screenshots/light/02-browse.png)
+
+### Detail
+
+![Detail](screenshots/light/03-detail.png)
+
+### Graph
+
+![Graph](screenshots/light/04-graph.png)
+
+### Dashboard
+
+![Dashboard](screenshots/light/05-dashboard.png)
+
+### Search
+
+![Search](screenshots/light/06-search.png)
+
 
 ## MCP Tools
 

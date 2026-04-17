@@ -1,13 +1,122 @@
-{
-  "app": "brief",
-  "nginx_path": "/brief/",
-  "api_port": 4005,
-  "api_dir": "brief-api",
-  "route_files": 9,
-  "schema_modules": 10,
-  "has_seeder": true,
-  "has_frontend": true,
-  "src_hash": "e15c1c710ed92c1b0688d2f6fe6aacc453985c8cf4916273a026a5a367ef1ce1",
-  "generated_at": "2026-04-17T06:14:33.743Z",
-  "mcp_tool_count": 18
-}
+[
+  {
+    "id": "01-home",
+    "label": "Brief home",
+    "theme": "light",
+    "file": "docs\\apps\\brief\\screenshots\\light\\01-home.png",
+    "sha256": "3801468db6e318178d21ee9279037fb7aa67322bdef667413223adfa3bd7ea02",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:25.098Z"
+  },
+  {
+    "id": "02-documents",
+    "label": "Document list",
+    "theme": "light",
+    "file": "docs\\apps\\brief\\screenshots\\light\\02-documents.png",
+    "sha256": "3801468db6e318178d21ee9279037fb7aa67322bdef667413223adfa3bd7ea02",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:27.814Z"
+  },
+  {
+    "id": "03-detail",
+    "label": "Document detail",
+    "theme": "light",
+    "file": "docs\\apps\\brief\\screenshots\\light\\03-detail.png",
+    "sha256": "91c934887f2c046b47fa10586d0db88df4fa534e958b3e91e0ef34e5479bdc38",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:30.517Z"
+  },
+  {
+    "id": "04-editor",
+    "label": "Document editor",
+    "theme": "light",
+    "file": "docs\\apps\\brief\\screenshots\\light\\04-editor.png",
+    "sha256": "6bc255de0ee5e32e13adbb6a3e3877d7ec9ad5d81d9768d0bd40e90448802685",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:33.264Z"
+  },
+  {
+    "id": "05-templates",
+    "label": "Template browser",
+    "theme": "light",
+    "file": "docs\\apps\\brief\\screenshots\\light\\05-templates.png",
+    "sha256": "f7c5e20f59c83f2deb4c4c7868d5e33f2e878ee200979d74a8801f7a8489eb64",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:35.958Z"
+  },
+  {
+    "id": "06-starred",
+    "label": "Starred documents",
+    "theme": "light",
+    "file": "docs\\apps\\brief\\screenshots\\light\\06-starred.png",
+    "sha256": "e18c6acf9285e188773f5d2628848d8fbf2c7529babdddb528ef7de61905da27",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:38.629Z"
+  },
+  {
+    "id": "01-home",
+    "label": "Brief home",
+    "theme": "dark",
+    "file": "docs\\apps\\brief\\screenshots\\dark\\01-home.png",
+    "sha256": "423a9428d33387ebae737f41309e1d64e603372dccf16fd11003313062ec7f52",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:46.310Z"
+  },
+  {
+    "id": "02-documents",
+    "label": "Document list",
+    "theme": "dark",
+    "file": "docs\\apps\\brief\\screenshots\\dark\\02-documents.png",
+    "sha256": "423a9428d33387ebae737f41309e1d64e603372dccf16fd11003313062ec7f52",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:49.116Z"
+  },
+  {
+    "id": "03-detail",
+    "label": "Document detail",
+    "theme": "dark",
+    "file": "docs\\apps\\brief\\screenshots\\dark\\03-detail.png",
+    "sha256": "423a9428d33387ebae737f41309e1d64e603372dccf16fd11003313062ec7f52",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:51.801Z"
+  },
+  {
+    "id": "04-editor",
+    "label": "Document editor",
+    "theme": "dark",
+    "file": "docs\\apps\\brief\\screenshots\\dark\\04-editor.png",
+    "sha256": "bad6992fd28227bc3cdbec274e8c3dff232a17e9eba69ab730b786860d444660",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:54.587Z"
+  },
+  {
+    "id": "05-templates",
+    "label": "Template browser",
+    "theme": "dark",
+    "file": "docs\\apps\\brief\\screenshots\\dark\\05-templates.png",
+    "sha256": "3ba800d0dc03ba8a0b1ecaa3cd20eace705938b623e1720af958a7dd83719951",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:47:57.277Z"
+  },
+  {
+    "id": "06-starred",
+    "label": "Starred documents",
+    "theme": "dark",
+    "file": "docs\\apps\\brief\\screenshots\\dark\\06-starred.png",
+    "sha256": "364ce1e3b0d0c00efe34128e563b000bfd1f652fe0d60790b7ad0e627bb0e150",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:48:00.005Z"
+  }
+]

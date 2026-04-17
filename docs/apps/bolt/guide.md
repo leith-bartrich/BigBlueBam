@@ -1,7 +1,7 @@
 ---
 title: "Bolt (Workflow Automation) Guide"
 app: bolt
-generated: "2026-04-17T06:14:43.511Z"
+generated: "2026-04-17T14:51:17.487Z"
 ---
 
 # Bolt (Workflow Automation) Guide
@@ -26,6 +26,29 @@ Bolt is the integration hub of BigBlueBam. It listens to events from every app (
 ## Getting Started
 
 Open Bolt from the Launchpad. Browse templates for inspiration or start a new automation from scratch. Pick a trigger event, add conditions to filter which events should proceed, then chain action nodes for what should happen. Test your automation, then activate it. Monitor executions in the execution log.
+
+## Walkthrough
+
+### Automations
+
+![Automations](screenshots/light/01-automations.png)
+
+### Editor
+
+![Editor](screenshots/light/02-editor.png)
+
+### Detail
+
+![Detail](screenshots/light/03-detail.png)
+
+### Executions
+
+![Executions](screenshots/light/04-executions.png)
+
+### Templates
+
+![Templates](screenshots/light/05-templates.png)
+
 
 ## MCP Tools
 

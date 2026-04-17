@@ -1,13 +1,142 @@
-{
-  "app": "blast",
-  "nginx_path": "/blast/",
-  "api_port": 4010,
-  "api_dir": "blast-api",
-  "route_files": 7,
-  "schema_modules": 9,
-  "has_seeder": true,
-  "has_frontend": true,
-  "src_hash": "527f7f28f5bb043fc5fb6291bcc36ed03b2822ae9d5cf607163285b9eba88a94",
-  "generated_at": "2026-04-17T06:14:30.649Z",
-  "mcp_tool_count": 14
-}
+[
+  {
+    "id": "01-campaigns",
+    "label": "Campaign list",
+    "theme": "light",
+    "file": "docs\\apps\\blast\\screenshots\\light\\01-campaigns.png",
+    "sha256": "cc22e2f5858052a33bac75ed2e3e497716dae4fb58406ef5d366cb2bfa4d75f6",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:54.337Z"
+  },
+  {
+    "id": "02-campaign-new",
+    "label": "New campaign form",
+    "theme": "light",
+    "file": "docs\\apps\\blast\\screenshots\\light\\02-campaign-new.png",
+    "sha256": "7708670f19087721550456bd30c1c5c10ff469f2278ae47fbc6b8851b7cc2476",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:57.128Z"
+  },
+  {
+    "id": "03-templates",
+    "label": "Template gallery",
+    "theme": "light",
+    "file": "docs\\apps\\blast\\screenshots\\light\\03-templates.png",
+    "sha256": "72cf85108778725d4b9c17a43b9b6f4d5fc35b73375afe545d25a3aee469200f",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:43:59.808Z"
+  },
+  {
+    "id": "04-template-editor",
+    "label": "Template editor",
+    "theme": "light",
+    "file": "docs\\apps\\blast\\screenshots\\light\\04-template-editor.png",
+    "sha256": "f85d0b4009e0e7d047403b9e00fc1b89345b9f040530d5923217d1c9e4ebe4d3",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:02.521Z"
+  },
+  {
+    "id": "05-segments",
+    "label": "Segment list",
+    "theme": "light",
+    "file": "docs\\apps\\blast\\screenshots\\light\\05-segments.png",
+    "sha256": "9078eecf20f67b3ed51897e3c21b51b33fb8beb98d6feea3f103ebb037f9c3c1",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:05.225Z"
+  },
+  {
+    "id": "06-segment-builder",
+    "label": "Segment builder",
+    "theme": "light",
+    "file": "docs\\apps\\blast\\screenshots\\light\\06-segment-builder.png",
+    "sha256": "3efdd7dd424a1cb684b08ddc958254c6706089517c76f11c390de7192270dbcf",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:07.903Z"
+  },
+  {
+    "id": "07-analytics",
+    "label": "Analytics dashboard",
+    "theme": "light",
+    "file": "docs\\apps\\blast\\screenshots\\light\\07-analytics.png",
+    "sha256": "cb2dad139bb5ed1a3a335c6a4c054075fee6694c9b483b62f43fe4b6faa978ef",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:10.619Z"
+  },
+  {
+    "id": "01-campaigns",
+    "label": "Campaign list",
+    "theme": "dark",
+    "file": "docs\\apps\\blast\\screenshots\\dark\\01-campaigns.png",
+    "sha256": "855fd62edccb483f06b551a392d807f999cacf528d9d7c660a3b2eed2b687af0",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:18.210Z"
+  },
+  {
+    "id": "02-campaign-new",
+    "label": "New campaign form",
+    "theme": "dark",
+    "file": "docs\\apps\\blast\\screenshots\\dark\\02-campaign-new.png",
+    "sha256": "df9a5c4da6eb21236fd0b93b87ee0b44b193331a4acc15241107a20dae2b94c0",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:20.963Z"
+  },
+  {
+    "id": "03-templates",
+    "label": "Template gallery",
+    "theme": "dark",
+    "file": "docs\\apps\\blast\\screenshots\\dark\\03-templates.png",
+    "sha256": "cde9728e4da80c1441466b5ac2ecc0c41abb4536b5f0e770b9af697f3314abef",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:23.689Z"
+  },
+  {
+    "id": "04-template-editor",
+    "label": "Template editor",
+    "theme": "dark",
+    "file": "docs\\apps\\blast\\screenshots\\dark\\04-template-editor.png",
+    "sha256": "046a92d639feeed97b9dc1cdc9739f3313fea58b3e83c33273a825cadc50f9be",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:26.353Z"
+  },
+  {
+    "id": "05-segments",
+    "label": "Segment list",
+    "theme": "dark",
+    "file": "docs\\apps\\blast\\screenshots\\dark\\05-segments.png",
+    "sha256": "0d34149a312b88d5931240ea2bf7bc5da8fd2d27148c98b96591042840398516",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:29.095Z"
+  },
+  {
+    "id": "06-segment-builder",
+    "label": "Segment builder",
+    "theme": "dark",
+    "file": "docs\\apps\\blast\\screenshots\\dark\\06-segment-builder.png",
+    "sha256": "c0d88a167a516d8ae902630c9d1b9e6231435d295f87dd1b3d1d25e31e5c7d06",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:31.824Z"
+  },
+  {
+    "id": "07-analytics",
+    "label": "Analytics dashboard",
+    "theme": "dark",
+    "file": "docs\\apps\\blast\\screenshots\\dark\\07-analytics.png",
+    "sha256": "537d5faa0db9aecc817726a629e8255e1c703696c3e2e122869e61b3190791e0",
+    "width": 1440,
+    "height": 900,
+    "captured_at": "2026-04-17T14:44:34.553Z"
+  }
+]
