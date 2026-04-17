@@ -187,13 +187,63 @@ export async function deleteCampaign(id: string, orgId: string) {
 // Send campaign immediately
 // ---------------------------------------------------------------------------
 
+/**
+ * Validate CAN-SPAM compliance for an email campaign body.
+ *
+ * CAN-SPAM Act requires:
+ *  1. A functioning unsubscribe mechanism (link)
+ *  2. A valid physical mailing address
+ *
+ * This check runs before send or schedule. It inspects the HTML body for
+ * recognizable patterns and rejects the campaign if either is missing.
+ */
+function validateCanSpamCompliance(htmlBody: string): void {
+  const lowerBody = htmlBody.toLowerCase();
+
+  // Check for unsubscribe link: look for href containing "unsub" or
+  // common unsubscribe patterns (/unsub, /unsubscribe, {{unsubscribe_url}})
+  const hasUnsubscribeLink =
+    lowerBody.includes('unsub') ||
+    lowerBody.includes('opt-out') ||
+    lowerBody.includes('opt out') ||
+    lowerBody.includes('{{unsubscribe_url}}') ||
+    lowerBody.includes('%unsubscribe_url%');
+
+  if (!hasUnsubscribeLink) {
+    throw badRequest(
+      'CAN-SPAM compliance: email body must contain an unsubscribe link. ' +
+      'Include a link with "unsubscribe" or use the {{unsubscribe_url}} template variable.',
+    );
+  }
+
+  // Check for physical mailing address: look for patterns that suggest a
+  // street address is present (number + street-like text, or common address
+  // template variables). This is a heuristic, not a full address parser.
+  const hasAddress =
+    /\d{1,5}\s+\w+\s+(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|way|ct|court|pl|place|suite|ste)\b/i.test(htmlBody) ||
+    lowerBody.includes('{{physical_address}}') ||
+    lowerBody.includes('%physical_address%') ||
+    lowerBody.includes('p.o. box') ||
+    lowerBody.includes('po box');
+
+  if (!hasAddress) {
+    throw badRequest(
+      'CAN-SPAM compliance: email body must contain a valid physical mailing address. ' +
+      'Include your organization\'s street address or use the {{physical_address}} template variable.',
+    );
+  }
+}
+
 export async function sendCampaign(id: string, orgId: string) {
   const campaign = await getCampaign(id, orgId);
   if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
     throw badRequest('Can only send campaigns in draft or scheduled status');
   }
 
-  // Transition to 'sending' — the worker will handle actual delivery
+  // CAN-SPAM compliance check before sending
+  validateCanSpamCompliance(campaign.html_body);
+
+  // Transition to 'sending' -- the worker will handle actual delivery
   const [updated] = await db
     .update(blastCampaigns)
     .set({
@@ -228,6 +278,9 @@ export async function scheduleCampaign(id: string, orgId: string, scheduledAt: s
   if (campaign.status !== 'draft') {
     throw badRequest('Can only schedule campaigns in draft status');
   }
+
+  // CAN-SPAM compliance check before scheduling
+  validateCanSpamCompliance(campaign.html_body);
 
   const date = new Date(scheduledAt);
   if (date <= new Date()) {

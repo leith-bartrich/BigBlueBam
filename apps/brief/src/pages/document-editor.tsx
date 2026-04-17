@@ -11,11 +11,12 @@ import { useTemplates } from '@/hooks/use-templates';
 import { Button } from '@/components/common/button';
 import { useProjectStore } from '@/stores/project.store';
 import { useProjects } from '@/hooks/use-projects';
-import { useBriefEditor, BriefEditorContent } from '@/components/editor/brief-editor';
+import { useBriefEditor, useCollaborativeEditor, BriefEditorContent } from '@/components/editor/brief-editor';
 import { EditorToolbar } from '@/components/editor/editor-toolbar';
 import { TableOfContents } from '@/components/editor/table-of-contents';
 import { ExportMenu } from '@/components/document/export-menu';
 import { markdownToHtml, htmlToMarkdown } from '@/lib/markdown';
+import { useCollaboration } from '@/hooks/use-collaboration';
 
 interface DocumentEditorPageProps {
   idOrSlug?: string;
@@ -37,6 +38,10 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
   const { projects } = useProjects();
   const { data: templates } = useTemplates();
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
+
+  // Real-time collaboration via Yjs when editing an existing document
+  const docIdForCollab = isEditMode && existing ? existing.id : null;
+  const { ydoc, provider } = useCollaboration(docIdForCollab);
 
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
@@ -124,16 +129,27 @@ export function DocumentEditorPage({ idOrSlug, onNavigate }: DocumentEditorPageP
   }, []);
 
   // Wait for content to be ready before creating the editor.
-  // Tiptap's `content` prop is only read on initialization — passing it
+  // Tiptap's `content` prop is only read on initialization; passing it
   // after the hook has already created the editor is a silent no-op.
   const contentReady = initialContent !== null;
-  const editor = useBriefEditor({
+
+  // Use the collaborative editor when editing an existing document (Yjs owns
+  // the document state). Fall back to single-user mode for new documents.
+  const collabEditor = useCollaborativeEditor({
+    ydoc: docIdForCollab ? ydoc : undefined,
+    provider: docIdForCollab ? provider : undefined,
+    onUpdate: handleEditorUpdate,
+    editable: true,
+  });
+
+  const standaloneEditor = useBriefEditor({
     content: contentReady ? initialContent : '',
     onUpdate: handleEditorUpdate,
     editable: true,
-    // Re-create the editor when initialContent first becomes available
     key: contentReady ? 'loaded' : 'empty',
   });
+
+  const editor = docIdForCollab ? collabEditor : standaloneEditor;
 
   // Sync content into existing editor when template changes or content is set
   useEffect(() => {

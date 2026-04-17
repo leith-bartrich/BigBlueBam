@@ -33,63 +33,152 @@ interface PendingSubmissionRow {
   attachments: unknown;
 }
 
-function simulateProcessedFiles(attachments: unknown): Record<string, unknown> {
-  if (!Array.isArray(attachments) || attachments.length === 0) {
-    return { files: [], scanned_at: new Date().toISOString() };
-  }
+// ---------------------------------------------------------------------------
+// Allowed file extension -> MIME type mapping for content-type validation
+// ---------------------------------------------------------------------------
 
-  const files = attachments.map((entry, idx) => {
-    const name =
-      entry && typeof entry === 'object' && 'filename' in entry && typeof (entry as { filename: unknown }).filename === 'string'
-        ? (entry as { filename: string }).filename
-        : `attachment_${idx}`;
-    const size =
-      entry && typeof entry === 'object' && 'size' in entry && typeof (entry as { size: unknown }).size === 'number'
-        ? (entry as { size: number }).size
-        : 0;
+const ALLOWED_FILE_TYPES: Record<string, string[]> = {
+  // Images
+  '.jpg': ['image/jpeg'],
+  '.jpeg': ['image/jpeg'],
+  '.png': ['image/png'],
+  '.gif': ['image/gif'],
+  '.webp': ['image/webp'],
+  '.svg': ['image/svg+xml'],
+  '.heic': ['image/heic'],
+  '.heif': ['image/heif'],
+  // Documents
+  '.pdf': ['application/pdf'],
+  '.doc': ['application/msword'],
+  '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  '.xls': ['application/vnd.ms-excel'],
+  '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  '.csv': ['text/csv', 'application/csv'],
+  '.txt': ['text/plain'],
+  // Archive
+  '.zip': ['application/zip'],
+};
+
+/**
+ * Validate a single attachment entry by checking its file extension and
+ * MIME type against the allowlist. Returns a validation result object.
+ */
+function validateAttachment(entry: unknown, idx: number): {
+  filename: string;
+  size_bytes: number;
+  scan_result: 'clean' | 'rejected';
+  rejection_reason: string | null;
+  content_type: string | null;
+  scanned_at: string;
+} {
+  const name =
+    entry && typeof entry === 'object' && 'filename' in entry && typeof (entry as { filename: unknown }).filename === 'string'
+      ? (entry as { filename: string }).filename
+      : `attachment_${idx}`;
+  const size =
+    entry && typeof entry === 'object' && 'size' in entry && typeof (entry as { size: unknown }).size === 'number'
+      ? (entry as { size: number }).size
+      : 0;
+  const contentType =
+    entry && typeof entry === 'object' && 'content_type' in entry && typeof (entry as { content_type: unknown }).content_type === 'string'
+      ? (entry as { content_type: string }).content_type
+      : entry && typeof entry === 'object' && 'mimetype' in entry && typeof (entry as { mimetype: unknown }).mimetype === 'string'
+        ? (entry as { mimetype: string }).mimetype
+        : null;
+
+  // Extract extension
+  const dotIdx = name.lastIndexOf('.');
+  const ext = dotIdx >= 0 ? name.slice(dotIdx).toLowerCase() : '';
+
+  // Check extension allowlist
+  const allowedMimes = ALLOWED_FILE_TYPES[ext];
+  if (!allowedMimes) {
     return {
       filename: name,
       size_bytes: size,
-      scan_result: 'clean',
-      thumbnail_url: null,
+      scan_result: 'rejected',
+      rejection_reason: `Unsupported file extension: ${ext || '(none)'}`,
+      content_type: contentType,
       scanned_at: new Date().toISOString(),
     };
-  });
+  }
 
-  return { files, scanned_at: new Date().toISOString() };
+  // Cross-check declared MIME type if available
+  if (contentType && !allowedMimes.includes(contentType.split(';')[0]!.trim().toLowerCase())) {
+    return {
+      filename: name,
+      size_bytes: size,
+      scan_result: 'rejected',
+      rejection_reason: `MIME type mismatch: declared ${contentType} but extension is ${ext}`,
+      content_type: contentType,
+      scanned_at: new Date().toISOString(),
+    };
+  }
+
+  return {
+    filename: name,
+    size_bytes: size,
+    scan_result: 'clean',
+    rejection_reason: null,
+    content_type: contentType ?? allowedMimes[0]!,
+    scanned_at: new Date().toISOString(),
+  };
+}
+
+function processAttachments(attachments: unknown): {
+  files: ReturnType<typeof validateAttachment>[];
+  scanned_at: string;
+  all_clean: boolean;
+} {
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return { files: [], scanned_at: new Date().toISOString(), all_clean: true };
+  }
+
+  const files = attachments.map((entry, idx) => validateAttachment(entry, idx));
+  const all_clean = files.every((f) => f.scan_result === 'clean');
+
+  return { files, scanned_at: new Date().toISOString(), all_clean };
 }
 
 async function advanceSubmission(
   row: PendingSubmissionRow,
-  forceSuccess: boolean,
+  _forceSuccess: boolean,
   logger: Logger,
 ): Promise<'completed' | 'failed'> {
   const db = getDb();
-  const willFail = !forceSuccess && Math.random() < 0.1;
 
-  if (willFail) {
+  const result = processAttachments(row.attachments);
+
+  if (!result.all_clean) {
+    const rejectedFiles = result.files.filter((f) => f.scan_result === 'rejected');
+    const errorMessage = rejectedFiles
+      .map((f) => `${f.filename}: ${f.rejection_reason}`)
+      .join('; ');
+
     await db.execute(sql`
       UPDATE blank_submissions
       SET
         file_processing_status = 'failed',
-        file_processing_error = 'simulated virus-scan failure',
-        processed_files = ${JSON.stringify({ error: 'simulated', at: new Date().toISOString() })}::jsonb
+        file_processing_error = ${errorMessage.slice(0, 500)},
+        processed_files = ${JSON.stringify(result)}::jsonb
       WHERE id = ${row.id}
     `);
-    logger.info({ submissionId: row.id }, 'blank-file-process: marked failed (demo)');
+    logger.info(
+      { submissionId: row.id, rejectedCount: rejectedFiles.length },
+      'blank-file-process: files rejected by content-type validation',
+    );
     return 'failed';
   }
 
-  const processedFiles = simulateProcessedFiles(row.attachments);
   await db.execute(sql`
     UPDATE blank_submissions
     SET
       file_processing_status = 'completed',
       file_processing_error = NULL,
-      processed_files = ${JSON.stringify(processedFiles)}::jsonb
+      processed_files = ${JSON.stringify(result)}::jsonb
     WHERE id = ${row.id}
   `);
-  logger.debug({ submissionId: row.id }, 'blank-file-process: marked processed');
+  logger.debug({ submissionId: row.id }, 'blank-file-process: all files validated');
   return 'completed';
 }
 

@@ -1,11 +1,13 @@
 import 'dotenv/config';
-import Fastify, { type FastifyError } from 'fastify';
+import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import { env } from './env.js';
+import { createErrorHandler } from '@bigbluebam/logging';
+import { healthCheckPlugin } from '@bigbluebam/service-health';
 import { db, connection } from './db/index.js';
 import helpdeskAuthPlugin from './plugins/auth.js';
 import redisPlugin from './plugins/redis.js';
@@ -39,30 +41,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler(async (error: FastifyError, request, reply) => {
-  if (error.validation) {
-    return reply.status(400).send({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Request validation failed',
-        details: error.validation,
-        request_id: request.id,
-      },
-    });
-  }
-
-  request.log.error(error);
-
-  const statusCode = error.statusCode ?? 500;
-  return reply.status(statusCode).send({
-    error: {
-      code: statusCode === 500 ? 'INTERNAL_ERROR' : 'ERROR',
-      message: statusCode === 500 ? 'Internal server error' : error.message,
-      details: [],
-      request_id: request.id,
-    },
-  });
-});
+fastify.setErrorHandler(createErrorHandler({ serviceName: 'helpdesk-api' }));
 
 // Not found handler
 fastify.setNotFoundHandler((request, reply) => {
@@ -146,40 +125,20 @@ await fastify.register(resolveTenantPlugin);
 // Auth plugin
 await fastify.register(helpdeskAuthPlugin);
 
-// Health endpoints
+// Health + readiness probes (shared plugin)
 // Note: nginx rewrites `/helpdesk/api/*` -> `/helpdesk/*` on the upstream, so
-// external `/helpdesk/api/health` hits us at `/helpdesk/health`. Register both
-// to support direct-container checks and proxied requests.
-fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
+// external `/helpdesk/api/health` hits us at `/helpdesk/health`. Register the
+// shared plugin (covers /health, /health/ready, /metrics) and keep the legacy
+// /helpdesk/health alias for proxied requests.
+await fastify.register(healthCheckPlugin, {
+  service: 'helpdesk-api',
+  checks: {
+    database: async () => { await db.execute(sql`SELECT 1`); },
+    redis: async () => { await fastify.redis.ping(); },
+  },
 });
 fastify.get('/helpdesk/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
-fastify.get('/health/ready', async (_request, reply) => {
-  const checks: Record<string, string> = { database: 'ok', redis: 'ok' };
-
-  try {
-    await db.execute(sql`SELECT 1`);
-  } catch {
-    checks.database = 'fail';
-  }
-
-  try {
-    await fastify.redis.ping();
-  } catch {
-    checks.redis = 'fail';
-  }
-
-  const allOk = Object.values(checks).every((v) => v === 'ok');
-  const statusCode = allOk ? 200 : 503;
-
-  return reply.status(statusCode).send({
-    status: allOk ? 'ready' : 'degraded',
-    checks,
-    timestamp: new Date().toISOString(),
-  });
 });
 
 // Routes

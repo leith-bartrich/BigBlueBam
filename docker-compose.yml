@@ -238,6 +238,7 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./infra/nginx/nginx-with-site.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docs/apps:/usr/share/nginx/html/docs/apps:ro
     networks:
       - frontend
 
@@ -798,7 +799,14 @@ services:
         condition: service_healthy
     environment:
       LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      AGENT_SYSTEM_PROMPT: ${AGENT_SYSTEM_PROMPT:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4003/health"]
       interval: 15s

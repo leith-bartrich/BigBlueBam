@@ -1314,4 +1314,113 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       },
     });
   });
+
+  // -------------------------------------------------------------------------
+  // GET /agents/queue -- Agent ticket queue (filterable by assignee, status,
+  // SLA state). Returns tickets with SLA-breach badges computed from
+  // sla_breached_at and the imminent-breach formula (first_response_at is
+  // NULL and ticket is > 75% of SLA target age).
+  // -------------------------------------------------------------------------
+  const queueQuerySchema = z.object({
+    assignee_id: z.string().uuid().optional(),
+    status: z.string().optional(),
+    sla_state: z.enum(['breached', 'imminent', 'ok', 'all']).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+  });
+
+  fastify.get('/agents/queue', { preHandler: [requireAgentAuth] }, async (request, reply) => {
+    const query = queueQuerySchema.parse(request.query);
+    const scopeOrgId = await resolveRequestOrgId(request.cookies?.session, request.agentUserId);
+
+    if (!scopeOrgId) {
+      return reply.status(403).send({
+        error: {
+          code: 'ORG_CONTEXT_REQUIRED',
+          message: 'Organization context is required.',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+
+    const conditions: any[] = [eq(projects.org_id, scopeOrgId)];
+
+    if (query.status) {
+      conditions.push(eq(tickets.status, query.status));
+    } else {
+      // Default: exclude closed tickets
+      conditions.push(
+        or(
+          eq(tickets.status, 'open'),
+          eq(tickets.status, 'in_progress'),
+          eq(tickets.status, 'waiting_on_customer'),
+        )!,
+      );
+    }
+
+    // If assignee_id is provided, filter by the linked task's assignee.
+    // Tickets are linked to tasks via task_id; the task carries the assignee.
+    if (query.assignee_id) {
+      conditions.push(eq(tasks.assignee_id, query.assignee_id));
+    }
+
+    const limit = Math.min(query.limit ?? 50, 100);
+    const offset = query.offset ?? 0;
+
+    const rows = await db
+      .select({
+        id: tickets.id,
+        ticket_number: tickets.ticket_number,
+        subject: tickets.subject,
+        status: tickets.status,
+        priority: tickets.priority,
+        category: tickets.category,
+        task_id: tickets.task_id,
+        created_at: tickets.created_at,
+        updated_at: tickets.updated_at,
+        first_response_at: tickets.first_response_at,
+        sla_breached_at: tickets.sla_breached_at,
+        assignee_name: users.display_name,
+      })
+      .from(tickets)
+      .innerJoin(projects, eq(projects.id, tickets.project_id))
+      .leftJoin(tasks, eq(tasks.id, tickets.task_id))
+      .leftJoin(users, eq(users.id, tasks.assignee_id))
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .orderBy(desc(tickets.updated_at))
+      .limit(limit)
+      .offset(offset);
+
+    // Default SLA target: 4 hours for first response.
+    const SLA_TARGET_MS = 4 * 60 * 60 * 1000;
+    const SLA_IMMINENT_THRESHOLD = 0.75;
+    const now = Date.now();
+
+    const enriched = rows.map((row) => {
+      let slaState: 'breached' | 'imminent' | 'ok' = 'ok';
+
+      if (row.sla_breached_at) {
+        slaState = 'breached';
+      } else if (!row.first_response_at) {
+        // No first response yet -- check if we're approaching the SLA target
+        const age = now - new Date(row.created_at).getTime();
+        if (age > SLA_TARGET_MS) {
+          slaState = 'breached';
+        } else if (age > SLA_TARGET_MS * SLA_IMMINENT_THRESHOLD) {
+          slaState = 'imminent';
+        }
+      }
+
+      return { ...row, sla_state: slaState };
+    });
+
+    // Filter by SLA state if requested
+    const filtered =
+      query.sla_state && query.sla_state !== 'all'
+        ? enriched.filter((r) => r.sla_state === query.sla_state)
+        : enriched;
+
+    return reply.send({ data: filtered });
+  });
 }

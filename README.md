@@ -389,439 +389,119 @@ Generate an API key from **Settings > Integrations** in the BigBlueBam UI.
 
 ---
 
-## Banter
-
-> **Beta** — Banter is under active development. Bug reports and pull requests are welcome.
-
-Banter is a real-time team messaging platform built natively into the BigBlueBam suite. Channels, direct messages, threaded conversations, voice and video calls, and AI agent participation — all deeply integrated with your project board, knowledge base, and helpdesk.
-
-<p align="center">
-  <img src="images/19-banter-channels.png" alt="Banter Channel View" width="100%" />
-</p>
-<p align="center"><em>Banter — channel view with sidebar, message compose, and team member list</em></p>
-
-### Why Not Just Use Slack?
+<!-- AUTODOCS:APP_SECTIONS:START -->
+### Bam (Project Management)
 
-Because Banter shares authentication, database, and deep cross-linking with BigBlueBam. When someone mentions `BBB-247` in a channel, it links directly to the task. When an AI agent triages a helpdesk ticket, it can post the update to `#support-triage`. Sprint reports can be shared to channels with one click. No webhooks, no bridges, no sync lag.
-
-### Features
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| **Channels** | Stable | Public and private channels with topics, descriptions, member management |
-| **Direct Messages** | Stable | 1:1 and group DMs with presence indicators |
-| **Threads** | Stable | Nested conversations on any message |
-| **Rich Text** | Stable | Markdown with bold, italic, code, links, images |
-| **Reactions** | Stable | Emoji reactions with toggle semantics |
-| **Mentions** | Stable | @user mentions with autocomplete and notifications |
-| **Search** | Stable | Full-text search across channels with filters (author, date, attachments) |
-| **File Sharing** | Stable | Upload and share files with inline image previews |
-| **Pins & Bookmarks** | Stable | Pin messages to channels, bookmark for personal reference |
-| **Presence** | Stable | Online, idle, DND status with automatic idle detection |
-| **Notifications** | Stable | Mention, DM, thread reply, and channel invite notifications |
-| **Voice Calls** | Alpha | Voice and video calls via LiveKit SFU |
-| **AI Voice Agent** | Placeholder | AI participation in calls (STT/TTS pipeline, requires provider config) |
-| **Bam Integration** | Stable | Task references, Share to Banter, activity feed bot |
-| **47 MCP Tools** | Stable | Full AI agent access to all messaging features |
+undefined routes, undefined schemas
 
-### Channel View
+<img src="docs/apps/bam/screenshots/light/01-board.png" width="400" alt="Bam (Project Management)">
 
-<p align="center">
-  <img src="images/19-banter-channels.png" alt="Banter Channel View" width="100%" />
-</p>
+[Guide](docs/apps/bam/guide.md) | [Overview](docs/apps/bam/marketing.md)
 
-The sidebar shows channels, direct messages, and team members. The message compose area supports markdown formatting, file attachments, emoji picker, and @mention autocomplete. Hover over any message for quick reactions, thread replies, pins, and bookmarks.
+### Banter (Team Messaging)
 
-<table>
-  <tr>
-    <td width="50%"><img src="images/20-banter-search.png" alt="Banter Search" width="100%" /></td>
-    <td width="50%"><img src="images/22-banter-browse.png" alt="Banter Browse Channels" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><em>Search with channel, author, and date filters</em></td>
-    <td align="center"><em>Browse and join public channels</em></td>
-  </tr>
-</table>
+undefined routes, undefined schemas
 
-### Administration
+<img src="docs/apps/banter/screenshots/light/01-channels.png" width="400" alt="Banter (Team Messaging)">
 
-<p align="center">
-  <img src="images/21-banter-admin.png" alt="Banter Admin Settings" width="100%" />
-</p>
-<p align="center"><em>Admin panel — voice/video configuration, channel settings, AI voice agent providers</em></p>
+[Guide](docs/apps/banter/guide.md) | [Overview](docs/apps/banter/marketing.md)
 
-### Banter MCP Tools
+### Beacon (Knowledge Base)
 
-AI agents can interact with Banter through **47 dedicated MCP tools**:
+undefined routes, undefined schemas
 
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **Channels** | `banter_list_channels`, `banter_create_channel`, `banter_update_channel`, `banter_archive_channel`, `banter_join_channel`, `banter_leave_channel` | Channel lifecycle management |
-| **Messages** | `banter_post_message`, `banter_edit_message`, `banter_delete_message`, `banter_get_message` | Send and manage messages |
-| **Threads** | `banter_reply_in_thread`, `banter_get_thread` | Threaded conversations |
-| **Reactions** | `banter_add_reaction`, `banter_remove_reaction` | Emoji reactions |
-| **Search** | `banter_search_messages`, `banter_search_channels`, `banter_search_transcripts` | Full-text search |
-| **DMs** | `banter_start_dm`, `banter_start_group_dm`, `banter_list_dms` | Direct messaging |
-| **Calls** | `banter_start_call`, `banter_join_call`, `banter_end_call`, `banter_invite_agent_to_call`, `banter_get_transcript` | Voice/video call management |
-| **Members** | `banter_list_members`, `banter_add_members`, `banter_remove_member`, `banter_update_member_role` | Channel membership |
-| **Admin** | `banter_get_settings`, `banter_update_settings`, `banter_list_user_groups` | Organization-level configuration |
-| **Pins & Bookmarks** | `banter_pin_message`, `banter_unpin_message`, `banter_bookmark_message` | Message organization |
+<img src="docs/apps/beacon/screenshots/light/01-home.png" width="400" alt="Beacon (Knowledge Base)">
 
----
+[Guide](docs/apps/beacon/guide.md) | [Overview](docs/apps/beacon/marketing.md)
 
-## Helpdesk
-
-BigBlueBam includes a full client-facing helpdesk portal. Customers submit tickets, your team (or your AI agents) responds, and every ticket is linked to a task on the board.
-
-### Client Portal
-
-Customers log into their own portal at `/helpdesk/`, submit tickets with categories and priority, and track responses — all with clean, simple branding separate from the internal tool.
-
-<table>
-  <tr>
-    <td width="50%"><img src="images/15-helpdesk-login.png" alt="Helpdesk Login" width="100%" /></td>
-    <td width="50%"><img src="images/16-helpdesk-tickets.png" alt="Helpdesk Ticket List" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><em>Helpdesk portal login</em></td>
-    <td align="center"><em>Client ticket list with status badges</em></td>
-  </tr>
-</table>
-
-### Ticket-to-Task Pipeline
-
-When a client submits a ticket, BigBlueBam automatically creates a linked task on your board. Moving the task through phases updates the ticket status. Clients see progress without your team lifting a finger.
-
-<p align="center">
-  <img src="images/17-helpdesk-conversation.png" alt="Helpdesk Ticket Detail" width="100%" />
-</p>
-<p align="center"><em>Ticket detail with description and metadata</em></p>
-
-### Agent Conversations
-
-Team members (or AI agents via MCP) reply directly to tickets. Agent replies are visible to clients. Internal comments stay private. Full threading keeps the conversation organized.
-
-<p align="center">
-  <img src="images/18-helpdesk-detail-conversation.png" alt="Helpdesk Conversation" width="100%" />
-</p>
-<p align="center"><em>Client and agent conversation on a helpdesk ticket</em></p>
-
----
-
-## Beacon
-
-Beacon is the knowledge base platform built into the BigBlueBam suite. It keeps curated, expiry-aware knowledge fresh and discoverable -- by humans and AI agents alike.
-
-Unlike a wiki that silently rots, Beacon treats every article as a living document with a verification lifecycle. Governance policies define how often content must be re-verified; stale Beacons are surfaced automatically through the **Fridge Cleanout** workflow so nothing quietly expires into irrelevance.
-
-<p align="center">
-  <img src="images/beacon-home.png" alt="Beacon Knowledge Home" width="100%" />
-</p>
-<p align="center"><em>Knowledge Home -- hub nodes, recent activity, and expiry alerts at a glance</em></p>
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Semantic + Graph Search** | Hybrid retrieval combining vector similarity (Qdrant), knowledge-graph expansion, and PostgreSQL full-text fallback |
-| **Expiry Governance (Fridge Cleanout)** | Hierarchical policies (org > project) define verification intervals, grace periods, and auto-archive rules |
-| **Knowledge Graph Explorer** | Visual graph of Beacons connected by typed links (RelatedTo, Supersedes, DependsOn, ConflictsWith, SeeAlso) and implicit tag-affinity edges |
-| **Versioned Content** | Every edit creates a new version; full history with diff support |
-| **Agent-Native Verification** | AI agents can verify, challenge, publish, and retire Beacons through 29 dedicated MCP tools |
-| **Saved Queries** | Named search configurations (private, project, or org-scoped) for reusable retrieval patterns |
-| **Hierarchical Policies** | Org-level defaults with project-level overrides; `beacon_policy_resolve` previews the effective merged policy |
-
-<p align="center">
-  <img src="images/beacon-graph.png" alt="Beacon Graph Explorer" width="100%" />
-</p>
-<p align="center"><em>Knowledge Graph Explorer -- visualize connections between Beacons</em></p>
-
-### Beacon MCP Tools
-
-AI agents interact with Beacon through **29 dedicated MCP tools**:
-
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **CRUD** | `beacon_create`, `beacon_list`, `beacon_get`, `beacon_update`, `beacon_retire`, `beacon_publish`, `beacon_verify`, `beacon_challenge`, `beacon_restore`, `beacon_versions`, `beacon_version_get` | Full lifecycle management with versioning |
-| **Search** | `beacon_search`, `beacon_suggest`, `beacon_search_context` | Hybrid semantic + keyword + graph search, typeahead, agent-optimized retrieval |
-| **Policy** | `beacon_policy_get`, `beacon_policy_set`, `beacon_policy_resolve` | Governance policy management and resolution |
-| **Tags & Links** | `beacon_tags_list`, `beacon_tag_add`, `beacon_tag_remove`, `beacon_link_create`, `beacon_link_remove` | Tag management and typed inter-Beacon links |
-| **Saved Queries** | `beacon_query_save`, `beacon_query_list`, `beacon_query_get`, `beacon_query_delete` | Reusable search configurations |
-| **Graph** | `beacon_graph_neighbors`, `beacon_graph_hubs`, `beacon_graph_recent` | Knowledge graph traversal and exploration |
-
----
-
-## Brief
-
-Brief is a collaborative document editor built into the BigBlueBam suite. Its rich-text collaborative editor features a formatting toolbar, auto-generated table of contents, and slash commands -- plus real-time co-editing, templates, version history, and a graduation path that lets polished documents become Beacons when they mature into lasting knowledge.
-
-<p align="center">
-  <img src="images/brief-home.png" alt="Brief Home" width="100%" />
-</p>
-<p align="center"><em>Brief Home -- recent documents, templates, and quick-create actions</em></p>
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **WYSIWYG Editor** | Tiptap-based rich text with formatting toolbar, heading dropdown, tables, code blocks, task lists, and syntax highlighting |
-| **Auto Table of Contents** | Generated in real-time from document headings, clickable to navigate |
-| **Collaborative Editing** | Real-time multi-user editing with presence cursors, conflict-free merging, and per-paragraph locking |
-| **33 Built-in Templates** | Meeting notes, PRDs, RFCs, post-mortems, onboarding guides, and more across 7 categories |
-| **Brief-to-Beacon Graduation** | Promote a finished document to a Beacon with one click -- metadata, tags, and links carry over |
-| **Cross-Product Linking** | Reference tasks (`BBB-247`), Banter messages, and Beacons inline with rich previews |
-| **Version History** | Every save creates a version; full diff view and one-click restore |
-| **Inline Comments** | Highlight any text and leave a comment thread -- resolved threads collapse automatically |
-| **Semantic Search** | Find documents by meaning via Qdrant vector search, not just keywords |
-| **18 MCP Tools** | AI agents can create, edit, search, comment on, and graduate documents programmatically |
-
-<p align="center">
-  <img src="images/brief-documents.png" alt="Document Browser" width="100%" />
-</p>
-<p align="center"><em>Document browser -- filter by project, author, template, and status</em></p>
-
-<table>
-  <tr>
-    <td width="50%"><img src="images/brief-editor.png" alt="Brief WYSIWYG Editor — new document" width="100%" /></td>
-    <td width="50%"><img src="images/brief-editor-with-content.png" alt="Brief WYSIWYG Editor — editing" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><em>WYSIWYG editor with formatting toolbar and Table of Contents</em></td>
-    <td align="center"><em>Editing an existing document with rich text</em></td>
-  </tr>
-</table>
-
-<p align="center">
-  <img src="images/brief-templates.png" alt="Brief Template Library" width="100%" />
-</p>
-<p align="center"><em>33 built-in templates across 7 categories — business operations, engineering, strategy, HR, communications, sales, and creative</em></p>
-
-<table>
-  <tr>
-    <td width="50%"><img src="images/brief-template-meeting-notes.png" alt="Meeting Notes template loaded in editor" width="100%" /></td>
-    <td width="50%"><img src="images/brief-template-prd.png" alt="PRD template loaded in editor" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><em>Meeting Notes template — agenda, attendees, action items with checkboxes</em></td>
-    <td align="center"><em>PRD template — metadata table, problem statement, requirements, rollout plan</em></td>
-  </tr>
-</table>
-
-### Brief MCP Tools
-
-AI agents interact with Brief through **18 dedicated MCP tools**:
-
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **CRUD** | `brief_create`, `brief_list`, `brief_get`, `brief_update`, `brief_delete`, `brief_publish`, `brief_archive` | Full document lifecycle management |
-| **Collaboration** | `brief_comment_add`, `brief_comment_list`, `brief_comment_resolve` | Inline comment threads |
-| **Versions** | `brief_versions`, `brief_version_get`, `brief_version_restore` | Version history and restore |
-| **Search** | `brief_search`, `brief_suggest` | Semantic and keyword search, typeahead suggestions |
-| **Graduation** | `brief_graduate_to_beacon` | Promote a document to a Beacon with metadata carry-over |
-| **Templates** | `brief_template_list`, `brief_template_create` | Template management |
-
----
-
-## Bolt
-
-Bolt is a visual workflow automation engine built into the BigBlueBam suite. Define trigger→condition→action rules that span every product in the platform, compile down to MCP tool calls, and execute with a full auditable log. No code required -- just wire up events, set conditions, and pick actions from a categorized menu.
-
-<p align="center">
-  <img src="images/bolt-automations.png" alt="Bolt Automation List" width="100%" />
-</p>
-<p align="center"><em>Automation dashboard -- 12 active rules with trigger badges, enable toggles, and execution history</em></p>
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Visual Rule Builder** | WHEN→IF→THEN editor with color-coded sections, event catalog dropdown, and grouped action picker |
-| **Event-Driven** | 26 events across 6 sources (Bam, Banter, Beacon, Brief, Helpdesk, Schedule) |
-| **Condition Engine** | 13 operators (equals, contains, regex, gt/lt, in, between, isEmpty, etc.) with AND/OR grouping |
-| **MCP-Native Actions** | Every action is an MCP tool call selected from a categorized menu -- same permissions, same audit trail |
-| **Execution Audit Log** | Every run is recorded with trigger context, condition evaluation, action results, and duration |
-| **Pre-Built Templates** | 10 starter templates covering common patterns (helpdesk triage, sprint reminders, stale-task alerts) |
-| **Rate Limiting & Cooldowns** | Per-rule rate limits and cooldown windows prevent runaway automations |
-| **AI-Assisted Authoring** | Describe what you want in plain English; an AI agent drafts the rule for you (requires LLM provider) |
-| **Schedule Triggers (cron)** | Time-based triggers using cron expressions for recurring automations |
-| **12 MCP Tools** | AI agents can create, manage, and inspect automations programmatically |
-
-<table>
-  <tr>
-    <td width="50%"><img src="images/bolt-editor-existing.png" alt="Bolt Visual Builder — editing an existing automation" width="100%" /></td>
-    <td width="50%"><img src="images/bolt-editor-new.png" alt="Bolt Visual Builder — new automation" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><em>Editing "Notify on Critical Task" — WHEN/IF/THEN flow with live event catalog</em></td>
-    <td align="center"><em>New automation — pick a trigger source and event, add conditions, select actions</em></td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td width="50%"><img src="images/bolt-templates.png" alt="Bolt Automation Templates" width="100%" /></td>
-    <td width="50%"><img src="images/bolt-executions.png" alt="Bolt Execution Log" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><em>10 pre-built templates — start from a proven pattern and customize</em></td>
-    <td align="center"><em>Execution log — every run traced with status, duration, and step detail</em></td>
-  </tr>
-</table>
-
-### Bolt MCP Tools
-
-AI agents interact with Bolt through **12 dedicated MCP tools**:
-
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **CRUD** | `bolt_list`, `bolt_get`, `bolt_create`, `bolt_update`, `bolt_delete` | Full automation lifecycle management |
-| **Control** | `bolt_enable`, `bolt_disable`, `bolt_test` | Enable/disable and test-fire automations |
-| **Executions** | `bolt_executions`, `bolt_execution_detail` | Execution history and step-by-step detail |
-| **Discovery** | `bolt_events`, `bolt_actions` | Browse available triggers and MCP tool actions |
-
----
-
-## Bearing
-
-Bearing is the Goals & OKR tracking module in BigBlueBam. It provides hierarchical time-boxed periods (quarters, halves, or custom ranges), measurable key results linked to objectives, and automatic progress computation from linked Bam tasks and epics. Goals are auto-classified as on_track, at_risk, behind, or achieved based on progress versus timeline position, giving leadership real-time visibility into whether the team is on track -- without requiring manual progress updates.
-
-<p align="center">
-  <img src="images/bearing-dashboard.png" alt="Goals Dashboard — dark mode" width="100%" />
-</p>
-<p align="center"><em>Goals Dashboard -- summary stats (total, average progress, at risk, achieved) with scope filtering by org, team, or project</em></p>
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **OKR Framework** | Objectives with measurable key results, progress tracking |
-| **Period Management** | Quarters, halves, or custom periods with lifecycle (planning → active → completed) |
-| **Auto-Progress** | Key results can link to Bam tasks/epics for automatic progress computation |
-| **Status Engine** | Goals auto-classified as on_track, at_risk, behind, achieved based on progress vs timeline |
-| **Dashboard** | Summary stats (total, avg progress, at risk, achieved) with scope filtering (org/team/project) |
-| **Status Updates** | Team members post updates on goal progress with status snapshots |
-| **Watchers** | Subscribe to goals for notifications |
-| **12 MCP Tools** | AI agents can manage periods, goals, key results, and updates programmatically |
-
-<table>
-  <tr>
-    <td width="50%"><img src="images/bearing-goal-detail.png" alt="Goal Detail" width="100%" /></td>
-    <td width="50%"><img src="images/bearing-at-risk.png" alt="At Risk Goals" width="100%" /></td>
-  </tr>
-  <tr>
-    <td>Goal detail — key results with progress bars, status updates, watchers</td>
-    <td>At Risk view — goals behind schedule that need attention</td>
-  </tr>
-</table>
-
-### Bearing MCP Tools
-
-AI agents interact with Bearing through **12 dedicated MCP tools**:
-
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **Periods** | `bearing_periods`, `bearing_period_get` | List/manage time periods, get period with summary stats |
-| **Goals** | `bearing_goals`, `bearing_goal_get`, `bearing_goal_create`, `bearing_goal_update` | Full goal lifecycle -- list, detail, create, update |
-| **Key Results** | `bearing_kr_create`, `bearing_kr_update`, `bearing_kr_link` | Create and update key results, link KRs to Bam entities |
-| **Updates** | `bearing_update_post`, `bearing_report`, `bearing_at_risk` | Post status updates, generate reports, list at-risk goals |
-
----
-
-## Board
-
-Board is an infinite-canvas visual collaboration whiteboard built into the BigBlueBam suite. Think of it as Miro meets your project board — teams brainstorm on sticky notes, sketch architecture diagrams, run retrospectives, and then promote the outcomes directly into Bam tasks without leaving the canvas. Built-in voice chat means your distributed team can talk while they draw, and a persistent side chat captures the conversation for anyone who joins later.
-
-<p align="center">
-  <img src="images/board-list.png" alt="Board whiteboard grid" width="100%" />
-</p>
-<p align="center"><em>Board grid — 8 active whiteboards with icons, project badges, and collaboration indicators</em></p>
-
-### How Teams Use Board
-
-**Sprint Retrospectives:** The team opens a "Start / Stop / Continue" template. Three color-coded frames appear. Everyone drops sticky notes simultaneously — green for what went well, red for what didn't. At the end, the facilitator multi-selects the action items and clicks "Create Tasks" to push them straight into the next sprint.
-
-**Architecture Workshops:** A tech lead opens the Architecture Diagram template with pre-positioned frames for Frontend, Backend, Database, and External Services. The team sketches out a new system design with shapes and connectors. The final board embeds live Bam task cards for each workstream and gets linked to the Brief design spec.
-
-**Brainstorming Sessions:** Product and engineering gather around a 65" touchscreen (or their laptops from home). The canvas starts blank. Someone types the topic in a frame. Ideas flow as sticky notes — the AI reads the board through MCP, identifies clusters, and proposes a task breakdown. Everyone's talking through the built-in audio while watching cursors move in real-time.
-
-**Remote Design Sprints:** Over five days, the team cycles through Understand, Sketch, Decide, Prototype, Test — each with its own frame on the board. Sticky notes accumulate, diagrams form, and the chat panel captures design rationale. At the end of the sprint, the board becomes the living record of how decisions were made.
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Infinite Canvas** | tldraw-based zoomable canvas with shapes, sticky notes, freehand drawing, images, frames, and text |
-| **Real-Time Collaboration** | Multi-user CRDT sync — every collaborator sees live cursors, selections, and edits in real-time |
-| **Built-in Audio** | LiveKit-powered voice conferencing within each board — auto-join, mute/unmute, speaker indicators |
-| **Side Chat** | Persistent chat panel for text conversation alongside the canvas — history loads for late joiners |
-| **Sticky-to-Task Pipeline** | Multi-select sticky notes → Create Tasks → pushed to Bam with titles, descriptions, and backlinks |
-| **Cross-Product Embeds** | Embed live Bam task cards, Beacon articles, Brief documents, and Bearing goals on the canvas |
-| **10 Templates** | Start/Stop/Continue, 4Ls Retro, Sailboat, Brainstorm, Affinity Map, User Story Map, Architecture, Flowchart, SWOT, Blank |
-| **Multitouch** | Pinch-to-zoom and two-finger pan on touch devices, including large touchscreens |
-| **AI Canvas Reading** | 14 MCP tools let agents read canvas content, add stickies, promote to tasks, and summarize themes |
-
-<table>
-  <tr>
-    <td width="50%"><img src="images/board-canvas-retro.png" alt="Board canvas — sprint retrospective with smiley" width="100%" /></td>
-    <td width="50%"><img src="images/board-canvas-brainstorm.png" alt="Board canvas — feature brainstorm" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><em>Sprint retro — sticky notes, freehand smiley face, and text on the canvas</em></td>
-    <td align="center"><em>Feature brainstorm — sticky notes with ideas on the infinite canvas</em></td>
-  </tr>
-</table>
-
-<p align="center">
-  <img src="images/board-templates.png" alt="Board template gallery" width="100%" />
-</p>
-<p align="center"><em>10 built-in templates — retrospective formats, brainstorming, architecture diagrams, and more</em></p>
-
-### Board MCP Tools
-
-AI agents interact with Board through **14 dedicated MCP tools**:
-
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **CRUD** | `board_list`, `board_get`, `board_create`, `board_update`, `board_archive` | Full board lifecycle management |
-| **Reading** | `board_read_elements`, `board_read_stickies`, `board_read_frames` | Structured canvas content for AI analysis |
-| **Writing** | `board_add_sticky`, `board_add_text` | Programmatically add content to the canvas |
-| **Actions** | `board_promote_to_tasks`, `board_export` | Convert stickies to Bam tasks, export as SVG/PNG |
-| **Discovery** | `board_summarize`, `board_search` | Summarize themes, search across all boards |
-
----
-
-## Bond
-
-Bond is the CRM (Customer Relationship Management) module built into the BigBlueBam suite. It provides a visual deal pipeline board, contact and company management, activity logging, and deep cross-product integration -- so your sales process lives alongside your project board, helpdesk, and knowledge base instead of in a separate tool.
-
-Deals flow through configurable pipeline stages displayed as a Kanban board, making it easy to see the full sales funnel at a glance. Each deal links to a company and one or more contacts, carries a value and expected close date, and tracks every touchpoint through an activity timeline. When a deal closes, a Bolt automation can create the onboarding project in Bam, post the win to a Banter channel, and generate a customer Beacon -- all automatically.
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Pipeline Board** | Kanban-style deal board with configurable stages, drag-and-drop, and weighted pipeline value per stage |
-| **Contacts & Companies** | Full contact database with company hierarchy, custom fields, tags, and merge/duplicate detection |
-| **Deal Tracking** | Value, expected close date, probability, owner, linked contacts, and stage history |
-| **Activity Timeline** | Log calls, emails, meetings, notes, and tasks against contacts, companies, or deals |
-| **Cross-Product Links** | Link deals to Bam projects, Helpdesk tickets, Beacon articles, and Brief documents |
-| **Search** | Full-text and semantic search across contacts, companies, deals, and activity notes |
-| **Pipeline Reports** | Conversion rates, average deal size, stage duration, forecast, and win/loss analysis |
-| **19 MCP Tools** | AI agents can manage the full CRM lifecycle programmatically |
-
-### Bond MCP Tools
-
-AI agents interact with Bond through **19 dedicated MCP tools**:
-
-| Category | Tools | What they do |
-|----------|-------|-------------|
-| **Contacts** | `bond_contact_list`, `bond_contact_get`, `bond_contact_create`, `bond_contact_update` | Contact lifecycle management with search and filtering |
-| **Companies** | `bond_company_list`, `bond_company_get`, `bond_company_create`, `bond_company_update` | Company management with hierarchy and linked contacts |
-| **Deals** | `bond_deal_list`, `bond_deal_get`, `bond_deal_create`, `bond_deal_update`, `bond_deal_move` | Deal CRUD and pipeline stage advancement |
-| **Activities** | `bond_activity_log`, `bond_activity_list` | Log and retrieve calls, emails, meetings, notes |
-| **Pipeline** | `bond_pipeline_get`, `bond_pipeline_report` | Pipeline configuration and reporting |
-| **Search** | `bond_search` | Cross-entity search across contacts, companies, deals, and activities |
+### Bearing (Goals & OKRs)
 
+undefined routes, undefined schemas
+
+<img src="docs/apps/bearing/screenshots/light/01-dashboard.png" width="400" alt="Bearing (Goals & OKRs)">
+
+[Guide](docs/apps/bearing/guide.md) | [Overview](docs/apps/bearing/marketing.md)
+
+### Bench (Analytics)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/bench/screenshots/light/01-dashboard-list.png" width="400" alt="Bench (Analytics)">
+
+[Guide](docs/apps/bench/guide.md) | [Overview](docs/apps/bench/marketing.md)
+
+### Bill (Invoicing)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/bill/screenshots/light/01-invoice-list.png" width="400" alt="Bill (Invoicing)">
+
+[Guide](docs/apps/bill/guide.md) | [Overview](docs/apps/bill/marketing.md)
+
+### Blank (Forms)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/blank/screenshots/light/01-form-list.png" width="400" alt="Blank (Forms)">
+
+[Guide](docs/apps/blank/guide.md) | [Overview](docs/apps/blank/marketing.md)
+
+### Blast (Email Campaigns)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/blast/screenshots/light/01-campaigns.png" width="400" alt="Blast (Email Campaigns)">
+
+[Guide](docs/apps/blast/guide.md) | [Overview](docs/apps/blast/marketing.md)
+
+### Board (Visual Collaboration)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/board/screenshots/light/01-list.png" width="400" alt="Board (Visual Collaboration)">
+
+[Guide](docs/apps/board/guide.md) | [Overview](docs/apps/board/marketing.md)
+
+### Bolt (Workflow Automation)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/bolt/screenshots/light/01-automations.png" width="400" alt="Bolt (Workflow Automation)">
+
+[Guide](docs/apps/bolt/guide.md) | [Overview](docs/apps/bolt/marketing.md)
+
+### Bond (CRM)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/bond/screenshots/light/01-pipeline.png" width="400" alt="Bond (CRM)">
+
+[Guide](docs/apps/bond/guide.md) | [Overview](docs/apps/bond/marketing.md)
+
+### Book (Scheduling)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/book/screenshots/light/01-week-view.png" width="400" alt="Book (Scheduling)">
+
+[Guide](docs/apps/book/guide.md) | [Overview](docs/apps/book/marketing.md)
+
+### Brief (Documents)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/brief/screenshots/light/01-home.png" width="400" alt="Brief (Documents)">
+
+[Guide](docs/apps/brief/guide.md) | [Overview](docs/apps/brief/marketing.md)
+
+### Helpdesk (Support Portal)
+
+undefined routes, undefined schemas
+
+<img src="docs/apps/helpdesk/screenshots/light/01-portal.png" width="400" alt="Helpdesk (Support Portal)">
+
+[Guide](docs/apps/helpdesk/guide.md) | [Overview](docs/apps/helpdesk/marketing.md)
+<!-- AUTODOCS:APP_SECTIONS:END -->
 ---
 
 ## AI Provider Configuration
@@ -1115,6 +795,7 @@ scripts/            → Utility and seed scripts
 ---
 
 ## Documentation
+<!-- AUTODOCS:DOCS_INDEX:START -->
 
 | Document | Description |
 |----------|-------------|
@@ -1124,14 +805,27 @@ scripts/            → Utility and seed scripts
 | [API Reference](docs/api-reference.md) | All REST endpoints with examples |
 | [MCP Server](docs/mcp-server.md) | Tools, resources, prompts, configuration |
 | [Operations](docs/operations.md) | Updates, backups, scaling, troubleshooting |
-| [Deployment Guide](docs/deployment-guide.md) | Interactive setup wizard, Docker Compose and Railway, step-by-step |
+| [Deployment Guide](docs/deployment-guide.md) | Interactive setup wizard, Docker Compose and Railway |
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, scaling, backup |
 | [Development](docs/development.md) | Contributing, testing, code style |
-| [Helpdesk Design](BigBlueBam_Helpdesk_Design_Document.md) | Helpdesk ticketing system design |
-| [Banter Design](Banter_Design_Document.md) | Team messaging & voice/video design |
-| [Beacon Design](Beacon_Design_Document.md) | Knowledge base platform design |
-| [Bond Design](Bond_Design_Document.md) | CRM pipeline and contact management design |
+| | |
+| **Per-App Guides** | |
+| [Bam (Project Management) Guide](docs/apps/bam/guide.md) | User guide and MCP tool reference |
+| [Banter (Team Messaging) Guide](docs/apps/banter/guide.md) | User guide and MCP tool reference |
+| [Beacon (Knowledge Base) Guide](docs/apps/beacon/guide.md) | User guide and MCP tool reference |
+| [Bearing (Goals & OKRs) Guide](docs/apps/bearing/guide.md) | User guide and MCP tool reference |
+| [Bench (Analytics) Guide](docs/apps/bench/guide.md) | User guide and MCP tool reference |
+| [Bill (Invoicing) Guide](docs/apps/bill/guide.md) | User guide and MCP tool reference |
+| [Blank (Forms) Guide](docs/apps/blank/guide.md) | User guide and MCP tool reference |
+| [Blast (Email Campaigns) Guide](docs/apps/blast/guide.md) | User guide and MCP tool reference |
+| [Board (Visual Collaboration) Guide](docs/apps/board/guide.md) | User guide and MCP tool reference |
+| [Bolt (Workflow Automation) Guide](docs/apps/bolt/guide.md) | User guide and MCP tool reference |
+| [Bond (CRM) Guide](docs/apps/bond/guide.md) | User guide and MCP tool reference |
+| [Book (Scheduling) Guide](docs/apps/book/guide.md) | User guide and MCP tool reference |
+| [Brief (Documents) Guide](docs/apps/brief/guide.md) | User guide and MCP tool reference |
+| [Helpdesk (Support Portal) Guide](docs/apps/helpdesk/guide.md) | User guide and MCP tool reference |
 
+<!-- AUTODOCS:DOCS_INDEX:END -->
 ---
 
 ## License

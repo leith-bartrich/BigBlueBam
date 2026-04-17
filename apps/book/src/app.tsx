@@ -13,6 +13,7 @@ import { WorkingHoursPage } from '@/pages/working-hours';
 import { ConnectionsPage } from '@/pages/connections';
 import { CalendarsPage } from '@/pages/calendars';
 import { MeetPage } from '@/pages/meet';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -28,7 +29,8 @@ type Route =
   | { page: 'working-hours' }
   | { page: 'connections' }
   | { page: 'calendars' }
-  | { page: 'meet'; slug: string };
+  | { page: 'meet'; slug: string }
+  | { page: 'help' };
 
 const BASE_PATH = '/book';
 
@@ -46,6 +48,7 @@ function parseRoute(path: string): Route {
   if (p === '/day') return { page: 'day' };
   if (p === '/timeline') return { page: 'timeline' };
   if (p === '/booking-pages') return { page: 'booking-pages' };
+  if (p === '/help') return { page: 'help' };
 
   // /meet/:slug — public booking page (no auth required)
   const meetMatch = p.match(/^\/meet\/([^/]+)$/);
@@ -125,6 +128,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -137,6 +154,10 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="book" onBack={() => navigate('/')} />;
   }
 
   const renderPage = () => {

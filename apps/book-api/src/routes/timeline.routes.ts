@@ -19,6 +19,7 @@ export default async function timelineRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
         query.start_date,
         query.end_date,
+        request.headers.cookie,
       );
       return reply.send(result);
     },

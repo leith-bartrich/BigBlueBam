@@ -154,6 +154,12 @@ COPY --from=build /app/apps/bench/dist /usr/share/nginx/html/bench
 COPY --from=build /app/apps/bill/dist /usr/share/nginx/html/bill
 COPY --from=build /app/apps/blank/dist /usr/share/nginx/html/blank
 
+# Documentation files for the in-app Help viewer (served at /docs/)
+# These are the hand-authored and pipeline-generated markdown files.
+# In docker-compose, a bind mount of ./docs/apps/ overlays this COPY
+# so changes are visible without a rebuild.
+COPY docs/apps/ /usr/share/nginx/html/docs/apps/
+
 # Two nginx config profiles are baked into the image and the right one is
 # picked at container start by infra/nginx/entrypoint.sh, which lives at
 # /docker-entrypoint.d/ so the official nginx image runs it before starting

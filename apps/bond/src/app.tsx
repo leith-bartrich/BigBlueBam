@@ -9,6 +9,7 @@ import { CompanyListPage } from '@/pages/company-list';
 import { CompanyDetailPage } from '@/pages/company-detail';
 import { AnalyticsPage } from '@/pages/analytics';
 import { SettingsPage } from '@/pages/settings';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -20,7 +21,8 @@ type Route =
   | { page: 'companies' }
   | { page: 'company-detail'; id: string }
   | { page: 'analytics' }
-  | { page: 'settings'; tab: 'pipelines' | 'fields' | 'scoring' };
+  | { page: 'settings'; tab: 'pipelines' | 'fields' | 'scoring' }
+  | { page: 'help' };
 
 const BASE_PATH = '/bond';
 
@@ -35,6 +37,7 @@ function parseRoute(path: string): Route {
   const p = stripBase(path);
 
   if (p === '/' || p === '') return { page: 'pipeline' };
+  if (p === '/help') return { page: 'help' };
   if (p === '/contacts') return { page: 'contacts' };
   if (p === '/companies') return { page: 'companies' };
   if (p === '/analytics') return { page: 'analytics' };
@@ -122,6 +125,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -134,6 +151,10 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="bond" onBack={() => navigate('/')} />;
   }
 
   const renderPage = () => {

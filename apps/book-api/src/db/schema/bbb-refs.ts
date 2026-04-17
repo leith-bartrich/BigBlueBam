@@ -1,3 +1,7 @@
+// NOTE: @bigbluebam/db-stubs provides minimal versions of these tables.
+// This file retains the full column set needed by this service's auth
+// plugin and domain queries. Once db-stubs is enriched with the full
+// auth-necessary columns, these can be replaced with re-exports.
 import {
   pgTable,
   uuid,

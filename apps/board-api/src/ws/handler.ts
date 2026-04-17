@@ -6,6 +6,10 @@ import { db } from '../db/index.js';
 import { sessions, users, boards, boardCollaborators, projectMembers } from '../db/schema/index.js';
 import { env } from '../env.js';
 import { saveScene, type SceneData } from './persistence.js';
+import {
+  BOARD_ELEMENT_SOFT_LIMIT,
+  BOARD_ELEMENT_HARD_LIMIT,
+} from '../services/element-snapshot.service.js';
 import { nanoid } from 'nanoid';
 
 interface ConnectedClient {
@@ -438,6 +442,45 @@ export default async function websocketHandler(fastify: FastifyInstance) {
                 }),
               );
               break;
+            }
+
+            // Element count limit enforcement (design section 10).
+            // Count non-deleted elements only.
+            const liveCount = elements.filter(
+              (e: Record<string, unknown>) => e && e.isDeleted !== true,
+            ).length;
+
+            if (liveCount > BOARD_ELEMENT_HARD_LIMIT) {
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  data: {
+                    code: 'ELEMENT_LIMIT_EXCEEDED',
+                    message: `Board has ${liveCount} elements, exceeding the hard limit of ${BOARD_ELEMENT_HARD_LIMIT}. Remove some elements before adding more.`,
+                    limit: BOARD_ELEMENT_HARD_LIMIT,
+                    current: liveCount,
+                  },
+                  timestamp: new Date().toISOString(),
+                }),
+              );
+              break;
+            }
+
+            if (liveCount > BOARD_ELEMENT_SOFT_LIMIT) {
+              // Warn the user but allow the save to proceed.
+              socket.send(
+                JSON.stringify({
+                  type: 'warning',
+                  data: {
+                    code: 'ELEMENT_SOFT_LIMIT',
+                    message: `Board has ${liveCount} elements (soft limit: ${BOARD_ELEMENT_SOFT_LIMIT}). Performance may degrade. Hard limit: ${BOARD_ELEMENT_HARD_LIMIT}.`,
+                    limit: BOARD_ELEMENT_SOFT_LIMIT,
+                    hard_limit: BOARD_ELEMENT_HARD_LIMIT,
+                    current: liveCount,
+                  },
+                  timestamp: new Date().toISOString(),
+                }),
+              );
             }
 
             // Mark board as dirty for periodic persistence

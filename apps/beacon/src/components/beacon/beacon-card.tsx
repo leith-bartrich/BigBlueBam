@@ -1,6 +1,6 @@
 import type { Beacon } from '@/hooks/use-beacons';
 import { StatusBadge } from './status-badge';
-import { FreshnessIndicator } from './freshness-indicator';
+import { FreshnessIndicator, computeFreshness } from './freshness-indicator';
 import { truncate, formatRelativeTime } from '@/lib/utils';
 
 interface BeaconCardProps {
@@ -9,6 +9,9 @@ interface BeaconCardProps {
 }
 
 export function BeaconCard({ beacon, onClick }: BeaconCardProps) {
+  const freshness = computeFreshness(beacon.last_verified_at, beacon.expires_at);
+  const showBadge = freshness === 'stale' || freshness === 'expired' || freshness === 'expiring';
+
   return (
     <button
       onClick={onClick}
@@ -21,6 +24,13 @@ export function BeaconCard({ beacon, onClick }: BeaconCardProps) {
               {beacon.title}
             </h3>
             <StatusBadge status={beacon.status} />
+            {showBadge && (
+              <FreshnessIndicator
+                lastVerifiedAt={beacon.last_verified_at}
+                expiresAt={beacon.expires_at}
+                badge
+              />
+            )}
           </div>
 
           {beacon.summary && (

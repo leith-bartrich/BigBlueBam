@@ -10,6 +10,7 @@ import { BeaconEditorPage } from '@/pages/beacon-editor';
 import { GraphExplorerPage } from '@/pages/graph-explorer';
 import { BeaconDashboardPage } from '@/pages/beacon-dashboard';
 import { BeaconSettingsPage } from '@/pages/beacon-settings';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -21,7 +22,8 @@ type Route =
   | { page: 'edit'; idOrSlug: string }
   | { page: 'graph'; focalId?: string }
   | { page: 'dashboard' }
-  | { page: 'settings' };
+  | { page: 'settings' }
+  | { page: 'help' };
 
 const BASE_PATH = '/beacon';
 
@@ -41,6 +43,7 @@ function parseRoute(path: string): Route {
   if (p === '/create') return { page: 'create' };
   if (p === '/dashboard') return { page: 'dashboard' };
   if (p === '/settings') return { page: 'settings' };
+  if (p === '/help') return { page: 'help' };
 
   const editMatch = p.match(/^\/([^/]+)\/edit$/);
   if (editMatch) {
@@ -107,6 +110,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -145,6 +162,10 @@ export function App() {
         return null;
     }
   };
+
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="beacon" onBack={() => navigate('/')} />;
+  }
 
   // Build a stable key from the current route so the boundary auto-resets
   // when the user navigates away from a crashed page.

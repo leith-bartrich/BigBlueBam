@@ -1,7 +1,8 @@
-import { eq, and, or, sql, asc, gt, ilike } from 'drizzle-orm';
+import { eq, and, or, sql, asc, desc, gt, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   boltAutomations,
+  boltAutomationVersions,
   boltConditions,
   boltActions,
   boltSchedules,
@@ -664,7 +665,7 @@ export async function updateAutomation(
     ? detectSelfTrigger(effectiveTriggerEvent, effectiveActions)
     : [];
 
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const updateValues: Record<string, unknown> = {
       updated_at: new Date(),
       updated_by: userId,
@@ -776,6 +777,12 @@ export async function updateAutomation(
       ...(loopWarnings.length > 0 ? { _warnings: loopWarnings } : {}),
     };
   });
+
+  // Fire-and-forget: snapshot the updated state for version history.
+  // Errors here should never break the update flow.
+  snapshotAutomationVersion(id, userId).catch(() => {});
+
+  return result;
 }
 
 export async function patchAutomation(
@@ -1061,4 +1068,159 @@ export async function getStats(orgId: string, projectId?: string) {
       blank: row.source_blank,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Automation versioning
+// ---------------------------------------------------------------------------
+
+/**
+ * Snapshot the current state of an automation as a new version row.
+ * Called automatically on every save (update). Returns the new version number.
+ */
+export async function snapshotAutomationVersion(
+  automationId: string,
+  userId: string,
+  note?: string,
+) {
+  // Determine next version number
+  const [latest] = await db
+    .select({ version: boltAutomationVersions.version })
+    .from(boltAutomationVersions)
+    .where(eq(boltAutomationVersions.automation_id, automationId))
+    .orderBy(desc(boltAutomationVersions.version))
+    .limit(1);
+
+  const nextVersion = (latest?.version ?? 0) + 1;
+
+  // Read the current automation row to snapshot
+  const [automation] = await db
+    .select()
+    .from(boltAutomations)
+    .where(eq(boltAutomations.id, automationId))
+    .limit(1);
+
+  if (!automation) return null;
+
+  // Read conditions and actions for full snapshot
+  const conditions = await db
+    .select()
+    .from(boltConditions)
+    .where(eq(boltConditions.automation_id, automationId))
+    .orderBy(asc(boltConditions.sort_order));
+
+  const actions = await db
+    .select()
+    .from(boltActions)
+    .where(eq(boltActions.automation_id, automationId))
+    .orderBy(asc(boltActions.sort_order));
+
+  const snapshot = {
+    name: automation.name,
+    description: automation.description,
+    enabled: automation.enabled,
+    trigger_source: automation.trigger_source,
+    trigger_event: automation.trigger_event,
+    trigger_filter: automation.trigger_filter,
+    cron_expression: automation.cron_expression,
+    cron_timezone: automation.cron_timezone,
+    max_executions_per_hour: automation.max_executions_per_hour,
+    cooldown_seconds: automation.cooldown_seconds,
+    max_chain_depth: automation.max_chain_depth,
+    template_strict: automation.template_strict,
+    notify_owner_on_failure: automation.notify_owner_on_failure,
+    graph: automation.graph,
+    graph_mode: automation.graph_mode,
+    data_version: automation.data_version,
+    conditions,
+    actions,
+  };
+
+  const [versionRow] = await db
+    .insert(boltAutomationVersions)
+    .values({
+      automation_id: automationId,
+      version: nextVersion,
+      snapshot,
+      created_by: userId,
+      note: note ?? null,
+    })
+    .returning();
+
+  return versionRow;
+}
+
+/** List all versions for an automation, newest first. */
+export async function listAutomationVersions(automationId: string) {
+  return db
+    .select()
+    .from(boltAutomationVersions)
+    .where(eq(boltAutomationVersions.automation_id, automationId))
+    .orderBy(desc(boltAutomationVersions.version));
+}
+
+/**
+ * Restore an automation from a specific version snapshot.
+ * This overwrites the current automation row with the snapshot values
+ * and creates a new version entry recording the restore.
+ */
+export async function restoreAutomationVersion(
+  automationId: string,
+  versionId: string,
+  userId: string,
+  orgId: string,
+) {
+  const [versionRow] = await db
+    .select()
+    .from(boltAutomationVersions)
+    .where(
+      and(
+        eq(boltAutomationVersions.id, versionId),
+        eq(boltAutomationVersions.automation_id, automationId),
+      ),
+    )
+    .limit(1);
+
+  if (!versionRow) {
+    throw new BoltError('NOT_FOUND', 'Version not found', 404);
+  }
+
+  const snap = versionRow.snapshot as Record<string, unknown>;
+
+  // Update the automation row from the snapshot
+  await db
+    .update(boltAutomations)
+    .set({
+      name: snap.name as string,
+      description: (snap.description as string) ?? null,
+      enabled: (snap.enabled as boolean) ?? true,
+      trigger_source: snap.trigger_source as typeof boltAutomations.$inferInsert.trigger_source,
+      trigger_event: snap.trigger_event as string,
+      trigger_filter: snap.trigger_filter ?? null,
+      cron_expression: (snap.cron_expression as string) ?? null,
+      cron_timezone: (snap.cron_timezone as string) ?? 'UTC',
+      max_executions_per_hour: (snap.max_executions_per_hour as number) ?? 100,
+      cooldown_seconds: (snap.cooldown_seconds as number) ?? 0,
+      max_chain_depth: (snap.max_chain_depth as number) ?? 5,
+      template_strict: (snap.template_strict as boolean) ?? false,
+      notify_owner_on_failure: (snap.notify_owner_on_failure as boolean) ?? false,
+      graph: snap.graph ?? null,
+      graph_mode: (snap.graph_mode as string) ?? null,
+      data_version: (snap.data_version as number) ?? 1,
+      updated_by: userId,
+      updated_at: new Date(),
+    })
+    .where(
+      and(eq(boltAutomations.id, automationId), eq(boltAutomations.org_id, orgId)),
+    );
+
+  // Snapshot the restored state as a new version
+  await snapshotAutomationVersion(
+    automationId,
+    userId,
+    `Restored from version ${versionRow.version}`,
+  );
+
+  // Return the updated automation
+  return getAutomation(automationId, orgId);
 }

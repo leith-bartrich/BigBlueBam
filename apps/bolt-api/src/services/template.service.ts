@@ -376,6 +376,62 @@ const TEMPLATES: AutomationTemplate[] = [
   // banter-approval-dm.ts so future approval-workflow templates can
   // live alongside it without bloating this file.
   banterApprovalDmTemplate,
+  // Bill P2: Bond deal-close auto-invoice template.
+  // When a Bond deal status changes to "won", create a draft invoice
+  // in Bill using the deal's value and contact info. Uses cross-service
+  // MCP tools so no direct HTTP calls between bond-api and bill-api
+  // are needed.
+  {
+    id: 'tpl_bond_deal_close_invoice',
+    name: 'Create invoice on deal close',
+    description:
+      'When a Bond deal is marked as won, automatically create a draft invoice in Bill ' +
+      'with the deal value, company name, and contact details pre-filled.',
+    category: 'billing',
+    trigger_source: 'bond',
+    trigger_event: 'deal.status_changed',
+    conditions: [
+      {
+        sort_order: 0,
+        field: 'event.deal.new_status',
+        operator: 'equals',
+        value: '"won"',
+        logic_group: 'and',
+      },
+    ],
+    actions: [
+      {
+        sort_order: 0,
+        mcp_tool: 'bill_create_invoice',
+        parameters: {
+          organization_id: '{{ org.id }}',
+          client_name: '{{ event.deal.company_name }}',
+          client_email: '{{ event.deal.primary_contact_email }}',
+          line_items: [
+            {
+              description: 'Deal: {{ event.deal.name }}',
+              quantity: 1,
+              unit_price: '{{ event.deal.value }}',
+            },
+          ],
+          notes: 'Auto-generated from Bond deal #{{ event.deal.id }} closed by {{ actor.name }}.',
+          status: 'draft',
+        },
+        on_error: 'continue',
+      },
+      {
+        sort_order: 1,
+        mcp_tool: 'banter_send_dm',
+        parameters: {
+          user_id: '{{ event.deal.owner_id }}',
+          message:
+            'A draft invoice has been created for deal "{{ event.deal.name }}" ' +
+            '({{ event.deal.value }} {{ event.deal.currency }}). Review it in Bill.',
+        },
+        on_error: 'continue',
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------

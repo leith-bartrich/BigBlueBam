@@ -11,6 +11,10 @@ import {
   Edit2,
   Trash2,
   MoreHorizontal,
+  FileText,
+  CalendarDays,
+  CheckSquare,
+  Link2,
 } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
@@ -18,7 +22,7 @@ import { Avatar } from '@/components/common/avatar';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { ActivityTimeline } from '@/components/contacts/activity-timeline';
 import { LogActivityForm } from '@/components/contacts/log-activity-form';
-import { useDeal, useDealStageHistory, useCloseDealWon, useCloseDealLost, useDeleteDeal } from '@/hooks/use-deals';
+import { useDeal, useDealStageHistory, useCloseDealWon, useCloseDealLost, useDeleteDeal, useDealRelated } from '@/hooks/use-deals';
 import { useDealActivities } from '@/hooks/use-activities';
 import { cn, formatCurrency, formatDate, daysInStage, formatRelativeTime } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
@@ -36,6 +40,7 @@ export function DealDetailPage({ dealId, onNavigate }: DealDetailPageProps) {
   const stageHistory = historyData?.data ?? [];
 
   const { data: activitiesData, isLoading: activitiesLoading } = useDealActivities(dealId);
+  const { data: relatedData } = useDealRelated(dealId);
   const activities = activitiesData?.data ?? [];
 
   const closeDealWon = useCloseDealWon();
@@ -245,6 +250,58 @@ export function DealDetailPage({ dealId, onNavigate }: DealDetailPageProps) {
               )}
             </dl>
           </div>
+
+          {/* Related items */}
+          {relatedData?.data && (
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-1.5">
+                <Link2 className="h-4 w-4 text-zinc-400" />
+                Related
+              </h3>
+              <div className="space-y-2">
+                {(relatedData.data.invoices ?? []).map((inv) => (
+                  <button
+                    key={inv.id}
+                    onClick={() => onNavigate(`/invoices/${inv.id}`)}
+                    className="flex items-center gap-2 w-full text-left rounded-lg px-2 py-1.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                    <span className="truncate text-zinc-700 dark:text-zinc-300">#{inv.number}</span>
+                    <span className="ml-auto text-xs text-zinc-400">{inv.status}</span>
+                  </button>
+                ))}
+                {(relatedData.data.events ?? []).map((ev) => (
+                  <a
+                    key={ev.id}
+                    href={`/book/events/${ev.id}`}
+                    className="flex items-center gap-2 w-full text-left rounded-lg px-2 py-1.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                    <span className="truncate text-zinc-700 dark:text-zinc-300">{ev.title}</span>
+                    <span className="ml-auto text-xs text-zinc-400">
+                      {new Date(ev.start_at).toLocaleDateString()}
+                    </span>
+                  </a>
+                ))}
+                {(relatedData.data.tasks ?? []).map((task) => (
+                  <a
+                    key={task.id}
+                    href={`/b3/tasks/ref/${task.human_id}`}
+                    className="flex items-center gap-2 w-full text-left rounded-lg px-2 py-1.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <CheckSquare className="h-3.5 w-3.5 text-primary-500 shrink-0" />
+                    <span className="text-xs font-mono text-zinc-400 shrink-0">{task.human_id}</span>
+                    <span className="truncate text-zinc-700 dark:text-zinc-300">{task.title}</span>
+                  </a>
+                ))}
+                {(relatedData.data.invoices ?? []).length === 0 &&
+                  (relatedData.data.events ?? []).length === 0 &&
+                  (relatedData.data.tasks ?? []).length === 0 && (
+                    <p className="text-xs text-zinc-400 px-2">No related items</p>
+                  )}
+              </div>
+            </div>
+          )}
 
           {/* Stage History */}
           <div>

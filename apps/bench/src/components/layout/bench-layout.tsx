@@ -45,6 +45,8 @@ function breadcrumbsFor(route: ActiveRoute): Crumb[] {
       return [{ label: 'Explorer' }];
     case 'reports':
       return [{ label: 'Reports' }];
+    case 'saved-queries':
+      return [{ label: 'Saved Queries' }];
     case 'settings':
       return [{ label: 'Settings' }];
     default:

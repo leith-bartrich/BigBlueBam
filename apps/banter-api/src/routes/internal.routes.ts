@@ -109,6 +109,90 @@ export default async function internalRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // POST /v1/internal/transcription-callback — batch callback from voice-agent offline transcription
+  fastify.post(
+    '/v1/internal/transcription-callback',
+    { preHandler: [requireInternalSecret] },
+    async (request, reply) => {
+      const body = z
+        .object({
+          call_id: z.string().uuid(),
+          status: z.enum(['completed', 'failed']),
+          segments: z
+            .array(
+              z.object({
+                text: z.string(),
+                start: z.number(),
+                end: z.number(),
+                confidence: z.number().min(0).max(1).optional(),
+              }),
+            )
+            .optional(),
+          error: z.string().optional(),
+        })
+        .parse(request.body);
+
+      if (body.status === 'failed') {
+        request.log.warn(
+          { call_id: body.call_id, error: body.error },
+          'Offline transcription failed',
+        );
+        return reply.send({ data: { success: true, stored: 0 } });
+      }
+
+      const segments = body.segments ?? [];
+      let stored = 0;
+
+      // We do not know the speaker_id from offline transcription (single-speaker
+      // mode). Use the call's started_by as a fallback speaker for now.
+      const { db: dbImport } = await import('../db/index.js');
+      const { banterCalls: callsTable } = await import('../db/schema/index.js');
+      const { eq: eqOp } = await import('drizzle-orm');
+      const [call] = await dbImport
+        .select({ started_by: callsTable.started_by })
+        .from(callsTable)
+        .where(eqOp(callsTable.id, body.call_id))
+        .limit(1);
+
+      const speakerId = call?.started_by;
+      if (!speakerId) {
+        request.log.warn({ call_id: body.call_id }, 'Call not found for transcription callback');
+        return reply.status(404).send({
+          error: { code: 'NOT_FOUND', message: 'Call not found', details: [], request_id: request.id },
+        });
+      }
+
+      const callStart = new Date();
+
+      for (const seg of segments) {
+        try {
+          await writeTranscriptSegment({
+            call_id: body.call_id,
+            speaker_id: speakerId,
+            content: seg.text,
+            started_at: new Date(callStart.getTime() + seg.start * 1000),
+            ended_at: new Date(callStart.getTime() + seg.end * 1000),
+            confidence: seg.confidence,
+            is_final: true,
+          });
+          stored++;
+        } catch (err) {
+          request.log.warn(
+            { call_id: body.call_id, segment: seg.text.slice(0, 50), err },
+            'Failed to store transcript segment',
+          );
+        }
+      }
+
+      request.log.info(
+        { call_id: body.call_id, total: segments.length, stored },
+        'Offline transcription callback processed',
+      );
+
+      return reply.send({ data: { success: true, stored } });
+    },
+  );
+
   // POST /v1/internal/transcript — receive a transcript segment from the voice agent
   fastify.post(
     '/v1/internal/transcript',

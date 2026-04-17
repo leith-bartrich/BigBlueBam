@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Search, Plus, Mail, Phone, Star } from 'lucide-react';
+import { Search, Plus, Mail, Phone, Star, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
 import { Avatar } from '@/components/common/avatar';
 import { EmptyState } from '@/components/common/empty-state';
 import { CreateContactDialog } from '@/components/contacts/create-contact-dialog';
-import { useContacts, contactDisplayName } from '@/hooks/use-contacts';
+import { useContacts, contactDisplayName, useRestoreContact } from '@/hooks/use-contacts';
 import { cn, lifecycleStageLabel, lifecycleStageColor, formatRelativeTime } from '@/lib/utils';
 import { Loader2, Users } from 'lucide-react';
 
@@ -16,14 +16,17 @@ interface ContactListPageProps {
 export function ContactListPage({ onNavigate }: ContactListPageProps) {
   const [search, setSearch] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState('');
+  const [includeDeleted, setIncludeDeleted] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { data, isLoading } = useContacts({
     search: search || undefined,
     lifecycle_stage: lifecycleFilter || undefined,
+    include_deleted: includeDeleted || undefined,
   });
   const contacts = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
+  const restoreContact = useRestoreContact();
 
   const lifecycleStages = [
     '', 'lead', 'subscriber', 'marketing_qualified', 'sales_qualified',
@@ -49,6 +52,15 @@ export function ContactListPage({ onNavigate }: ContactListPageProps) {
               className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-zinc-200 bg-zinc-50 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-zinc-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeDeleted}
+              onChange={(e) => setIncludeDeleted(e.target.checked)}
+              className="h-3.5 w-3.5 rounded accent-primary-600"
+            />
+            Include deleted
+          </label>
           <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Contact
@@ -105,20 +117,29 @@ export function ContactListPage({ onNavigate }: ContactListPageProps) {
                 <th className="px-6 py-3 text-left font-medium">Score</th>
                 <th className="px-6 py-3 text-left font-medium">Owner</th>
                 <th className="px-6 py-3 text-left font-medium">Last Contact</th>
+                {includeDeleted && <th className="px-6 py-3 text-left font-medium">Status</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800">
-              {contacts.map((contact) => (
+              {contacts.map((contact) => {
+                const isDeleted = !!(contact as any).deleted_at;
+                return (
                 <tr
                   key={contact.id}
-                  onClick={() => onNavigate(`/contacts/${contact.id}`)}
-                  className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
+                  onClick={() => !isDeleted && onNavigate(`/contacts/${contact.id}`)}
+                  className={cn(
+                    'hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors',
+                    isDeleted ? 'opacity-50' : 'cursor-pointer',
+                  )}
                 >
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar src={contact.avatar_url} name={contactDisplayName(contact)} size="sm" />
                       <div>
-                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                        <p className={cn(
+                          'text-sm font-medium text-zinc-900 dark:text-zinc-100',
+                          isDeleted && 'line-through',
+                        )}>
                           {contactDisplayName(contact)}
                         </p>
                         {contact.title && (
@@ -152,8 +173,27 @@ export function ContactListPage({ onNavigate }: ContactListPageProps) {
                   <td className="px-6 py-3 text-sm text-zinc-500">
                     {contact.last_contacted_at ? formatRelativeTime(contact.last_contacted_at) : '-'}
                   </td>
+                  {includeDeleted && (
+                    <td className="px-6 py-3">
+                      {isDeleted ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            restoreContact.mutate(contact.id);
+                          }}
+                          className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Restore
+                        </button>
+                      ) : (
+                        <span className="text-xs text-green-600 font-medium">Active</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}

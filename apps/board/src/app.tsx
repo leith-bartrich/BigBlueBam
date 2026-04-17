@@ -7,6 +7,7 @@ import { BoardNewPage } from '@/pages/board-new';
 import { VersionHistoryPage } from '@/pages/version-history';
 import { TemplateBrowserPage } from '@/pages/template-browser';
 import { StarredBoardsPage } from '@/pages/starred-boards';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -15,7 +16,8 @@ type Route =
   | { page: 'canvas'; id: string }
   | { page: 'versions'; id: string }
   | { page: 'templates' }
-  | { page: 'starred' };
+  | { page: 'starred' }
+  | { page: 'help' };
 
 const BASE_PATH = '/board';
 
@@ -33,6 +35,7 @@ function parseRoute(path: string): Route {
   if (p === '/new') return { page: 'new' };
   if (p === '/templates') return { page: 'templates' };
   if (p === '/starred') return { page: 'starred' };
+  if (p === '/help') return { page: 'help' };
 
   // /:id/versions
   const versionsMatch = p.match(/^\/([^/]+)\/versions$/);
@@ -96,6 +99,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -110,7 +127,11 @@ export function App() {
     );
   }
 
-  // Canvas page is full-screen — no layout wrapper
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="board" onBack={() => navigate('/')} />;
+  }
+
+  // Canvas page is full-screen -- no layout wrapper
   if (route.page === 'canvas') {
     return <BoardCanvasPage boardId={route.id} onNavigate={navigate} />;
   }

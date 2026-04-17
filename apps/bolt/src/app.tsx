@@ -7,6 +7,7 @@ import { AutomationExecutionsPage } from '@/pages/automation-executions';
 import { ExecutionLogPage } from '@/pages/execution-log';
 import { ExecutionDetailPage } from '@/pages/execution-detail';
 import { TemplateBrowserPage } from '@/pages/template-browser';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -16,7 +17,8 @@ type Route =
   | { page: 'automation-executions'; id: string }
   | { page: 'executions' }
   | { page: 'execution-detail'; id: string }
-  | { page: 'templates' };
+  | { page: 'templates' }
+  | { page: 'help' };
 
 const BASE_PATH = '/bolt';
 
@@ -34,6 +36,7 @@ function parseRoute(path: string): Route {
   if (p === '/new') return { page: 'new' };
   if (p === '/templates') return { page: 'templates' };
   if (p === '/executions') return { page: 'executions' };
+  if (p === '/help') return { page: 'help' };
 
   // /automations/:id/executions
   const automationExecMatch = p.match(/^\/automations\/([^/]+)\/executions$/);
@@ -103,6 +106,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -115,6 +132,10 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="bolt" onBack={() => navigate('/')} />;
   }
 
   const renderPage = () => {

@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import {
   blastCampaigns,
   blastUnsubscribes,
+  blastEngagementEvents,
 } from '../db/schema/index.js';
 
 // ---------------------------------------------------------------------------
@@ -135,5 +136,69 @@ export async function checkUnsubscribed(orgId: string, email: string) {
     unsubscribed: !!row,
     unsubscribed_at: row?.unsubscribed_at ?? null,
     reason: row?.reason ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Device/client analytics for a campaign
+// ---------------------------------------------------------------------------
+
+export interface DeviceBucket {
+  client_info: string;
+  event_type: string;
+  count: number;
+}
+
+/**
+ * Aggregate engagement events by client_info for a specific campaign.
+ * Groups by client_info and event_type so the frontend can display
+ * device/client breakdown charts.
+ */
+export async function getCampaignDeviceAnalytics(
+  campaignId: string,
+  orgId: string,
+): Promise<{ data: DeviceBucket[]; total_events: number }> {
+  // Verify campaign belongs to org
+  const [campaign] = await db
+    .select({ id: blastCampaigns.id })
+    .from(blastCampaigns)
+    .where(
+      and(
+        eq(blastCampaigns.id, campaignId),
+        eq(blastCampaigns.organization_id, orgId),
+      ),
+    )
+    .limit(1);
+
+  if (!campaign) {
+    const err = new Error('Campaign not found') as Error & { statusCode: number };
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const rows = await db
+    .select({
+      client_info: sql<string>`COALESCE(${blastEngagementEvents.client_info}, 'Unknown')`,
+      event_type: blastEngagementEvents.event_type,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(blastEngagementEvents)
+    .where(eq(blastEngagementEvents.campaign_id, campaignId))
+    .groupBy(
+      sql`COALESCE(${blastEngagementEvents.client_info}, 'Unknown')`,
+      blastEngagementEvents.event_type,
+    )
+    .orderBy(sql`count(*) DESC`)
+    .limit(200);
+
+  const totalEvents = rows.reduce((sum, r) => sum + r.count, 0);
+
+  return {
+    data: rows.map((r) => ({
+      client_info: r.client_info,
+      event_type: r.event_type,
+      count: r.count,
+    })),
+    total_events: totalEvents,
   };
 }

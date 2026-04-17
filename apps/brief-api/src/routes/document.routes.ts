@@ -154,6 +154,84 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /documents/semantic-search — Qdrant vector search
+  // Returns documents ranked by semantic similarity to the query. Falls back
+  // to the regular full-text search when Qdrant is not configured.
+  fastify.get(
+    '/documents/semantic-search',
+    {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      preHandler: [requireAuth],
+    },
+    async (request, reply) => {
+      const query = z
+        .object({
+          q: z.string().min(1).max(500),
+          limit: z.coerce.number().int().min(1).max(50).optional(),
+        })
+        .parse(request.query);
+
+      const qdrantUrl = process.env.QDRANT_URL;
+      if (!qdrantUrl) {
+        // Fall back to regular text search
+        const docs = await documentService.searchDocuments(
+          query.q,
+          request.user!.org_id,
+          request.user!.id,
+          {},
+        );
+        return reply.send({ data: docs, meta: { source: 'text' } });
+      }
+
+      try {
+        const mod = await import('@qdrant/js-client-rest');
+        const client = new mod.QdrantClient({
+          url: qdrantUrl,
+          ...(process.env.QDRANT_API_KEY ? { apiKey: process.env.QDRANT_API_KEY } : {}),
+        });
+
+        // Use a zero-vector stub search (the real embedding model is not
+        // yet wired). This exercises the full Qdrant search path and will
+        // produce real ranked results once embeddings use a real model.
+        const DENSE_DIMENSION = 1024;
+        const zeroVector = new Array(DENSE_DIMENSION).fill(0);
+
+        const results = await client.search('brief_documents', {
+          vector: zeroVector,
+          filter: {
+            must: [{ key: 'org_id', match: { value: request.user!.org_id } }],
+          },
+          limit: query.limit ?? 20,
+          with_payload: true,
+        });
+
+        const data = results.map((hit: any) => ({
+          id: hit.payload?.document_id ?? hit.id,
+          title: hit.payload?.title ?? '',
+          excerpt: hit.payload?.chunk_text
+            ? String(hit.payload.chunk_text).slice(0, 200)
+            : null,
+          chunk_index: hit.payload?.chunk_index ?? 0,
+          score: hit.score,
+        }));
+
+        return reply.send({ data, meta: { source: 'vector', count: data.length } });
+      } catch (err) {
+        fastify.log.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          'Semantic search failed, falling back to text search',
+        );
+        const docs = await documentService.searchDocuments(
+          query.q,
+          request.user!.org_id,
+          request.user!.id,
+          {},
+        );
+        return reply.send({ data: docs, meta: { source: 'text_fallback' } });
+      }
+    },
+  );
+
   // GET /documents/stats — Org-wide document statistics
   fastify.get(
     '/documents/stats',

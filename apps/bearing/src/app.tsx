@@ -6,6 +6,7 @@ import { GoalDetailPage } from '@/pages/GoalDetailPage';
 import { PeriodListPage } from '@/pages/PeriodListPage';
 import { AtRiskPage } from '@/pages/AtRiskPage';
 import { MyGoalsPage } from '@/pages/MyGoalsPage';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -13,7 +14,8 @@ type Route =
   | { page: 'periods' }
   | { page: 'goal-detail'; id: string }
   | { page: 'at-risk' }
-  | { page: 'my-goals' };
+  | { page: 'my-goals' }
+  | { page: 'help' };
 
 const BASE_PATH = '/bearing';
 
@@ -31,6 +33,7 @@ function parseRoute(path: string): Route {
   if (p === '/periods') return { page: 'periods' };
   if (p === '/at-risk') return { page: 'at-risk' };
   if (p === '/my-goals') return { page: 'my-goals' };
+  if (p === '/help') return { page: 'help' };
 
   // /goals/:id
   const goalMatch = p.match(/^\/goals\/([^/]+)$/);
@@ -88,6 +91,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -100,6 +117,10 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="bearing" onBack={() => navigate('/')} />;
   }
 
   const renderPage = () => {

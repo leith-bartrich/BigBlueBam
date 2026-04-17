@@ -55,6 +55,13 @@ export function useKeyboardShortcuts(navigate: (path: string) => void) {
         return;
       }
 
+      // ? key: Open Help
+      if (e.key === '?' && !isInInput && !isModifier) {
+        e.preventDefault();
+        navigate('/help');
+        return;
+      }
+
       // Up arrow in empty compose: Edit last message
       if (e.key === 'ArrowUp' && isInInput) {
         const textarea = target as HTMLTextAreaElement;

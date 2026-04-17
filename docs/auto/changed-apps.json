@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-04-17T06:14:35.033Z",
+  "changed": [
+    {
+      "app": "bam",
+      "reason": "new"
+    },
+    {
+      "app": "banter",
+      "reason": "new"
+    },
+    {
+      "app": "beacon",
+      "reason": "new"
+    },
+    {
+      "app": "bearing",
+      "reason": "new"
+    },
+    {
+      "app": "bench",
+      "reason": "new"
+    },
+    {
+      "app": "bill",
+      "reason": "new"
+    },
+    {
+      "app": "blank",
+      "reason": "new"
+    },
+    {
+      "app": "blast",
+      "reason": "new"
+    },
+    {
+      "app": "board",
+      "reason": "new"
+    },
+    {
+      "app": "bolt",
+      "reason": "new"
+    },
+    {
+      "app": "bond",
+      "reason": "new"
+    },
+    {
+      "app": "book",
+      "reason": "new"
+    },
+    {
+      "app": "brief",
+      "reason": "new"
+    },
+    {
+      "app": "helpdesk",
+      "reason": "new"
+    }
+  ]
+}

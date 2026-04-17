@@ -5,6 +5,8 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { env } from './env.js';
+import { createErrorHandler } from '@bigbluebam/logging';
+import { healthCheckPlugin } from '@bigbluebam/service-health';
 import { db, connection } from './db/index.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -27,6 +29,7 @@ import callRoutes from './routes/call.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import internalRoutes from './routes/internal.routes.js';
 import presenceRoutes from './routes/presence.routes.js';
+import linkPreviewRoutes from './routes/link-preview.routes.js';
 import { sql } from 'drizzle-orm';
 
 const fastify = Fastify({
@@ -41,31 +44,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler((error, request, reply) => {
-  // Zod validation errors
-  if (error.name === 'ZodError') {
-    return reply.status(400).send({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Request validation failed',
-        details: (error as any).issues ?? [],
-        request_id: request.id,
-      },
-    });
-  }
-
-  fastify.log.error(error);
-
-  const statusCode = error.statusCode ?? 500;
-  return reply.status(statusCode).send({
-    error: {
-      code: statusCode >= 500 ? 'INTERNAL_ERROR' : 'BAD_REQUEST',
-      message: statusCode >= 500 ? 'Internal server error' : error.message,
-      details: [],
-      request_id: request.id,
-    },
-  });
-});
+fastify.setErrorHandler(createErrorHandler({ serviceName: 'banter-api' }));
 
 // Not found handler — standard error envelope for 404s
 fastify.setNotFoundHandler((request, reply) => {
@@ -109,38 +88,13 @@ fastify.addHook('onReady', async () => {
 // Auth plugin
 await fastify.register(authPlugin);
 
-// Health endpoints
-fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
-fastify.get('/health/ready', async (_request, reply) => {
-  const checks: Record<string, string> = {};
-
-  // Check database
-  try {
-    await db.execute(sql`SELECT 1`);
-    checks.database = 'ok';
-  } catch {
-    checks.database = 'error';
-  }
-
-  // Check Redis
-  try {
-    await fastify.redis.ping();
-    checks.redis = 'ok';
-  } catch {
-    checks.redis = 'error';
-  }
-
-  const allOk = Object.values(checks).every((v) => v === 'ok');
-  const statusCode = allOk ? 200 : 503;
-
-  return reply.status(statusCode).send({
-    status: allOk ? 'ready' : 'degraded',
-    checks,
-    timestamp: new Date().toISOString(),
-  });
+// Health + readiness probes (shared plugin)
+await fastify.register(healthCheckPlugin, {
+  service: 'banter-api',
+  checks: {
+    database: async () => { await db.execute(sql`SELECT 1`); },
+    redis: async () => { await fastify.redis.ping(); },
+  },
 });
 
 // Per-route rate limit configurations.
@@ -196,6 +150,7 @@ await fastify.register(callRoutes);
 await fastify.register(webhookRoutes);
 await fastify.register(internalRoutes);
 await fastify.register(presenceRoutes);
+await fastify.register(linkPreviewRoutes);
 
 // WebSocket handler
 await fastify.register(websocketHandler);

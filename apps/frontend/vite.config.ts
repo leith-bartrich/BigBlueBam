@@ -10,6 +10,8 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src'),
       '@bigbluebam/ui/launchpad': resolve(__dirname, '../../packages/ui/launchpad.tsx'),
+      '@bigbluebam/ui/help-viewer': resolve(__dirname, '../../packages/ui/help-viewer.tsx'),
+      '@bigbluebam/ui/markdown': resolve(__dirname, '../../packages/ui/markdown.ts'),
     },
   },
   server: {

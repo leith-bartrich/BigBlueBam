@@ -1,13 +1,17 @@
 import 'dotenv/config';
-import Fastify, { type FastifyError } from 'fastify';
+import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
+import websocket from '@fastify/websocket';
 import { env } from './env.js';
+import { createErrorHandler } from '@bigbluebam/logging';
+import { healthCheckPlugin } from '@bigbluebam/service-health';
 import { db, connection } from './db/index.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import { sql } from 'drizzle-orm';
+import { flushAllPendingYjsWrites } from './services/yjs-persistence.service.js';
 
 const fastify = Fastify({
   logger: {
@@ -21,48 +25,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler((error: FastifyError, request, reply) => {
-  // Zod validation errors
-  if (error.name === 'ZodError') {
-    return reply.status(400).send({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Request validation failed',
-        details: (error as any).issues ?? [],
-        request_id: request.id,
-      },
-    });
-  }
-
-  fastify.log.error(error);
-
-  const statusCode = error.statusCode ?? 500;
-  // Only expose error message for known app errors; sanitize everything else
-  const isAppError =
-    error.name === 'BriefError' ||
-    error.name === 'FolderError' ||
-    error.name === 'VersionError' ||
-    error.name === 'CommentError' ||
-    error.name === 'EmbedError' ||
-    error.name === 'TemplateError' ||
-    error.name === 'LinkError' ||
-    error.name === 'CollaboratorError' ||
-    (error as any).code;
-  const message =
-    statusCode >= 500
-      ? 'Internal server error'
-      : isAppError
-        ? error.message
-        : 'Bad request';
-  return reply.status(statusCode).send({
-    error: {
-      code: statusCode >= 500 ? 'INTERNAL_ERROR' : (error as any).code ?? 'BAD_REQUEST',
-      message,
-      details: [],
-      request_id: request.id,
-    },
-  });
-});
+fastify.setErrorHandler(createErrorHandler({ serviceName: 'brief-api' }));
 
 // Not found handler
 fastify.setNotFoundHandler((request, reply) => {
@@ -91,6 +54,12 @@ await fastify.register(rateLimit, {
   timeWindow: env.RATE_LIMIT_WINDOW_MS,
 });
 
+await fastify.register(websocket, {
+  options: {
+    maxPayload: 2_097_152, // 2 MB (Yjs updates are compact binary)
+  },
+});
+
 // Security headers
 fastify.addHook('onSend', async (_req, reply) => {
   reply.header('X-Content-Type-Options', 'nosniff');
@@ -104,38 +73,13 @@ await fastify.register(redisPlugin);
 // Auth plugin
 await fastify.register(authPlugin);
 
-// Health endpoints
-fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
-fastify.get('/health/ready', async (_request, reply) => {
-  const checks: Record<string, string> = {};
-
-  // Check database
-  try {
-    await db.execute(sql`SELECT 1`);
-    checks.database = 'ok';
-  } catch {
-    checks.database = 'error';
-  }
-
-  // Check Redis
-  try {
-    await fastify.redis.ping();
-    checks.redis = 'ok';
-  } catch {
-    checks.redis = 'error';
-  }
-
-  const allOk = Object.values(checks).every((v) => v === 'ok');
-  const statusCode = allOk ? 200 : 503;
-
-  return reply.status(statusCode).send({
-    status: allOk ? 'ready' : 'degraded',
-    checks,
-    timestamp: new Date().toISOString(),
-  });
+// Health + readiness probes (shared plugin)
+await fastify.register(healthCheckPlugin, {
+  service: 'brief-api',
+  checks: {
+    database: async () => { await db.execute(sql`SELECT 1`); },
+    redis: async () => { await fastify.redis.ping(); },
+  },
 });
 
 // Routes
@@ -148,6 +92,7 @@ import templateRoutes from './routes/template.routes.js';
 import linkRoutes from './routes/link.routes.js';
 import collaboratorRoutes from './routes/collaborator.routes.js';
 import exportRoutes from './routes/export.routes.js';
+import websocketHandler from './ws/handler.js';
 
 await fastify.register(documentRoutes, { prefix: '/v1' });
 await fastify.register(folderRoutes, { prefix: '/v1' });
@@ -159,11 +104,15 @@ await fastify.register(linkRoutes, { prefix: '/v1' });
 await fastify.register(collaboratorRoutes, { prefix: '/v1' });
 await fastify.register(exportRoutes, { prefix: '/v1' });
 
+// WebSocket handler for Yjs real-time collaboration
+await fastify.register(websocketHandler);
+
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
 for (const signal of signals) {
   process.on(signal, async () => {
     fastify.log.info(`Received ${signal}, shutting down gracefully...`);
+    await flushAllPendingYjsWrites();
     await fastify.close();
     await connection.end();
     process.exit(0);

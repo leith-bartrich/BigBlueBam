@@ -8,7 +8,8 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { env } from './env.js';
 import { db, connection } from './db/index.js';
-import { errorHandler } from './middleware/error-handler.js';
+import { createErrorHandler } from '@bigbluebam/logging';
+import { healthCheckPlugin } from '@bigbluebam/service-health';
 import redisPlugin from './plugins/redis.js';
 import csrfPlugin from './plugins/csrf.js';
 import authPlugin from './plugins/auth.js';
@@ -46,6 +47,7 @@ import guestRoutes from './routes/guest.routes.js';
 import superuserRoutes from './routes/superuser.routes.js';
 import emailVerifyRoutes from './routes/email-verify.routes.js';
 import internalHelpdeskRoutes from './routes/internal-helpdesk.routes.js';
+import internalLlmRoutes from './routes/internal-llm.routes.js';
 import slackWebhookRoutes from './routes/slack-webhook.routes.js';
 import slackIntegrationRoutes from './routes/slack-integration.routes.js';
 import githubWebhookRoutes from './routes/github-webhook.routes.js';
@@ -71,7 +73,7 @@ const fastify = Fastify({
 });
 
 // Error handler
-fastify.setErrorHandler(errorHandler);
+fastify.setErrorHandler(createErrorHandler({ serviceName: 'api' }));
 
 // 404 handler — return the canonical error envelope for unknown routes
 fastify.setNotFoundHandler((request, reply) => {
@@ -177,38 +179,13 @@ await rlsBoot(fastify.log);
 // WebSocket handler (realtime events via Redis PubSub)
 await fastify.register(websocketHandlerPlugin);
 
-// Health endpoints
-fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
-fastify.get('/health/ready', async (_request, reply) => {
-  const checks: Record<string, string> = {};
-
-  // Check database
-  try {
-    await db.execute(sql`SELECT 1`);
-    checks.database = 'ok';
-  } catch {
-    checks.database = 'error';
-  }
-
-  // Check Redis
-  try {
-    await fastify.redis.ping();
-    checks.redis = 'ok';
-  } catch {
-    checks.redis = 'error';
-  }
-
-  const allOk = Object.values(checks).every((v) => v === 'ok');
-  const statusCode = allOk ? 200 : 503;
-
-  return reply.status(statusCode).send({
-    status: allOk ? 'ready' : 'degraded',
-    checks,
-    timestamp: new Date().toISOString(),
-  });
+// Health + readiness probes (shared plugin)
+await fastify.register(healthCheckPlugin, {
+  service: 'api',
+  checks: {
+    database: async () => { await db.execute(sql`SELECT 1`); },
+    redis: async () => { await fastify.redis.ping(); },
+  },
 });
 
 // Routes
@@ -244,6 +221,7 @@ await fastify.register(guestRoutes);
 await fastify.register(superuserRoutes, { prefix: '/superuser' });
 await fastify.register(emailVerifyRoutes);
 await fastify.register(internalHelpdeskRoutes, { prefix: '/internal/helpdesk' });
+await fastify.register(internalLlmRoutes, { prefix: '/internal/llm' });
 await fastify.register(slackWebhookRoutes);
 await fastify.register(slackIntegrationRoutes);
 await fastify.register(githubWebhookRoutes);

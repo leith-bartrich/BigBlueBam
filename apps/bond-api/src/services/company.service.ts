@@ -18,6 +18,7 @@ export interface CompanyFilters {
   size_bucket?: string;
   owner_id?: string;
   search?: string;
+  include_deleted?: boolean;
   limit?: number;
   offset?: number;
   sort?: string;
@@ -51,8 +52,10 @@ export interface UpdateCompanyInput extends Partial<CreateCompanyInput> {}
 export async function listCompanies(filters: CompanyFilters) {
   const conditions = [
     eq(bondCompanies.organization_id, filters.organization_id),
-    isNull(bondCompanies.deleted_at),
   ];
+  if (!filters.include_deleted) {
+    conditions.push(isNull(bondCompanies.deleted_at));
+  }
 
   if (filters.industry) {
     conditions.push(eq(bondCompanies.industry, filters.industry));

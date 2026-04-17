@@ -1,0 +1,84 @@
+name: Migration Replay
+
+on:
+  pull_request:
+  push:
+    branches: [main, recovery]
+
+jobs:
+  migration-replay:
+    name: Replay all migrations on fresh postgres
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: bigbluebam
+          POSTGRES_USER: bigbluebam
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bigbluebam -d bigbluebam"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://bigbluebam:postgres@localhost:5432/bigbluebam
+      PGPASSWORD: postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared + api packages
+        run: |
+          pnpm --filter @bigbluebam/shared build
+          pnpm --filter @bigbluebam/api build
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U bigbluebam -d bigbluebam; then exit 0; fi
+            sleep 1
+          done
+          echo "postgres never became ready" >&2
+          exit 1
+
+      - name: Apply all migrations (full replay)
+        env:
+          MIGRATIONS_DIR: ${{ github.workspace }}/infra/postgres/migrations
+        run: node apps/api/dist/migrate.js
+
+      - name: Verify migration count
+        run: |
+          EXPECTED=$(ls infra/postgres/migrations/*.sql | wc -l)
+          APPLIED=$(psql -h localhost -U bigbluebam -d bigbluebam -t -c \
+            "SELECT COUNT(*) FROM schema_migrations;" | tr -d ' ')
+          echo "Expected: $EXPECTED migrations, Applied: $APPLIED"
+          if [ "$APPLIED" -ne "$EXPECTED" ]; then
+            echo "MISMATCH: $APPLIED applied vs $EXPECTED on disk"
+            exit 1
+          fi
+
+      - name: Run drift guard
+        run: pnpm db:check
+
+      - name: Lint migration files
+        run: node scripts/lint-migrations.mjs

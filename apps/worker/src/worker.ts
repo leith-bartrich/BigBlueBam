@@ -10,6 +10,7 @@ import { processSprintCloseJob, type SprintCloseJobData } from './jobs/sprint-cl
 import { processExportJob, type ExportJobData } from './jobs/export.job.js';
 import { processBanterNotificationJob, type BanterNotificationJobData } from './jobs/banter-notification.job.js';
 import { processBanterRetentionJob, type BanterRetentionJobData } from './jobs/banter-retention.job.js';
+import { processBanterTranscriptionJob, type BanterTranscriptionJobData } from './jobs/banter-transcription.job.js';
 import { processHelpdeskTaskCreateJob, type HelpdeskTaskCreateJobData } from './jobs/helpdesk-task-create.job.js';
 import { processBeaconVectorSyncJob, type BeaconVectorSyncJobData } from './jobs/beacon-vector-sync.job.js';
 import { processBeaconExpirySweepJob, type BeaconExpirySweepJobData } from './jobs/beacon-expiry-sweep.job.js';
@@ -52,10 +53,33 @@ import {
   type BenchMvRefreshJobData,
 } from './jobs/bench-mv-refresh.job.js';
 import { processBriefEmbedJob, type BriefEmbedJobData } from './jobs/brief-embed.job.js';
+import { processBriefSnapshotJob, type BriefSnapshotJobData } from './jobs/brief-snapshot.job.js';
+import { processBriefExportJob, type BriefExportJobData } from './jobs/brief-export.job.js';
+import { processBriefCleanupJob, type BriefCleanupJobData } from './jobs/brief-cleanup.job.js';
 import {
   processHelpdeskSlaMonitorJob,
   type HelpdeskSlaMonitorJobData,
 } from './jobs/helpdesk-sla-monitor.job.js';
+import {
+  processBearingWatcherNotifyJob,
+  type BearingWatcherNotifyJobData,
+} from './jobs/bearing-watcher-notify.job.js';
+import {
+  processBoardThumbnailJob,
+  type BoardThumbnailJobData,
+} from './jobs/board-thumbnail.job.js';
+import {
+  processBoltExecutionCleanupJob,
+  type BoltExecutionCleanupJobData,
+} from './jobs/bolt-execution-cleanup.job.js';
+import {
+  processBondBulkScoreJob,
+  type BondBulkScoreJobData,
+} from './jobs/bond-bulk-score.job.js';
+import {
+  processHelpdeskEmailNotifyJob,
+  type HelpdeskEmailNotifyJobData,
+} from './jobs/helpdesk-email-notify.job.js';
 
 const env = loadEnv();
 
@@ -184,6 +208,33 @@ banterRetentionWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'banter-retention', err }, 'Job failed');
 });
 
+// Banter call transcription worker (post-call STT via voice-agent)
+const banterTranscriptionWorker = new Worker<BanterTranscriptionJobData>(
+  'banter-transcription',
+  async (job: Job<BanterTranscriptionJobData>) => {
+    await processBanterTranscriptionJob(job, logger);
+  },
+  { ...connection, concurrency: 2 },
+);
+
+banterTranscriptionWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'banter-transcription' }, 'Job completed');
+});
+
+banterTranscriptionWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'banter-transcription', err }, 'Job failed');
+});
+
+// Schedule banter retention as a daily cron (1 AM UTC, offset from other sweeps)
+const banterRetentionQueue = new Queue('banter-retention', { connection: redis });
+banterRetentionQueue
+  .upsertJobScheduler(
+    'banter-retention-daily',
+    { pattern: '0 1 * * *' }, // 1 AM daily
+    { name: 'daily-retention', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register banter retention scheduler'));
+
 // Helpdesk task-create worker (HB-23 — async fallback for ticket→task creation)
 const helpdeskTaskCreateWorker = new Worker<HelpdeskTaskCreateJobData>(
   'helpdesk-task-create',
@@ -301,6 +352,21 @@ bearingDigestWorker.on('completed', (job) => {
 
 bearingDigestWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'bearing-digest', err }, 'Job failed');
+});
+
+// Bearing watcher-notify worker (emails goal watchers on status changes)
+const bearingWatcherNotifyWorker = new Worker<BearingWatcherNotifyJobData>(
+  'bearing-watcher-notify',
+  async (job: Job<BearingWatcherNotifyJobData>) => {
+    await processBearingWatcherNotifyJob(job, env, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+bearingWatcherNotifyWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bearing-watcher-notify' }, 'Job completed');
+});
+bearingWatcherNotifyWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bearing-watcher-notify', err }, 'Job failed');
 });
 
 // Bolt execution worker (runs automation action sequences via MCP tool calls)
@@ -572,6 +638,67 @@ briefEmbedQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register brief-embed scheduler'));
 
+// Brief document snapshot worker (daily at 4 AM UTC).
+const briefSnapshotWorker = new Worker<BriefSnapshotJobData>(
+  'brief-snapshot',
+  async (job: Job<BriefSnapshotJobData>) => {
+    await processBriefSnapshotJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+briefSnapshotWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'brief-snapshot' }, 'Job completed');
+});
+briefSnapshotWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'brief-snapshot', err }, 'Job failed');
+});
+const briefSnapshotQueue = new Queue('brief-snapshot', { connection: redis });
+briefSnapshotQueue
+  .upsertJobScheduler(
+    'brief-snapshot-daily',
+    { pattern: '0 4 * * *' }, // 4 AM daily
+    { name: 'daily-snapshot', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register brief-snapshot scheduler'));
+
+// Brief document export worker (on-demand, no schedule).
+const briefExportWorker = new Worker<BriefExportJobData>(
+  'brief-export',
+  async (job: Job<BriefExportJobData>) => {
+    await processBriefExportJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+briefExportWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'brief-export' }, 'Job completed');
+});
+briefExportWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'brief-export', err }, 'Job failed');
+});
+
+// Brief cleanup worker (weekly, Sunday 5 AM UTC).
+const briefCleanupWorker = new Worker<BriefCleanupJobData>(
+  'brief-cleanup',
+  async (job: Job<BriefCleanupJobData>) => {
+    await processBriefCleanupJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+briefCleanupWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'brief-cleanup' }, 'Job completed');
+});
+briefCleanupWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'brief-cleanup', err }, 'Job failed');
+});
+const briefCleanupQueue = new Queue('brief-cleanup', { connection: redis });
+briefCleanupQueue
+  .upsertJobScheduler(
+    'brief-cleanup-weekly',
+    { pattern: '0 5 * * 0' }, // Sunday 5 AM UTC
+    { name: 'weekly-cleanup', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register brief-cleanup scheduler'));
+
 // Helpdesk SLA monitor (every 5 minutes).
 const helpdeskSlaMonitorWorker = new Worker<HelpdeskSlaMonitorJobData>(
   'helpdesk-sla-monitor',
@@ -594,6 +721,90 @@ helpdeskSlaMonitorQueue
     { name: 'tick', data: {} },
   )
   .catch((err) => logger.error({ err }, 'Failed to register helpdesk-sla-monitor scheduler'));
+
+// Board thumbnail generation worker (on-demand + daily sweep at 04:00 UTC).
+const boardThumbnailWorker = new Worker<BoardThumbnailJobData>(
+  'board-thumbnail',
+  async (job: Job<BoardThumbnailJobData>) => {
+    await processBoardThumbnailJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+boardThumbnailWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'board-thumbnail' }, 'Job completed');
+});
+boardThumbnailWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'board-thumbnail', err }, 'Job failed');
+});
+const boardThumbnailQueue = new Queue('board-thumbnail', { connection: redis });
+boardThumbnailQueue
+  .upsertJobScheduler(
+    'board-thumbnail-sweep-daily',
+    { pattern: '0 4 * * *' }, // 4 AM daily
+    { name: 'sweep', data: { sweep: true } },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register board-thumbnail sweep scheduler'));
+
+// Bolt execution cleanup worker (daily at 03:30 UTC).
+const boltExecutionCleanupWorker = new Worker<BoltExecutionCleanupJobData>(
+  'bolt-execution-cleanup',
+  async (job: Job<BoltExecutionCleanupJobData>) => {
+    await processBoltExecutionCleanupJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+boltExecutionCleanupWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bolt-execution-cleanup' }, 'Job completed');
+});
+boltExecutionCleanupWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bolt-execution-cleanup', err }, 'Job failed');
+});
+const boltExecutionCleanupQueue = new Queue('bolt-execution-cleanup', { connection: redis });
+boltExecutionCleanupQueue
+  .upsertJobScheduler(
+    'bolt-execution-cleanup-daily',
+    { pattern: '30 3 * * *' }, // 3:30 AM daily
+    { name: 'daily-cleanup', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bolt-execution-cleanup scheduler'));
+
+// Bond bulk lead-score recalculation worker (daily at 05:00 UTC).
+const bondBulkScoreWorker = new Worker<BondBulkScoreJobData>(
+  'bond-bulk-score',
+  async (job: Job<BondBulkScoreJobData>) => {
+    await processBondBulkScoreJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+bondBulkScoreWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bond-bulk-score' }, 'Job completed');
+});
+bondBulkScoreWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bond-bulk-score', err }, 'Job failed');
+});
+const bondBulkScoreQueue = new Queue('bond-bulk-score', { connection: redis });
+bondBulkScoreQueue
+  .upsertJobScheduler(
+    'bond-bulk-score-daily',
+    { pattern: '0 5 * * *' }, // 5 AM daily
+    { name: 'daily-score', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bond-bulk-score scheduler'));
+
+// Helpdesk email notification worker.
+const helpdeskEmailNotifyWorker = new Worker<HelpdeskEmailNotifyJobData>(
+  'helpdesk-email-notify',
+  async (job: Job<HelpdeskEmailNotifyJobData>) => {
+    await processHelpdeskEmailNotifyJob(job, env, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+helpdeskEmailNotifyWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'helpdesk-email-notify' }, 'Job completed');
+});
+helpdeskEmailNotifyWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'helpdesk-email-notify', err }, 'Job failed');
+});
 
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
@@ -629,6 +840,7 @@ const workers = [
   bearingSnapshotWorker,
   bearingRecomputeWorker,
   bearingDigestWorker,
+  bearingWatcherNotifyWorker,
   boltExecuteWorker,
   boltScheduleTickWorker,
   blastSendWorker,
@@ -641,7 +853,14 @@ const workers = [
   benchReportDeliverWorker,
   benchMvRefreshWorker,
   briefEmbedWorker,
+  briefSnapshotWorker,
+  briefExportWorker,
+  briefCleanupWorker,
   helpdeskSlaMonitorWorker,
+  boardThumbnailWorker,
+  boltExecutionCleanupWorker,
+  bondBulkScoreWorker,
+  helpdeskEmailNotifyWorker,
   analyticsWorker,
 ];
 
@@ -654,12 +873,14 @@ logger.info(
       'export',
       'banter-notifications',
       'banter-retention',
+      'banter-transcription',
       'helpdesk-task-create',
       'beacon-vector-sync',
       'beacon-expiry-sweep',
       'bearing-snapshot',
       'bearing-recompute',
       'bearing-digest',
+      'bearing-watcher-notify',
       'bolt-execute',
       'bolt-schedule',
       'blast-send',
@@ -672,7 +893,14 @@ logger.info(
       'bench-report-deliver',
       'bench-mv-refresh',
       'brief-embed',
+      'brief-snapshot',
+      'brief-export',
+      'brief-cleanup',
       'helpdesk-sla-monitor',
+      'board-thumbnail',
+      'bolt-execution-cleanup',
+      'bond-bulk-score',
+      'helpdesk-email-notify',
       'analytics',
     ],
   },

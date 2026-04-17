@@ -44,9 +44,37 @@ function slugify(text: string): string {
     .slice(0, 100);
 }
 
+/**
+ * Slugs that collide with SPA route segments across the platform.
+ * Helpdesk uses path-based routing under /:slug/, so these would
+ * shadow its login/register/verify/tickets pages.  Other apps may
+ * add reserved segments here as needed.
+ */
+const RESERVED_ORG_SLUGS = new Set([
+  'login',
+  'register',
+  'verify',
+  'tickets',
+  'admin',
+  'api',
+  'auth',
+  'health',
+  'mcp',
+  'files',
+  'static',
+  'assets',
+]);
+
 export async function register(data: RegisterInput, meta?: SessionMetadata) {
   const passwordHash = await argon2.hash(data.password);
   const orgSlug = slugify(data.org_name);
+
+  if (RESERVED_ORG_SLUGS.has(orgSlug)) {
+    throw new Error(
+      `The organization name "${data.org_name}" produces a reserved slug ("${orgSlug}"). ` +
+      'Please choose a different organization name.',
+    );
+  }
 
   const result = await db.transaction(async (tx) => {
     const [org] = await tx

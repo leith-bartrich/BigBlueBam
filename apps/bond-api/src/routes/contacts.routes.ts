@@ -49,6 +49,7 @@ const listQuerySchema = z.object({
   lead_score_min: z.coerce.number().int().optional(),
   lead_score_max: z.coerce.number().int().optional(),
   search: z.string().max(200).optional(),
+  include_deleted: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   sort: z.string().optional(),
@@ -76,6 +77,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       const result = await contactService.listContacts({
         organization_id: request.user!.org_id,
         ...query,
+        include_deleted: query.include_deleted === 'true',
         visibility_owner_id: isRestrictedRole ? request.user!.id : undefined,
       });
       return reply.send(result);

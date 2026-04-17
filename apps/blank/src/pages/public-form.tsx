@@ -19,6 +19,7 @@ interface PublicField {
   scale_min_label?: string | null;
   scale_max_label?: string | null;
   sort_order: number;
+  page_number?: number;
 }
 
 interface PublicForm {
@@ -162,7 +163,24 @@ export function PublicFormPage({ slug }: PublicFormPageProps) {
     );
   }
 
-  const visibleFields = [...(form.fields ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+  const sortedFields = [...(form.fields ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+
+  // Group fields by page_number. If all fields have page_number=1 (or
+  // undefined), the form renders as a single page with no pagination.
+  const pageMap = new Map<number, PublicField[]>();
+  for (const f of sortedFields) {
+    const page = f.page_number ?? 1;
+    if (!pageMap.has(page)) pageMap.set(page, []);
+    pageMap.get(page)!.push(f);
+  }
+  const pageNumbers = [...pageMap.keys()].sort((a, b) => a - b);
+  const isMultiPage = pageNumbers.length > 1;
+
+  const [currentPage, setCurrentPage] = useState(pageNumbers[0] ?? 1);
+  const pageFields = pageMap.get(currentPage) ?? [];
+  const pageIndex = pageNumbers.indexOf(currentPage);
+  const isFirstPage = pageIndex === 0;
+  const isLastPage = pageIndex === pageNumbers.length - 1;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 py-10 px-4">
@@ -182,7 +200,26 @@ export function PublicFormPage({ slug }: PublicFormPageProps) {
             )}
           </div>
 
-          {visibleFields.map((f) => (
+          {/* Page progress indicator */}
+          {isMultiPage && form.show_progress_bar && (
+            <div className="flex items-center gap-1">
+              {pageNumbers.map((pn, i) => (
+                <div
+                  key={pn}
+                  className={`h-1.5 flex-1 rounded-full transition-colors ${
+                    i <= pageIndex
+                      ? 'bg-primary-500'
+                      : 'bg-zinc-200 dark:bg-zinc-700'
+                  }`}
+                />
+              ))}
+              <span className="text-xs text-zinc-500 ml-2">
+                Page {pageIndex + 1} of {pageNumbers.length}
+              </span>
+            </div>
+          )}
+
+          {pageFields.map((f) => (
             <PublicFieldInput
               key={f.id}
               field={f}
@@ -191,30 +228,56 @@ export function PublicFormPage({ slug }: PublicFormPageProps) {
             />
           ))}
 
-          <div>
-            <label htmlFor="public-form-email" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-              Your email (optional)
-            </label>
-            <input
-              id="public-form-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
-            />
-          </div>
+          {/* Email field only on last page */}
+          {(!isMultiPage || isLastPage) && (
+            <div>
+              <label htmlFor="public-form-email" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                Your email (optional)
+              </label>
+              <input
+                id="public-form-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
+              />
+            </div>
+          )}
 
           {submitError && <p className="text-sm text-red-600">{submitError}</p>}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-3 rounded-lg text-white font-medium disabled:opacity-50"
-            style={{ backgroundColor: form.theme_color || '#3b82f6' }}
-          >
-            {submitting ? 'Submitting...' : 'Submit'}
-          </button>
+          {/* Navigation buttons */}
+          <div className="flex items-center gap-3">
+            {isMultiPage && !isFirstPage && (
+              <button
+                type="button"
+                onClick={() => setCurrentPage(pageNumbers[pageIndex - 1]!)}
+                className="flex-1 py-3 rounded-lg font-medium border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300"
+              >
+                Back
+              </button>
+            )}
+            {isMultiPage && !isLastPage ? (
+              <button
+                type="button"
+                onClick={() => setCurrentPage(pageNumbers[pageIndex + 1]!)}
+                className="flex-1 py-3 rounded-lg text-white font-medium"
+                style={{ backgroundColor: form.theme_color || '#3b82f6' }}
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex-1 py-3 rounded-lg text-white font-medium disabled:opacity-50"
+                style={{ backgroundColor: form.theme_color || '#3b82f6' }}
+              >
+                {submitting ? 'Submitting...' : 'Submit'}
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>

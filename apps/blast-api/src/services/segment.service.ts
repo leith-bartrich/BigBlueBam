@@ -270,6 +270,77 @@ export async function recalculateSegmentCount(id: string, orgId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Evaluate segment for campaign recipients (full list with emails)
+// ---------------------------------------------------------------------------
+
+/**
+ * Evaluate a segment's filter_criteria against the contacts table and
+ * return the full recipient list. Excludes contacts without an email
+ * and contacts who have unsubscribed.
+ */
+export async function evaluateSegmentRecipients(
+  segmentId: string,
+  orgId: string,
+): Promise<{
+  recipients: Array<{
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string;
+  }>;
+  total: number;
+}> {
+  const segment = await getSegment(segmentId, orgId);
+
+  const criteria = segment.filter_criteria as {
+    conditions: Array<{ field: string; op: string; value: unknown }>;
+    match: string;
+  };
+
+  const whereClause = buildFilterWhere(orgId, criteria);
+
+  // Fetch all matching contacts with a valid email, excluding unsubscribed
+  const contacts = await db
+    .select({
+      id: bondContacts.id,
+      first_name: bondContacts.first_name,
+      last_name: bondContacts.last_name,
+      email: bondContacts.email,
+    })
+    .from(bondContacts)
+    .where(whereClause);
+
+  // Filter out contacts with no email (post-query for safety)
+  const withEmail = contacts.filter(
+    (c): c is typeof c & { email: string } => !!c.email,
+  );
+
+  // Exclude unsubscribed contacts
+  const { blastUnsubscribes } = await import('../db/schema/index.js');
+  const unsubRows = await db
+    .select({ email: blastUnsubscribes.email })
+    .from(blastUnsubscribes)
+    .where(eq(blastUnsubscribes.organization_id, orgId));
+
+  const unsubSet = new Set(unsubRows.map((r) => r.email.toLowerCase()));
+
+  const recipients = withEmail.filter(
+    (c) => !unsubSet.has(c.email.toLowerCase()),
+  );
+
+  // Update cached count on the segment
+  await db
+    .update(blastSegments)
+    .set({
+      cached_count: recipients.length,
+      cached_at: new Date(),
+    })
+    .where(eq(blastSegments.id, segmentId));
+
+  return { recipients, total: recipients.length };
+}
+
+// ---------------------------------------------------------------------------
 // Preview segment contacts
 // ---------------------------------------------------------------------------
 

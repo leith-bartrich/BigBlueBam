@@ -255,12 +255,36 @@ export function buildQuery(
   return pq;
 }
 
+// ---------------------------------------------------------------------------
+// Date-range-aware result caching (optional, injected from server.ts)
+// ---------------------------------------------------------------------------
+
+import type { CacheService } from './cache.service.js';
+
+let _cacheService: CacheService | null = null;
+
+export function setQueryCacheService(cs: CacheService): void {
+  _cacheService = cs;
+}
+
 export async function executeQuery(
   product: string,
   entity: string,
   config: QueryConfig,
   orgId: string,
-): Promise<{ rows: Record<string, unknown>[]; sql?: string; duration_ms: number }> {
+): Promise<{ rows: Record<string, unknown>[]; sql?: string; duration_ms: number; cached?: boolean }> {
+  // Try date-range-aware cache before hitting the DB
+  if (_cacheService && config.date_range) {
+    const configHash = _cacheService.hashQueryConfig(config as unknown as Record<string, unknown>);
+    const cacheKey = _cacheService.buildAdHocCacheKey(configHash, config.date_range, orgId);
+    if (cacheKey) {
+      const cached = await _cacheService.getAdHoc(cacheKey);
+      if (cached) {
+        return cached as { rows: Record<string, unknown>[]; duration_ms: number; cached: boolean };
+      }
+    }
+  }
+
   const pq = buildQuery(product, entity, config, orgId);
   const start = Date.now();
 
@@ -271,11 +295,26 @@ export async function executeQuery(
       return tx.unsafe(pq.text, pq.params);
     });
     const duration_ms = Date.now() - start;
-    return {
+    const output = {
       rows: Array.isArray(result) ? (result as Record<string, unknown>[]) : [],
       ...(env.NODE_ENV !== 'production' ? { sql: pq.text } : {}),
       duration_ms,
     };
+
+    // Cache the result if the date range is historical (not including today)
+    if (_cacheService && config.date_range) {
+      const configHash = _cacheService.hashQueryConfig(config as unknown as Record<string, unknown>);
+      const cacheKey = _cacheService.buildAdHocCacheKey(configHash, config.date_range, orgId);
+      if (cacheKey) {
+        // Store without the sql field for security
+        const toCache = { rows: output.rows, duration_ms: output.duration_ms, cached: true };
+        _cacheService.setAdHoc(cacheKey, toCache).catch(() => {
+          // Best-effort cache write
+        });
+      }
+    }
+
+    return output;
   } catch (err: any) {
     if (err.message?.includes('statement timeout')) {
       throw badRequest('Query exceeded timeout. Try narrowing your filters or reducing the date range.');
