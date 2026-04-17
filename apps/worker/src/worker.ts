@@ -620,6 +620,67 @@ briefEmbedQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register brief-embed scheduler'));
 
+// Brief document snapshot worker (daily at 4 AM UTC).
+const briefSnapshotWorker = new Worker<BriefSnapshotJobData>(
+  'brief-snapshot',
+  async (job: Job<BriefSnapshotJobData>) => {
+    await processBriefSnapshotJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+briefSnapshotWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'brief-snapshot' }, 'Job completed');
+});
+briefSnapshotWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'brief-snapshot', err }, 'Job failed');
+});
+const briefSnapshotQueue = new Queue('brief-snapshot', { connection: redis });
+briefSnapshotQueue
+  .upsertJobScheduler(
+    'brief-snapshot-daily',
+    { pattern: '0 4 * * *' }, // 4 AM daily
+    { name: 'daily-snapshot', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register brief-snapshot scheduler'));
+
+// Brief document export worker (on-demand, no schedule).
+const briefExportWorker = new Worker<BriefExportJobData>(
+  'brief-export',
+  async (job: Job<BriefExportJobData>) => {
+    await processBriefExportJob(job, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+briefExportWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'brief-export' }, 'Job completed');
+});
+briefExportWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'brief-export', err }, 'Job failed');
+});
+
+// Brief cleanup worker (weekly, Sunday 5 AM UTC).
+const briefCleanupWorker = new Worker<BriefCleanupJobData>(
+  'brief-cleanup',
+  async (job: Job<BriefCleanupJobData>) => {
+    await processBriefCleanupJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+briefCleanupWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'brief-cleanup' }, 'Job completed');
+});
+briefCleanupWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'brief-cleanup', err }, 'Job failed');
+});
+const briefCleanupQueue = new Queue('brief-cleanup', { connection: redis });
+briefCleanupQueue
+  .upsertJobScheduler(
+    'brief-cleanup-weekly',
+    { pattern: '0 5 * * 0' }, // Sunday 5 AM UTC
+    { name: 'weekly-cleanup', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register brief-cleanup scheduler'));
+
 // Helpdesk SLA monitor (every 5 minutes).
 const helpdeskSlaMonitorWorker = new Worker<HelpdeskSlaMonitorJobData>(
   'helpdesk-sla-monitor',
@@ -736,6 +797,9 @@ const workers = [
   benchReportDeliverWorker,
   benchMvRefreshWorker,
   briefEmbedWorker,
+  briefSnapshotWorker,
+  briefExportWorker,
+  briefCleanupWorker,
   helpdeskSlaMonitorWorker,
   boardThumbnailWorker,
   boltExecutionCleanupWorker,
@@ -771,6 +835,9 @@ logger.info(
       'bench-report-deliver',
       'bench-mv-refresh',
       'brief-embed',
+      'brief-snapshot',
+      'brief-export',
+      'brief-cleanup',
       'helpdesk-sla-monitor',
       'board-thumbnail',
       'bolt-execution-cleanup',
