@@ -5,6 +5,7 @@ import {
   text,
   boolean,
   integer,
+  jsonb,
   timestamp,
   index,
 } from 'drizzle-orm/pg-core';
@@ -42,6 +43,7 @@ export const blankForms = pgTable(
     notify_banter_channel_id: uuid('notify_banter_channel_id'),
     rate_limit_per_ip: integer('rate_limit_per_ip').default(10),
     captcha_enabled: boolean('captcha_enabled').notNull().default(false),
+    routing_config: jsonb('routing_config'),
     status: varchar('status', { length: 20 }).notNull().default('draft'),
     published_at: timestamp('published_at', { withTimezone: true }),
     closed_at: timestamp('closed_at', { withTimezone: true }),

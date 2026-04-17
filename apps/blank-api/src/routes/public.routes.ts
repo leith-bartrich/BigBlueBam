@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as formService from '../services/form.service.js';
 import * as submissionService from '../services/submission.service.js';
+import { processRoutingRules } from '../services/routing.service.js';
 import { renderFormHtml } from '../lib/form-renderer.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 import { enrichSubmission, loadOrg } from '../lib/bolt-enrich.js';
@@ -138,6 +139,22 @@ export default async function publicRoutes(fastify: FastifyInstance) {
           user_agent: request.headers['user-agent'] ?? undefined,
         },
       );
+      // Conditional routing: fire-and-forget processing of routing rules
+      if (form.routing_config) {
+        processRoutingRules(
+          form.routing_config,
+          body.response_data,
+          form.organization_id,
+          submission.id,
+          fastify.log,
+        ).catch((err: unknown) => {
+          fastify.log.error(
+            { submissionId: submission.id, err: err instanceof Error ? err.message : String(err) },
+            'blank-routing: unhandled routing error',
+          );
+        });
+      }
+
       // Public form submission — anonymous, no authenticated actor (defaults to system)
       // Fire-and-forget enriched Bolt event (Phase B / Tier 1). On success we
       // flip bolt_events_emitted so the idempotency index stays accurate; on
