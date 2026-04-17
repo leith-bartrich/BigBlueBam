@@ -4,7 +4,7 @@ import '@excalidraw/excalidraw/index.css';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import { BoardToolbar } from '@/components/canvas/board-toolbar';
 import { ChatPanel } from '@/components/canvas/chat-panel';
-import { PresenceBar } from '@/components/canvas/presence-bar';
+import { ConnectionStatusBadge } from '@/components/canvas/connection-status-badge';
 import { useBoardSync } from '@/hooks/use-board-sync';
 
 interface BoardCanvasPageProps {
@@ -83,7 +83,7 @@ export function BoardCanvasPage({ boardId, onNavigate }: BoardCanvasPageProps) {
   const getAPI = useCallback(() => excalidrawAPIRef.current, []);
 
   // Real-time sync via WebSocket (layered on top of localStorage persistence)
-  const { sendChanges, sendPointer } = useBoardSync(boardId, getAPI);
+  const { sendChanges, sendPointer, status, peerCount } = useBoardSync(boardId, getAPI);
 
   // Load initial data: prefer localStorage, fall back to server, then empty
   const [initialData] = useState(() => {
@@ -143,8 +143,8 @@ export function BoardCanvasPage({ boardId, onNavigate }: BoardCanvasPageProps) {
           chatOpen={chatOpen}
         />
 
-        {/* Presence bar overlay */}
-        <PresenceBar boardId={boardId} />
+        {/* Real-time connection + peer-count indicator */}
+        <ConnectionStatusBadge status={status} peerCount={peerCount} />
 
         {/* Chat panel overlay */}
         <ChatPanel

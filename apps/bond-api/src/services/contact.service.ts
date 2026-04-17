@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, sql, desc, asc, inArray, gte, lte } from 'drizzle-orm';
+import { eq, and, or, ilike, sql, desc, asc, inArray, gte, lte, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   bondContacts,
@@ -63,7 +63,10 @@ export interface UpdateContactInput extends Partial<CreateContactInput> {}
 // ---------------------------------------------------------------------------
 
 export async function listContacts(filters: ContactFilters) {
-  const conditions = [eq(bondContacts.organization_id, filters.organization_id)];
+  const conditions = [
+    eq(bondContacts.organization_id, filters.organization_id),
+    isNull(bondContacts.deleted_at),
+  ];
 
   if (filters.lifecycle_stage) {
     conditions.push(eq(bondContacts.lifecycle_stage, filters.lifecycle_stage));
@@ -158,7 +161,13 @@ export async function getContact(id: string, orgId: string) {
   const [contact] = await db
     .select()
     .from(bondContacts)
-    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondContacts.id, id),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!contact) throw notFound('Contact not found');
@@ -241,6 +250,7 @@ export async function createContact(
     const owner = await loadActor(c.owner_id);
     await publishBoltEvent(
       'contact.created',
+      'bond',
       {
         contact: {
           id: c.id,
@@ -306,7 +316,13 @@ export async function updateContact(
       ...input,
       updated_at: new Date(),
     })
-    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondContacts.id, id),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .returning();
 
   if (!updated) throw notFound('Contact not found');
@@ -318,13 +334,38 @@ export async function updateContact(
 // ---------------------------------------------------------------------------
 
 export async function deleteContact(id: string, orgId: string) {
+  // Soft-delete: set deleted_at instead of removing the row. List/get queries
+  // filter on deleted_at IS NULL, so the row becomes invisible but is
+  // retained for audit trail and 90-day restoration (see restoreContact).
   const [deleted] = await db
-    .delete(bondContacts)
-    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .update(bondContacts)
+    .set({ deleted_at: new Date(), updated_at: new Date() })
+    .where(
+      and(
+        eq(bondContacts.id, id),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .returning({ id: bondContacts.id });
 
   if (!deleted) throw notFound('Contact not found');
   return deleted;
+}
+
+// ---------------------------------------------------------------------------
+// Restore (undelete) contact — admin-only via the routes layer
+// ---------------------------------------------------------------------------
+
+export async function restoreContact(id: string, orgId: string) {
+  const [restored] = await db
+    .update(bondContacts)
+    .set({ deleted_at: null, updated_at: new Date() })
+    .where(and(eq(bondContacts.id, id), eq(bondContacts.organization_id, orgId)))
+    .returning();
+
+  if (!restored) throw notFound('Contact not found');
+  return restored;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,18 +379,30 @@ export async function mergeContacts(
 ) {
   if (targetId === sourceId) throw badRequest('Cannot merge a contact with itself');
 
-  // Verify both contacts exist in this org
+  // Verify both contacts exist in this org (and are not soft-deleted)
   const [target, source] = await Promise.all([
     db
       .select()
       .from(bondContacts)
-      .where(and(eq(bondContacts.id, targetId), eq(bondContacts.organization_id, orgId)))
+      .where(
+        and(
+          eq(bondContacts.id, targetId),
+          eq(bondContacts.organization_id, orgId),
+          isNull(bondContacts.deleted_at),
+        ),
+      )
       .limit(1)
       .then((r) => r[0]),
     db
       .select()
       .from(bondContacts)
-      .where(and(eq(bondContacts.id, sourceId), eq(bondContacts.organization_id, orgId)))
+      .where(
+        and(
+          eq(bondContacts.id, sourceId),
+          eq(bondContacts.organization_id, orgId),
+          isNull(bondContacts.deleted_at),
+        ),
+      )
       .limit(1)
       .then((r) => r[0]),
   ]);
@@ -420,8 +473,11 @@ export async function mergeContacts(
       .where(eq(bondContacts.id, targetId));
   }
 
-  // Delete source contact
-  await db.delete(bondContacts).where(eq(bondContacts.id, sourceId));
+  // Soft-delete source contact (merge makes it invisible but preserves audit).
+  await db
+    .update(bondContacts)
+    .set({ deleted_at: new Date(), updated_at: new Date() })
+    .where(eq(bondContacts.id, sourceId));
 
   // Return updated target
   return getContact(targetId, orgId);
@@ -444,6 +500,7 @@ export async function searchContacts(
     .where(
       and(
         eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
         or(
           ilike(bondContacts.first_name, pattern),
           ilike(bondContacts.last_name, pattern),
@@ -462,15 +519,49 @@ export async function searchContacts(
 // Import contacts (bulk CSV rows)
 // ---------------------------------------------------------------------------
 
+/**
+ * Bulk-import contacts. Dedupes by email within the org. When `options.source_system`
+ * is provided and a row carries a `source_id`, each successful import creates a
+ * `bond_import_mappings` row via `createImportMapping` so future re-imports from the
+ * same upstream system short-circuit via `lookupImportMapping`.
+ *
+ * `source_id` is read off the row via `options.resolveSourceId`. The default resolver
+ * returns `row.email` if set, which is the common case for CSV-from-mailing-list imports.
+ */
+export interface ContactImportOptions {
+  source_system?: string;
+  resolveSourceId?: (row: CreateContactInput) => string | undefined;
+}
+
 export async function importContacts(
   rows: CreateContactInput[],
   orgId: string,
   userId: string,
+  options: ContactImportOptions = {},
 ) {
-  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const { source_system } = options;
+  const resolveSourceId =
+    options.resolveSourceId ?? ((row: CreateContactInput) => row.email ?? undefined);
+  const results = { created: 0, skipped: 0, mapped: 0, errors: [] as string[] };
+
+  const { createImportMapping, lookupImportMapping } = await import('./import.service.js');
 
   for (const row of rows) {
     try {
+      const sourceId = source_system ? resolveSourceId(row) : undefined;
+
+      // Short-circuit if the upstream row is already mapped to a local contact.
+      if (source_system && sourceId) {
+        const existingMapping = await lookupImportMapping(orgId, {
+          source_system,
+          source_id: sourceId,
+        });
+        if (existingMapping) {
+          results.skipped++;
+          continue;
+        }
+      }
+
       // Dedup by email within org
       if (row.email) {
         const [existing] = await db
@@ -480,18 +571,40 @@ export async function importContacts(
             and(
               eq(bondContacts.organization_id, orgId),
               eq(bondContacts.email, row.email),
+              isNull(bondContacts.deleted_at),
             ),
           )
           .limit(1);
 
         if (existing) {
+          // Still record the mapping so re-imports from the same upstream stop
+          // hitting the email dedup path every time.
+          if (source_system && sourceId) {
+            await createImportMapping(orgId, {
+              source_system,
+              source_id: sourceId,
+              bond_entity_type: 'contact',
+              bond_entity_id: existing.id,
+            });
+            results.mapped++;
+          }
           results.skipped++;
           continue;
         }
       }
 
-      await createContact(row, orgId, userId);
+      const created = await createContact(row, orgId, userId);
       results.created++;
+
+      if (source_system && sourceId && created?.id) {
+        await createImportMapping(orgId, {
+          source_system,
+          source_id: sourceId,
+          bond_entity_type: 'contact',
+          bond_entity_id: created.id,
+        });
+        results.mapped++;
+      }
     } catch (err) {
       results.errors.push(`Failed to import ${row.email ?? 'unknown'}: ${(err as Error).message}`);
     }

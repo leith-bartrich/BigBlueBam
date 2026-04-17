@@ -28,11 +28,22 @@ export const blastEngagementEvents = pgTable(
     clicked_url: text('clicked_url'),
     ip_address: inet('ip_address'),
     user_agent: text('user_agent'),
+    // Denormalized parsed client (browser/email-client) label derived from
+    // user_agent at write time. Enables fast device/client breakdown queries
+    // without re-parsing user_agent on every analytics read. Populated by
+    // migration 0091_blast_engagement_event_indexes.sql.
+    client_info: varchar('client_info', { length: 120 }),
     occurred_at: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index('idx_blast_engage_campaign').on(table.campaign_id, table.event_type),
     index('idx_blast_engage_contact').on(table.contact_id, table.occurred_at),
     index('idx_blast_engage_send').on(table.send_log_id),
+    index('idx_blast_engagement_campaign_contact_type').on(
+      table.campaign_id,
+      table.contact_id,
+      table.event_type,
+    ),
+    index('idx_blast_engagement_client_info').on(table.campaign_id, table.client_info),
   ],
 );

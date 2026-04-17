@@ -88,6 +88,39 @@ export function useCampaignAnalytics(id: string | undefined) {
   });
 }
 
+export interface CampaignRecipient {
+  id: string;
+  contact_id: string | null;
+  to_email: string;
+  status: string;
+  sent_at: string | null;
+  delivered_at: string | null;
+  bounced_at: string | null;
+  bounce_type: string | null;
+}
+
+interface RecipientsResponse {
+  data: CampaignRecipient[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function useCampaignRecipients(
+  id: string | undefined,
+  params?: { limit?: number; offset?: number },
+) {
+  return useQuery({
+    queryKey: ['blast', 'campaigns', 'recipients', id, params],
+    queryFn: () =>
+      api.get<RecipientsResponse>(`/v1/campaigns/${id}/recipients`, {
+        limit: params?.limit,
+        offset: params?.offset,
+      }),
+    enabled: !!id,
+  });
+}
+
 export function useCreateCampaign() {
   const queryClient = useQueryClient();
   return useMutation({

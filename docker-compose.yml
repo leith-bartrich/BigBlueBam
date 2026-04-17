@@ -152,6 +152,8 @@ services:
       BILL_API_URL: http://bill-api:4014/v1
       BLANK_API_URL: http://blank-api:4013/v1
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-}
+      MCP_INTERNAL_API_TOKEN: ${MCP_INTERNAL_API_TOKEN:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 15s
@@ -191,6 +193,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@bigbluebam.com}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-}
+      BOLT_API_INTERNAL_URL: http://bolt-api:4006
     networks:
       - backend
 
@@ -432,6 +436,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - RATE_LIMIT_MAX=100
       - RATE_LIMIT_WINDOW_MS=60000
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -802,12 +807,32 @@ services:
     networks:
       - backend
 
-  # ── One-shot ────────────────────────────────────────────────────
-  # Applies all pending SQL migrations from /app/migrations. Tracks applied
-  # migrations in the `schema_migrations` table. Idempotent: rerunning is a
-  # no-op when the DB is already up to date. Every DB-using service declares
-  # this as a `service_completed_successfully` dependency so migrations
-  # ALWAYS run before app code that assumes the current schema.
+  # ── One-shot migration runner ─────────────────────────────────────────────
+  # Reads infra/postgres/migrations/ and applies any unapplied SQL files in
+  # filename order. Tracks applied migrations in the `schema_migrations`
+  # table with a SHA-256 checksum per file (header comments stripped before
+  # hashing so editing -- Why / -- Client impact lines does not invalidate
+  # an applied migration). Idempotent: rerunning is a no-op when the DB is
+  # already up to date. Every DB-using service declares this as a
+  # `service_completed_successfully` dependency so migrations ALWAYS run
+  # before app code that assumes the current schema.
+  #
+  # GOTCHA: the sidecar is cached on subsequent `docker compose up -d`.
+  # `service_completed_successfully` dependencies are evaluated against the
+  # FIRST successful exit on a given stack lifetime. Once `migrate` has run
+  # to completion, subsequent `docker compose up -d <service>` invocations
+  # see the cached completion and DO NOT re-run the sidecar even if you
+  # just dropped a new SQL file into infra/postgres/migrations/. Simply
+  # rebuilding `bolt-api` (or any other dependent service) will not trigger
+  # the migration. Run the sidecar explicitly:
+  #
+  #   docker compose run --rm migrate                              # apply new migrations
+  #   docker compose build <app-that-uses-the-new-column>          # rebuild affected app
+  #   docker compose up -d --force-recreate <app>                  # restart it
+  #
+  # See CLAUDE.md "Applying a new migration to a long-running stack" for
+  # the full incident history (template_strict, bolt_graph_column,
+  # bond_deal_rotting_alerted) and verification commands.
   #
   # NOTE ON THE BIND MOUNT: `infra/postgres/migrations` is also COPYed into
   # the production image by apps/api/Dockerfile so Helm/k8s deployments ship
@@ -834,6 +859,45 @@ services:
       MIGRATIONS_DIR: /app/migrations
     volumes:
       - ./infra/postgres/migrations:/app/migrations:ro
+    restart: "no"
+    networks:
+      - backend
+
+  # ── One-shot seed runner (opt-in via --profile seed) ─────────────────────
+  # Reuses the api production image (has node + argon2 + postgres-js in
+  # /app/node_modules) and runs scripts/seed-all.mjs as the entry point.
+  # The scripts/ directory is bind-mounted live, mirroring the migrate
+  # sidecar, so new seed files are visible without a rebuild.
+  #
+  # Invocation:
+  #   docker compose --profile seed run --rm seed
+  #
+  # The profile tag keeps this out of the normal `docker compose up -d`
+  # lifecycle; it only runs when the `seed` profile is explicitly
+  # selected. Depends on migrate completing and api being healthy so we
+  # know the schema is current before inserting anything.
+  seed:
+    profiles: ["seed"]
+    image: bigbluebam-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: production
+    command: ["node", "/app/scripts/seed-all.mjs"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/bigbluebam
+      SEED_ORG_SLUG: ${SEED_ORG_SLUG:-}
+      BOLT_API_INTERNAL_URL: http://bolt-api:4006
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-}
+    volumes:
+      - ./scripts:/app/scripts:ro
     restart: "no"
     networks:
       - backend

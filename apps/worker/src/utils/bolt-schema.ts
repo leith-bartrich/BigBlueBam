@@ -28,6 +28,20 @@ export const boltAutomations = pgTable('bolt_automations', {
   max_chain_depth: integer('max_chain_depth').default(5).notNull(),
   created_by: uuid('created_by').notNull(),
   template_strict: boolean('template_strict').default(false).notNull(),
+  notify_owner_on_failure: boolean('notify_owner_on_failure').default(false).notNull(),
+  // Scheduler fields (needed for bolt-schedule-tick)
+  cron_expression: varchar('cron_expression', { length: 100 }),
+  cron_timezone: varchar('cron_timezone', { length: 50 }).default('UTC').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+});
+
+// Worker-side stub for bolt_schedules.
+export const boltSchedules = pgTable('bolt_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  automation_id: uuid('automation_id').notNull(),
+  next_run_at: timestamp('next_run_at', { withTimezone: true }),
+  last_run_at: timestamp('last_run_at', { withTimezone: true }),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const boltActions = pgTable('bolt_actions', {

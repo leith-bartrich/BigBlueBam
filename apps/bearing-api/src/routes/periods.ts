@@ -7,6 +7,55 @@ import {
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole } from '../middleware/authorize.js';
 import * as periodService from '../services/period.service.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
+import { loadActor, loadOrg } from '../lib/bolt-event-enrich.js';
+
+type PeriodRow = {
+  id: string;
+  name: string;
+  period_type: string;
+  status: string;
+  starts_at: string;
+  ends_at: string;
+};
+
+async function emitPeriodLifecycleEvent(
+  eventType: 'period.activated' | 'period.completed' | 'period.archived',
+  period: PeriodRow,
+  orgId: string,
+  actorId: string,
+) {
+  try {
+    const [actor, org] = await Promise.all([
+      loadActor(actorId),
+      loadOrg(orgId),
+    ]);
+    publishBoltEvent(
+      eventType,
+      'bearing',
+      {
+        period: {
+          id: period.id,
+          name: period.name,
+          period_type: period.period_type,
+          status: period.status,
+          starts_at: period.starts_at,
+          ends_at: period.ends_at,
+        },
+        actor: { id: actor.id, name: actor.name, email: actor.email },
+        org: { id: org.id, name: org.name, slug: org.slug },
+        // Legacy flat fields
+        id: period.id,
+        name: period.name,
+      },
+      orgId,
+      actorId,
+      'user',
+    );
+  } catch {
+    // Fire-and-forget.
+  }
+}
 
 const PERIOD_TYPES = BearingPeriodType.options;
 const PERIOD_STATUSES = BearingPeriodStatus.options;
@@ -92,11 +141,32 @@ export default async function periodRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinOrgRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
       const data = updatePeriodSchema.parse(request.body);
+      const previous = await periodService.getPeriodById(
+        request.params.id,
+        request.user!.org_id,
+      );
       const period = await periodService.updatePeriod(
         request.params.id,
         data,
         request.user!.org_id,
       );
+
+      // Detect archive transition and emit period.archived. Activation and
+      // completion go through their dedicated endpoints, but PATCH is the
+      // only path that can land status='archived'.
+      if (
+        previous &&
+        previous.status !== 'archived' &&
+        period.status === 'archived'
+      ) {
+        await emitPeriodLifecycleEvent(
+          'period.archived',
+          period as PeriodRow,
+          request.user!.org_id,
+          request.user!.id,
+        );
+      }
+
       return reply.send({ data: period });
     },
   );
@@ -117,6 +187,12 @@ export default async function periodRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinOrgRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
       const period = await periodService.activatePeriod(request.params.id, request.user!.org_id);
+      await emitPeriodLifecycleEvent(
+        'period.activated',
+        period as PeriodRow,
+        request.user!.org_id,
+        request.user!.id,
+      );
       return reply.send({ data: period });
     },
   );
@@ -127,6 +203,12 @@ export default async function periodRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinOrgRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
       const period = await periodService.completePeriod(request.params.id, request.user!.org_id);
+      await emitPeriodLifecycleEvent(
+        'period.completed',
+        period as PeriodRow,
+        request.user!.org_id,
+        request.user!.id,
+      );
       return reply.send({ data: period });
     },
   );

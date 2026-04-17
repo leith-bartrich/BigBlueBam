@@ -139,10 +139,12 @@ export default async function publicRoutes(fastify: FastifyInstance) {
         },
       );
       // Public form submission — anonymous, no authenticated actor (defaults to system)
-      // Fire-and-forget enriched Bolt event (Phase B / Tier 1)
+      // Fire-and-forget enriched Bolt event (Phase B / Tier 1). On success we
+      // flip bolt_events_emitted so the idempotency index stays accurate; on
+      // failure we record the error text so operators can triage.
       Promise.all([enrichSubmission(submission.id), loadOrg(form.organization_id)])
-        .then(([enriched, org]) => {
-          publishBoltEvent(
+        .then(async ([enriched, org]) => {
+          await publishBoltEvent(
             'submission.created',
             'blank',
             {
@@ -161,8 +163,12 @@ export default async function publicRoutes(fastify: FastifyInstance) {
             },
             form.organization_id,
           );
+          await submissionService.markBoltEventsEmitted(submission.id);
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          void submissionService.markBoltEventEmitError(submission.id, message);
+        });
 
       return reply.status(201).send({
         data: {

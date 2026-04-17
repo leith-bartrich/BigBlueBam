@@ -1,11 +1,12 @@
--- Seed Blast (Email Campaigns) demo data for Mage Inc
--- Run: docker compose exec -T postgres psql -U bigbluebam < scripts/seed-blast.sql
+-- Seed Blast (Email Campaigns) demo data
+-- Run via orchestrator: node scripts/seed-all.mjs (substitutes :org_id / :user_N)
+-- idempotent: skip-if-any-campaign-already-present
 
 DO $$
 DECLARE
-  v_org UUID := '57158e52-227d-4903-b0d8-d9f3c4910f61';
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';  -- Eddie
-  v_u2 UUID := 'cffb3330-4868-4741-95f4-564efe27836a';  -- Sarah
+  v_org UUID := :org_id;
+  v_u1 UUID := :user_1;
+  v_u2 UUID := :user_2;
 
   -- Templates
   t1 UUID; t2 UUID; t3 UUID; t4 UUID; t5 UUID;
@@ -20,16 +21,11 @@ DECLARE
   ct1 UUID; ct2 UUID; ct3 UUID;
 
 BEGIN
-  -- ══════════════════════════════════════════════════════════════
-  -- Clean existing Blast data for this org
-  -- ══════════════════════════════════════════════════════════════
-  DELETE FROM blast_engagement_events WHERE campaign_id IN (SELECT id FROM blast_campaigns WHERE organization_id = v_org);
-  DELETE FROM blast_send_log WHERE campaign_id IN (SELECT id FROM blast_campaigns WHERE organization_id = v_org);
-  DELETE FROM blast_campaigns WHERE organization_id = v_org;
-  DELETE FROM blast_segments WHERE organization_id = v_org;
-  DELETE FROM blast_templates WHERE organization_id = v_org;
-  DELETE FROM blast_unsubscribes WHERE organization_id = v_org;
-  DELETE FROM blast_sender_domains WHERE organization_id = v_org;
+  -- Idempotency guard
+  IF EXISTS (SELECT 1 FROM blast_campaigns WHERE organization_id = v_org LIMIT 1) THEN
+    RAISE NOTICE 'Blast seed: campaigns already exist for this org, skipping.';
+    RETURN;
+  END IF;
 
   -- ══════════════════════════════════════════════════════════════
   -- 1. TEMPLATES (5)

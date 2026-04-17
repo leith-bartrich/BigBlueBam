@@ -4,6 +4,8 @@ import { useBeacon, useBeaconLinks, useBeaconVersions } from '@/hooks/use-beacon
 import { StatusBadge } from '@/components/beacon/status-badge';
 import { FreshnessIndicator } from '@/components/beacon/freshness-indicator';
 import { LifecycleActions } from '@/components/beacon/lifecycle-actions';
+import { CommentsSection } from '@/components/beacon/comments-section';
+import { AttachmentsPanel } from '@/components/beacon/attachments-panel';
 import { Button } from '@/components/common/button';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
@@ -92,6 +94,12 @@ export function BeaconDetailPage({ idOrSlug, onNavigate }: BeaconDetailPageProps
             ))}
           </div>
         )}
+
+        {/* Attachments */}
+        <AttachmentsPanel beaconId={beacon.id} />
+
+        {/* Comments */}
+        <CommentsSection beaconId={beacon.id} />
       </div>
 
       {/* Sidebar (right ~30%) */}

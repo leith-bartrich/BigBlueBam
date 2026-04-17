@@ -1,16 +1,23 @@
--- Seed Brief demo data for Mage Inc
+-- Seed Brief demo data
+-- Run via orchestrator: node scripts/seed-all.mjs (substitutes :org_id / :user_N)
+-- Note: seed-brief.js is the canonical Brief seeder and is the one wired
+-- into PHASE_B. This .sql file is retained for ad-hoc runs via the
+-- orchestrator's substitution engine; it is NOT invoked automatically.
+-- idempotent: skip-if-any-document-already-present. User pool is 8-wide;
+-- :user_7 / :user_8 cycle back through the available pool when only 6 users exist.
+
 DO $$
 DECLARE
-  v_org UUID := '57158e52-227d-4903-b0d8-d9f3c4910f61';
-  v_proj UUID := '650b38cb-3b36-4014-bf96-17f7617b326a';
-  v_u1 UUID := '65429e63-65c7-4f74-a19e-977217128edc';
-  v_u2 UUID := 'cffb3330-4868-4741-95f4-564efe27836a';
-  v_u3 UUID := 'f290dd98-65fa-403a-9778-6dbda873fc98';
-  v_u4 UUID := '138894b9-58ef-4eb4-9d27-bf36fff48885';
-  v_u5 UUID := 'baa36964-d672-4271-ae96-b0cf5b1062a4';
-  v_u6 UUID := '5e77088e-6d83-4821-8f9d-7857d2aefb68';
-  v_u7 UUID := '851ecd19-c928-4263-9869-e1904b554276';
-  v_u8 UUID := 'dd98bdfe-7ee4-4bd3-b6ee-70fb8fc0efc8';
+  v_org UUID := :org_id;
+  v_proj UUID;
+  v_u1 UUID := :user_1;
+  v_u2 UUID := :user_2;
+  v_u3 UUID := :user_3;
+  v_u4 UUID := :user_4;
+  v_u5 UUID := :user_5;
+  v_u6 UUID := :user_6;
+  v_u7 UUID := :user_7;
+  v_u8 UUID := :user_8;
   f_eng UUID := gen_random_uuid();
   f_mtg UUID := gen_random_uuid();
   f_rfc UUID := gen_random_uuid();
@@ -19,16 +26,14 @@ DECLARE
   d1 UUID; d2 UUID; d3 UUID; d4 UUID; d5 UUID; d6 UUID; d7 UUID; d8 UUID;
   d9 UUID; d10 UUID; d11 UUID; d12 UUID; d13 UUID; d14 UUID; d15 UUID;
 BEGIN
-  -- Clean
-  DELETE FROM brief_stars WHERE document_id IN (SELECT id FROM brief_documents WHERE org_id = v_org);
-  DELETE FROM brief_comment_reactions WHERE comment_id IN (SELECT c.id FROM brief_comments c JOIN brief_documents d ON c.document_id = d.id WHERE d.org_id = v_org);
-  DELETE FROM brief_comments WHERE document_id IN (SELECT id FROM brief_documents WHERE org_id = v_org);
-  DELETE FROM brief_versions WHERE document_id IN (SELECT id FROM brief_documents WHERE org_id = v_org);
-  DELETE FROM brief_embeds WHERE document_id IN (SELECT id FROM brief_documents WHERE org_id = v_org);
-  DELETE FROM brief_collaborators WHERE document_id IN (SELECT id FROM brief_documents WHERE org_id = v_org);
-  DELETE FROM brief_documents WHERE org_id = v_org;
-  DELETE FROM brief_folders WHERE org_id = v_org;
-  DELETE FROM brief_templates WHERE org_id IS NULL;
+  -- Resolve a project for this org.
+  SELECT id INTO v_proj FROM projects WHERE org_id = v_org ORDER BY created_at LIMIT 1;
+
+  -- Idempotency guard
+  IF EXISTS (SELECT 1 FROM brief_documents WHERE org_id = v_org LIMIT 1) THEN
+    RAISE NOTICE 'Brief seed: documents already exist for this org, skipping.';
+    RETURN;
+  END IF;
 
   -- Folders
   INSERT INTO brief_folders (id, org_id, project_id, name, slug, sort_order, created_by) VALUES

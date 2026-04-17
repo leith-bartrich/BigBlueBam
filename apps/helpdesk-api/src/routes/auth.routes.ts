@@ -1,13 +1,24 @@
 import type { FastifyInstance } from 'fastify';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import argon2 from 'argon2';
 import { nanoid } from 'nanoid';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { helpdeskUsers } from '../db/schema/helpdesk-users.js';
 import { helpdeskSessions } from '../db/schema/helpdesk-sessions.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
+
+/**
+ * G7 / HB-44: hash email verification tokens with SHA-256 so an attacker who
+ * exfiltrates the DB cannot present a plaintext token to verify-email. The
+ * hex encoding is 64 chars, matching the helpdesk_users.email_verification_token_hash
+ * column width from migration 0113.
+ */
+function hashEmailVerificationToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 import { env } from '../env.js';
 import {
   checkLockout,
@@ -117,11 +128,46 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const data = registerSchema.parse(request.body);
 
-    // Check if email already taken
+    // D-010: Resolve helpdesk_settings from the X-Org-Slug header (set by
+    // the SPA from the URL path), not `LIMIT 1`. Registrations that arrive
+    // with no org context fall back to the legacy "first settings row"
+    // behavior so direct API clients built before path-based routing
+    // continue to work; the SPA will always supply the header.
+    let orgSettings: typeof helpdeskSettings.$inferSelect | undefined;
+    let registrationOrgId: string | null = null;
+
+    if (request.tenantContext.orgId) {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .where(eq(helpdeskSettings.org_id, request.tenantContext.orgId))
+        .limit(1);
+      orgSettings = rows[0];
+      registrationOrgId = request.tenantContext.orgId;
+    } else {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .limit(1);
+      orgSettings = rows[0];
+      registrationOrgId = orgSettings?.org_id ?? null;
+    }
+
+    // G2: scope the existing-email check by org_id so the same customer
+    // email can legitimately register under a different BBB org. Migration
+    // 0110 already enforces UNIQUE (org_id, email) at the DB level; this
+    // just gives us a friendlier 409 before the insert attempts.
     const existing = await db
       .select({ id: helpdeskUsers.id })
       .from(helpdeskUsers)
-      .where(eq(helpdeskUsers.email, data.email.toLowerCase()))
+      .where(
+        registrationOrgId
+          ? and(
+              eq(helpdeskUsers.email, data.email.toLowerCase()),
+              eq(helpdeskUsers.org_id, registrationOrgId),
+            )
+          : eq(helpdeskUsers.email, data.email.toLowerCase()),
+      )
       .limit(1);
 
     if (existing.length > 0) {
@@ -134,14 +180,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
         },
       });
     }
-
-    // Check allowed email domains (from first org's helpdesk settings)
-    const settings = await db
-      .select()
-      .from(helpdeskSettings)
-      .limit(1);
-
-    const orgSettings = settings[0];
     if (orgSettings && orgSettings.allowed_email_domains.length > 0) {
       const emailDomain = data.email.split('@')[1]?.toLowerCase();
       const allowed = orgSettings.allowed_email_domains.map((d) => d.toLowerCase());
@@ -159,23 +197,36 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const passwordHash = await argon2.hash(data.password);
 
-    let emailVerificationToken: string | null = null;
+    // G7 / HB-44: generate the plaintext token, hash it with SHA-256 for
+    // storage, and keep the plaintext in a local only long enough to email
+    // the customer (email send is a future wave; the route used to leave
+    // the plaintext in the DB). Plaintext never touches helpdesk_users.
+    let emailVerificationTokenHash: string | null = null;
     let emailVerificationSentAt: Date | null = null;
 
     if (orgSettings?.require_email_verification) {
-      emailVerificationToken = nanoid(64);
+      const plaintextToken = nanoid(64);
+      emailVerificationTokenHash = hashEmailVerificationToken(plaintextToken);
       emailVerificationSentAt = new Date();
-      // TODO: Queue verification email via BullMQ
+      // TODO: Queue verification email via BullMQ using `plaintextToken`
+      // (never persist it). Wave 3 scope.
     }
 
     const [user] = await db
       .insert(helpdeskUsers)
       .values({
+        // G2: tenant the new row. org_id may be NULL on bootstrap stacks
+        // with no helpdesk_settings row; steady-state this is always set.
+        org_id: registrationOrgId,
         email: data.email.toLowerCase(),
         display_name: data.display_name,
         password_hash: passwordHash,
         email_verified: !orgSettings?.require_email_verification,
-        email_verification_token: emailVerificationToken,
+        // G7: store the hash only. The legacy plaintext column stays NULL
+        // so existing helpdesk_users rows with a plaintext token keep
+        // working via the verify-email fallback below.
+        email_verification_token: null,
+        email_verification_token_hash: emailVerificationTokenHash,
         email_verification_sent_at: emailVerificationSentAt,
       })
       .returning();
@@ -234,10 +285,33 @@ export default async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // D-010: resolve the host org from X-Org-Slug (SPA-set) first; fall
+    // back to "first settings row" only when no tenant header is present
+    // so direct API clients continue working during rollout. When the
+    // header is present, the resolved orgId is authoritative and a
+    // same-email account under a different org cannot be logged into.
+    let loginOrgId: string | null = null;
+    if (request.tenantContext.orgId) {
+      loginOrgId = request.tenantContext.orgId;
+    } else {
+      const [loginOrgSettings] = await db
+        .select({ org_id: helpdeskSettings.org_id })
+        .from(helpdeskSettings)
+        .limit(1);
+      loginOrgId = loginOrgSettings?.org_id ?? null;
+    }
+
     const [user] = await db
       .select()
       .from(helpdeskUsers)
-      .where(eq(helpdeskUsers.email, data.email.toLowerCase()))
+      .where(
+        loginOrgId
+          ? and(
+              eq(helpdeskUsers.email, data.email.toLowerCase()),
+              eq(helpdeskUsers.org_id, loginOrgId),
+            )
+          : eq(helpdeskUsers.email, data.email.toLowerCase()),
+      )
       .limit(1);
 
     if (!user) {
@@ -353,11 +427,25 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/helpdesk/auth/verify-email', async (request, reply) => {
     const { token } = verifyEmailSchema.parse(request.body);
 
-    const [user] = await db
+    // G7 / HB-44: look the user up by hashed token first (what new
+    // registrations write). Fall back to the legacy plaintext column for
+    // in-flight registrations created before 0113 landed; those tokens
+    // expire naturally within 24 hours per the existing check below.
+    const hashed = hashEmailVerificationToken(token);
+    let [user] = await db
       .select()
       .from(helpdeskUsers)
-      .where(eq(helpdeskUsers.email_verification_token, token))
+      .where(eq(helpdeskUsers.email_verification_token_hash, hashed))
       .limit(1);
+
+    if (!user) {
+      const fallback = await db
+        .select()
+        .from(helpdeskUsers)
+        .where(eq(helpdeskUsers.email_verification_token, token))
+        .limit(1);
+      user = fallback[0];
+    }
 
     if (!user) {
       return reply.status(400).send({
@@ -391,6 +479,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       .set({
         email_verified: true,
         email_verification_token: null,
+        email_verification_token_hash: null,
         email_verification_sent_at: null,
       })
       .where(eq(helpdeskUsers.id, user.id));

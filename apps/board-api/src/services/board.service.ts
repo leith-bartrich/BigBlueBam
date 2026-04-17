@@ -414,12 +414,13 @@ export async function toggleLock(boardId: string, userId: string, orgId: string)
   const existing = await getBoard(boardId, orgId);
   if (!existing) throw new BoardError('NOT_FOUND', 'Board not found', 404);
 
+  const previousLocked = existing.locked;
   const [board] = await db
     .update(boards)
-    .set({ locked: !existing.locked, updated_at: new Date(), updated_by: userId })
+    .set({ locked: !previousLocked, updated_at: new Date(), updated_by: userId })
     .where(eq(boards.id, boardId))
     .returning();
-  return board!;
+  return { board: board!, previousLocked };
 }
 
 export async function searchBoards(query: string, orgId: string, userId: string) {

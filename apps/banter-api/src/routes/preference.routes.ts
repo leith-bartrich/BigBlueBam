@@ -9,7 +9,6 @@ import {
   banterMessages,
 } from '../db/schema/index.js';
 import { requireAuth } from '../plugins/auth.js';
-import { broadcastToOrg } from '../services/realtime.js';
 
 const updatePreferencesSchema = z.object({
   default_notification_level: z.enum(['all', 'mentions', 'none']).optional(),
@@ -21,10 +20,6 @@ const updatePreferencesSchema = z.object({
   compact_mode: z.boolean().optional(),
   auto_join_huddles: z.boolean().optional(),
   noise_suppression: z.boolean().optional(),
-});
-
-const presenceSchema = z.object({
-  status: z.enum(['online', 'idle', 'dnd']),
 });
 
 export default async function preferenceRoutes(fastify: FastifyInstance) {
@@ -96,34 +91,6 @@ export default async function preferenceRoutes(fastify: FastifyInstance) {
       }
 
       return reply.send({ data: prefs });
-    },
-  );
-
-  // POST /v1/me/presence — set presence status
-  fastify.post(
-    '/v1/me/presence',
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const user = request.user!;
-      const body = presenceSchema.parse(request.body);
-
-      // Store presence in Redis with TTL
-      await fastify.redis.setex(
-        `banter:presence:${user.id}`,
-        300, // 5 minutes TTL
-        body.status,
-      );
-
-      broadcastToOrg(user.org_id, {
-        type: 'presence.changed',
-        data: {
-          user_id: user.id,
-          status: body.status,
-        },
-        timestamp: new Date().toISOString(),
-      });
-
-      return reply.send({ data: { user_id: user.id, status: body.status } });
     },
   );
 

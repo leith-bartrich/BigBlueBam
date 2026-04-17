@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProjectStore } from '@/stores/project.store';
 import { useProjectName } from '@/hooks/use-projects';
 
-type ActiveRoute = { page: string; idOrSlug?: string };
+type ActiveRoute = { page: string; idOrSlug?: string; folderId?: string | null };
 
 interface BriefLayoutProps {
   children: ReactNode;
@@ -74,7 +74,11 @@ export function BriefLayout({ children, onNavigate, activeRoute }: BriefLayoutPr
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside className="w-[260px] flex-shrink-0 bg-sidebar flex flex-col">
-          <BriefSidebar onNavigate={onNavigate} activePage={activeRoute.page} />
+          <BriefSidebar
+            onNavigate={onNavigate}
+            activePage={activeRoute.page}
+            activeFolderId={activeRoute.folderId ?? null}
+          />
         </aside>
 
         {/* Main column */}

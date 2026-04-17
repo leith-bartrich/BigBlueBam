@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   integer,
+  boolean,
   index,
 } from 'drizzle-orm/pg-core';
 import { organizations, users } from './bbb-refs.js';
@@ -39,6 +40,11 @@ export const blastCampaigns = pgTable(
     total_clicked: integer('total_clicked').default(0),
     total_unsubscribed: integer('total_unsubscribed').default(0),
     total_complained: integer('total_complained').default(0),
+    // Idempotency marker for the worker-side `campaign.completed` Bolt event.
+    // Set to true once the worker has emitted the event after the final send;
+    // prevents duplicate emission on job retries. Added by migration
+    // 0092_blast_campaign_completion_tracking.sql.
+    completion_event_emitted: boolean('completion_event_emitted').default(false),
     created_by: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -49,5 +55,9 @@ export const blastCampaigns = pgTable(
     index('idx_blast_campaigns_org').on(table.organization_id),
     index('idx_blast_campaigns_status').on(table.status),
     index('idx_blast_campaigns_sent').on(table.sent_at),
+    index('idx_blast_campaigns_completion_pending').on(
+      table.status,
+      table.completion_event_emitted,
+    ),
   ],
 );

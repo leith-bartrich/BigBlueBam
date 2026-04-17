@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { ChevronRight, Bell, LogOut } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { Launchpad, LaunchpadTrigger } from '@bigbluebam/ui/launchpad';
+import { OrgSwitcher } from '@bigbluebam/ui/org-switcher';
+import { NotificationsBell } from '@bigbluebam/ui/notifications-bell';
+import { UserMenu } from '@bigbluebam/ui/user-menu';
 import { BillSidebar } from '@/components/layout/bill-sidebar';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -16,16 +19,18 @@ type Crumb = { label: string; href?: string };
 
 function breadcrumbsFor(route: ActiveRoute): Crumb[] {
   switch (route.page) {
+    case 'dashboard':
+      return [{ label: 'Dashboard' }];
     case 'invoices':
       return [{ label: 'Invoices' }];
     case 'invoice-new':
-      return [{ label: 'Invoices', href: '/' }, { label: 'New Invoice' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'New Invoice' }];
     case 'invoice-from-time':
-      return [{ label: 'Invoices', href: '/' }, { label: 'From Time Entries' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'From Time Entries' }];
     case 'invoice-detail':
-      return [{ label: 'Invoices', href: '/' }, { label: 'Invoice Detail' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'Invoice Detail' }];
     case 'invoice-edit':
-      return [{ label: 'Invoices', href: '/' }, { label: 'Edit Invoice' }];
+      return [{ label: 'Invoices', href: '/invoices' }, { label: 'Edit Invoice' }];
     case 'clients':
       return [{ label: 'Clients' }];
     case 'client-detail':
@@ -47,17 +52,10 @@ function breadcrumbsFor(route: ActiveRoute): Crumb[] {
 
 export function BillLayout({ children, onNavigate, activeRoute }: BillLayoutProps) {
   const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
   const crumbs = breadcrumbsFor(activeRoute);
   const [launchpadOpen, setLaunchpadOpen] = useState(false);
-
-  const handleLogout = async () => {
-    try {
-      await fetch('/b3/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {
-      // ignore
-    }
-    window.location.href = '/b3/';
-  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
@@ -95,20 +93,14 @@ export function BillLayout({ children, onNavigate, activeRoute }: BillLayoutProp
             </div>
 
             <div className="flex items-center gap-4">
-              <button
-                className="relative rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                title="Notifications"
-              >
-                <Bell className="h-4.5 w-4.5" />
-              </button>
-
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 transition-colors"
-                title="Sign out"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
+              <OrgSwitcher
+                isAuthenticated={isAuthenticated}
+                reloadPath="/bill/"
+                onAfterSwitch={fetchMe}
+                fallbackActiveOrgId={user?.org_id}
+              />
+              <NotificationsBell inAppPrefix="/bill/" onNavigate={onNavigate} />
+              <UserMenu user={user} />
             </div>
           </header>
 

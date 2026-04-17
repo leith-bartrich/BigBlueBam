@@ -19,3 +19,4 @@ export { bondActivities } from './bond-activities.js';
 export { bondDealStageHistory } from './bond-deal-stage-history.js';
 export { bondLeadScoringRules } from './bond-lead-scoring-rules.js';
 export { bondCustomFieldDefinitions } from './bond-custom-field-definitions.js';
+export { bondImportMappings } from './bond-import-mappings.js';

@@ -15,3 +15,5 @@ export { banterUserGroupMemberships } from './user-group-memberships.js';
 export { banterUserPreferences } from './user-preferences.js';
 export { banterSettings } from './settings.js';
 export { banterAuditLog } from './audit-log.js';
+export { banterUserPresence } from './user-presence.js';
+export type { BanterPresenceStatus } from './user-presence.js';

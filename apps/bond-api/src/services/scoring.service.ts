@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bondLeadScoringRules, bondContacts } from '../db/schema/index.js';
 import { notFound } from '../lib/utils.js';
@@ -110,7 +110,13 @@ export async function scoreContact(contactId: string, orgId: string) {
   const [contact] = await db
     .select()
     .from(bondContacts)
-    .where(and(eq(bondContacts.id, contactId), eq(bondContacts.organization_id, orgId)))
+    .where(
+      and(
+        eq(bondContacts.id, contactId),
+        eq(bondContacts.organization_id, orgId),
+        isNull(bondContacts.deleted_at),
+      ),
+    )
     .limit(1);
 
   if (!contact) throw notFound('Contact not found');

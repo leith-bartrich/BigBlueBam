@@ -1,4 +1,4 @@
-import { eq, and, sql, asc, inArray } from 'drizzle-orm';
+import { eq, and, sql, asc, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bondPipelines, bondPipelineStages, bondDeals } from '../db/schema/index.js';
 import { notFound, conflict } from '../lib/utils.js';
@@ -170,11 +170,13 @@ export async function updatePipeline(
 // ---------------------------------------------------------------------------
 
 export async function deletePipeline(id: string, orgId: string) {
-  // Check no deals reference this pipeline
+  // Check no active (non-soft-deleted) deals reference this pipeline. Soft-
+  // deleted deals are ignored here so admins can retire a pipeline whose only
+  // remaining deals have been trashed.
   const [dealCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(bondDeals)
-    .where(eq(bondDeals.pipeline_id, id));
+    .where(and(eq(bondDeals.pipeline_id, id), isNull(bondDeals.deleted_at)));
 
   if ((dealCount?.count ?? 0) > 0) {
     throw conflict('Cannot delete pipeline with existing deals. Move or delete deals first.');
@@ -266,11 +268,11 @@ export async function deleteStage(pipelineId: string, stageId: string, orgId: st
   // Verify pipeline belongs to org
   await getPipeline(pipelineId, orgId);
 
-  // Check no deals are in this stage
+  // Check no active (non-soft-deleted) deals are in this stage.
   const [dealCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(bondDeals)
-    .where(eq(bondDeals.stage_id, stageId));
+    .where(and(eq(bondDeals.stage_id, stageId), isNull(bondDeals.deleted_at)));
 
   if ((dealCount?.count ?? 0) > 0) {
     throw conflict('Cannot delete stage with existing deals. Move deals to another stage first.');

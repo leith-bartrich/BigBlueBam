@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { helpdeskSettings } from '../db/schema/helpdesk-settings.js';
-import { organizations } from '../db/schema/bbb-refs.js';
+import { organizations, projects } from '../db/schema/bbb-refs.js';
 import { verifyAgentApiKey } from '../lib/agent-auth.js';
 
 const updateSettingsSchema = z.object({
@@ -90,11 +90,21 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // GET /helpdesk/settings — full config (requires admin auth)
   // Exposes internal fields like default_project_id and allowed_email_domains
   // that must not leak to unauthenticated callers (HB-13).
-  fastify.get('/helpdesk/settings', { preHandler: [requireAdminAuth] }, async (_request, reply) => {
-    const [settings] = await db
-      .select()
-      .from(helpdeskSettings)
-      .limit(1);
+  // D-010: when X-Org-Slug resolves to an orgId, scope to that org's
+  // settings row; fall back to LIMIT 1 only when the header is absent
+  // so legacy admin tools continue working.
+  fastify.get('/helpdesk/settings', { preHandler: [requireAdminAuth] }, async (request, reply) => {
+    const orgId = request.tenantContext.orgId;
+    const [settings] = orgId
+      ? await db
+          .select()
+          .from(helpdeskSettings)
+          .where(eq(helpdeskSettings.org_id, orgId))
+          .limit(1)
+      : await db
+          .select()
+          .from(helpdeskSettings)
+          .limit(1);
 
     if (!settings) {
       // Return defaults if no settings exist
@@ -118,14 +128,23 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /helpdesk/settings — update config (requires admin auth)
+  // D-010: when X-Org-Slug resolves to an orgId, scope the update to
+  // that org; fall back to LIMIT 1 only for header-less legacy callers.
   fastify.patch('/helpdesk/settings', { preHandler: [requireAdminAuth] }, async (request, reply) => {
     const data = updateSettingsSchema.parse(request.body);
 
-    // Check if settings exist
-    const [existing] = await db
-      .select()
-      .from(helpdeskSettings)
-      .limit(1);
+    const orgId = request.tenantContext.orgId;
+    // Check if settings exist (org-scoped when we have the header).
+    const [existing] = orgId
+      ? await db
+          .select()
+          .from(helpdeskSettings)
+          .where(eq(helpdeskSettings.org_id, orgId))
+          .limit(1)
+      : await db
+          .select()
+          .from(helpdeskSettings)
+          .limit(1);
 
     if (existing) {
       // Update existing
@@ -154,13 +173,21 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       return reply.send({ data: updated });
     }
 
-    // Create new — need an org_id. Use first org.
-    const [org] = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .limit(1);
+    // Create new. D-010: prefer the orgId from the tenant header so a
+    // fresh org's first settings PATCH does not accidentally land on
+    // whatever `SELECT organizations LIMIT 1` happens to return. Falls
+    // back to the legacy "first org" behavior only when the header is
+    // absent.
+    let createOrgId: string | null = orgId;
+    if (!createOrgId) {
+      const [org] = await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .limit(1);
+      createOrgId = org?.id ?? null;
+    }
 
-    if (!org) {
+    if (!createOrgId) {
       return reply.status(400).send({
         error: {
           code: 'NO_ORGANIZATION',
@@ -174,7 +201,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     const [created] = await db
       .insert(helpdeskSettings)
       .values({
-        org_id: org.id,
+        org_id: createOrgId,
         ...data,
         categories: data.categories ?? [],
         allowed_email_domains: data.allowed_email_domains ?? [],
@@ -183,4 +210,43 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
 
     return reply.status(201).send({ data: created });
   });
+
+  // GET /helpdesk/admin/projects: list the tenant org's projects with
+  // their uuids, for admin surfaces that need to populate a "default
+  // project" picker. Requires admin auth AND X-Org-Slug to pin the org.
+  // D-010: without X-Org-Slug we fall back to the PATCH /helpdesk/settings
+  // pattern of using the first org; that keeps legacy admin tools working
+  // but the SPA-integrated picker should always send the header.
+  fastify.get(
+    '/helpdesk/admin/projects',
+    { preHandler: [requireAdminAuth] },
+    async (request, reply) => {
+      let orgId: string | null = request.tenantContext.orgId;
+      if (!orgId) {
+        const [org] = await db
+          .select({ id: organizations.id })
+          .from(organizations)
+          .limit(1);
+        orgId = org?.id ?? null;
+      }
+      if (!orgId) {
+        return reply.status(400).send({
+          error: {
+            code: 'NO_ORGANIZATION',
+            message: 'No organization context available.',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const rows = await db
+        .select({ id: projects.id, slug: projects.slug, name: projects.name })
+        .from(projects)
+        .where(and(eq(projects.org_id, orgId), eq(projects.is_archived, false)))
+        .orderBy(asc(projects.name));
+
+      return reply.send({ data: rows });
+    },
+  );
 }

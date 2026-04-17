@@ -1,25 +1,13 @@
 // scripts/seed-brief.js
-// Seed Brief with demo documents, folders, comments, and templates for Mage Inc.
-// Run: node scripts/seed-brief.js
+// Seed Brief with demo documents, folders, comments, and templates.
+// Resolves the target org via SEED_ORG_SLUG env var (set by the orchestrator)
+// or --org-slug=<slug> CLI arg, falling back to the oldest org in the DB.
+// Run: SEED_ORG_SLUG=mage-inc node scripts/seed-brief.js
 // Requires: DATABASE_URL env var or running postgres on localhost:5432
+// idempotent: skip-if-any-document-already-present
 
 import postgres from 'postgres';
 import crypto from 'crypto';
-
-const ORG_ID = '57158e52-227d-4903-b0d8-d9f3c4910f61';
-const PROJECT_ID = '650b38cb-3b36-4014-bf96-17f7617b326a';
-const USER_IDS = [
-  '65429e63-65c7-4f74-a19e-977217128edc', // eddie
-  'cffb3330-4868-4741-95f4-564efe27836a', // alex
-  'f290dd98-65fa-403a-9778-6dbda873fc98', // ryan
-  '138894b9-58ef-4eb4-9d27-bf36fff48885', // maya
-  'baa36964-d672-4271-ae96-b0cf5b1062a4', // sam
-  '5e77088e-6d83-4821-8f9d-7857d2aefb68', // jordan
-  '851ecd19-c928-4263-9869-e1904b554276', // taylor
-  'dd98bdfe-7ee4-4bd3-b6ee-70fb8fc0efc8', // casey
-  '0d79e8fa-d206-4f0a-90df-5669e9fab286', // drew
-  '969d36a7-a10d-4a64-99dc-f2a95fe2b038', // avery
-];
 
 const NOW = new Date();
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -747,8 +735,6 @@ const COMMENTS_DATA = [
 // ── Main seed function ───────────────────────────────────────────────────────
 
 async function seed() {
-  console.log('Seeding Brief data for Mage Inc...\n');
-
   // Check if tables exist
   const tableCheck = await sql`
     SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'brief_documents')
@@ -758,24 +744,45 @@ async function seed() {
     process.exit(1);
   }
 
-  // Clean existing data
-  await sql`DELETE FROM brief_stars WHERE document_id IN (SELECT id FROM brief_documents WHERE organization_id = ${ORG_ID})`;
-  await sql`DELETE FROM brief_comment_reactions WHERE comment_id IN (SELECT c.id FROM brief_comments c JOIN brief_documents d ON c.document_id = d.id WHERE d.organization_id = ${ORG_ID})`;
-  await sql`DELETE FROM brief_comments WHERE document_id IN (SELECT id FROM brief_documents WHERE organization_id = ${ORG_ID})`;
-  await sql`DELETE FROM brief_versions WHERE document_id IN (SELECT id FROM brief_documents WHERE organization_id = ${ORG_ID})`;
-  await sql`DELETE FROM brief_embeds WHERE document_id IN (SELECT id FROM brief_documents WHERE organization_id = ${ORG_ID})`;
-  await sql`DELETE FROM brief_collaborators WHERE document_id IN (SELECT id FROM brief_documents WHERE organization_id = ${ORG_ID})`;
-  await sql`DELETE FROM brief_documents WHERE organization_id = ${ORG_ID}`;
-  await sql`DELETE FROM brief_folders WHERE organization_id = ${ORG_ID}`;
-  await sql`DELETE FROM brief_templates WHERE organization_id = ${ORG_ID} OR organization_id IS NULL`;
-  console.log('Cleaned existing Brief data.');
+  // ── Resolve target org dynamically ─────────────────────────────────────
+  const orgSlug = process.env.SEED_ORG_SLUG
+    ?? process.argv.find((a) => a.startsWith('--org-slug='))?.split('=')[1];
+  const [org] = orgSlug
+    ? await sql`SELECT id, name FROM organizations WHERE slug = ${orgSlug} LIMIT 1`
+    : await sql`SELECT id, name FROM organizations ORDER BY created_at LIMIT 1`;
+  if (!org) {
+    console.error('No org found, run create-admin first');
+    process.exit(1);
+  }
+  const ORG_ID = org.id;
+  console.log(`Seeding Brief data for org: ${org.name} (${ORG_ID})\n`);
+
+  const users = await sql`SELECT id FROM users WHERE org_id = ${ORG_ID} ORDER BY created_at`;
+  if (users.length === 0) {
+    console.error('No users in org, run create-admin first');
+    process.exit(1);
+  }
+  const USER_IDS = users.map((u) => u.id);
+  console.log(`User pool: ${USER_IDS.length} users (round-robin assignment)`);
+
+  const projects = await sql`SELECT id FROM projects WHERE org_id = ${ORG_ID} ORDER BY created_at LIMIT 1`;
+  const PROJECT_ID = projects.length > 0 ? projects[0].id : null;
+
+  // Idempotency guard: skip if the org already has Brief documents seeded.
+  // We intentionally do NOT delete existing rows; re-runs are a no-op.
+  const [{ count: existingDocs }] = await sql`SELECT COUNT(*)::int AS count FROM brief_documents WHERE org_id = ${ORG_ID}`;
+  if (existingDocs > 0) {
+    console.log(`Brief seed: ${existingDocs} documents already exist for this org, skipping.`);
+    await sql.end();
+    return;
+  }
 
   // ── Insert folders ──
   const folderIds = {};
   for (const f of FOLDERS) {
     const id = uuid();
     await sql`
-      INSERT INTO brief_folders (id, organization_id, project_id, name, slug, sort_order, created_by)
+      INSERT INTO brief_folders (id, org_id, project_id, name, slug, sort_order, created_by)
       VALUES (${id}, ${ORG_ID}, ${PROJECT_ID}, ${f.name}, ${f.slug}, ${FOLDERS.indexOf(f)}, ${USER_IDS[0]})
       ON CONFLICT DO NOTHING
     `;
@@ -786,7 +793,7 @@ async function seed() {
   // ── Insert templates ──
   for (const t of TEMPLATES) {
     await sql`
-      INSERT INTO brief_templates (id, organization_id, name, description, icon, category, yjs_state, sort_order, created_by)
+      INSERT INTO brief_templates (id, org_id, name, description, icon, category, yjs_state, sort_order, created_by)
       VALUES (${uuid()}, NULL, ${t.name}, ${t.description}, ${t.icon}, ${t.category}, ${Buffer.from('{}')}, ${TEMPLATES.indexOf(t)}, ${USER_IDS[0]})
       ON CONFLICT DO NOTHING
     `;
@@ -806,7 +813,7 @@ async function seed() {
 
     await sql`
       INSERT INTO brief_documents (
-        id, organization_id, project_id, folder_id, title, slug,
+        id, org_id, project_id, folder_id, title, slug,
         plain_text, html_snapshot, icon, status, visibility, pinned,
         word_count, created_by, updated_by, created_at, updated_at
       ) VALUES (
@@ -833,7 +840,9 @@ async function seed() {
     let parentId = null;
     for (const c of cd.comments) {
       const id = uuid();
-      const authorId = USER_IDS[c.author];
+      // Round-robin through the available user pool. Historical authors were
+      // specific named engineers; with a dynamic org we just rotate.
+      const authorId = USER_IDS[c.author % USER_IDS.length];
       await sql`
         INSERT INTO brief_comments (id, document_id, parent_id, author_id, body, created_at, updated_at)
         VALUES (${id}, ${docId}, ${c.isReply ? parentId : null}, ${authorId}, ${c.body}, ${randomBetween(daysAgo(30), NOW)}, ${NOW})

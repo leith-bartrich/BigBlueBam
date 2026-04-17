@@ -209,6 +209,34 @@ export default async function formRoutes(fastify: FastifyInstance) {
     { preHandler: [requireAuth, requireMinRole('admin')] },
     async (request, reply) => {
       const form = await formService.closeForm(request.params.id, request.user!.org_id);
+      // Fire-and-forget enriched Bolt event. The submission count is the
+      // interesting payload for rules that want to kick off a wrap-up report.
+      Promise.all([
+        enrichForm(form.id),
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+      ])
+        .then(([enriched, actor, org]) => {
+          publishBoltEvent(
+            'form.closed',
+            'blank',
+            {
+              form: enriched ?? {
+                id: form.id,
+                title: form.name,
+                slug: form.slug,
+                form_type: form.form_type,
+              },
+              total_submissions: form.submission_count ?? 0,
+              actor,
+              org,
+            },
+            request.user!.org_id,
+            request.user!.id,
+            'user',
+          );
+        })
+        .catch(() => {});
       return reply.send({ data: form });
     },
   );

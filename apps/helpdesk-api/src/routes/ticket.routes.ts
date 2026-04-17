@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { eq, and, asc, desc, gte, gt, lt, or, inArray } from 'drizzle-orm';
+import { eq, and, asc, desc, gte, gt, lt, or, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { tickets } from '../db/schema/tickets.js';
 import { ticketMessages } from '../db/schema/ticket-messages.js';
@@ -15,6 +15,9 @@ import { broadcastTaskCreated, broadcastTicketStatusChanged } from '../lib/broad
 import { mirrorTicketMessageToTask, mirrorTicketClosedToTask } from '../lib/task-sync.js';
 import { bbbClient } from '../lib/bbb-client.js';
 import { stripHtml } from '../lib/strip-html.js';
+import { publishBoltEvent } from '../lib/bolt-events.js';
+import { resolveTicketOrgId } from '../lib/ticket-org.js';
+import { projects } from '../db/schema/bbb-refs.js';
 import {
   broadcastTicketMessage,
   broadcastTicketStatusChanged as broadcastTicketStatusChangedRT,
@@ -52,6 +55,75 @@ function buildDedupHash(userId: string, subject: string, description: string, ex
 }
 
 export default async function ticketRoutes(fastify: FastifyInstance) {
+  // GET /helpdesk/tickets/search. G5: ranked full-text search across the
+  // caller's OWN tickets, using the tickets.search_vector tsvector
+  // (subject weighted A, description weighted B) created in migration
+  // 0112. Returns up to `limit` rows ordered by ts_rank descending,
+  // optionally filtered by status. The query uses plainto_tsquery so
+  // user input cannot inject tsquery operators.
+  //
+  // Registered BEFORE /helpdesk/tickets/:id so the literal /search
+  // segment wins Fastify's router match.
+  fastify.get(
+    '/helpdesk/tickets/search',
+    { preHandler: [requireHelpdeskAuth] },
+    async (request, reply) => {
+      const user = request.helpdeskUser!;
+      const query = z
+        .object({
+          q: z.string().min(1).max(500),
+          limit: z.coerce.number().int().min(1).max(50).default(20),
+          offset: z.coerce.number().int().min(0).max(500).default(0),
+          status: z
+            .enum(['open', 'in_progress', 'waiting_on_customer', 'resolved', 'closed'])
+            .optional(),
+        })
+        .parse(request.query ?? {});
+
+      // Cast the user input through plainto_tsquery so tsquery operators
+      // in the text are neutralized. ts_rank uses the same tsquery so
+      // relevance ordering lines up with the filter.
+      const tsQueryExpr = sql`plainto_tsquery('english', ${query.q})`;
+      const rankExpr = sql<number>`ts_rank(${tickets.search_vector}, ${tsQueryExpr})`;
+
+      const whereClause = query.status
+        ? and(
+            eq(tickets.helpdesk_user_id, user.id),
+            eq(tickets.status, query.status),
+            sql`${tickets.search_vector} @@ ${tsQueryExpr}`,
+          )
+        : and(
+            eq(tickets.helpdesk_user_id, user.id),
+            sql`${tickets.search_vector} @@ ${tsQueryExpr}`,
+          );
+
+      const rows = await db
+        .select({
+          id: tickets.id,
+          ticket_number: tickets.ticket_number,
+          subject: tickets.subject,
+          status: tickets.status,
+          priority: tickets.priority,
+          category: tickets.category,
+          created_at: tickets.created_at,
+          updated_at: tickets.updated_at,
+          rank: rankExpr,
+        })
+        .from(tickets)
+        .where(whereClause)
+        .orderBy(sql`${rankExpr} DESC`, desc(tickets.updated_at))
+        .limit(query.limit)
+        .offset(query.offset);
+
+      return reply.send({
+        data: rows,
+        query: query.q,
+        limit: query.limit,
+        offset: query.offset,
+      });
+    },
+  );
+
   // GET /helpdesk/tickets — list current user's tickets
   fastify.get('/helpdesk/tickets', { preHandler: [requireHelpdeskAuth] }, async (request, reply) => {
     const user = request.helpdeskUser!;
@@ -139,13 +211,71 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Look up helpdesk settings for default project/phase
-    const [settings] = await db
-      .select()
-      .from(helpdeskSettings)
-      .limit(1);
+    // D-010: resolve target project via tenant context. Precedence:
+    //   1. X-Project-Slug resolved to a project id (per-project portal).
+    //   2. helpdesk_settings.default_project_id scoped to X-Org-Slug.
+    //   3. Oldest project in the org (persisted back to
+    //      helpdesk_settings.default_project_id so the next ticket skips
+    //      the fallback query).
+    // Legacy path (no X-Org-Slug header, direct API client): fall back to
+    // the historical "first settings row" lookup so existing automations
+    // keep working while the SPA rolls out the path-based portal.
+    let settings: typeof helpdeskSettings.$inferSelect | undefined;
+    if (request.tenantContext.orgId) {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .where(eq(helpdeskSettings.org_id, request.tenantContext.orgId))
+        .limit(1);
+      settings = rows[0];
+    } else {
+      const rows = await db
+        .select()
+        .from(helpdeskSettings)
+        .limit(1);
+      settings = rows[0];
+    }
 
-    const projectId: string | null = settings?.default_project_id ?? null;
+    let projectId: string | null =
+      request.tenantContext.projectId ?? settings?.default_project_id ?? null;
+
+    // Oldest-project fallback with write-back, but only when we know the
+    // owning org. If we somehow got this far without an org id (legacy
+    // callers that hit a stack with no helpdesk_settings row) we skip the
+    // fallback entirely; the downstream code already tolerates NULL
+    // projectId by leaving the ticket unlinked.
+    if (!projectId && request.tenantContext.orgId) {
+      const [oldestProject] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(
+          and(
+            eq(projects.org_id, request.tenantContext.orgId),
+            eq(projects.is_archived, false),
+          ),
+        )
+        .orderBy(asc(projects.created_at))
+        .limit(1);
+
+      if (oldestProject) {
+        projectId = oldestProject.id;
+        if (settings) {
+          // Persist the choice so the next ticket in this org does not
+          // re-run the fallback query. Failure is non-fatal (a later
+          // ticket will just re-pick the same oldest project).
+          await db
+            .update(helpdeskSettings)
+            .set({ default_project_id: projectId, updated_at: new Date() })
+            .where(eq(helpdeskSettings.id, settings.id))
+            .catch((err: unknown) => {
+              request.log.warn(
+                { err, orgId: request.tenantContext.orgId, projectId },
+                'Failed to persist fallback default_project_id; non-fatal',
+              );
+            });
+        }
+      }
+    }
 
     // HB-7: Task creation now goes through Bam's /internal/helpdesk/* API
     // rather than direct SQL. The request ordering is: (1) persist the
@@ -263,6 +393,41 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         },
         logger: request.log,
       });
+
+      // G3: Bolt event emission. Resolve the owning org via the ticket's
+      // linked project. Fire-and-forget (any transport failure is swallowed
+      // by publishBoltEvent so a Bolt outage cannot stall ticket creation).
+      // Unlinked tickets (no project_id) skip emission because Bolt rejects
+      // ingest payloads without an org_id.
+      if (projectId) {
+        const orgIdForEvent =
+          (
+            await db
+              .select({ org_id: projects.org_id })
+              .from(projects)
+              .where(eq(projects.id, projectId))
+              .limit(1)
+          )[0]?.org_id ?? null;
+        if (orgIdForEvent) {
+          void publishBoltEvent(
+            'ticket.created',
+            'helpdesk',
+            {
+              ticket_id: result.ticket.id,
+              ticket_number: result.ticket.ticket_number,
+              subject: result.ticket.subject,
+              priority: result.ticket.priority,
+              category: result.ticket.category,
+              task_id: result.taskId,
+              helpdesk_user_id: user.id,
+              customer_email: user.email,
+            },
+            orgIdForEvent,
+            user.id,
+            'user',
+          );
+        }
+      }
 
       return reply.status(201).send({
         data: {
@@ -573,6 +738,25 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         details: { message_id: message.id, is_internal: false },
         logger: request.log,
       });
+
+      // G3: ticket.message_posted Bolt event. Fire-and-forget.
+      const orgIdForEvent = await resolveTicketOrgId(id);
+      if (orgIdForEvent) {
+        void publishBoltEvent(
+          'ticket.message_posted',
+          'helpdesk',
+          {
+            ticket_id: id,
+            message_id: message.id,
+            author_type: 'customer',
+            helpdesk_user_id: user.id,
+            is_internal: false,
+          },
+          orgIdForEvent,
+          user.id,
+          'user',
+        );
+      }
     }
 
     // HB-15: If the ticket was waiting on the customer, flip it back to open
@@ -599,6 +783,25 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         details: { from: 'waiting_on_customer', to: 'open', reason: 'customer_reply' },
         logger: request.log,
       });
+
+      // G3: emit status_changed on the auto-flip as well so Bolt rules
+      // that react to status transitions see the system-driven move.
+      const autoFlipOrgId = await resolveTicketOrgId(id);
+      if (autoFlipOrgId) {
+        void publishBoltEvent(
+          'ticket.status_changed',
+          'helpdesk',
+          {
+            ticket_id: id,
+            from: 'waiting_on_customer',
+            to: 'open',
+            reason: 'customer_reply',
+          },
+          autoFlipOrgId,
+          undefined,
+          'system',
+        );
+      }
     }
 
     return reply.status(201).send({ data: message });
@@ -724,6 +927,36 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         details: { from: ticket.status, to: 'open' },
         logger: request.log,
       });
+
+      // G3: ticket.reopened + ticket.status_changed Bolt events.
+      const orgIdForReopen = await resolveTicketOrgId(id);
+      if (orgIdForReopen) {
+        void publishBoltEvent(
+          'ticket.reopened',
+          'helpdesk',
+          {
+            ticket_id: id,
+            'ticket.reopened_by': user.id,
+            'ticket.reopened_at': new Date().toISOString(),
+            from: ticket.status,
+          },
+          orgIdForReopen,
+          user.id,
+          'user',
+        );
+        void publishBoltEvent(
+          'ticket.status_changed',
+          'helpdesk',
+          {
+            ticket_id: id,
+            from: ticket.status,
+            to: 'open',
+          },
+          orgIdForReopen,
+          user.id,
+          'user',
+        );
+      }
     }
 
     return reply.send({ data: updated });
@@ -814,6 +1047,38 @@ export default async function ticketRoutes(fastify: FastifyInstance) {
         details: { from: ticket.status, to: 'closed' },
         logger: request.log,
       });
+
+      // G3: ticket.closed + ticket.status_changed Bolt events.
+      const orgIdForClose = await resolveTicketOrgId(id);
+      if (orgIdForClose) {
+        void publishBoltEvent(
+          'ticket.closed',
+          'helpdesk',
+          {
+            ticket_id: id,
+            'ticket.closed_by': user.id,
+            'ticket.closed_at': new Date().toISOString(),
+            from: ticket.status,
+          },
+          orgIdForClose,
+          user.id,
+          'user',
+        );
+        if (ticket.status !== 'closed') {
+          void publishBoltEvent(
+            'ticket.status_changed',
+            'helpdesk',
+            {
+              ticket_id: id,
+              from: ticket.status,
+              to: 'closed',
+            },
+            orgIdForClose,
+            user.id,
+            'user',
+          );
+        }
+      }
     }
 
     // HB-16 + HB-7: Move the linked Bam task to a terminal phase via the

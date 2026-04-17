@@ -1,9 +1,18 @@
 const http = require('http');
 
 // ─── Config ─────────────────────────────────────────────────────────────────
-const PROJECT_ID = '650b38cb-3b36-4014-bf96-17f7617b326a';
-const ADMIN_EMAIL = 'mcp@mage.io';
-const ADMIN_PASSWORD = 'mcpadmin12345678';
+// PROJECT_ID is resolved dynamically at runtime via /b3/api/projects; the
+// script picks the first project visible to the logged-in admin. Override
+// with SEED_PROJECT_ID if you need a specific project, or use --project-id=...
+// SEED_ORG_SLUG is accepted for orchestrator parity; the actual org is
+// determined by whichever session the admin credentials log into.
+const SEED_ORG_SLUG_HINT = process.env.SEED_ORG_SLUG
+  ?? process.argv.find((a) => a.startsWith('--org-slug='))?.split('=')[1];
+const SEED_PROJECT_ID_OVERRIDE = process.env.SEED_PROJECT_ID
+  ?? process.argv.find((a) => a.startsWith('--project-id='))?.split('=')[1];
+let PROJECT_ID = SEED_PROJECT_ID_OVERRIDE || null;
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'mcp@mage.io';
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'mcpadmin12345678';
 const TODAY = '2026-04-03';
 
 let bbbCookie = ''; // session=... from BBB login
@@ -300,6 +309,22 @@ const customerFollowUps = [
     } else {
       console.error('  FAILED to login:', JSON.stringify(loginRes.body));
       process.exit(1);
+    }
+
+    // ── Step 1b: Resolve PROJECT_ID if not supplied ───────────────────────
+    if (!PROJECT_ID) {
+      console.log('  Resolving target project via /b3/api/projects...');
+      const projRes = await bbbApi('GET', '/projects');
+      const projList = projRes.body?.data || [];
+      if (projList.length === 0) {
+        console.error('  No projects visible to this admin. Create one first via MCP or Bam UI.');
+        process.exit(1);
+      }
+      PROJECT_ID = projList[0].id;
+      console.log(`  Using project: "${projList[0].name}" (${PROJECT_ID})`);
+      if (SEED_ORG_SLUG_HINT) {
+        console.log(`  (SEED_ORG_SLUG=${SEED_ORG_SLUG_HINT} hint noted; org is selected by admin login session)`);
+      }
     }
 
     // ── Step 2: Fetch phases (needed to create tasks) ─────────────────────

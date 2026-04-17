@@ -64,6 +64,16 @@ export const briefDocuments = pgTable(
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     archived_at: timestamp('archived_at', { withTimezone: true }),
+    // Wave 2 — 0103_brief_yjs_state_tracking.sql
+    // Tracks the last time Hocuspocus persistence flushed yjs_state so we can
+    // debounce redundant writes and skip re-embedding documents whose binary
+    // state has not changed.
+    yjs_last_saved_at: timestamp('yjs_last_saved_at', { withTimezone: true }),
+    // Wave 2 — 0104_brief_qdrant_embedded_at.sql
+    // NULL until the document has been chunked, embedded, and upserted into
+    // the Qdrant `brief_documents` collection. Compared against updated_at to
+    // detect stale embeddings that need re-indexing.
+    qdrant_embedded_at: timestamp('qdrant_embedded_at', { withTimezone: true }),
   },
   (table) => [
     index('idx_brief_documents_org_project_status').on(

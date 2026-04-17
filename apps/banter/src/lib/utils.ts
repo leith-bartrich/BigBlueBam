@@ -76,8 +76,26 @@ export function presenceColor(status: string): string {
     case 'dnd':
       return 'bg-presence-dnd';
     case 'in_call':
-      return 'bg-presence-online';
+      return 'bg-presence-in-call';
     default:
       return 'bg-presence-offline';
+  }
+}
+
+/** Presence status to a short human label. */
+export function presenceLabel(status: string): string {
+  switch (status) {
+    case 'online':
+      return 'Online';
+    case 'idle':
+      return 'Idle';
+    case 'dnd':
+      return 'Do not disturb';
+    case 'in_call':
+      return 'In a call';
+    case 'offline':
+      return 'Offline';
+    default:
+      return status;
   }
 }

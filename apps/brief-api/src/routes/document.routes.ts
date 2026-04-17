@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole, requireDocumentAccess, requireDocumentEditAccess } from '../middleware/authorize.js';
 import * as documentService from '../services/document.service.js';
+import {
+  loadYjsState,
+  saveYjsStateImmediate,
+  debounceYjsUpdate,
+} from '../services/yjs-persistence.service.js';
+import { invalidateDocumentEmbedding } from '../services/embedding.service.js';
 
 const createDocumentSchema = z.object({
   title: z.string().min(1).max(512).optional(),
@@ -64,6 +70,19 @@ const searchDocumentsQuerySchema = z.object({
   query: z.string().min(1).max(500),
   project_id: z.string().uuid().optional(),
   status: z.string().optional(),
+});
+
+// Yjs state payload. Accepts the binary state as a base64 string so the
+// route works with the standard JSON body parser without a multipart plugin.
+// Hard cap at ~4 MB of binary (5.5 MB base64) to keep the request cheap; real
+// collaborative docs fit well under this.
+const yjsStateSchema = z.object({
+  state: z
+    .string()
+    .min(1)
+    .max(5_500_000)
+    .regex(/^[A-Za-z0-9+/=]+$/, 'state must be base64'),
+  immediate: z.boolean().optional(),
 });
 
 export default async function documentRoutes(fastify: FastifyInstance) {
@@ -351,6 +370,112 @@ export default async function documentRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
       );
       return reply.send({ data: updated });
+    },
+  );
+
+  // GET /documents/:id/yjs-state — Fetch the raw Yjs binary state as base64.
+  // Used by the Hocuspocus client provider on connect. Kept as a separate
+  // endpoint (rather than part of GET /documents/:id) because yjs_state can be
+  // large and most callers do not need it.
+  fastify.get<{ Params: { id: string } }>(
+    '/documents/:id/yjs-state',
+    { preHandler: [requireAuth, requireDocumentAccess()] },
+    async (request, reply) => {
+      const doc = (request as any).document;
+      const result = await loadYjsState(doc.id, request.user!.org_id);
+      if (!result) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Document not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      return reply.send({
+        data: {
+          document_id: doc.id,
+          state: result.state ? Buffer.from(result.state).toString('base64') : null,
+          yjs_last_saved_at: result.yjs_last_saved_at?.toISOString() ?? null,
+        },
+      });
+    },
+  );
+
+  // PUT /documents/:id/yjs-state — Persist a full Yjs state snapshot. Body:
+  //   { state: <base64>, immediate?: boolean }
+  // Writes are debounced at 30s per document unless `immediate` is set (used
+  // by the client on disconnect / beforeunload). Invalidates the Qdrant
+  // embedding watermark so the next worker tick re-indexes the document.
+  fastify.put<{ Params: { id: string } }>(
+    '/documents/:id/yjs-state',
+    {
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+      preHandler: [requireAuth, requireDocumentEditAccess(), requireScope('read_write')],
+    },
+    async (request, reply) => {
+      const body = yjsStateSchema.parse(request.body);
+      const doc = (request as any).document;
+      const orgId = request.user!.org_id;
+      const userId = request.user!.id;
+
+      let stateBuf: Buffer;
+      try {
+        stateBuf = Buffer.from(body.state, 'base64');
+      } catch {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'state must be valid base64',
+            details: [{ field: 'state', issue: 'invalid base64' }],
+            request_id: request.id,
+          },
+        });
+      }
+      if (stateBuf.byteLength === 0) {
+        return reply.status(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'state must decode to at least one byte',
+            details: [{ field: 'state', issue: 'empty' }],
+            request_id: request.id,
+          },
+        });
+      }
+
+      if (body.immediate) {
+        const ok = await saveYjsStateImmediate(doc.id, stateBuf, orgId, userId);
+        if (!ok) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Document not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        // Content changed — mark the embedding stale so brief:embed re-indexes.
+        invalidateDocumentEmbedding(doc.id, orgId).catch(() => {});
+        return reply.send({
+          data: {
+            document_id: doc.id,
+            status: 'saved',
+            bytes: stateBuf.byteLength,
+          },
+        });
+      }
+
+      debounceYjsUpdate(doc.id, stateBuf, orgId, userId, false);
+      invalidateDocumentEmbedding(doc.id, orgId).catch(() => {});
+      return reply.status(202).send({
+        data: {
+          document_id: doc.id,
+          status: 'pending',
+          bytes: stateBuf.byteLength,
+        },
+      });
     },
   );
 }

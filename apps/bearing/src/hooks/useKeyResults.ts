@@ -33,10 +33,9 @@ export interface KrLink {
 export interface KrHistoryEntry {
   id: string;
   key_result_id: string;
-  old_value: number;
-  new_value: number;
-  changed_by_name: string;
-  note: string | null;
+  value: string;
+  progress: string;
+  recorded_at: string;
   created_at: string;
 }
 

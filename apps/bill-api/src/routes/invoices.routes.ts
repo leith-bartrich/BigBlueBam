@@ -4,6 +4,7 @@ import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as invoiceService from '../services/invoice.service.js';
 import * as lineItemService from '../services/line-item.service.js';
 import * as pdfService from '../services/pdf.service.js';
+import * as workerJobService from '../services/worker-job.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
 import {
   buildInvoiceUrl,
@@ -200,7 +201,22 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     '/invoices/:id/finalize',
     { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
-      const invoice = await invoiceService.finalizeInvoice(request.params.id, request.user!.org_id);
+      const invoice = await invoiceService.finalizeInvoice(
+        request.params.id,
+        request.user!.org_id,
+        fastify.redis,
+      );
+      // G1: enqueue async PDF generation. Worker handler lives in
+      // apps/worker/src/jobs/bill-pdf-generate.job.ts (deferred). Until it
+      // lands the row remains in 'pending' status and the SPA surfaces
+      // that via latestJobForInvoice so users see "PDF generating...".
+      const pdfJob = await workerJobService
+        .enqueueWorkerJob({
+          organization_id: request.user!.org_id,
+          invoice_id: invoice.id,
+          job_type: 'pdf_generate',
+        })
+        .catch(() => null);
       // Fetch related entities in parallel for enriched event payload.
       const [actor, org, customer, lineItemCount] = await Promise.all([
         loadActor(request.user!.id),
@@ -244,7 +260,12 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
         request.user!.id,
         'user',
       );
-      return reply.send({ data: invoice });
+      return reply.send({
+        data: invoice,
+        pdf_job: pdfJob
+          ? { id: pdfJob.id, status: pdfJob.status, job_type: pdfJob.job_type }
+          : null,
+      });
     },
   );
 
@@ -253,8 +274,69 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
     '/invoices/:id/send',
     { preHandler: [requireAuth, requireMinRole('admin'), requireScope('read_write')] },
     async (request, reply) => {
-      const invoice = await invoiceService.sendInvoice(request.params.id, request.user!.org_id);
-      return reply.send({ data: invoice });
+      const invoice = await invoiceService.sendInvoice(
+        request.params.id,
+        request.user!.org_id,
+      );
+      // G2: enqueue async email delivery. Worker handler lives in
+      // apps/worker/src/jobs/bill-email-send.job.ts (deferred). Row sits in
+      // 'pending' until the handler picks it up.
+      const emailJob = await workerJobService
+        .enqueueWorkerJob({
+          organization_id: request.user!.org_id,
+          invoice_id: invoice.id,
+          job_type: 'email_send',
+        })
+        .catch(() => null);
+      // Fetch related entities in parallel for enriched event payload.
+      const [actor, org, customer, lineItemCount] = await Promise.all([
+        loadActor(request.user!.id),
+        loadOrg(request.user!.org_id),
+        loadCustomer(invoice.client_id, request.user!.org_id),
+        countLineItems(invoice.id),
+      ]);
+      publishBoltEvent(
+        'invoice.sent',
+        'bill',
+        {
+          invoice: {
+            id: invoice.id,
+            number: invoice.invoice_number,
+            status: invoice.status,
+            customer_id: invoice.client_id,
+            customer_name: customer.name,
+            customer_email: customer.email,
+            company_id: customer.company_id,
+            company_name: customer.name,
+            project_id: invoice.project_id,
+            deal_id: invoice.bond_deal_id,
+            subtotal: invoice.subtotal,
+            tax_amount: invoice.tax_amount,
+            discount_amount: invoice.discount_amount,
+            total: invoice.total,
+            amount_paid: invoice.amount_paid,
+            currency: invoice.currency,
+            issue_date: invoice.invoice_date,
+            due_date: invoice.due_date,
+            payment_terms_days: invoice.payment_terms_days,
+            line_item_count: lineItemCount,
+            url: buildInvoiceUrl(invoice.id),
+            pdf_url: buildInvoicePdfUrl(invoice.public_view_token),
+            sent_at: invoice.sent_at,
+          },
+          actor: { id: actor.id, name: actor.name, email: actor.email },
+          org: { id: org.id, name: org.name, slug: org.slug },
+        },
+        request.user!.org_id,
+        request.user!.id,
+        'user',
+      );
+      return reply.send({
+        data: invoice,
+        email_job: emailJob
+          ? { id: emailJob.id, status: emailJob.status, job_type: emailJob.job_type }
+          : null,
+      });
     },
   );
 
@@ -279,6 +361,35 @@ export default async function invoiceRoutes(fastify: FastifyInstance) {
         request.user!.id,
       );
       return reply.status(201).send({ data: invoice });
+    },
+  );
+
+  // GET /invoices/:id/jobs — return the latest async job state for this
+  // invoice so the SPA can render "PDF generating..." or "Email queued..."
+  // status chips without having to poll BullMQ directly. Callers read both
+  // rows in a single request to keep the wire chat low.
+  fastify.get<{ Params: { id: string } }>(
+    '/invoices/:id/jobs',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const [pdf, email] = await Promise.all([
+        workerJobService.latestJobForInvoice(
+          request.user!.org_id,
+          request.params.id,
+          'pdf_generate',
+        ),
+        workerJobService.latestJobForInvoice(
+          request.user!.org_id,
+          request.params.id,
+          'email_send',
+        ),
+      ]);
+      return reply.send({
+        data: {
+          pdf_generate: pdf,
+          email_send: email,
+        },
+      });
     },
   );
 

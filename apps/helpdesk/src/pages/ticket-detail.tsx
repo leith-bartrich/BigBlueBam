@@ -3,6 +3,7 @@ import { useTicket, usePostMessage, useReopenTicket, useMarkDuplicate, useUnmark
 import { useRealtimeTicket } from '@/hooks/use-realtime-ticket';
 import { useTicketMessages } from '@/hooks/use-ticket-messages';
 import { useSendTyping } from '@/hooks/use-typing';
+import { useTicketAttachments } from '@/hooks/use-attachments';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/common/button';
 import { StatusBadge, PriorityBadge } from '@/components/common/badge';
@@ -12,7 +13,7 @@ import { TypingIndicator } from '@/components/typing-indicator';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { api } from '@/lib/api';
-import { ArrowLeft, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare, Copy, X } from 'lucide-react';
+import { ArrowLeft, Send, RotateCcw, CheckCircle, ChevronDown, MessageSquareShare, Copy, X, Paperclip } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface TicketDetailPageProps {
@@ -30,6 +31,8 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
   const { user } = useAuthStore();
   const { visibleMessages, hasMore, loadMore, totalMessages } = useTicketMessages(ticketId);
   const { sendTyping } = useSendTyping(ticketId);
+  const { data: attachmentsData } = useTicketAttachments(ticketId);
+  const attachments = attachmentsData?.data ?? [];
 
   const [replyText, setReplyText] = useState('');
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
@@ -485,6 +488,51 @@ export function TicketDetailPage({ ticketId, onNavigate }: TicketDetailPageProps
           dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(ticket.description)) }}
         />
       </div>
+
+      {/* Attachments */}
+      {attachments.length > 0 && (
+        <div className="mb-6 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
+          <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 mb-3 flex items-center gap-2">
+            <Paperclip className="h-4 w-4" />
+            Attachments ({attachments.length})
+          </h2>
+          <div className="space-y-2">
+            {attachments.map((att) => {
+              const sizeKb = Math.round((att.size_bytes ?? 0) / 1024);
+              const blocked = att.scan_status === 'infected' || att.scan_status === 'failed';
+              return (
+                <div
+                  key={att.id}
+                  className="flex items-center justify-between rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm"
+                >
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                      {att.filename}
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {sizeKb} KB
+                      {att.content_type ? ` • ${att.content_type}` : ''}
+                      {att.scan_status ? ` • scan: ${att.scan_status}` : ''}
+                    </span>
+                  </div>
+                  {att.url && !blocked ? (
+                    <a
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      Download
+                    </a>
+                  ) : (
+                    <span className="text-xs text-zinc-400">Unavailable</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Resolved/Closed banner */}
       {isClosedOrResolved && (

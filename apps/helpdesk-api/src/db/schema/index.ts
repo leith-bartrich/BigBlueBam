@@ -6,4 +6,6 @@ export { ticketActivityLog } from './ticket-activity-log.js';
 export { helpdeskTicketEvents } from './ticket-events.js';
 export { helpdeskSettings } from './helpdesk-settings.js';
 export { helpdeskAgentApiKeys } from './helpdesk-agent-api-keys.js';
+export { helpdeskTicketAttachments } from './helpdesk-ticket-attachments.js';
+export { helpdeskSlaBreaches } from './helpdesk-sla-breaches.js';
 export { users, organizations, projects, phases, tasks, labels } from './bbb-refs.js';

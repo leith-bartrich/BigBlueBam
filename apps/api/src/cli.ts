@@ -49,6 +49,7 @@ Commands:
   grant-superuser    Promote an existing user to SuperUser by email
   revoke-superuser   Remove SuperUser privileges from a user by email
   create-api-key     Issue an API key for a user (for agentic / programmatic access)
+  create-service-account     Create a locked service-account user + bbam_svc_ API key
   create-helpdesk-agent-key  Issue a per-agent helpdesk API key (HB-28 + HB-49)
   revoke-api-key     Revoke a Bam API key by its key_prefix (hard delete)
   revoke-helpdesk-agent-key  Revoke a helpdesk agent API key by its key_prefix (soft by default)
@@ -84,6 +85,10 @@ Examples:
   # Issue a scoped read-write key restricted to one project, 90 day expiry
   cli create-api-key --email alice@co.com --name "ci-bot" --scope read_write \\
       --org-slug acme --project-id <uuid> --expires-days 90
+
+  # Create a locked service account for internal service-to-service calls
+  # (e.g. mcp-server's /tools/call route). Prints the bbam_svc_ token ONCE.
+  cli create-service-account --name "mcp-internal" --org-slug acme
 
   # Mint a per-agent helpdesk API key for a Bam employee (printed ONCE)
   cli create-helpdesk-agent-key --email agent@co.com --name "agent-mbp" \\
@@ -368,6 +373,128 @@ async function createApiKey(flags: Record<string, string>) {
   }
 }
 
+/**
+ * Create a locked service-account user and a bbam_svc_ prefixed API key.
+ *
+ * Service accounts are used for internal service-to-service calls where
+ * there is no real human actor. They share the same users/api_keys tables
+ * as normal users but with:
+ *   - a placeholder email under @system.local
+ *   - an argon2id hash of a random string nobody knows (effectively
+ *     password-locked; the account cannot log in via /auth/login)
+ *   - role 'member' in its home org
+ *   - an API key with prefix `bbam_svc_` (9 chars; auth.ts slices the first
+ *     8 so `bbam_svc` is the lookup prefix which is safe and distinct from
+ *     the generic `bbam_` key prefix)
+ *
+ * The caller provides --name (required) and either --org-slug or --org-id.
+ */
+async function createServiceAccount(flags: Record<string, string>) {
+  requireFlags(flags, ['name']);
+  const { name } = flags;
+  const orgSlug = flags['org-slug'];
+  const orgIdFlag = flags['org-id'];
+  const scope = flags.scope ?? 'read_write';
+
+  if (!orgSlug && !orgIdFlag) {
+    console.error('Error: provide either --org-slug or --org-id');
+    process.exit(1);
+  }
+  if (!VALID_SCOPES.includes(scope as (typeof VALID_SCOPES)[number])) {
+    console.error(`Error: --scope must be one of ${VALID_SCOPES.join(', ')}`);
+    process.exit(1);
+  }
+
+  const safeName = slugify(name!);
+  if (!safeName) {
+    console.error('Error: --name must slugify to a non-empty identifier');
+    process.exit(1);
+  }
+
+  const { db, client } = getDb();
+  try {
+    const [org] = orgIdFlag
+      ? await db.select().from(organizations).where(eq(organizations.id, orgIdFlag!)).limit(1)
+      : await db.select().from(organizations).where(eq(organizations.slug, orgSlug!)).limit(1);
+    if (!org) {
+      console.error(
+        `Error: organization not found (${orgIdFlag ? `id=${orgIdFlag}` : `slug=${orgSlug}`})`,
+      );
+      process.exit(1);
+    }
+
+    // Build a deterministic placeholder email so re-running the command is
+    // idempotent at the directory level (we still create a new API key each
+    // run, but the user row is reused if present).
+    const email = `svc+${safeName}-${org.slug}@system.local`;
+
+    let [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (!user) {
+      // Lock the account with an argon2id hash of a random 32-byte token
+      // that we immediately discard. No one knows the password, so login
+      // via /auth/login is impossible.
+      const lockedPassword = randomBytes(32).toString('base64url');
+      const passwordHash = await argon2.hash(lockedPassword);
+
+      [user] = await db
+        .insert(users)
+        .values({
+          org_id: org.id,
+          email,
+          display_name: `svc:${name}`,
+          password_hash: passwordHash,
+          role: 'member',
+          is_superuser: false,
+        })
+        .returning();
+
+      await db.insert(organizationMemberships).values({
+        user_id: user!.id,
+        org_id: org.id,
+        role: 'member',
+        is_default: true,
+      });
+    }
+
+    // Mint the API key with the bbam_svc_ prefix.
+    // auth.ts slices the first 8 chars as key_prefix, so the stored prefix
+    // will be exactly 'bbam_svc' which is distinct from the generic 'bbam_xxx'
+    // human API keys. The rest of the token is base64url entropy.
+    const randomToken = randomBytes(32).toString('base64url');
+    const fullToken = `bbam_svc_${randomToken}`;
+    const prefix = fullToken.slice(0, 8);
+    const keyHash = await argon2.hash(fullToken);
+
+    const [key] = await db
+      .insert(apiKeys)
+      .values({
+        user_id: user!.id,
+        org_id: org.id,
+        name: `${name} (service account)`,
+        key_hash: keyHash,
+        key_prefix: prefix,
+        scope,
+        project_ids: null,
+        expires_at: null,
+      })
+      .returning({ id: apiKeys.id, name: apiKeys.name });
+
+    console.log('Service account created successfully:');
+    console.log(`  User ID:    ${user!.id}`);
+    console.log(`  Email:      ${email}`);
+    console.log(`  Org:        ${org.name} (${org.slug})`);
+    console.log(`  Key ID:     ${key!.id}`);
+    console.log(`  Scope:      ${scope}`);
+    console.log('');
+    console.log('  [Store this token NOW, it will not be shown again]');
+    console.log(`  Token:      ${fullToken}`);
+    console.log('');
+    console.log('  Set MCP_INTERNAL_API_TOKEN to this value on mcp-server.');
+  } finally {
+    await client.end();
+  }
+}
+
 async function createHelpdeskAgentKey(flags: Record<string, string>) {
   requireFlags(flags, ['email', 'name']);
   const { email, name } = flags;
@@ -582,6 +709,9 @@ async function main() {
         break;
       case 'create-api-key':
         await createApiKey(flags);
+        break;
+      case 'create-service-account':
+        await createServiceAccount(flags);
         break;
       case 'create-helpdesk-agent-key':
         await createHelpdeskAgentKey(flags);

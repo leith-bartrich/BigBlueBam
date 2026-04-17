@@ -1,3 +1,5 @@
+import { getTenantSnapshot } from '@/stores/tenant.store';
+
 // HB-52: Echo the csrf_token cookie in X-CSRF-Token header on state-
 // changing requests. The cookie is httpOnly=false so JS can read it.
 function readCsrfToken(): string | null {
@@ -52,6 +54,13 @@ class ApiClient {
       const csrfToken = readCsrfToken();
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
     }
+
+    // D-010: inject tenant slugs on every request so the helpdesk-api
+    // can scope queries to the active org (and optional project) rather
+    // than the historical `LIMIT 1` fallback.
+    const tenant = getTenantSnapshot();
+    if (tenant.orgSlug) headers['X-Org-Slug'] = tenant.orgSlug;
+    if (tenant.projectSlug) headers['X-Project-Slug'] = tenant.projectSlug;
 
     const response = await fetch(url.toString(), {
       method,
@@ -108,6 +117,10 @@ class ApiClient {
     const uploadHeaders: Record<string, string> = {};
     const csrfToken = readCsrfToken();
     if (csrfToken) uploadHeaders['X-CSRF-Token'] = csrfToken;
+    // D-010: tenant headers on multipart uploads too.
+    const tenant = getTenantSnapshot();
+    if (tenant.orgSlug) uploadHeaders['X-Org-Slug'] = tenant.orgSlug;
+    if (tenant.projectSlug) uploadHeaders['X-Project-Slug'] = tenant.projectSlug;
 
     const response = await fetch(url.toString(), {
       method: 'POST',

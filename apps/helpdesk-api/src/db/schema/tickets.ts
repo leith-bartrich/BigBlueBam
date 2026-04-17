@@ -1,6 +1,16 @@
-import { type AnyPgColumn, pgTable, uuid, varchar, text, serial, timestamp, index } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, pgTable, uuid, varchar, text, serial, timestamp, index, customType } from 'drizzle-orm/pg-core';
 import { helpdeskUsers } from './helpdesk-users.js';
 import { tasks, projects, users } from './bbb-refs.js';
+
+// Custom tsvector type. Drizzle has no first-class tsvector column kind
+// and we only ever read/exclude this column, never hand-build a value for
+// it (the DB populates it via a GENERATED ALWAYS AS expression added by
+// migration 0112).
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
 
 // ============================================================================
 // HB-21: DUAL SCHEMA — KEEP IN SYNC
@@ -44,6 +54,16 @@ export const tickets = pgTable(
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     resolved_at: timestamp('resolved_at', { withTimezone: true }),
     closed_at: timestamp('closed_at', { withTimezone: true }),
+    // G4 / SLA tracking (migration 0111). first_response_at stamps when the
+    // first agent public reply lands. sla_breached_at is written by the
+    // out-of-scope worker sweeper; kept in the schema so the column is
+    // available to dashboards and search filters.
+    first_response_at: timestamp('first_response_at', { withTimezone: true }),
+    sla_breached_at: timestamp('sla_breached_at', { withTimezone: true }),
+    // G5 / full-text search (migration 0112). Generated tsvector derived
+    // from subject (weight A) and description (weight B). Excluded from
+    // SELECT * lists where we just need column-by-column projection.
+    search_vector: tsvector('search_vector'),
     // HB-55: duplicate/merge support. duplicate_of is a self-FK; the typed
     // back-reference requires the AnyPgColumn cast for Drizzle's type
     // checker. See migration 0016_ticket_duplicates.sql for the index and
@@ -57,5 +77,7 @@ export const tickets = pgTable(
     index('tickets_task_id_idx').on(table.task_id),
     index('tickets_status_idx').on(table.status),
     index('idx_tickets_duplicate_of').on(table.duplicate_of),
+    index('idx_tickets_first_response_at').on(table.first_response_at),
+    index('idx_tickets_sla_breached_at').on(table.sla_breached_at),
   ],
 );

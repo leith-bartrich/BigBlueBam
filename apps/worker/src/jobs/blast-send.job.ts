@@ -4,6 +4,7 @@ import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '../utils/db.js';
+import { publishBoltEvent } from '../utils/bolt-events.js';
 import type { Env } from '../env.js';
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,7 @@ import {
   timestamp,
   integer,
   jsonb,
+  boolean,
 } from 'drizzle-orm/pg-core';
 
 const bondContacts = pgTable('bond_contacts', {
@@ -48,6 +50,12 @@ const blastCampaigns = pgTable('blast_campaigns', {
   total_sent: integer('total_sent').default(0),
   total_delivered: integer('total_delivered').default(0),
   total_bounced: integer('total_bounced').default(0),
+  total_opened: integer('total_opened').default(0),
+  total_clicked: integer('total_clicked').default(0),
+  total_unsubscribed: integer('total_unsubscribed').default(0),
+  total_complained: integer('total_complained').default(0),
+  completion_event_emitted: boolean('completion_event_emitted').default(false),
+  created_by: uuid('created_by'),
   updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -348,16 +356,17 @@ export async function processBlastSendJob(
   }
 
   // 6. Update campaign: status='sent', sent_at=now(), total_sent=count
+  const completedAt = new Date();
   await db
     .update(blastCampaigns)
     .set({
       status: 'sent',
-      completed_at: new Date(),
+      completed_at: completedAt,
       total_sent: sentCount,
       total_delivered: sentCount, // Actual delivery confirmation comes from webhooks
       total_bounced: failedCount,
       recipient_count: eligibleContacts.length,
-      updated_at: new Date(),
+      updated_at: completedAt,
     })
     .where(eq(blastCampaigns.id, campaign_id));
 
@@ -370,4 +379,74 @@ export async function processBlastSendJob(
     },
     'Blast campaign send completed',
   );
+
+  // 7. Fire-and-forget `campaign.completed` Bolt event. Guarded by the
+  //    `completion_event_emitted` idempotency marker so retries do not
+  //    double-publish. We re-read the campaign row to pick up any count
+  //    updates from concurrent webhook writes, then flip the flag inside
+  //    an UPDATE ... WHERE completion_event_emitted = false guard so only
+  //    one racing worker replica actually publishes.
+  try {
+    const [fresh] = await db
+      .select()
+      .from(blastCampaigns)
+      .where(eq(blastCampaigns.id, campaign_id))
+      .limit(1);
+
+    if (fresh && !fresh.completion_event_emitted) {
+      const guard = await db
+        .update(blastCampaigns)
+        .set({ completion_event_emitted: true, updated_at: new Date() })
+        .where(
+          and(
+            eq(blastCampaigns.id, campaign_id),
+            eq(blastCampaigns.completion_event_emitted, false),
+          ),
+        )
+        .returning({ id: blastCampaigns.id });
+
+      if (guard.length > 0) {
+        const payload: Record<string, unknown> = {
+          'campaign.id': fresh.id,
+          'campaign.name': fresh.name,
+          'campaign.subject': fresh.subject,
+          'campaign.status': fresh.status,
+          'campaign.from_name': fresh.from_name ?? undefined,
+          'campaign.from_email': fresh.from_email ?? undefined,
+          'campaign.from_address': fresh.from_email ?? undefined,
+          'campaign.reply_to': fresh.reply_to_email ?? undefined,
+          'campaign.segment_id': fresh.segment_id ?? undefined,
+          'campaign.recipient_count': fresh.recipient_count ?? undefined,
+          'campaign.total_sent': fresh.total_sent ?? sentCount,
+          'campaign.total_delivered': fresh.total_delivered ?? sentCount,
+          'campaign.total_bounced': fresh.total_bounced ?? failedCount,
+          'campaign.total_opened': fresh.total_opened ?? 0,
+          'campaign.total_clicked': fresh.total_clicked ?? 0,
+          'campaign.total_unsubscribed': fresh.total_unsubscribed ?? 0,
+          'campaign.total_complained': fresh.total_complained ?? 0,
+          'campaign.sent_at': fresh.sent_at?.toISOString() ?? undefined,
+          'campaign.completed_at':
+            fresh.completed_at?.toISOString() ?? completedAt.toISOString(),
+          'actor.id': fresh.created_by ?? undefined,
+          'org.id': fresh.organization_id,
+        };
+
+        await publishBoltEvent(
+          'campaign.completed',
+          'blast',
+          payload,
+          fresh.organization_id,
+          undefined,
+          'system',
+        );
+      }
+    }
+  } catch (err) {
+    // Never fail the send job if Bolt or the completion emit is flaky; the
+    // idempotency marker stays false on exception so a retry can try again.
+    logger.warn(
+      { campaign_id, err },
+      'campaign.completed Bolt event publish failed — will retry on next run',
+    );
+  }
 }

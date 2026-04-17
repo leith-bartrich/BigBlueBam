@@ -5,6 +5,7 @@ import { useTemplates } from '@/hooks/use-templates';
 import { useProjectStore } from '@/stores/project.store';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
+import { IconPicker } from '@/components/common/icon-picker';
 import { cn } from '@/lib/utils';
 
 interface BoardNewPageProps {
@@ -14,6 +15,7 @@ interface BoardNewPageProps {
 export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [name, setName] = useState('');
+  const [icon, setIcon] = useState<string | null>(null);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const createBoard = useCreateBoard();
   const { data: templateData, isLoading: templatesLoading } = useTemplates();
@@ -24,9 +26,15 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
   const handleCreate = () => {
     setError(null);
     const boardName = name.trim() || 'Untitled Board';
+    // Derive the icon for the new board: use the user's explicit pick
+    // first, else fall back to the selected template's icon so the
+    // All Boards view isn't empty.
+    const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+    const effectiveIcon = icon ?? selectedTemplate?.icon ?? null;
     createBoard.mutate(
       {
         name: boardName,
+        icon: effectiveIcon,
         project_id: activeProjectId ?? undefined,
         template_id: selectedTemplateId ?? undefined,
       },
@@ -56,15 +64,23 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
         </div>
       </div>
 
-      {/* Board name */}
-      <div className="mb-8">
-        <Input
-          label="Board name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Untitled Board"
-          autoFocus
-        />
+      {/* Board icon + name */}
+      <div className="mb-8 flex items-end gap-3">
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+            Icon
+          </label>
+          <IconPicker value={icon} onChange={setIcon} tone="blue" />
+        </div>
+        <div className="flex-1">
+          <Input
+            label="Board name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Untitled Board"
+            autoFocus
+          />
+        </div>
       </div>
 
       {/* Template selector */}

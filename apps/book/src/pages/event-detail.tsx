@@ -1,6 +1,7 @@
-import { useEvent, useDeleteEvent } from '@/hooks/use-events';
+import { useEvent, useDeleteEvent, useRsvpEvent } from '@/hooks/use-events';
+import { useAuthStore } from '@/stores/auth.store';
 import { formatDateTime, eventStatusColor, visibilityLabel } from '@/lib/utils';
-import { Calendar, Clock, MapPin, Link2, Users, ArrowLeft, Trash2, Pencil } from 'lucide-react';
+import { Clock, MapPin, Link2, Users, ArrowLeft, Trash2, Pencil, Check, X as XIcon, HelpCircle } from 'lucide-react';
 
 interface EventDetailPageProps {
   eventId: string;
@@ -10,7 +11,13 @@ interface EventDetailPageProps {
 export function EventDetailPage({ eventId, onNavigate }: EventDetailPageProps) {
   const { data, isLoading } = useEvent(eventId);
   const deleteEvent = useDeleteEvent();
+  const rsvpEvent = useRsvpEvent(eventId);
+  const { user } = useAuthStore();
   const event = data?.data;
+
+  const myAttendee = event?.attendees?.find(
+    (a) => (a.user_id && user?.id && a.user_id === user.id) || (user?.email && a.email === user.email),
+  );
 
   if (isLoading) {
     return (
@@ -123,6 +130,44 @@ export function EventDetailPage({ eventId, onNavigate }: EventDetailPageProps) {
           </div>
         )}
       </div>
+
+      {/* RSVP */}
+      {myAttendee && (
+        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Your response</div>
+            <div className="text-xs text-zinc-500 mt-0.5">
+              Current: <span className="font-medium capitalize">{myAttendee.response_status}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => rsvpEvent.mutate({ response_status: 'accepted' })}
+              disabled={rsvpEvent.isPending || myAttendee.response_status === 'accepted'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              <Check className="h-4 w-4" />
+              Accept
+            </button>
+            <button
+              onClick={() => rsvpEvent.mutate({ response_status: 'tentative' })}
+              disabled={rsvpEvent.isPending || myAttendee.response_status === 'tentative'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+            >
+              <HelpCircle className="h-4 w-4" />
+              Maybe
+            </button>
+            <button
+              onClick={() => rsvpEvent.mutate({ response_status: 'declined' })}
+              disabled={rsvpEvent.isPending || myAttendee.response_status === 'declined'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
+            >
+              <XIcon className="h-4 w-4" />
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Attendees */}
       {event.attendees && event.attendees.length > 0 && (

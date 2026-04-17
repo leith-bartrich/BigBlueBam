@@ -1,0 +1,13 @@
+# Force LF line endings on files that must be LF-only for POSIX tooling
+# (shell scripts, docker entrypoints) regardless of the Windows autocrlf
+# setting. Without this, CRLF sneaks in on Windows checkouts and breaks
+# the #! interpreter line when the script is mounted or COPYed into a
+# Linux container.
+
+*.sh text eol=lf
+*.mjs text eol=lf
+Dockerfile* text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# SQL migrations and docs are fine as default (LF on Unix, whatever on Win)

@@ -8,7 +8,9 @@ import {
   timestamp,
   jsonb,
   index,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './bbb-refs.js';
 import { banterChannels } from './channels.js';
 
@@ -41,6 +43,9 @@ export const banterMessages = pgTable(
     attachment_count: integer('attachment_count').notNull().default(0),
     has_link_preview: boolean('has_link_preview').notNull().default(false),
     metadata: jsonb('metadata').notNull().default({}),
+    edit_permission: varchar('edit_permission', { length: 20 })
+      .notNull()
+      .default('own'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -52,5 +57,9 @@ export const banterMessages = pgTable(
     ),
     index('banter_messages_author_idx').on(table.author_id, table.created_at),
     index('banter_messages_channel_id_idx').on(table.channel_id, table.id),
+    check(
+      'banter_messages_edit_permission_check',
+      sql`edit_permission IN ('own', 'thread_starter', 'none')`,
+    ),
   ],
 );

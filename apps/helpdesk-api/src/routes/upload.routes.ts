@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { env } from '../env.js';
 import { uploadFile } from '../services/upload.service.js';
 import { requireHelpdeskAuth } from '../plugins/auth.js';
 
+// @fastify/multipart is registered at the root in server.ts so both this
+// route and the ticket-scoped attachments route share a single plugin
+// instance. File size is capped here per-request (25 MB for the generic
+// upload bucket) and the attachments route enforces its own 10 MB cap.
 const MAX_FILE_SIZE = 26214400; // 25MB
 
 const ALLOWED_MIME_PREFIXES = ['image/'];
@@ -24,12 +27,6 @@ function isAllowedMimeType(mimeType: string): boolean {
 }
 
 export default async function helpdeskUploadRoutes(fastify: FastifyInstance) {
-  await fastify.register(multipart, {
-    limits: {
-      fileSize: MAX_FILE_SIZE,
-    },
-  });
-
   // POST /helpdesk/upload — accept multipart file upload, store in MinIO
   fastify.post(
     '/helpdesk/upload',

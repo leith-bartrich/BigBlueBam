@@ -43,20 +43,33 @@ function daysFromNow(n) {
 async function main() {
   console.log('Bill seed: connecting to database...');
 
-  // 1. Look up an existing organization and user
-  const [org] = await sql`SELECT id, name FROM organizations LIMIT 1`;
+  // 1. Look up an existing organization and user. Honor SEED_ORG_SLUG from the
+  //    orchestrator or --org-slug=<slug> CLI arg; otherwise fall back to oldest org.
+  const orgSlug = process.env.SEED_ORG_SLUG
+    ?? process.argv.find((a) => a.startsWith('--org-slug='))?.split('=')[1];
+  const [org] = orgSlug
+    ? await sql`SELECT id, name FROM organizations WHERE slug = ${orgSlug} LIMIT 1`
+    : await sql`SELECT id, name FROM organizations ORDER BY created_at LIMIT 1`;
   if (!org) {
-    console.error('No organization found. Run the Bam seed first.');
+    console.error('No organization found. Run create-admin first.');
     process.exit(1);
   }
   console.log(`Bill seed: using org "${org.name}" (${org.id})`);
 
-  const [user] = await sql`SELECT id, display_name FROM users WHERE org_id = ${org.id} LIMIT 1`;
+  const [user] = await sql`SELECT id, display_name FROM users WHERE org_id = ${org.id} ORDER BY created_at LIMIT 1`;
   if (!user) {
-    console.error('No users found. Run the Bam seed first.');
+    console.error('No users found. Run create-admin first.');
     process.exit(1);
   }
   console.log(`Bill seed: using user "${user.display_name}" (${user.id})`);
+
+  // Idempotency guard: if this org already has bill_invoices, skip the whole seed.
+  const [{ count: existingInvoices }] = await sql`SELECT COUNT(*)::int AS count FROM bill_invoices WHERE organization_id = ${org.id}`;
+  if (existingInvoices > 0) {
+    console.log(`Bill seed: ${existingInvoices} invoices already exist for this org, skipping.`);
+    await sql.end();
+    return;
+  }
 
   // 2. Create billing settings
   console.log('Bill seed: creating billing settings...');

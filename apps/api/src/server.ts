@@ -12,6 +12,8 @@ import { errorHandler } from './middleware/error-handler.js';
 import redisPlugin from './plugins/redis.js';
 import csrfPlugin from './plugins/csrf.js';
 import authPlugin from './plugins/auth.js';
+import rlsPlugin from './plugins/rls.js';
+import { rlsBoot } from './boot/rls-boot.js';
 import authRoutes from './routes/auth.routes.js';
 import projectRoutes from './routes/project.routes.js';
 import phaseRoutes from './routes/phase.routes.js';
@@ -31,6 +33,8 @@ import reportRoutes from './routes/report.routes.js';
 import exportRoutes from './routes/export.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import apiKeyRoutes from './routes/api-key.routes.js';
+import oauthRoutes from './routes/oauth.routes.js';
+import approvalRoutes from './routes/approval.routes.js';
 import importRoutes from './routes/import.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import reactionRoutes from './routes/reaction.routes.js';
@@ -163,6 +167,13 @@ await fastify.register(csrfPlugin);
 // Auth plugin
 await fastify.register(authPlugin);
 
+// Wave 1.A: RLS plugin. Must run AFTER auth so `request.user.active_org_id`
+// is populated, so the preHandler can set the `app.current_org_id` GUC.
+await fastify.register(rlsPlugin);
+
+// Wave 1.A: boot-time role flip based on BBB_RLS_ENFORCE.
+await rlsBoot(fastify.log);
+
 // WebSocket handler (realtime events via Redis PubSub)
 await fastify.register(websocketHandlerPlugin);
 
@@ -220,6 +231,8 @@ await fastify.register(reportRoutes);
 await fastify.register(exportRoutes);
 await fastify.register(webhookRoutes);
 await fastify.register(apiKeyRoutes);
+await fastify.register(oauthRoutes);
+await fastify.register(approvalRoutes);
 await fastify.register(importRoutes);
 await fastify.register(templateRoutes);
 await fastify.register(reactionRoutes);

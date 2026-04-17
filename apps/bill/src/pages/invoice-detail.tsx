@@ -1,7 +1,15 @@
 import { useState } from 'react';
-import { FileText, Send, Ban, Copy, DollarSign } from 'lucide-react';
+import { FileText, Send, Ban, Copy, DollarSign, FileDown, UserCheck } from 'lucide-react';
 import { useInvoice, useFinalizeInvoice, useSendInvoice, useVoidInvoice, useDuplicateInvoice, useRecordPayment } from '@/hooks/use-invoices';
+import { useBamUsers, useRequestApproval } from '@/hooks/use-approvals';
 import { formatDate, formatCents, statusBadgeClass, cn } from '@/lib/utils';
+
+function pdfHref(pdfUrl: string | null | undefined): string | null {
+  if (!pdfUrl) return null;
+  if (pdfUrl.startsWith('http://') || pdfUrl.startsWith('https://')) return pdfUrl;
+  if (pdfUrl.startsWith('/')) return pdfUrl;
+  return `/files/bigbluebam-uploads/${pdfUrl}`;
+}
 
 interface Props {
   invoiceId: string;
@@ -20,6 +28,14 @@ export function InvoiceDetailPage({ invoiceId, onNavigate }: Props) {
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('bank_transfer');
 
+  const [showApprovalForm, setShowApprovalForm] = useState(false);
+  const [approverId, setApproverId] = useState('');
+  const [approvalNote, setApprovalNote] = useState('');
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [approvalSent, setApprovalSent] = useState(false);
+  const { data: bamUsers } = useBamUsers();
+  const requestApproval = useRequestApproval();
+
   if (isLoading) return <div className="p-6 text-zinc-400">Loading...</div>;
   if (!invoice) return <div className="p-6 text-zinc-400">Invoice not found</div>;
 
@@ -32,6 +48,34 @@ export function InvoiceDetailPage({ invoiceId, onNavigate }: Props) {
     setShowPaymentForm(false);
     setPaymentAmount(0);
   };
+
+  const handleRequestApproval = async () => {
+    if (!approverId) {
+      setApprovalError('Pick an approver first.');
+      return;
+    }
+    setApprovalError(null);
+    try {
+      await requestApproval.mutateAsync({
+        approver_id: approverId,
+        subject_type: 'bill.invoice',
+        subject_id: invoice.id,
+        body:
+          approvalNote ||
+          `Approval requested for invoice ${invoice.invoice_number} (${formatCents(invoice.total)}) to ${invoice.to_name}.`,
+        url: `/bill/invoices/${invoice.id}`,
+      });
+      setApprovalSent(true);
+      setShowApprovalForm(false);
+      setApproverId('');
+      setApprovalNote('');
+      setTimeout(() => setApprovalSent(false), 4000);
+    } catch (e) {
+      setApprovalError(e instanceof Error ? e.message : 'Failed to send approval request');
+    }
+  };
+
+  const pdf = pdfHref(invoice.pdf_url);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -98,8 +142,84 @@ export function InvoiceDetailPage({ invoiceId, onNavigate }: Props) {
             <Copy className="h-4 w-4" />
             Duplicate
           </button>
+          <button
+            onClick={() => setShowApprovalForm((v) => !v)}
+            className="flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800"
+          >
+            <UserCheck className="h-4 w-4" />
+            Request approval
+          </button>
+          {pdf && (
+            <a
+              href={pdf}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              <FileDown className="h-4 w-4" />
+              PDF
+            </a>
+          )}
         </div>
       </div>
+
+      {approvalSent && (
+        <div className="rounded-lg border border-green-300 bg-green-50 dark:bg-green-950/20 dark:border-green-800 px-4 py-2 text-sm text-green-700 dark:text-green-300">
+          Approval request sent.
+        </div>
+      )}
+
+      {showApprovalForm && (
+        <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 space-y-3 bg-zinc-50 dark:bg-zinc-800/30">
+          <h3 className="text-sm font-semibold">Request approval</h3>
+          <div>
+            <label htmlFor="bill-detail-approver" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              Approver
+            </label>
+            <select
+              id="bill-detail-approver"
+              value={approverId}
+              onChange={(e) => setApproverId(e.target.value)}
+              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
+            >
+              <option value="">Select a user...</option>
+              {(bamUsers?.data ?? []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name} ({u.email})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="bill-detail-note" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              Message (optional)
+            </label>
+            <textarea
+              id="bill-detail-note"
+              value={approvalNote}
+              onChange={(e) => setApprovalNote(e.target.value)}
+              rows={2}
+              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
+            />
+          </div>
+          {approvalError && <p className="text-xs text-red-600">{approvalError}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowApprovalForm(false)}
+              className="px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRequestApproval}
+              disabled={requestApproval.isPending || !approverId}
+              className="px-3 py-2 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {requestApproval.isPending ? 'Sending...' : 'Send'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Invoice details grid */}
       <div className="grid grid-cols-2 gap-6">
@@ -258,6 +378,23 @@ export function InvoiceDetailPage({ invoiceId, onNavigate }: Props) {
           <p className="text-sm text-zinc-400">No payments recorded yet.</p>
         )}
       </div>
+
+      {/* Inline PDF preview */}
+      {pdf && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <FileDown className="h-4 w-4 text-zinc-400" />
+            PDF preview
+          </h2>
+          <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden bg-zinc-50 dark:bg-zinc-900">
+            <iframe
+              title={`Invoice ${invoice.invoice_number} PDF`}
+              src={pdf}
+              className="w-full h-[720px] border-0"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
