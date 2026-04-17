@@ -17,7 +17,7 @@
  * route - this component only surfaces user-level concerns.
  */
 
-import { LogOut, Settings as SettingsIcon, Shield, Users } from 'lucide-react';
+import { LogOut, Settings as SettingsIcon, Shield, Users, HelpCircle } from 'lucide-react';
 import * as RadixDropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Avatar from '@radix-ui/react-avatar';
 
@@ -36,6 +36,11 @@ export interface UserMenuProps {
    * the shared session flow is preserved across all apps.
    */
   logoutRedirect?: string;
+  /**
+   * Callback to navigate to the Help page. When provided, a Help
+   * menu item is shown in the dropdown.
+   */
+  onHelp?: () => void;
 }
 
 function cn(...parts: Array<string | false | null | undefined>): string {
@@ -51,7 +56,7 @@ function generateAvatarInitials(name: string | null | undefined): string {
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-export function UserMenu({ user, logoutRedirect = '/b3/login' }: UserMenuProps) {
+export function UserMenu({ user, logoutRedirect = '/b3/login', onHelp }: UserMenuProps) {
   const isSuperUser = user?.is_superuser === true;
   const canSeePeople =
     user?.role === 'owner' || user?.role === 'admin' || isSuperUser;
@@ -140,6 +145,16 @@ export function UserMenu({ user, logoutRedirect = '/b3/login' }: UserMenuProps) 
             >
               <Shield className="h-4 w-4" />
               SuperUser Console
+            </RadixDropdownMenu.Item>
+          )}
+
+          {onHelp && (
+            <RadixDropdownMenu.Item
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer outline-none text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800"
+              onSelect={onHelp}
+            >
+              <HelpCircle className="h-4 w-4" />
+              Help
             </RadixDropdownMenu.Item>
           )}
 

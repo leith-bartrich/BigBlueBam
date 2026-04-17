@@ -8,6 +8,7 @@ import { DocumentEditorPage } from '@/pages/document-editor';
 import { TemplateBrowserPage } from '@/pages/template-browser';
 import { SearchPage } from '@/pages/search-page';
 import { StarredPage } from '@/pages/starred-page';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -18,7 +19,8 @@ type Route =
   | { page: 'templates' }
   | { page: 'search' }
   | { page: 'new' }
-  | { page: 'starred' };
+  | { page: 'starred' }
+  | { page: 'help' };
 
 const BASE_PATH = '/brief';
 
@@ -43,6 +45,7 @@ function parseRoute(pathWithQuery: string): Route {
   if (p === '/search') return { page: 'search' };
   if (p === '/new') return { page: 'new' };
   if (p === '/starred') return { page: 'starred' };
+  if (p === '/help') return { page: 'help' };
 
   const editMatch = p.match(/^\/documents\/([^/]+)\/edit$/);
   if (editMatch) {
@@ -106,6 +109,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -118,6 +135,10 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="brief" onBack={() => navigate('/')} />;
   }
 
   const renderPage = () => {

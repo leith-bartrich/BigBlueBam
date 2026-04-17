@@ -10,6 +10,7 @@ import { AdminPage } from '@/pages/admin';
 import { CallPlaybackPage } from '@/pages/call-playback';
 import { ws } from '@/lib/websocket';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -21,7 +22,8 @@ type Route =
   | { page: 'settings' }
   | { page: 'admin' }
   | { page: 'call'; id: string }
-  | { page: 'redirect' };
+  | { page: 'redirect' }
+  | { page: 'help' };
 
 const BASE_PATH = '/banter';
 
@@ -55,6 +57,7 @@ function parseRoute(path: string): Route {
   if (p === '/search') return { page: 'search' };
   if (p === '/settings') return { page: 'settings' };
   if (p === '/admin') return { page: 'admin' };
+  if (p === '/help') return { page: 'help' };
 
   return { page: 'redirect' };
 }
@@ -130,6 +133,11 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  // Help page renders outside the layout
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="banter" onBack={() => navigate('/channels/general')} />;
   }
 
   // Default route: redirect to #general

@@ -21,6 +21,7 @@ import { TaskRefResolverPage } from '@/pages/task-ref-resolver';
 import { BetaGatePage } from '@/pages/beta-gate';
 import { BetaNotifyPage } from '@/pages/beta-notify';
 import { HelpdeskAgentQueuePage } from '@/pages/helpdesk-agent-queue';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -44,7 +45,8 @@ type Route =
   | { page: 'task-ref'; ref: string }
   | { page: 'helpdesk-queue' }
   | { page: 'beta-gate' }
-  | { page: 'beta-notify' };
+  | { page: 'beta-notify' }
+  | { page: 'help' };
 
 const BASE_PATH = '/b3';
 
@@ -98,6 +100,7 @@ function parseRoute(path: string): Route {
   }
   if (p === '/people' || p === '/people/') return { page: 'people' };
   if (p === '/helpdesk-queue') return { page: 'helpdesk-queue' };
+  if (p === '/help') return { page: 'help' };
   if (p === '/register') return { page: 'register' };
   if (p === '/beta-gate') return { page: 'beta-gate' };
   if (p === '/notify') return { page: 'beta-notify' };
@@ -148,6 +151,23 @@ export function App() {
     const pathnameOnly = fullPath.split('?')[0]!.split('#')[0]!;
     setRoute(parseRoute(pathnameOnly));
   }, []);
+
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
 
   // Force-password-change gate: if the server has flagged this user, block
   // every page except the password-change form (and the public auth pages).
@@ -239,6 +259,8 @@ export function App() {
       return <HelpdeskAgentQueuePage onNavigate={navigate} />;
     case 'task-ref':
       return <TaskRefResolverPage ref={route.ref} onNavigate={navigate} />;
+    case 'help':
+      return <HelpViewer appSlug="bam" onBack={() => navigate('/')} />;
     case 'login':
     case 'register':
     case 'dashboard':

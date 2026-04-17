@@ -14,6 +14,7 @@ import { ExpenseNewPage } from '@/pages/expense-new';
 import { RateListPage } from '@/pages/rate-list';
 import { ReportsPage } from '@/pages/reports';
 import { SettingsPage } from '@/pages/settings';
+import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
 type Route =
@@ -29,7 +30,8 @@ type Route =
   | { page: 'expense-new' }
   | { page: 'rates' }
   | { page: 'reports' }
-  | { page: 'settings' };
+  | { page: 'settings' }
+  | { page: 'help' };
 
 const BASE_PATH = '/bill';
 
@@ -53,6 +55,7 @@ function parseRoute(path: string): Route {
   if (p === '/rates') return { page: 'rates' };
   if (p === '/reports') return { page: 'reports' };
   if (p === '/settings') return { page: 'settings' };
+  if (p === '/help') return { page: 'help' };
 
   const invoiceEditMatch = p.match(/^\/invoices\/([^/]+)\/edit$/);
   if (invoiceEditMatch) return { page: 'invoice-edit', id: invoiceEditMatch[1]! };
@@ -112,6 +115,20 @@ export function App() {
     );
   }
 
+  // ? keyboard shortcut to open Help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !isInInput && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        navigate('/help');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950 text-zinc-100">
@@ -124,6 +141,10 @@ export function App() {
         </div>
       </div>
     );
+  }
+
+  if (route.page === 'help') {
+    return <HelpViewer appSlug="bill" onBack={() => navigate('/')} />;
   }
 
   const renderPage = () => {
