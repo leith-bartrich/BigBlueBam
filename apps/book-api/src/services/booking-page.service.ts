@@ -169,6 +169,9 @@ export async function getPublicBookingPage(slug: string) {
       buffer_after_min: bookBookingPages.buffer_after_min,
       max_advance_days: bookBookingPages.max_advance_days,
       min_notice_hours: bookBookingPages.min_notice_hours,
+      auto_create_bond_contact: bookBookingPages.auto_create_bond_contact,
+      auto_create_bam_task: bookBookingPages.auto_create_bam_task,
+      bam_project_id: bookBookingPages.bam_project_id,
     })
     .from(bookBookingPages)
     .where(and(eq(bookBookingPages.slug, slug), eq(bookBookingPages.enabled, true)))
