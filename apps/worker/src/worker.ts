@@ -53,6 +53,9 @@ import {
   type BenchMvRefreshJobData,
 } from './jobs/bench-mv-refresh.job.js';
 import { processBriefEmbedJob, type BriefEmbedJobData } from './jobs/brief-embed.job.js';
+import { processBriefSnapshotJob, type BriefSnapshotJobData } from './jobs/brief-snapshot.job.js';
+import { processBriefExportJob, type BriefExportJobData } from './jobs/brief-export.job.js';
+import { processBriefCleanupJob, type BriefCleanupJobData } from './jobs/brief-cleanup.job.js';
 import {
   processHelpdeskSlaMonitorJob,
   type HelpdeskSlaMonitorJobData,
@@ -65,6 +68,10 @@ import {
   processBoardThumbnailJob,
   type BoardThumbnailJobData,
 } from './jobs/board-thumbnail.job.js';
+import {
+  processBoltExecutionCleanupJob,
+  type BoltExecutionCleanupJobData,
+} from './jobs/bolt-execution-cleanup.job.js';
 
 const env = loadEnv();
 
@@ -659,6 +666,29 @@ boardThumbnailQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register board-thumbnail sweep scheduler'));
 
+// Bolt execution cleanup worker (daily at 03:30 UTC).
+const boltExecutionCleanupWorker = new Worker<BoltExecutionCleanupJobData>(
+  'bolt-execution-cleanup',
+  async (job: Job<BoltExecutionCleanupJobData>) => {
+    await processBoltExecutionCleanupJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+boltExecutionCleanupWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bolt-execution-cleanup' }, 'Job completed');
+});
+boltExecutionCleanupWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bolt-execution-cleanup', err }, 'Job failed');
+});
+const boltExecutionCleanupQueue = new Queue('bolt-execution-cleanup', { connection: redis });
+boltExecutionCleanupQueue
+  .upsertJobScheduler(
+    'bolt-execution-cleanup-daily',
+    { pattern: '30 3 * * *' }, // 3:30 AM daily
+    { name: 'daily-cleanup', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register bolt-execution-cleanup scheduler'));
+
 // Analytics worker (placeholder — processes analytics aggregation jobs)
 const analyticsWorker = new Worker(
   'analytics',
@@ -708,6 +738,7 @@ const workers = [
   briefEmbedWorker,
   helpdeskSlaMonitorWorker,
   boardThumbnailWorker,
+  boltExecutionCleanupWorker,
   analyticsWorker,
 ];
 
@@ -742,6 +773,7 @@ logger.info(
       'brief-embed',
       'helpdesk-sla-monitor',
       'board-thumbnail',
+      'bolt-execution-cleanup',
       'analytics',
     ],
   },
