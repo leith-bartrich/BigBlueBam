@@ -57,6 +57,14 @@ import {
   processHelpdeskSlaMonitorJob,
   type HelpdeskSlaMonitorJobData,
 } from './jobs/helpdesk-sla-monitor.job.js';
+import {
+  processBearingWatcherNotifyJob,
+  type BearingWatcherNotifyJobData,
+} from './jobs/bearing-watcher-notify.job.js';
+import {
+  processBoardThumbnailJob,
+  type BoardThumbnailJobData,
+} from './jobs/board-thumbnail.job.js';
 
 const env = loadEnv();
 
@@ -319,6 +327,21 @@ bearingDigestWorker.on('completed', (job) => {
 
 bearingDigestWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'bearing-digest', err }, 'Job failed');
+});
+
+// Bearing watcher-notify worker (emails goal watchers on status changes)
+const bearingWatcherNotifyWorker = new Worker<BearingWatcherNotifyJobData>(
+  'bearing-watcher-notify',
+  async (job: Job<BearingWatcherNotifyJobData>) => {
+    await processBearingWatcherNotifyJob(job, env, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+bearingWatcherNotifyWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'bearing-watcher-notify' }, 'Job completed');
+});
+bearingWatcherNotifyWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'bearing-watcher-notify', err }, 'Job failed');
 });
 
 // Bolt execution worker (runs automation action sequences via MCP tool calls)
@@ -647,6 +670,7 @@ const workers = [
   bearingSnapshotWorker,
   bearingRecomputeWorker,
   bearingDigestWorker,
+  bearingWatcherNotifyWorker,
   boltExecuteWorker,
   boltScheduleTickWorker,
   blastSendWorker,
@@ -679,6 +703,7 @@ logger.info(
       'bearing-snapshot',
       'bearing-recompute',
       'bearing-digest',
+      'bearing-watcher-notify',
       'bolt-execute',
       'bolt-schedule',
       'blast-send',

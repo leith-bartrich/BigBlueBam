@@ -4,6 +4,8 @@ import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { Dialog } from '@/components/common/dialog';
 import { ProjectPicker } from '@/components/links/ProjectPicker';
+import { EpicPicker } from '@/components/links/EpicPicker';
+import { TaskQueryBuilder } from '@/components/links/TaskQueryBuilder';
 import { useKrLinks, useAddKrLink, useRemoveKrLink, type KrLink } from '@/hooks/useKeyResults';
 import { cn } from '@/lib/utils';
 
@@ -149,9 +151,73 @@ export function LinkEditor({ keyResultId }: LinkEditorProps) {
             ))}
           </div>
 
-          {/* Project picker or manual input */}
+          {/* Type-specific picker or manual input */}
           {linkType === 'project' ? (
             <ProjectPicker onSelect={handleProjectSelect} selectedId={linkId} />
+          ) : linkType === 'epic' ? (
+            <>
+              {/* Epic requires a project context; reuse the project picker first */}
+              {!linkUrl ? (
+                <ProjectPicker
+                  onSelect={(projId, _projName) => setLinkUrl(projId)}
+                  selectedId={linkUrl}
+                />
+              ) : (
+                <EpicPicker
+                  projectId={linkUrl}
+                  selectedId={linkId}
+                  onSelect={(epicId, epicName) => {
+                    setLinkId(epicId);
+                    setLinkTitle(epicName);
+                  }}
+                />
+              )}
+              {linkUrl && (
+                <button
+                  onClick={() => { setLinkUrl(''); setLinkId(''); setLinkTitle(''); }}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 underline"
+                >
+                  Change project
+                </button>
+              )}
+            </>
+          ) : linkType === 'task_query' ? (
+            <>
+              {/* Task query also needs a project context */}
+              {!linkUrl ? (
+                <ProjectPicker
+                  onSelect={(projId, _projName) => setLinkUrl(projId)}
+                  selectedId={linkUrl}
+                />
+              ) : (
+                <TaskQueryBuilder
+                  projectId={linkUrl}
+                  selectedIds={linkId ? linkId.split(',') : []}
+                  onToggle={(taskId, taskTitle) => {
+                    const current = linkId ? linkId.split(',') : [];
+                    const titles = linkTitle ? linkTitle.split(', ') : [];
+                    const idx = current.indexOf(taskId);
+                    if (idx >= 0) {
+                      current.splice(idx, 1);
+                      titles.splice(idx, 1);
+                    } else {
+                      current.push(taskId);
+                      titles.push(taskTitle);
+                    }
+                    setLinkId(current.join(','));
+                    setLinkTitle(titles.join(', '));
+                  }}
+                />
+              )}
+              {linkUrl && (
+                <button
+                  onClick={() => { setLinkUrl(''); setLinkId(''); setLinkTitle(''); }}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 underline"
+                >
+                  Change project
+                </button>
+              )}
+            </>
           ) : (
             <>
               <Input
