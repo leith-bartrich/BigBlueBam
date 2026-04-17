@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Search, Plus, Globe, Users, Handshake } from 'lucide-react';
+import { Search, Plus, Globe, Users, Handshake, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
 import { EmptyState } from '@/components/common/empty-state';
 import { CreateCompanyDialog } from '@/components/companies/create-company-dialog';
-import { useCompanies } from '@/hooks/use-companies';
+import { useCompanies, useRestoreCompany } from '@/hooks/use-companies';
 import { cn, formatCurrencyCompact } from '@/lib/utils';
 import { Loader2, Building2 } from 'lucide-react';
 
@@ -14,13 +14,16 @@ interface CompanyListPageProps {
 
 export function CompanyListPage({ onNavigate }: CompanyListPageProps) {
   const [search, setSearch] = useState('');
+  const [includeDeleted, setIncludeDeleted] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { data, isLoading } = useCompanies({
     search: search || undefined,
+    include_deleted: includeDeleted || undefined,
   });
   const companies = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
+  const restoreCompany = useRestoreCompany();
 
   return (
     <div className="flex flex-col h-full">
@@ -41,6 +44,15 @@ export function CompanyListPage({ onNavigate }: CompanyListPageProps) {
               className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-zinc-200 bg-zinc-50 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100"
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-zinc-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeDeleted}
+              onChange={(e) => setIncludeDeleted(e.target.checked)}
+              className="h-3.5 w-3.5 rounded accent-primary-600"
+            />
+            Include deleted
+          </label>
           <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Company
@@ -80,14 +92,20 @@ export function CompanyListPage({ onNavigate }: CompanyListPageProps) {
                 <th className="px-6 py-3 text-left font-medium">Contacts</th>
                 <th className="px-6 py-3 text-left font-medium">Deals</th>
                 <th className="px-6 py-3 text-left font-medium">Owner</th>
+                {includeDeleted && <th className="px-6 py-3 text-left font-medium">Status</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800">
-              {companies.map((company) => (
+              {companies.map((company) => {
+                const isDeleted = !!(company as any).deleted_at;
+                return (
                 <tr
                   key={company.id}
-                  onClick={() => onNavigate(`/companies/${company.id}`)}
-                  className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
+                  onClick={() => !isDeleted && onNavigate(`/companies/${company.id}`)}
+                  className={cn(
+                    'hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors',
+                    isDeleted ? 'opacity-50' : 'cursor-pointer',
+                  )}
                 >
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
@@ -102,7 +120,10 @@ export function CompanyListPage({ onNavigate }: CompanyListPageProps) {
                           <Building2 className="h-4 w-4 text-zinc-400" />
                         </div>
                       )}
-                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                      <span className={cn(
+                        'text-sm font-medium text-zinc-900 dark:text-zinc-100',
+                        isDeleted && 'line-through',
+                      )}>
                         {company.name}
                       </span>
                     </div>
@@ -139,8 +160,27 @@ export function CompanyListPage({ onNavigate }: CompanyListPageProps) {
                   <td className="px-6 py-3 text-sm text-zinc-600 dark:text-zinc-400">
                     {company.owner_name ?? '-'}
                   </td>
+                  {includeDeleted && (
+                    <td className="px-6 py-3">
+                      {isDeleted ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            restoreCompany.mutate(company.id);
+                          }}
+                          className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Restore
+                        </button>
+                      ) : (
+                        <span className="text-xs text-green-600 font-medium">Active</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}

@@ -49,6 +49,7 @@ export function useCompanies(params?: {
   search?: string;
   industry?: string;
   owner_id?: string;
+  include_deleted?: boolean;
 }) {
   return useQuery({
     queryKey: ['bond', 'companies', params],
@@ -57,6 +58,7 @@ export function useCompanies(params?: {
         search: params?.search,
         industry: params?.industry,
         owner_id: params?.owner_id,
+        include_deleted: params?.include_deleted ? 'true' : undefined,
       }),
     staleTime: 15_000,
   });
@@ -97,6 +99,16 @@ export function useUpdateCompany(id: string) {
   return useMutation({
     mutationFn: (data: Partial<Omit<Company, 'id' | 'organization_id' | 'created_by' | 'created_at' | 'updated_at'>>) =>
       api.patch<CompanyResponse>(`/companies/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bond', 'companies'] });
+    },
+  });
+}
+
+export function useRestoreCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/companies/${id}/restore`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bond', 'companies'] });
     },

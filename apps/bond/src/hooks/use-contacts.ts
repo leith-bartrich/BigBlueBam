@@ -63,6 +63,7 @@ export function useContacts(params?: {
   lifecycle_stage?: string;
   owner_id?: string;
   company_id?: string;
+  include_deleted?: boolean;
 }) {
   return useQuery({
     queryKey: ['bond', 'contacts', params],
@@ -72,6 +73,7 @@ export function useContacts(params?: {
         lifecycle_stage: params?.lifecycle_stage,
         owner_id: params?.owner_id,
         company_id: params?.company_id,
+        include_deleted: params?.include_deleted ? 'true' : undefined,
       }),
     staleTime: 15_000,
   });
@@ -124,6 +126,16 @@ export function useDeleteContact() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/contacts/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bond', 'contacts'] });
+    },
+  });
+}
+
+export function useRestoreContact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/contacts/${id}/restore`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bond', 'contacts'] });
     },

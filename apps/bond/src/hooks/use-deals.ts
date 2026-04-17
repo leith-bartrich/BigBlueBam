@@ -65,6 +65,7 @@ export function useDeals(params?: {
   stage_id?: string;
   owner_id?: string;
   search?: string;
+  include_deleted?: boolean;
 }) {
   return useQuery({
     queryKey: ['bond', 'deals', params],
@@ -74,6 +75,7 @@ export function useDeals(params?: {
         stage_id: params?.stage_id,
         owner_id: params?.owner_id,
         search: params?.search,
+        include_deleted: params?.include_deleted ? 'true' : undefined,
       }),
     staleTime: 15_000,
   });
@@ -163,6 +165,31 @@ export function useCloseDealLost() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bond', 'deals'] });
     },
+  });
+}
+
+export function useRestoreDeal() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/deals/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bond', 'deals'] });
+    },
+  });
+}
+
+export function useDealRelated(dealId: string | undefined) {
+  return useQuery({
+    queryKey: ['bond', 'deals', dealId, 'related'],
+    queryFn: () =>
+      api.get<{
+        data: {
+          invoices: Array<{ id: string; number: string; status: string; total: number }>;
+          events: Array<{ id: string; title: string; start_at: string }>;
+          tasks: Array<{ id: string; human_id: string; title: string; state: string }>;
+        };
+      }>(`/deals/${dealId}/related`),
+    enabled: !!dealId,
   });
 }
 
