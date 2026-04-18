@@ -132,6 +132,24 @@ const TOOL_NAMES = [
   // §18 + §19 Wave 5 misc
   'book_find_meeting_time_for_users',
   'ingest_fingerprint_check',
+  // §7 Wave 5 dedupe
+  'bond_find_duplicates',
+  'helpdesk_find_similar_tickets',
+  'dedupe_record_decision',
+  'dedupe_list_pending',
+  // §4 + §8 Wave 5 trends/expertise
+  'helpdesk_ticket_count_by_phrase',
+  'bam_task_count_by_phrase',
+  'expertise_for_topic',
+  // §1 Wave 5 banter subs
+  'banter_subscribe_pattern',
+  'banter_unsubscribe_pattern',
+  'banter_list_subscriptions',
+  // §20 Wave 5 webhooks
+  'agent_webhook_configure',
+  'agent_webhook_rotate_secret',
+  'agent_webhook_deliveries_list',
+  'agent_webhook_redeliver',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.

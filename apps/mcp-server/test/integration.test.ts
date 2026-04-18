@@ -90,6 +90,11 @@ import { registerBoltObservabilityTools } from '../src/tools/bolt-observability-
 // §18 + §19 Wave 5 misc
 import { registerIngestFingerprintTools } from '../src/tools/ingest-fingerprint-tools.js';
 import type { FingerprintStore } from '../src/lib/fingerprint-store.js';
+// §7 Wave 5 dedupe
+import { registerDedupeTools } from '../src/tools/dedupe-tools.js';
+// §4 + §8 Wave 5 trends/expertise
+import { registerPhraseCountTools } from '../src/tools/phrase-count-tools.js';
+import { registerExpertiseTools } from '../src/tools/expertise-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -165,6 +170,19 @@ describe('MCP Integration Tests', () => {
       close: async () => {},
     };
     registerIngestFingerprintTools(mock.server, api, stubFingerprintStore);
+    // §7 Wave 5 dedupe: dedupe_record_decision and dedupe_list_pending run
+    // against the main api client; bond_find_duplicates and
+    // helpdesk_find_similar_tickets hit the per-app services via fetch.
+    registerDedupeTools(mock.server, api, {
+      bondApiUrl: 'http://localhost:4009',
+      helpdeskApiUrl: 'http://localhost:4001',
+    });
+    // §4 + §8 Wave 5 trends/expertise
+    registerPhraseCountTools(mock.server, api, {
+      helpdeskApiUrl: 'http://localhost:4001',
+      apiUrl: 'http://localhost:4000',
+    });
+    registerExpertiseTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1504,6 +1522,15 @@ describe('MCP Integration Tests', () => {
         // up; it is listed in TOOL_NAMES (utility-tools.ts) for the
         // get_server_info surface and covered by book-tools tests.
         'ingest_fingerprint_check',
+        // §7 Wave 5 dedupe
+        'bond_find_duplicates',
+        'helpdesk_find_similar_tickets',
+        'dedupe_record_decision',
+        'dedupe_list_pending',
+        // §4 + §8 Wave 5 trends/expertise
+        'helpdesk_ticket_count_by_phrase',
+        'bam_task_count_by_phrase',
+        'expertise_for_topic',
       ];
 
       for (const name of expectedTools) {

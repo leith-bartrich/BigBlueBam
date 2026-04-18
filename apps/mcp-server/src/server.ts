@@ -50,11 +50,18 @@ import { registerEntityLinksTools } from './tools/entity-links-tools.js';
 import { registerAttachmentTools } from './tools/attachment-tools.js';
 // §15 Wave 5 agent policies
 import { registerAgentPolicyTools } from './tools/agent-policy-tools.js';
+// §20 Wave 5 webhooks
+import { registerAgentWebhookTools } from './tools/agent-webhook-tools.js';
+// §7 Wave 5 dedupe
+import { registerDedupeTools } from './tools/dedupe-tools.js';
 // §12 Wave 5 bolt observability
 import { registerBoltObservabilityTools } from './tools/bolt-observability-tools.js';
 // §18 + §19 Wave 5 misc
 import { registerIngestFingerprintTools } from './tools/ingest-fingerprint-tools.js';
 import { createFingerprintStore, type FingerprintStore } from './lib/fingerprint-store.js';
+// §4 + §8 Wave 5 trends/expertise
+import { registerPhraseCountTools } from './tools/phrase-count-tools.js';
+import { registerExpertiseTools } from './tools/expertise-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -229,8 +236,21 @@ function createMcpServer(
   registerAttachmentTools(server, apiClient);
   // §15 Wave 5 agent policies
   registerAgentPolicyTools(server, apiClient);
+  // §20 Wave 5 webhooks
+  registerAgentWebhookTools(server, apiClient);
+  // §7 Wave 5 dedupe
+  registerDedupeTools(server, apiClient, {
+    bondApiUrl: env.BOND_API_URL,
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+  });
   // §18 + §19 Wave 5 misc
   registerIngestFingerprintTools(server, apiClient, fingerprintStore);
+  // §4 + §8 Wave 5 trends/expertise
+  registerPhraseCountTools(server, apiClient, {
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+    apiUrl: env.API_INTERNAL_URL,
+  });
+  registerExpertiseTools(server, apiClient);
 
   // Register resources and prompts
   registerResources(server, apiClient);
