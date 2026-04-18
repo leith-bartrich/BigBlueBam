@@ -541,6 +541,44 @@ const banterEvents: EventDefinition[] = [
       { name: 'org.slug', type: 'string', description: 'Organization slug' },
     ],
   },
+  // §13 Wave 4 scheduled banter
+  {
+    source: 'banter',
+    event_type: 'message.scheduled',
+    description: 'Fired when a Banter post is scheduled for future delivery (either an explicit scheduled_at or an immediate post deferred by quiet hours).',
+    payload_schema: [
+      { name: 'scheduled_message_id', type: 'uuid', description: 'Scheduled-messages row ID' },
+      { name: 'channel_id', type: 'uuid', description: 'Target channel ID' },
+      { name: 'channel_name', type: 'string?', description: 'Target channel name (null if not loaded at publish time)' },
+      { name: 'author_id', type: 'uuid', description: 'User who scheduled the post' },
+      { name: 'scheduled_at', type: 'datetime', description: 'When the post will be delivered (UTC ISO-8601)' },
+      { name: 'defer_reason', type: 'string', description: 'Why the post was scheduled: scheduled | quiet_hours' },
+      { name: 'org.id', type: 'uuid', description: 'Organization ID' },
+    ],
+  },
+  {
+    source: 'banter',
+    event_type: 'message.quiet_hours_deferred',
+    description: 'Fired in addition to message.scheduled when an immediate post was converted to scheduled because the channel was inside a quiet-hours window.',
+    payload_schema: [
+      { name: 'original_requested_at', type: 'datetime', description: 'When the caller originally tried to post (UTC ISO-8601)' },
+      { name: 'new_scheduled_at', type: 'datetime', description: 'The next-allowed time the post will fire (UTC ISO-8601)' },
+      { name: 'channel_id', type: 'uuid', description: 'Target channel ID' },
+      { name: 'policy.timezone', type: 'string', description: 'IANA timezone used for hour-of-day comparison' },
+      { name: 'policy.allowed_hours', type: 'number[]', description: '[startHour, endHourExclusive] window, 0-24' },
+    ],
+  },
+  {
+    source: 'banter',
+    event_type: 'message.scheduled_delivered',
+    description: 'Fired by the worker when a scheduled Banter post is successfully delivered to the channel.',
+    payload_schema: [
+      { name: 'scheduled_message_id', type: 'uuid', description: 'Scheduled-messages row ID' },
+      { name: 'message_id', type: 'uuid', description: 'ID of the now-live banter_messages row' },
+      { name: 'channel_id', type: 'uuid', description: 'Target channel ID' },
+      { name: 'delivered_at', type: 'datetime', description: 'When the worker inserted the message (UTC ISO-8601)' },
+    ],
+  },
 ];
 
 // Common Beacon payload fields shared across every beacon.* event.
