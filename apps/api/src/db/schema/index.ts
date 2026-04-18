@@ -39,3 +39,4 @@ export { agentRunners } from './agent-runners.js';
 export { agentProposals, proposalStatusEnum } from './agent-proposals.js';
 export { vActivityUnified, V_ACTIVITY_UNIFIED } from './activity-unified-view.js';
 export { entityLinks, entityLinkKindEnum } from './entity-links.js';
+export { agentPolicies } from './agent-policies.js';
