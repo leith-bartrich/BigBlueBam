@@ -533,10 +533,15 @@ async function fetchOpenTasksCount(
   headers: Record<string, string>,
   projectId: string,
 ): Promise<number> {
-  // /projects/:id/tasks returns the first page; we ask for a big page and
-  // count in-page tasks whose state_category is not 'done'/'cancelled'.
-  // This is a best-effort count, not an exact aggregate; a dedicated count
-  // endpoint doesn't exist today.
+  // /projects/:id/tasks returns the first page; we ask for a big page (200)
+  // and return the in-page count. Tasks rows do not include state_category
+  // directly (only state_id pointing at task_states.category), so the
+  // "open" filter is deliberately not applied at this layer: doing so
+  // would require an extra join the REST route does not expose. If the
+  // response does happen to carry a state_category field (some integrations
+  // join it in), we honor it as an open-filter; otherwise we fall back to
+  // the total page count. A dedicated aggregate endpoint is tracked as
+  // follow-up work.
   const r = await fetchWithTimeout<{ data?: Array<Record<string, unknown>> }>(
     `${apiBase}/projects/${projectId}/tasks?limit=200`,
     { method: 'GET', headers },
@@ -544,6 +549,8 @@ async function fetchOpenTasksCount(
   );
   if (!r.ok) throw new Error(`bam tasks: status ${r.status}`);
   const rows = r.data?.data ?? [];
+  const anyHasCategory = rows.some((t) => typeof t.state_category === 'string');
+  if (!anyHasCategory) return rows.length;
   return rows.filter((t) => {
     const cat = String(t.state_category ?? '').toLowerCase();
     return cat !== 'done' && cat !== 'cancelled';
@@ -786,7 +793,7 @@ async function fetchUserAssignedTickets(
   headers: Record<string, string>,
   userId: string,
 ): Promise<Array<{ id: string; number: number | null; subject: string; status: string }>> {
-  // Wave-3 gap: helpdesk-api has no "list open tickets by assignee" route —
+  // Wave-3 gap: helpdesk-api has no "list open tickets by assignee" route.
   // GET /tickets does not expose assignee_id, and GET /tickets/search
   // requires a non-empty q (the server trims whitespace and 400s on empty).
   // We call /tickets/search with the common letter 'a', which ILIKE-matches
