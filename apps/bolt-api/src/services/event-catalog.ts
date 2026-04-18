@@ -2109,6 +2109,19 @@ const wave1bEvents: EventDefinition[] = [
       { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
     ],
   },
+  // §12 Wave 5 bolt observability
+  {
+    source: 'platform',
+    event_type: 'catalog.drift_detected',
+    description: 'Fired when an ingested Bolt event name or source is not present in the static event-catalog (AGENTIC_TODO §12 Wave 5). Emitted by apps/bolt-api/src/services/catalog-drift-detector.ts with a 24h per-(source,event) Redis-backed suppression window so a misnamed producer does not flood subscribers. Consume to alert ops or auto-open a catalog PR.',
+    payload_schema: [
+      { name: 'drift.source', type: 'string', description: 'Source value on the ingested event' },
+      { name: 'drift.event_type', type: 'string', description: 'Event type string on the ingested event' },
+      { name: 'drift.event_id', type: 'uuid', description: 'Ingest event id that first tripped the detector inside the 24h window' },
+      { name: 'drift.detected_at', type: 'datetime', description: 'When the drift was detected' },
+      { name: 'org', type: 'object', description: 'Full org context of the ingested event' },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
