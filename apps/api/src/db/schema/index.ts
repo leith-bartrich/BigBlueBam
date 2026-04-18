@@ -45,3 +45,5 @@ export type {
   AgentWebhookDelivery,
   AgentWebhookDeliveryInsert,
 } from './agent-webhook-deliveries.js';
+// §7 Wave 5 dedupe
+export { dedupeDecisions } from './dedupe-decisions.js';

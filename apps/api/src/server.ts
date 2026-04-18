@@ -48,6 +48,8 @@ import entityLinksRoutes from './routes/entity-links.routes.js';
 import agentPoliciesRoutes from './routes/agent-policies.routes.js';
 // §20 Wave 5 webhooks
 import agentWebhooksRoutes from './routes/agent-webhooks.routes.js';
+// §7 Wave 5 dedupe
+import dedupeDecisionsRoutes from './routes/dedupe-decisions.routes.js';
 import importRoutes from './routes/import.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import reactionRoutes from './routes/reaction.routes.js';
@@ -236,6 +238,8 @@ await fastify.register(entityLinksRoutes);
 await fastify.register(agentPoliciesRoutes);
 // §20 Wave 5 webhooks
 await fastify.register(agentWebhooksRoutes);
+// §7 Wave 5 dedupe
+await fastify.register(dedupeDecisionsRoutes);
 await fastify.register(importRoutes);
 await fastify.register(templateRoutes);
 await fastify.register(reactionRoutes);
