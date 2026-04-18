@@ -48,6 +48,8 @@ import { registerCompositeTools } from './tools/composite-tools.js';
 import { registerEntityLinksTools } from './tools/entity-links-tools.js';
 // §17 Wave 4 attachments
 import { registerAttachmentTools } from './tools/attachment-tools.js';
+// §15 Wave 5 agent policies
+import { registerAgentPolicyTools } from './tools/agent-policy-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -209,6 +211,8 @@ function createMcpServer(
   registerEntityLinksTools(server, apiClient);
   // §17 Wave 4 attachments
   registerAttachmentTools(server, apiClient);
+  // §15 Wave 5 agent policies
+  registerAgentPolicyTools(server, apiClient);
 
   // Register resources and prompts
   registerResources(server, apiClient);

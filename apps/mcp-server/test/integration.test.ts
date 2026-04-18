@@ -83,6 +83,8 @@ import { registerEntityLinksTools } from '../src/tools/entity-links-tools.js';
 import { registerAttachmentTools } from '../src/tools/attachment-tools.js';
 // §13 Wave 4 scheduled banter
 import { registerBanterTools } from '../src/tools/banter-tools.js';
+// §15 Wave 5 agent policies
+import { registerAgentPolicyTools } from '../src/tools/agent-policy-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -142,6 +144,8 @@ describe('MCP Integration Tests', () => {
     // tests covering banter_post_message / banter_schedule_post can exercise
     // the handlers. Every banter_* tool name is listed in expectedTools below.
     registerBanterTools(mock.server, api, 'http://localhost:4002');
+    // §15 Wave 5 agent policies
+    registerAgentPolicyTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1469,6 +1473,10 @@ describe('MCP Integration Tests', () => {
         // surface and covered by their own unit tests.
         'beacon_upsert_by_slug',
         'task_upsert_by_external_id',
+        // §15 Wave 5 agent policies
+        'agent_policy_get',
+        'agent_policy_set',
+        'agent_policy_list',
       ];
 
       for (const name of expectedTools) {

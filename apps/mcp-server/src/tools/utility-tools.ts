@@ -122,6 +122,10 @@ const TOOL_NAMES = [
   'beacon_upsert_by_slug',
   'helpdesk_upsert_user',
   'task_upsert_by_external_id',
+  // §15 Wave 5 agent policies
+  'agent_policy_get',
+  'agent_policy_set',
+  'agent_policy_list',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.
