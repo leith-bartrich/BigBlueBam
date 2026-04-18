@@ -23,6 +23,8 @@ import attachmentRoutes from './routes/attachments.routes.js';
 import helpdeskUsersRoutes from './routes/users.routes.js';
 // §4 Wave 5 phrase-count analytics
 import analyticsRoutes from './routes/analytics.routes.js';
+// §7 Wave 5 dedupe
+import dedupeRoutes from './routes/dedupe.routes.js';
 import websocketHandler from './ws/handler.js';
 import { sql } from 'drizzle-orm';
 
@@ -163,6 +165,8 @@ await fastify.register(attachmentRoutes);
 await fastify.register(helpdeskUsersRoutes);
 // §4 Wave 5: time-bucketed phrase-count analytics for tickets.
 await fastify.register(analyticsRoutes);
+// §7 Wave 5 dedupe
+await fastify.register(dedupeRoutes);
 await fastify.register(websocketHandler);
 
 // Graceful shutdown

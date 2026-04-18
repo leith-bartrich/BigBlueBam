@@ -9,3 +9,6 @@ export { helpdeskAgentApiKeys } from './helpdesk-agent-api-keys.js';
 export { helpdeskTicketAttachments } from './helpdesk-ticket-attachments.js';
 export { helpdeskSlaBreaches } from './helpdesk-sla-breaches.js';
 export { users, organizations, projects, phases, tasks, labels } from './bbb-refs.js';
+
+// Shared cross-app dedupe-decisions table (migration 0136, Wave 5 §7)
+export { dedupeDecisions } from './dedupe-decisions.js';
