@@ -266,6 +266,31 @@ const bamEvents: EventDefinition[] = [
     ],
   },
   {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake for webhook / import flows.
+    // Fired on every POST /v1/tasks/upsert-by-external-id call; `created`
+    // discriminates insert from update. The task.created event is NOT also
+    // emitted on the insert path so rules do not double-fire.
+    source: 'bam',
+    event_type: 'task.upserted',
+    description: 'Fired when a task is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path.',
+    payload_schema: [
+      { name: 'task.id', type: 'uuid', description: 'Task ID' },
+      { name: 'task.project_id', type: 'uuid', description: 'Project ID' },
+      { name: 'task.external_id', type: 'string', description: 'External idempotency key (project_id, external_id)' },
+      { name: 'task.title', type: 'string', description: 'Task title' },
+      { name: 'task.human_id', type: 'string', description: 'Human-readable task id (e.g. FRND-42)' },
+      { name: 'task.url', type: 'string', description: 'Deep link URL to the task' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'project.id', type: 'uuid', description: 'Project ID' },
+      { name: 'project.name', type: 'string', description: 'Project name' },
+      { name: 'actor.id', type: 'uuid', description: 'User who triggered the upsert' },
+      { name: 'actor.name', type: 'string', description: 'Actor display name' },
+      { name: 'org.id', type: 'uuid', description: 'Organization ID' },
+      { name: 'org.name', type: 'string', description: 'Organization name' },
+      { name: 'org.slug', type: 'string', description: 'Organization slug' },
+    ],
+  },
+  {
     source: 'bam',
     event_type: 'task.deleted',
     description: 'Fired when a task is deleted.',
@@ -677,6 +702,24 @@ const beaconEvents: EventDefinition[] = [
       { name: 'verification.notes', type: 'string?', description: 'Reviewer notes' },
     ],
   },
+  {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake by slug. Fired on every
+    // POST /v1/entries/upsert call; `created` discriminates insert from
+    // update. The beacon.created event is NOT also emitted on the insert
+    // path so rules do not double-fire.
+    source: 'beacon',
+    event_type: 'entry.upserted',
+    description: 'Fired when a Beacon entry is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path (which also bumps version and writes a beacon_versions snapshot).',
+    payload_schema: [
+      { name: 'entry.id', type: 'uuid', description: 'Entry ID' },
+      { name: 'entry.slug', type: 'string', description: 'Entry slug (idempotency key)' },
+      { name: 'entry.title', type: 'string', description: 'Entry title' },
+      { name: 'entry.visibility', type: 'string', description: 'Visibility (Public/Organization/Project/Private)' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'actor.id', type: 'uuid', description: 'User who triggered the upsert' },
+      { name: 'org', type: 'object', description: 'Organization context { id, name, slug }' },
+    ],
+  },
 ];
 
 const briefEvents: EventDefinition[] = [
@@ -839,6 +882,26 @@ const helpdeskEvents: EventDefinition[] = [
       { name: 'ticket.subject', type: 'string', description: 'Ticket subject' },
       { name: 'sla.type', type: 'string', description: 'SLA type (response/resolution)' },
       { name: 'sla.deadline', type: 'datetime', description: 'SLA deadline that was breached' },
+    ],
+  },
+  {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake by (org_id, email). Fired
+    // on every POST /v1/helpdesk-users/upsert call; `created`
+    // discriminates insert from update. The update path deliberately does
+    // NOT touch password_hash — see user-upsert.service.ts for the
+    // security contract.
+    source: 'helpdesk',
+    event_type: 'user.upserted',
+    description: 'Fired when a helpdesk_user is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path.',
+    payload_schema: [
+      { name: 'helpdesk_user.id', type: 'uuid', description: 'Helpdesk user ID' },
+      { name: 'helpdesk_user.email', type: 'string', description: 'Email (idempotency key, lowercased)' },
+      { name: 'helpdesk_user.org_id', type: 'uuid?', description: 'Organization ID' },
+      { name: 'helpdesk_user.display_name', type: 'string', description: 'Display name' },
+      { name: 'helpdesk_user.email_verified', type: 'boolean', description: 'Whether the email is verified' },
+      { name: 'helpdesk_user.is_active', type: 'boolean', description: 'Whether the account is active' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'org', type: 'object', description: 'Organization context { id }' },
     ],
   },
 ];
@@ -1008,6 +1071,29 @@ const bondEvents: EventDefinition[] = [
       { name: 'company', type: 'object?', description: 'Related company object { id, name, url }' },
       { name: 'actor', type: 'object', description: 'User who logged the activity' },
       { name: 'org', type: 'object', description: 'Organization context' },
+    ],
+  },
+  {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake by email. Fired on every
+    // POST /contacts/upsert call; `created` discriminates insert from
+    // update. The contact.created event is NOT also emitted on the insert
+    // path so rules do not double-fire.
+    source: 'bond',
+    event_type: 'contact.upserted',
+    description: 'Fired when a contact is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path (including soft-delete resurrection).',
+    payload_schema: [
+      { name: 'contact.id', type: 'uuid', description: 'Contact ID' },
+      { name: 'contact.email', type: 'string', description: 'Email address (idempotency key)' },
+      { name: 'contact.organization_id', type: 'uuid', description: 'Organization ID' },
+      { name: 'contact.first_name', type: 'string?', description: 'First name' },
+      { name: 'contact.last_name', type: 'string?', description: 'Last name' },
+      { name: 'contact.lifecycle_stage', type: 'string', description: 'Lifecycle stage' },
+      { name: 'contact.owner_id', type: 'uuid?', description: 'Owner user ID' },
+      { name: 'contact.url', type: 'string', description: 'Deep link URL' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'actor.id', type: 'uuid', description: 'User who triggered the upsert' },
+      { name: 'actor.kind', type: 'string', description: 'Actor kind (user/agent/system)' },
+      { name: 'org', type: 'object', description: 'Organization context { id, name, slug }' },
     ],
   },
 ];
