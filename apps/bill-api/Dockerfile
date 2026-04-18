@@ -28,6 +28,9 @@ COPY apps/bill-api/src ./apps/bill-api/src
 COPY apps/bill-api/tsconfig.json apps/bill-api/tsup.config.ts ./apps/bill-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/bill-api build
 
 # Create a deploy-ready directory with all prod deps

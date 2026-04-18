@@ -28,6 +28,9 @@ COPY apps/blank-api/src ./apps/blank-api/src
 COPY apps/blank-api/tsconfig.json apps/blank-api/tsup.config.ts ./apps/blank-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/blank-api build
 
 # Create a deploy-ready directory with all prod deps

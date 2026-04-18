@@ -28,6 +28,9 @@ COPY apps/banter-api/src ./apps/banter-api/src
 COPY apps/banter-api/tsconfig.json apps/banter-api/tsup.config.ts ./apps/banter-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/banter-api build
 
 # Create a deploy-ready directory with all prod deps

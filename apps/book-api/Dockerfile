@@ -28,6 +28,9 @@ COPY apps/book-api/src ./apps/book-api/src
 COPY apps/book-api/tsconfig.json apps/book-api/tsup.config.ts ./apps/book-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/book-api build
 
 # Create a deploy-ready directory with all prod deps

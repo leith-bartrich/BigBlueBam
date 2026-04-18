@@ -28,6 +28,9 @@ COPY apps/helpdesk-api/src ./apps/helpdesk-api/src
 COPY apps/helpdesk-api/tsconfig.json apps/helpdesk-api/tsup.config.ts ./apps/helpdesk-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/helpdesk-api build
 
 # Create a deploy-ready directory with all prod deps

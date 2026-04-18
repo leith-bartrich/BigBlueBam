@@ -28,6 +28,9 @@ COPY apps/brief-api/src ./apps/brief-api/src
 COPY apps/brief-api/tsconfig.json apps/brief-api/tsup.config.ts ./apps/brief-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/brief-api build
 
 # Create a deploy-ready directory with all prod deps

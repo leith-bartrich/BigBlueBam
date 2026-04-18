@@ -28,6 +28,9 @@ COPY apps/board-api/src ./apps/board-api/src
 COPY apps/board-api/tsconfig.json apps/board-api/tsup.config.ts ./apps/board-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/board-api build
 
 # Create a deploy-ready directory with all prod deps
