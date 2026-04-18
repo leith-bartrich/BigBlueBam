@@ -50,6 +50,8 @@ import agentPoliciesRoutes from './routes/agent-policies.routes.js';
 import agentWebhooksRoutes from './routes/agent-webhooks.routes.js';
 // §7 Wave 5 dedupe
 import dedupeDecisionsRoutes from './routes/dedupe-decisions.routes.js';
+// §8 Wave 5 expertise-for-topic
+import expertiseRoutes from './routes/expertise.routes.js';
 import importRoutes from './routes/import.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import reactionRoutes from './routes/reaction.routes.js';
@@ -240,6 +242,8 @@ await fastify.register(agentPoliciesRoutes);
 await fastify.register(agentWebhooksRoutes);
 // §7 Wave 5 dedupe
 await fastify.register(dedupeDecisionsRoutes);
+// §8 Wave 5 expertise-for-topic
+await fastify.register(expertiseRoutes);
 await fastify.register(importRoutes);
 await fastify.register(templateRoutes);
 await fastify.register(reactionRoutes);
