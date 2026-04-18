@@ -758,4 +758,50 @@ export function registerTaskTools(server: McpServer, api: ApiClient): void {
       };
     },
   });
+
+  // §14 Wave 4: idempotent create-or-update of a task by (project_id,
+  // external_id). Designed for webhook intake and import flows where the
+  // upstream system has its own stable identifier and retries are common.
+  registerTool(server, {
+    name: 'task_upsert_by_external_id',
+    description: 'Idempotent create-or-update of a task by (project_id, external_id). Natural key is the partial unique index on (project_id, external_id). On insert, allocates a new human_id and accepts the full create payload. On update, patches the supplied fields; human_id is preserved. Returns { data, created, idempotency_key } — `created` is true on insert, false on update.',
+    input: {
+      project_id: z.string().uuid().describe('Project UUID'),
+      external_id: z.string().min(1).max(256).describe('External idempotency key (e.g. upstream ticket id). Globally unique within the project.'),
+      title: z.string().min(1).max(500).describe('Task title'),
+      description: z.string().nullable().optional().describe('Task description (Markdown)'),
+      phase_id: z.string().uuid().nullable().optional().describe('Phase UUID (defaults to first phase by position on insert)'),
+      state_id: z.string().uuid().nullable().optional().describe('State UUID (defaults to the phase auto-state on insert)'),
+      sprint_id: z.string().uuid().nullable().optional().describe('Sprint UUID'),
+      epic_id: z.string().uuid().nullable().optional().describe('Epic UUID'),
+      assignee_id: z.string().uuid().nullable().optional().describe('Assignee user UUID'),
+      priority: z.enum(['critical', 'high', 'medium', 'low', 'none']).optional().describe('Priority level'),
+      story_points: z.number().int().positive().nullable().optional().describe('Story points estimate'),
+      time_estimate_minutes: z.number().int().positive().nullable().optional().describe('Time estimate in minutes'),
+      start_date: z.string().nullable().optional().describe('ISO date string (YYYY-MM-DD)'),
+      due_date: z.string().nullable().optional().describe('ISO date string (YYYY-MM-DD)'),
+      labels: z.array(z.string().uuid()).optional().describe('Label UUIDs to attach'),
+      custom_fields: z.record(z.unknown()).optional().describe('Custom field values'),
+      parent_task_id: z.string().uuid().nullable().optional().describe('Parent task UUID for subtasks'),
+    },
+    returns: z.object({
+      data: taskShape,
+      created: z.boolean(),
+      idempotency_key: z.string(),
+    }),
+    handler: async (params) => {
+      const result = await api.post('/v1/tasks/upsert-by-external-id', params);
+      if (!result.ok) {
+        const scopeErr = handleScopeError('task_upsert_by_external_id', 'read_write', result);
+        if (scopeErr) return scopeErr;
+        return {
+          content: [{ type: 'text' as const, text: `Error upserting task: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  });
 }

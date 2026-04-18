@@ -117,6 +117,11 @@ const TOOL_NAMES = [
   'attachment_list',
   // §13 Wave 4 scheduled banter
   'banter_schedule_post',
+  // §14 Wave 4 upserts
+  'bond_upsert_contact',
+  'beacon_upsert_by_slug',
+  'helpdesk_upsert_user',
+  'task_upsert_by_external_id',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.

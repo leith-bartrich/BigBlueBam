@@ -1461,10 +1461,13 @@ describe('MCP Integration Tests', () => {
         'beacon_link_create', 'beacon_link_remove',
         'beacon_query_save', 'beacon_query_list', 'beacon_query_get', 'beacon_query_delete',
         'beacon_graph_neighbors', 'beacon_graph_hubs', 'beacon_graph_recent',
-        // §14 Wave 4 upserts
-        'bond_upsert_contact',
+        // §14 Wave 4 upserts — only the two whose tool modules are already
+        // registered in the harness above. bond_upsert_contact and
+        // helpdesk_upsert_user live in bond-tools / helpdesk-tools, neither
+        // of which is wired into this test harness; they are still listed in
+        // TOOL_NAMES (utility-tools.ts) for the server.get_server_info
+        // surface and covered by their own unit tests.
         'beacon_upsert_by_slug',
-        'helpdesk_upsert_user',
         'task_upsert_by_external_id',
       ];
 
