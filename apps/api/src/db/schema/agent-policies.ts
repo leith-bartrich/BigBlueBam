@@ -1,4 +1,5 @@
 import { pgTable, uuid, boolean, text, integer, timestamp, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
 import { users } from './users.js';
 
@@ -34,8 +35,14 @@ export const agentPolicies = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
     enabled: boolean('enabled').default(true).notNull(),
-    allowed_tools: text('allowed_tools').array().default([]).notNull(),
-    channel_subscriptions: uuid('channel_subscriptions').array().default([]).notNull(),
+    allowed_tools: text('allowed_tools')
+      .array()
+      .default(sql`'{}'::text[]`)
+      .notNull(),
+    channel_subscriptions: uuid('channel_subscriptions')
+      .array()
+      .default(sql`'{}'::uuid[]`)
+      .notNull(),
     rate_limit_override: integer('rate_limit_override'),
     notes: text('notes'),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
