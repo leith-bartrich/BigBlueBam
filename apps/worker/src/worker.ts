@@ -80,6 +80,12 @@ import {
   processHelpdeskEmailNotifyJob,
   type HelpdeskEmailNotifyJobData,
 } from './jobs/helpdesk-email-notify.job.js';
+// §13 Wave 4 scheduled banter
+import {
+  processBanterScheduledPostJob,
+  reconcileScheduledPosts,
+  type BanterScheduledPostJobData,
+} from './jobs/banter-scheduled-post.job.js';
 
 const env = loadEnv();
 
@@ -223,6 +229,23 @@ banterTranscriptionWorker.on('completed', (job) => {
 
 banterTranscriptionWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'banter-transcription', err }, 'Job failed');
+});
+
+// §13 Wave 4 scheduled banter — delayed and quiet-hours-deferred post delivery.
+const banterScheduledPostWorker = new Worker<BanterScheduledPostJobData>(
+  'banter-scheduled-post',
+  async (job: Job<BanterScheduledPostJobData>) => {
+    await processBanterScheduledPostJob(job, redis, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+
+banterScheduledPostWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'banter-scheduled-post' }, 'Job completed');
+});
+
+banterScheduledPostWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'banter-scheduled-post', err }, 'Job failed');
 });
 
 // Schedule banter retention as a daily cron (1 AM UTC, offset from other sweeps)
@@ -826,6 +849,24 @@ analyticsWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'analytics', err }, 'Job failed');
 });
 
+// §13 Wave 4 scheduled banter — startup reconciler.
+// Re-enqueue any pending scheduled-message rows whose BullMQ job may have been
+// lost (e.g. Redis was flushed). Safe to call because BullMQ dedups by jobId.
+const banterScheduledPostQueue = new Queue('banter-scheduled-post', { connection: redis });
+reconcileScheduledPosts(
+  async (jobId, data, delayMs) => {
+    await banterScheduledPostQueue.add('scheduled-post', data, {
+      jobId,
+      delay: delayMs,
+      removeOnComplete: 500,
+      removeOnFail: 1000,
+    });
+  },
+  logger,
+).catch((err) => {
+  logger.error({ err }, 'banter-scheduled-post: startup reconciler failed');
+});
+
 // Collect all workers for graceful shutdown
 const workers = [
   emailWorker,
@@ -834,6 +875,7 @@ const workers = [
   exportWorker,
   banterNotificationWorker,
   banterRetentionWorker,
+  banterScheduledPostWorker,
   helpdeskTaskCreateWorker,
   beaconVectorSyncWorker,
   beaconExpirySweepWorker,
@@ -874,6 +916,7 @@ logger.info(
       'banter-notifications',
       'banter-retention',
       'banter-transcription',
+      'banter-scheduled-post',
       'helpdesk-task-create',
       'beacon-vector-sync',
       'beacon-expiry-sweep',
