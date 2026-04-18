@@ -70,6 +70,7 @@ import { registerMeTools } from '../src/tools/me-tools.js';
 import { registerPlatformTools } from '../src/tools/platform-tools.js';
 import { registerBeaconTools } from '../src/tools/beacon-tools.js';
 import { registerBamResolverTools } from '../src/tools/bam-resolver-tools.js';
+import { registerAgentTools } from '../src/tools/agent-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -94,6 +95,7 @@ describe('MCP Integration Tests', () => {
     registerPlatformTools(mock.server, api);
     registerBeaconTools(mock.server, api, 'http://localhost:4004');
     registerBamResolverTools(mock.server, api);
+    registerAgentTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -903,6 +905,127 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== AGENT TOOLS (AGENTIC_TODO §10) =====
+
+  describe('agent tools', () => {
+    it('agent_heartbeat POSTs to /v1/agents/heartbeat with merged payload', async () => {
+      mockApiOk({
+        data: {
+          id: UUID,
+          org_id: UUID2,
+          user_id: UUID,
+          name: 'intake-worker',
+          version: '1.0.0',
+          capabilities: ['helpdesk.triage'],
+          last_heartbeat_at: new Date().toISOString(),
+          first_seen_at: new Date().toISOString(),
+        },
+      });
+      const result = await getTool('agent_heartbeat').handler({
+        runner_name: 'intake-worker',
+        version: '1.0.0',
+        capabilities: ['helpdesk.triage'],
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/agents/heartbeat');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.runner_name).toBe('intake-worker');
+      expect(body.version).toBe('1.0.0');
+      expect(body.capabilities).toEqual(['helpdesk.triage']);
+    });
+
+    it('agent_heartbeat surfaces 403 NOT_A_SERVICE_ACCOUNT as error', async () => {
+      mockApiError(403, {
+        error: {
+          code: 'NOT_A_SERVICE_ACCOUNT',
+          message: 'This endpoint requires a service-account caller',
+        },
+      });
+      const result = await getTool('agent_heartbeat').handler({ runner_name: 'x' });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('NOT_A_SERVICE_ACCOUNT');
+    });
+
+    it('agent_audit builds a query string from since/limit/cursor', async () => {
+      mockApiOk({
+        data: [
+          {
+            id: UUID,
+            project_id: UUID2,
+            actor_id: UUID,
+            actor_type: 'service',
+            action: 'task.create',
+            created_at: new Date().toISOString(),
+          },
+        ],
+        meta: { next_cursor: null, has_more: false },
+      });
+      const result = await getTool('agent_audit').handler({
+        agent_user_id: UUID,
+        since: '2026-04-01T00:00:00Z',
+        limit: 10,
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/v1/agents/${UUID}/audit`);
+      expect(call[0]).toContain('since=2026-04-01T00');
+      expect(call[0]).toContain('limit=10');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('agent_audit omits query string when only agent_user_id is given', async () => {
+      mockApiOk({ data: [], meta: { next_cursor: null, has_more: false } });
+      await getTool('agent_audit').handler({ agent_user_id: UUID });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toMatch(new RegExp(`/v1/agents/${UUID}/audit$`));
+    });
+
+    it('agent_self_report requires project_id (enforced at the API layer)', async () => {
+      // Simulate the 400 PROJECT_ID_REQUIRED the server returns.
+      mockApiError(400, {
+        error: {
+          code: 'PROJECT_ID_REQUIRED',
+          message: 'project_id is required for agent self-report',
+        },
+      });
+      const result = await getTool('agent_self_report').handler({
+        summary: 'done',
+        project_id: UUID,
+      });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('PROJECT_ID_REQUIRED');
+    });
+
+    it('agent_self_report posts summary + metrics when provided', async () => {
+      mockApiOk({
+        data: {
+          id: UUID,
+          project_id: UUID2,
+          actor_id: UUID,
+          actor_type: 'service',
+          action: 'agent.self_report',
+          details: { summary: 'done', metrics: { count: 3 } },
+          created_at: new Date().toISOString(),
+        },
+      });
+      const result = await getTool('agent_self_report').handler({
+        summary: 'done',
+        metrics: { count: 3 },
+        project_id: UUID2,
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/agents/self-report');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.summary).toBe('done');
+      expect(body.project_id).toBe(UUID2);
+      expect(body.metrics).toEqual({ count: 3 });
+    });
+  });
+
   // ===== BEACON TOOLS =====
 
   describe('beacon_create', () => {
@@ -1032,6 +1155,8 @@ describe('MCP Integration Tests', () => {
         // platform (superuser)
         'get_platform_settings', 'set_public_signup_disabled',
         'list_beta_signups', 'get_public_config', 'submit_beta_signup',
+        // agent (AGENTIC_TODO §10)
+        'agent_heartbeat', 'agent_audit', 'agent_self_report',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
