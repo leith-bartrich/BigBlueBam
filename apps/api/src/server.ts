@@ -34,6 +34,8 @@ import attachmentRoutes from './routes/attachment.routes.js';
 import attachmentMetaRoutes from './routes/attachment-meta.routes.js';
 import timeEntryRoutes from './routes/time-entry.routes.js';
 import reportRoutes from './routes/report.routes.js';
+// §4 Wave 5 task phrase-count analytics
+import taskAnalyticsRoutes from './routes/task-analytics.routes.js';
 import exportRoutes from './routes/export.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import apiKeyRoutes from './routes/api-key.routes.js';
@@ -220,6 +222,8 @@ await fastify.register(attachmentRoutes);
 await fastify.register(attachmentMetaRoutes);
 await fastify.register(timeEntryRoutes);
 await fastify.register(reportRoutes);
+// §4 Wave 5 task phrase-count analytics
+await fastify.register(taskAnalyticsRoutes);
 await fastify.register(exportRoutes);
 await fastify.register(webhookRoutes);
 await fastify.register(apiKeyRoutes);
