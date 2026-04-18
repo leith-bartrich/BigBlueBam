@@ -773,6 +773,16 @@ export async function resolveReferences(
     phaseTwoCandidates.push(...group.candidates);
   }
 
+  // If the input produced no phrases (pure-stopword text) and no pinned
+  // mentions resolved, surface the trimmed remainder so the caller knows
+  // we looked but found nothing. Without this, a fully unresolvable input
+  // returns two empty arrays which is indistinguishable from "empty
+  // input".
+  if (pinnedCandidates.length === 0 && phaseTwoCandidates.length === 0 && phrases.length === 0) {
+    const trimmed = remainder.trim();
+    if (trimmed.length > 0) unresolved.push(trimmed);
+  }
+
   // --- Phase 3: disambiguation + dedupe ---
   applyPhase3Disambiguation(phaseTwoCandidates);
 
