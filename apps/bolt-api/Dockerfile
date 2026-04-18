@@ -28,6 +28,9 @@ COPY apps/bolt-api/src ./apps/bolt-api/src
 COPY apps/bolt-api/tsconfig.json apps/bolt-api/tsup.config.ts ./apps/bolt-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/bolt-api build
 
 # Create a deploy-ready directory with all prod deps

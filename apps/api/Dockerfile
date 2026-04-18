@@ -26,6 +26,8 @@ COPY apps/api/src ./apps/api/src
 COPY apps/api/tsconfig.json apps/api/tsup.config.ts ./apps/api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
  && pnpm --filter @bigbluebam/api build
 
 # Create a deploy-ready directory with all prod deps

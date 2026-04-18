@@ -37,6 +37,34 @@ fi
 # flow, so we leave it alone and let nginx start with whatever's there.
 if cp "/etc/nginx/profiles/${PROFILE}.conf" /etc/nginx/conf.d/default.conf 2>/dev/null; then
   echo "[entrypoint] using nginx profile: ${PROFILE}"
+
+  # The railway profile ships with a `resolver __RESOLVER__ valid=10s;`
+  # placeholder so nginx can re-resolve *.railway.internal hostnames at
+  # request time (see scripts/gen-railway-configs.mjs for the why).
+  # Extract the nameservers from the container's /etc/resolv.conf and
+  # substitute them in. Fall back to Docker's embedded DNS (127.0.0.11)
+  # so the config is still syntactically valid if /etc/resolv.conf is
+  # unexpectedly empty — nginx would refuse to start with a literal
+  # `__RESOLVER__` token otherwise.
+  if grep -q '__RESOLVER__' /etc/nginx/conf.d/default.conf; then
+    # nginx's resolver directive requires IPv6 addresses to be wrapped in
+    # brackets (resolver [fd12::10] valid=10s;), otherwise it parses the
+    # final "::10" as a :port specifier and emits "invalid port" at startup.
+    # Railway's container DNS is IPv6 (fd12::10 on the railway-internal
+    # network), so this wrapping is the common case there.
+    RESOLVERS=$(awk '
+      /^nameserver/ {
+        ip = $2
+        if (index(ip, ":") > 0) ip = "[" ip "]"
+        printf "%s ", ip
+      }
+    ' /etc/resolv.conf | sed 's/ $//')
+    if [ -z "$RESOLVERS" ]; then
+      RESOLVERS="127.0.0.11"
+    fi
+    sed -i "s|__RESOLVER__|${RESOLVERS}|g" /etc/nginx/conf.d/default.conf
+    echo "[entrypoint] nginx resolver set to: ${RESOLVERS}"
+  fi
 else
   echo "[entrypoint] /etc/nginx/conf.d/default.conf is read-only — using bind-mounted config instead"
 fi

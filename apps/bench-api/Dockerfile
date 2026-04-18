@@ -28,6 +28,9 @@ COPY apps/bench-api/src ./apps/bench-api/src
 COPY apps/bench-api/tsconfig.json apps/bench-api/tsup.config.ts ./apps/bench-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/bench-api build
 
 # Create a deploy-ready directory with all prod deps

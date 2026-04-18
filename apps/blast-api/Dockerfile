@@ -28,6 +28,9 @@ COPY apps/blast-api/src ./apps/blast-api/src
 COPY apps/blast-api/tsconfig.json apps/blast-api/tsup.config.ts ./apps/blast-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/blast-api build
 
 # Create a deploy-ready directory with all prod deps

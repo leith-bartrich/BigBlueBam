@@ -183,6 +183,12 @@ ARG BUILD_DATE=unknown
 ENV GIT_COMMIT=$GIT_COMMIT
 ENV BUILD_DATE=$BUILD_DATE
 
-EXPOSE 80
+# Both nginx profiles are baked in. The default (docker-compose) profile
+# binds port 80; the railway profile binds 8080 (picked by entrypoint via
+# RAILWAY_ENVIRONMENT_NAME / RAILWAY_PROJECT_ID). Docker-compose ignores
+# EXPOSE because its `ports:` directive maps explicitly, but Railway auto-
+# detects targetPort from EXPOSE on fresh service/domain creation — so the
+# value here MUST match the railway profile to avoid 502s on first deploy.
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

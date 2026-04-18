@@ -28,6 +28,9 @@ COPY apps/beacon-api/src ./apps/beacon-api/src
 COPY apps/beacon-api/tsconfig.json apps/beacon-api/tsup.config.ts ./apps/beacon-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/beacon-api build
 
 # Create a deploy-ready directory with all prod deps

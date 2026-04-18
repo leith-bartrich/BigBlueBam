@@ -28,6 +28,9 @@ COPY apps/bearing-api/src ./apps/bearing-api/src
 COPY apps/bearing-api/tsconfig.json apps/bearing-api/tsup.config.ts ./apps/bearing-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/bearing-api build
 
 # Create a deploy-ready directory with all prod deps

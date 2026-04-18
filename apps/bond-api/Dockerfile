@@ -28,6 +28,9 @@ COPY apps/bond-api/src ./apps/bond-api/src
 COPY apps/bond-api/tsconfig.json apps/bond-api/tsup.config.ts ./apps/bond-api/
 
 RUN pnpm --filter @bigbluebam/shared build \
+ && pnpm --filter @bigbluebam/logging build \
+ && pnpm --filter @bigbluebam/service-health build \
+ && pnpm --filter @bigbluebam/db-stubs build \
  && pnpm --filter @bigbluebam/bond-api build
 
 # Create a deploy-ready directory with all prod deps
