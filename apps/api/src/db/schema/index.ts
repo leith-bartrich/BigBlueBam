@@ -40,3 +40,8 @@ export { agentProposals, proposalStatusEnum } from './agent-proposals.js';
 export { vActivityUnified, V_ACTIVITY_UNIFIED } from './activity-unified-view.js';
 export { entityLinks, entityLinkKindEnum } from './entity-links.js';
 export { agentPolicies } from './agent-policies.js';
+export { agentWebhookDeliveries } from './agent-webhook-deliveries.js';
+export type {
+  AgentWebhookDelivery,
+  AgentWebhookDeliveryInsert,
+} from './agent-webhook-deliveries.js';

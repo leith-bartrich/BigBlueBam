@@ -44,6 +44,8 @@ import proposalRoutes from './routes/proposals.routes.js';
 import entityLinksRoutes from './routes/entity-links.routes.js';
 // §15 Wave 5 agent policies
 import agentPoliciesRoutes from './routes/agent-policies.routes.js';
+// §20 Wave 5 webhooks
+import agentWebhooksRoutes from './routes/agent-webhooks.routes.js';
 import importRoutes from './routes/import.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import reactionRoutes from './routes/reaction.routes.js';
@@ -228,6 +230,8 @@ await fastify.register(proposalRoutes);
 await fastify.register(entityLinksRoutes);
 // §15 Wave 5 agent policies
 await fastify.register(agentPoliciesRoutes);
+// §20 Wave 5 webhooks
+await fastify.register(agentWebhooksRoutes);
 await fastify.register(importRoutes);
 await fastify.register(templateRoutes);
 await fastify.register(reactionRoutes);
