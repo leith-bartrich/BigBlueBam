@@ -8,24 +8,13 @@
 // with a Bolt-driven automation that anyone can clone and customize from
 // the Bolt template gallery.
 //
-// DEFERRAL NOTE: the trigger event 'approval.requested' is NOT yet registered
-// in apps/bolt-api/src/services/event-catalog.ts. No subsystem currently
-// emits it. The template is authored against that future contract so it
-// becomes instantly useful the moment an approval-producing service (Brief
-// publish-request flow, Bond deal-close sign-off, Bill invoice approval,
-// etc.) starts calling:
-//
-//   publishBoltEvent('approval.requested', '<source-app>', {
-//     approval_id, subject_id, subject_type, approver: { id, name, email },
-//     body, url
-//   }, orgId, requesterId, 'user');
-//
-// Until then, this template is registered but its trigger_event will NOT
-// match any live events, and the Bolt drift guard (Bolt_Plan.md G4) will
-// flag it until 'approval.requested' is added to the catalog. This is
-// deliberate: it forces the cross-product owner of the approval workflow
-// to register the event when they ship the emitter, rather than creating
-// a placeholder catalog entry with no real producer.
+// The trigger event `approval.requested` is registered in the catalog
+// (apps/bolt-api/src/services/event-catalog.ts, source `platform`) and
+// emitted by the platform POST /v1/approvals producer at
+// apps/api/src/routes/approval.routes.ts. Any other subsystem that needs
+// to request approval (Brief publish-request, Bond deal-close sign-off,
+// Bill invoice approval, etc.) should call that route rather than emit
+// the event directly, so the payload shape stays consistent.
 //
 // Parameter templating uses the same `{{ event.<field> }}` style as the
 // other templates in template.service.ts. The two fields consumed are:
@@ -40,9 +29,6 @@ export const banterApprovalDmTemplate: AutomationTemplate = {
   description:
     'When an approval is requested, send a Banter DM to the approver with the approval details. Works for any subsystem that emits approval.requested events (Brief publish-requests, Bond deal sign-offs, Bill invoice approvals, etc.).',
   category: 'notifications',
-  // NOTE: 'approval.requested' is a placeholder trigger; see header comment.
-  // Once a producer registers it in event-catalog.ts (wave1bEvents append),
-  // this template will start matching live events without further edits.
   trigger_source: 'platform',
   trigger_event: 'approval.requested',
   conditions: [

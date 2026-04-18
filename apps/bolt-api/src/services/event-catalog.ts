@@ -1362,6 +1362,39 @@ const bearingEvents: EventDefinition[] = [
       { name: 'org.slug', type: 'string?', description: 'Organization slug' },
     ],
   },
+  // Worker-emitted brief events. These fire from background jobs rather than
+  // a user-facing request, so actor is usually the document author or system.
+  {
+    source: 'brief',
+    event_type: 'document.exported',
+    description: 'Fired by apps/worker/src/jobs/brief-export.job.ts when a document has been rendered in the requested format and uploaded to object storage. Payload includes the signed download URL for the requesting user.',
+    payload_schema: [
+      { name: 'document_id', type: 'uuid', description: 'Document ID' },
+      { name: 'format', type: 'enum', description: 'Export format', enum: ['markdown', 'html', 'pdf'] },
+      { name: 'bytes', type: 'number', description: 'Size of the exported content' },
+      { name: 'download_url', type: 'string', description: 'Signed URL for the rendered file' },
+    ],
+  },
+  {
+    source: 'brief',
+    event_type: 'document.snapshot_created',
+    description: 'Fired by apps/worker/src/jobs/brief-snapshot.job.ts when the document-version snapshot worker writes a new version row. Payload identifies the document and the new version number.',
+    payload_schema: [
+      { name: 'document_id', type: 'uuid', description: 'Document ID' },
+      { name: 'version_number', type: 'number', description: 'Sequential version number' },
+      { name: 'word_count', type: 'number', description: 'Word count at snapshot time' },
+    ],
+  },
+  {
+    source: 'brief',
+    event_type: 'document.cleanup_completed',
+    description: 'Fired by apps/worker/src/jobs/brief-cleanup.job.ts on each retention sweep. Emits aggregate counts across the org (or system-wide when not scoped).',
+    payload_schema: [
+      { name: 'purged_documents', type: 'number', description: 'Archived documents past the retention window that were hard-deleted' },
+      { name: 'pruned_versions', type: 'number', description: 'Version-history rows pruned beyond the per-document cap' },
+      { name: 'orphaned_vectors_removed', type: 'number', description: 'Qdrant vectors removed for documents that no longer exist' },
+    ],
+  },
 ];
 
 const billEvents: EventDefinition[] = [
@@ -1542,6 +1575,42 @@ const billEvents: EventDefinition[] = [
       { name: 'org.slug', type: 'string', description: 'Organization slug' },
     ],
   },
+  // Worker-emitted bill events.
+  {
+    source: 'bill',
+    event_type: 'invoice.pdf_generated',
+    description: 'Fired by apps/worker/src/jobs/bill-pdf-generate.job.ts after an invoice PDF has been rendered and uploaded to object storage.',
+    payload_schema: [
+      { name: 'invoice_id', type: 'uuid', description: 'Invoice ID' },
+      { name: 'invoice_number', type: 'string', description: 'Invoice number' },
+      { name: 'storage_key', type: 'string', description: 'Object-storage key for the rendered PDF' },
+      { name: 'size_bytes', type: 'number', description: 'Rendered PDF size in bytes' },
+      { name: 'uploaded', type: 'boolean', description: 'True when the worker actually wrote a new object; false on a re-run that found the blob already present' },
+    ],
+  },
+  {
+    source: 'bill',
+    event_type: 'invoice.email_sent',
+    description: 'Fired by apps/worker/src/jobs/bill-email-send.job.ts after an invoice notification email has been handed to the SMTP provider.',
+    payload_schema: [
+      { name: 'invoice_id', type: 'uuid', description: 'Invoice ID' },
+      { name: 'invoice_number', type: 'string', description: 'Invoice number' },
+      { name: 'recipient', type: 'string', description: 'Primary recipient email' },
+    ],
+  },
+  {
+    source: 'bill',
+    event_type: 'invoice.overdue',
+    description: 'Fired by apps/worker/src/jobs/bill-overdue-reminder.job.ts when the daily overdue sweep flags an unpaid invoice. Payload lets Bolt rules send escalating reminders or notify account owners.',
+    payload_schema: [
+      { name: 'invoice_id', type: 'uuid', description: 'Invoice ID' },
+      { name: 'invoice_number', type: 'string', description: 'Invoice number' },
+      { name: 'days_overdue', type: 'number', description: 'Days past due at sweep time' },
+      { name: 'total', type: 'number', description: 'Invoice total in smallest currency units' },
+      { name: 'currency', type: 'string', description: 'ISO currency code' },
+      { name: 'reminder_count', type: 'number', description: 'Cumulative overdue reminders already sent (incremented by this emission)' },
+    ],
+  },
 ];
 
 const bookEvents: EventDefinition[] = [
@@ -1673,6 +1742,40 @@ const blankEvents: EventDefinition[] = [
       { name: 'form.owner_name', type: 'string?', description: 'Form owner display name' },
       { name: 'form.owner_email', type: 'string?', description: 'Form owner email' },
       { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
+    ],
+  },
+  // Worker-emitted blank event. Fires from the confirmation-email sweep.
+  {
+    source: 'blank',
+    event_type: 'submission.confirmation_sent',
+    description: 'Fired by apps/worker/src/jobs/blank-confirmation-email.job.ts after a submission-confirmation email has been handed to SMTP. Tracks whether the submitter received an auto-reply and how many admin notifications went out.',
+    payload_schema: [
+      { name: 'submission_id', type: 'uuid', description: 'Submission ID' },
+      { name: 'form_id', type: 'uuid', description: 'Form ID' },
+      { name: 'form_slug', type: 'string', description: 'Form slug' },
+      { name: 'notified_submitter', type: 'boolean', description: 'True when the submitter had an email to send a confirmation to' },
+      { name: 'notification_recipients_count', type: 'number', description: 'Number of admin notify-on-submit recipients that were emailed' },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Bench: worker-emitted report-delivery events. Added late so kept in its own
+// array rather than wedged inside an existing group.
+// ---------------------------------------------------------------------------
+
+const benchEvents: EventDefinition[] = [
+  {
+    source: 'bench',
+    event_type: 'report.delivered',
+    description: 'Fired by apps/worker/src/jobs/bench-report-deliver.job.ts after a scheduled report has been rendered and delivered (or simulated in demo mode). Payload identifies the report and the delivery target.',
+    payload_schema: [
+      { name: 'report_id', type: 'uuid', description: 'Scheduled report ID' },
+      { name: 'dashboard_id', type: 'uuid', description: 'Source dashboard ID' },
+      { name: 'name', type: 'string', description: 'Report name as configured' },
+      { name: 'delivery_method', type: 'string', description: 'Delivery channel (e.g. email, slack, webhook)' },
+      { name: 'delivery_target', type: 'string', description: 'Channel-specific target (email address, webhook URL, etc.)' },
+      { name: 'export_format', type: 'string', description: 'Export format of the rendered report' },
     ],
   },
 ];
@@ -2197,6 +2300,7 @@ const ALL_EVENTS: EventDefinition[] = [
   ...billEvents,
   ...bookEvents,
   ...blankEvents,
+  ...benchEvents,
   ...wave1bEvents,
 ];
 
