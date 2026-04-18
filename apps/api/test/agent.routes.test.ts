@@ -36,27 +36,24 @@ vi.mock('../src/db/index.js', () => ({
   connection: { end: vi.fn() },
 }));
 
-// Stub requireAuth so handlers still receive 401 when no synthetic user is set.
-vi.mock('../src/plugins/auth.js', async () => {
-  const actual = await vi.importActual<typeof import('../src/plugins/auth.js')>(
-    '../src/plugins/auth.js',
-  );
-  return {
-    ...actual,
-    requireAuth: async (request: any, reply: any) => {
-      if (!request.user) {
-        return reply.status(401).send({
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'Authentication required',
-            details: [],
-            request_id: request.id,
-          },
-        });
-      }
-    },
-  };
-});
+// Stub the real requireAuth so routes still reference it, but we attach our
+// own auth preHandler below that populates request.user based on a synthetic
+// x-test-user header. We also export AuthUser as a named type stub so
+// agent.routes.ts's `type AuthUser` import resolves.
+vi.mock('../src/plugins/auth.js', () => ({
+  requireAuth: async (request: any, reply: any) => {
+    if (!request.user) {
+      return reply.status(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required',
+          details: [],
+          request_id: request.id,
+        },
+      });
+    }
+  },
+}));
 
 import agentRoutes from '../src/routes/agent.routes.js';
 
