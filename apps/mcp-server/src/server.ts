@@ -37,6 +37,7 @@ import { registerPlatformTools } from './tools/platform-tools.js';
 import { registerAgentTools } from './tools/agent-tools.js';
 import { registerProposalTools } from './tools/proposal-tools.js';
 import { registerVisibilityTools } from './tools/visibility-tools.js';
+import { registerSearchTools } from './tools/search-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -121,6 +122,15 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
   registerAgentTools(server, apiClient);
   registerProposalTools(server, apiClient);
   registerVisibilityTools(server, apiClient);
+  registerSearchTools(server, apiClient, {
+    apiUrl: env.API_INTERNAL_URL,
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+    bondApiUrl: env.BOND_API_URL,
+    briefApiUrl: env.BRIEF_API_URL,
+    beaconApiUrl: env.BEACON_API_URL,
+    banterApiUrl: env.BANTER_API_URL,
+    boardApiUrl: env.BOARD_API_URL,
+  });
 
   // Register resources and prompts
   registerResources(server, apiClient);

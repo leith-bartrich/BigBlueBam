@@ -97,6 +97,8 @@ const TOOL_NAMES = [
   'proposal_create',
   'proposal_list',
   'proposal_decide',
+  // cross-app unified search (AGENTIC_TODO §2, Wave 3)
+  'search_everything',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.

@@ -72,6 +72,8 @@ import { registerBeaconTools } from '../src/tools/beacon-tools.js';
 import { registerBamResolverTools } from '../src/tools/bam-resolver-tools.js';
 import { registerAgentTools } from '../src/tools/agent-tools.js';
 import { registerProposalTools } from '../src/tools/proposal-tools.js';
+import { registerVisibilityTools } from '../src/tools/visibility-tools.js';
+import { registerSearchTools } from '../src/tools/search-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -98,6 +100,16 @@ describe('MCP Integration Tests', () => {
     registerBamResolverTools(mock.server, api);
     registerAgentTools(mock.server, api);
     registerProposalTools(mock.server, api);
+    registerVisibilityTools(mock.server, api);
+    registerSearchTools(mock.server, api, {
+      apiUrl: 'http://localhost:4000',
+      helpdeskApiUrl: 'http://localhost:4001',
+      bondApiUrl: 'http://localhost:4009',
+      briefApiUrl: 'http://localhost:4005',
+      beaconApiUrl: 'http://localhost:4004',
+      banterApiUrl: 'http://localhost:4002',
+      boardApiUrl: 'http://localhost:4008',
+    });
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1250,6 +1262,8 @@ describe('MCP Integration Tests', () => {
         'proposal_create', 'proposal_list', 'proposal_decide',
         // visibility preflight (AGENTIC_TODO §11 Wave 2)
         'can_access',
+        // cross-app unified search (AGENTIC_TODO §2 Wave 3)
+        'search_everything',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
