@@ -182,7 +182,8 @@ export async function initErrorReporting(serviceName: string): Promise<void> {
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) return;
   try {
-    const sentry = (await import('@sentry/node')) as unknown as {
+    const moduleName = '@sentry/node';
+    const sentry = (await import(moduleName)) as unknown as {
       init: (opts: Record<string, unknown>) => void;
     };
     sentry.init({
