@@ -2146,6 +2146,37 @@ const wave1bEvents: EventDefinition[] = [
       { name: 'org', type: 'object', description: 'Full org context of the ingested event' },
     ],
   },
+  // §20 Wave 5 outbound webhooks
+  {
+    source: 'platform',
+    event_type: 'agent.webhook.disabled',
+    description: 'Fired when an agent webhook hits 20 consecutive delivery failures and the dispatcher auto-disables it (AGENTIC_TODO §20 Wave 5). Consume to alert the agent owner or reset the runner.',
+    payload_schema: [
+      { name: 'runner.id', type: 'uuid', description: 'Agent runner id' },
+      { name: 'runner.agent_user_id', type: 'uuid', description: 'Service-account user id owning the runner' },
+      { name: 'runner.webhook_url', type: 'string', description: 'Webhook URL that was disabled' },
+      { name: 'runner.consecutive_failures', type: 'number', description: 'Failure count that tripped the circuit breaker' },
+      { name: 'runner.last_error', type: 'string?', description: 'Most recent delivery error message' },
+      { name: 'disabled_at', type: 'datetime', description: 'When the auto-disable fired' },
+      { name: 'org', type: 'object', description: 'Runner org context' },
+    ],
+  },
+  {
+    source: 'platform',
+    event_type: 'agent.webhook.dead_lettered',
+    description: 'Fired by the DLQ sweeper when a webhook delivery has exceeded the backoff schedule and been moved to dead-letter state (AGENTIC_TODO §20 Wave 5). Payload carries the delivery row so operators can trigger agent_webhook_redeliver or investigate the target.',
+    payload_schema: [
+      { name: 'delivery.id', type: 'uuid', description: 'Dead-lettered delivery id' },
+      { name: 'delivery.runner_id', type: 'uuid', description: 'Runner the delivery targeted' },
+      { name: 'delivery.event_id', type: 'uuid', description: 'Bolt event id that originated the delivery' },
+      { name: 'delivery.event_source', type: 'string', description: 'Original event source' },
+      { name: 'delivery.event_type', type: 'string', description: 'Original event type' },
+      { name: 'delivery.attempt_count', type: 'number', description: 'Total delivery attempts before DLQ' },
+      { name: 'delivery.last_error', type: 'string?', description: 'Final error before DLQ' },
+      { name: 'delivery.dead_lettered_at', type: 'datetime', description: 'When the row entered DLQ state' },
+      { name: 'org', type: 'object', description: 'Runner org context' },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
