@@ -1,5 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ZodRawShape, ZodTypeAny, z } from 'zod';
+import type { Logger } from 'pino';
+import type { ApiClient } from '../middleware/api-client.js';
 
 /**
  * Side-channel registry mapping tool name → Zod return schema.
@@ -17,12 +19,322 @@ export interface RegisterToolOptions<TInput extends ZodRawShape, TReturn extends
   handler: (args: z.infer<z.ZodObject<TInput>>) => Promise<unknown>;
 }
 
+// ---------------------------------------------------------------------------
+// Policy gate (AGENTIC_TODO §15, Wave 5)
+// ---------------------------------------------------------------------------
+//
+// Every service-account tool invocation passes through a gate that fail-closes
+// on disabled policies and tool-allowlist mismatches. The gate is a per-session
+// construct (session == McpServer instance) because:
+//   1. The caller identity is pinned by the bearer token on the session's
+//      ApiClient, so the gate never needs to re-resolve it mid-session.
+//   2. Short-TTL in-process cache of (agent_user_id -> policy decision) lives
+//      on the gate and is invalidated by Redis PubSub.
+//
+// Human callers bypass the gate entirely. Always-permitted core tools
+// (`get_server_info`, `get_me`, `agent_heartbeat`) run regardless of policy
+// so a disabled agent can still identify itself and heartbeat.
+//
+// The gate is attached to the McpServer via attachPolicyGate() after the
+// McpServer is constructed but BEFORE any register* call runs. register-tool
+// looks the gate up by McpServer identity.
+
+export type PolicyDenialReason = 'AGENT_DISABLED' | 'TOOL_NOT_ALLOWED';
+
+export interface PolicyDecision {
+  allowed: boolean;
+  reason?: PolicyDenialReason;
+  agent_user_id?: string;
+  disabled_at?: string | null;
+  contact?: string | null;
+}
+
+/**
+ * Always-permitted core tools. These run for every caller regardless of the
+ * policy's `allowed_tools` list because:
+ *   - get_server_info   (clients need to introspect the server to know what
+ *                        tools exist and whether they are authenticated)
+ *   - get_me            (clients need to know who they are; required for the
+ *                        "call contact" leg of an AGENT_DISABLED error to
+ *                        make sense)
+ *   - agent_heartbeat   (a disabled agent still needs to mark itself alive so
+ *                        operators can triage; the heartbeat endpoint on the
+ *                        api side separately gates on users.kind)
+ */
+export const ALWAYS_PERMITTED_TOOLS: ReadonlySet<string> = new Set([
+  'get_server_info',
+  'get_me',
+  'agent_heartbeat',
+]);
+
+export interface PolicyGate {
+  /**
+   * Decide whether a tool invocation should proceed. Returns
+   * `{ allowed: true }` for human callers, for always-permitted core tools,
+   * and for service callers whose policy permits the tool. Returns
+   * `{ allowed: false, ... }` otherwise.
+   */
+  check(toolName: string): Promise<PolicyDecision>;
+  /**
+   * Drop the policy cache for the given agent_user_id. Invoked from the
+   * Redis PubSub listener when a policy row changes.
+   */
+  invalidate(agent_user_id: string): void;
+}
+
+// Module-level attachment: we key by McpServer identity so register-tool can
+// find the gate that was set up for this session. Using a WeakMap means gates
+// are garbage-collected when their owning McpServer goes away (session close).
+const gateRegistry = new WeakMap<McpServer, PolicyGate>();
+
+export function attachPolicyGate(server: McpServer, gate: PolicyGate): void {
+  gateRegistry.set(server, gate);
+}
+
+export function getPolicyGate(server: McpServer): PolicyGate | undefined {
+  return gateRegistry.get(server);
+}
+
+// ---------------------------------------------------------------------------
+// PolicyGate implementation
+// ---------------------------------------------------------------------------
+
+const DEFAULT_CACHE_TTL_MS = 5_000;
+const MAX_CACHE_TTL_MS = 30_000;
+
+interface CachedCallerKind {
+  kind: 'human' | 'agent' | 'service' | 'unknown';
+  id: string | null;
+  cachedAt: number;
+}
+
+interface CachedPolicyDecision {
+  decision: PolicyDecision;
+  cachedAt: number;
+}
+
+interface CreatePolicyGateOptions {
+  apiClient: ApiClient;
+  logger: Logger;
+  sessionId: string;
+  ttlMs?: number;
+}
+
+/**
+ * Build a per-session PolicyGate. The gate caches the caller's kind (resolved
+ * once from /auth/me + /users/:id) and caches the per-tool decision for the
+ * caller's agent_user_id for `ttlMs` milliseconds. Cache entries are evicted
+ * when invalidate() is called.
+ */
+export function createPolicyGate(opts: CreatePolicyGateOptions): PolicyGate {
+  const ttl = Math.min(opts.ttlMs ?? DEFAULT_CACHE_TTL_MS, MAX_CACHE_TTL_MS);
+
+  // Caller-kind cache: single entry, since the bearer token pins the caller
+  // for the lifetime of the session. We still refresh on TTL expiry in case
+  // the user's kind was toggled mid-session (rare, but supported).
+  let callerCache: CachedCallerKind | null = null;
+  // Per-tool decision cache. Keyed by toolName; invalidate() wipes the whole
+  // map since the invalidation trigger is "policy for this agent changed",
+  // which potentially moves every tool.
+  const decisionCache = new Map<string, CachedPolicyDecision>();
+
+  async function resolveCaller(): Promise<CachedCallerKind> {
+    const now = Date.now();
+    if (callerCache && now - callerCache.cachedAt < ttl) return callerCache;
+
+    // Resolve via /auth/me for the id, then /users/:id for the kind. The
+    // /auth/me response does not carry `kind`; /users/:id does. We tolerate
+    // failure: on an error we treat the caller as 'unknown' and fail-closed
+    // in the gate check.
+    try {
+      const meRes = await opts.apiClient.get<{ data?: { id?: string } }>('/auth/me');
+      const id = meRes.ok ? meRes.data?.data?.id ?? null : null;
+      if (!id) {
+        callerCache = { kind: 'unknown', id: null, cachedAt: now };
+        return callerCache;
+      }
+      const userRes = await opts.apiClient.get<{ data?: { kind?: string } }>(
+        `/users/${id}`,
+      );
+      const rawKind = userRes.ok ? userRes.data?.data?.kind : undefined;
+      const kind: CachedCallerKind['kind'] =
+        rawKind === 'human' || rawKind === 'agent' || rawKind === 'service'
+          ? rawKind
+          : 'unknown';
+      callerCache = { kind, id, cachedAt: now };
+      return callerCache;
+    } catch (err) {
+      opts.logger.warn(
+        { err, sessionId: opts.sessionId },
+        'PolicyGate: failed to resolve caller kind; treating as unknown',
+      );
+      callerCache = { kind: 'unknown', id: null, cachedAt: now };
+      return callerCache;
+    }
+  }
+
+  async function check(toolName: string): Promise<PolicyDecision> {
+    // Always-permitted core tools bypass EVERYTHING. This matters because
+    // get_server_info is the first thing an MCP client calls, and get_me
+    // is how the client learns its own identity; disabling an agent must
+    // not wedge its ability to explain itself.
+    if (ALWAYS_PERMITTED_TOOLS.has(toolName)) {
+      return { allowed: true };
+    }
+
+    const caller = await resolveCaller();
+
+    // Human callers are out of scope for policy checks. The allowlist is
+    // an agent/service surface only; humans get whatever their session
+    // scope permits and the /v1/... routes enforce their ACLs separately.
+    if (caller.kind === 'human') return { allowed: true };
+
+    // Unknown callers fail-closed. We don't know who this is, so we can't
+    // verify they are permitted. This also catches token-rotation edge
+    // cases where /auth/me briefly returns 401.
+    if (caller.kind === 'unknown' || !caller.id) {
+      return {
+        allowed: false,
+        reason: 'AGENT_DISABLED',
+        agent_user_id: caller.id ?? '',
+        disabled_at: null,
+        contact: null,
+      };
+    }
+
+    // Service / agent caller: consult the cache, falling back to the API.
+    const cached = decisionCache.get(toolName);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt < ttl) {
+      return cached.decision;
+    }
+
+    try {
+      const res = await opts.apiClient.post<{ data?: PolicyDecision }>(
+        `/v1/agent-policies/${caller.id}/check?tool=${encodeURIComponent(toolName)}`,
+        {},
+      );
+      if (!res.ok) {
+        opts.logger.warn(
+          { status: res.status, sessionId: opts.sessionId, toolName, agent: caller.id },
+          'PolicyGate: check endpoint returned non-2xx; fail-closed',
+        );
+        const decision: PolicyDecision = {
+          allowed: false,
+          reason: 'AGENT_DISABLED',
+          agent_user_id: caller.id,
+          disabled_at: null,
+          contact: null,
+        };
+        decisionCache.set(toolName, { decision, cachedAt: now });
+        return decision;
+      }
+      const decision: PolicyDecision = res.data?.data ?? {
+        allowed: false,
+        reason: 'AGENT_DISABLED',
+        agent_user_id: caller.id,
+        disabled_at: null,
+        contact: null,
+      };
+      decisionCache.set(toolName, { decision, cachedAt: now });
+      return decision;
+    } catch (err) {
+      opts.logger.error(
+        { err, sessionId: opts.sessionId, toolName, agent: caller.id },
+        'PolicyGate: check endpoint threw; fail-closed',
+      );
+      return {
+        allowed: false,
+        reason: 'AGENT_DISABLED',
+        agent_user_id: caller.id,
+        disabled_at: null,
+        contact: null,
+      };
+    }
+  }
+
+  function invalidate(agent_user_id: string): void {
+    // If the invalidated id matches our cached caller, drop both caches.
+    // Otherwise drop nothing; this session's cached decisions are still
+    // valid because they belong to a different agent.
+    if (callerCache?.id === agent_user_id) {
+      decisionCache.clear();
+      // Leave callerCache in place; caller identity didn't change, just the
+      // policy did. Next call will refetch the decision.
+    }
+  }
+
+  return { check, invalidate };
+}
+
+// ---------------------------------------------------------------------------
+// registerTool
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a CallToolResult-shaped error response for a policy denial. The
+ * shape matches the spec in AGENTIC_TODO §15:
+ *
+ *   { content: [{ type: 'text', text: JSON.stringify({
+ *       error: {
+ *         code: 'AGENT_DISABLED' | 'TOOL_NOT_ALLOWED',
+ *         agent_user_id, disabled_at, contact, message
+ *       }
+ *     }, null, 2) }], isError: true }
+ */
+export function buildPolicyDenialResult(
+  toolName: string,
+  decision: PolicyDecision,
+): { content: { type: 'text'; text: string }[]; isError: true } {
+  const code: PolicyDenialReason = decision.reason ?? 'AGENT_DISABLED';
+  const message =
+    code === 'AGENT_DISABLED'
+      ? `This agent is currently disabled by operator policy. Contact ${decision.contact ?? 'a platform administrator'} to re-enable it.`
+      : `Tool '${toolName}' is not in the allowed_tools list for this agent. Contact ${decision.contact ?? 'a platform administrator'} to request access.`;
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            error: {
+              code,
+              agent_user_id: decision.agent_user_id ?? null,
+              disabled_at: decision.disabled_at ?? null,
+              contact: decision.contact ?? null,
+              message,
+            },
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+    isError: true,
+  };
+}
+
 export function registerTool<TInput extends ZodRawShape, TReturn extends ZodTypeAny>(
   server: McpServer,
   opts: RegisterToolOptions<TInput, TReturn>,
 ): void {
   returnSchemas.set(opts.name, opts.returns);
-  server.tool(opts.name, opts.description, opts.input, opts.handler as never);
+
+  // Wrap the original handler so every invocation passes through the
+  // per-session PolicyGate (if one is attached). Humans bypass, core tools
+  // bypass, everyone else gets gated.
+  const wrappedHandler = (async (args: z.infer<z.ZodObject<TInput>>) => {
+    const gate = gateRegistry.get(server);
+    if (gate) {
+      const decision = await gate.check(opts.name);
+      if (!decision.allowed) {
+        return buildPolicyDenialResult(opts.name, decision);
+      }
+    }
+    return opts.handler(args);
+  }) as typeof opts.handler;
+
+  server.tool(opts.name, opts.description, opts.input, wrappedHandler as never);
 }
 
 export function getReturnSchema(name: string): ZodTypeAny | undefined {

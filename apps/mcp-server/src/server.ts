@@ -8,6 +8,9 @@ import { loadEnv } from './env.js';
 import { ApiClient } from './middleware/api-client.js';
 import { RateLimiter } from './middleware/rate-limiter.js';
 import { AuditLogger } from './middleware/audit-logger.js';
+// §15 Wave 5 agent policies
+import { attachPolicyGate, createPolicyGate } from './lib/register-tool.js';
+import Redis from 'ioredis';
 import { registerProjectTools } from './tools/project-tools.js';
 import { registerBoardTools } from './tools/board-tools.js';
 import { registerTaskTools } from './tools/task-tools.js';
@@ -71,6 +74,39 @@ const streamableTransports = new Map<string, StreamableHTTPServerTransport>();
 // Track SSE transports by session ID
 const sseTransports = new Map<string, SSEServerTransport>();
 
+// §15 Wave 5 agent policies: session-level policy gates. Keyed by session id
+// so the Redis PubSub listener below can reach every gate and invalidate it
+// when a policy row changes for one of its callers. Entries are removed when
+// the transport closes (see the onclose hooks further down).
+const policyGates = new Map<string, ReturnType<typeof createPolicyGate>>();
+
+// §15 Wave 5: Redis PubSub listener. When an operator updates a policy via
+// POST /v1/agent-policies/:id the API publishes the agent_user_id on
+// `agent_policies:invalidate`; we fan that out to every live gate so they
+// drop their cached decision for that agent. If Redis is unavailable we
+// degrade to TTL-only invalidation (5s default) and log once.
+let policySubscriber: Redis | null = null;
+try {
+  policySubscriber = new Redis(env.REDIS_URL, {
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+  });
+  await policySubscriber.connect();
+  await policySubscriber.subscribe('agent_policies:invalidate');
+  policySubscriber.on('message', (_channel: string, message: string) => {
+    for (const gate of policyGates.values()) {
+      gate.invalidate(message);
+    }
+  });
+  logger.info('Subscribed to agent_policies:invalidate');
+} catch (err) {
+  logger.warn(
+    { err },
+    'agent_policies:invalidate subscription unavailable; falling back to TTL-only cache',
+  );
+  policySubscriber = null;
+}
+
 function extractBearerToken(req: IncomingMessage): string | null {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return null;
@@ -91,13 +127,29 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.end(JSON.stringify(data));
 }
 
-function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
+function createMcpServer(
+  apiClient: ApiClient,
+  sessionId: string,
+  opts: { trackGate?: boolean } = { trackGate: true },
+): McpServer {
   const auditLogger = new AuditLogger(apiClient, logger);
 
   const server = new McpServer({
     name: 'BigBlueBam',
     version: '1.0.0',
   });
+
+  // §15 Wave 5: attach the policy gate BEFORE any register* call so the
+  // registerTool wrapper picks it up. Gate is session-scoped and gets
+  // invalidated by the Redis subscriber above. For one-shot ephemeral
+  // servers (spun up per /tools/call invocation) trackGate is left off so
+  // we don't leak into the session map; the gate still works because it is
+  // attached to the server via the WeakMap in register-tool.ts.
+  const gate = createPolicyGate({ apiClient, logger, sessionId });
+  attachPolicyGate(server, gate);
+  if (opts.trackGate !== false) {
+    policyGates.set(sessionId, gate);
+  }
 
   // Register all tools
   registerProjectTools(server, apiClient);
@@ -223,7 +275,10 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
       internalSecret: env.INTERNAL_SERVICE_SECRET ?? '',
       apiInternalUrl: env.API_INTERNAL_URL,
       mcpInternalApiToken: env.MCP_INTERNAL_API_TOKEN ?? '',
-      createMcpServer,
+      // §15 Wave 5: pass trackGate:false so ephemeral per-call servers don't
+      // leak into the session-wide policyGates map.
+      createMcpServer: (apiClient, sid) =>
+        createMcpServer(apiClient, sid, { trackGate: false }),
     });
     return;
   }
@@ -250,6 +305,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
 
       transport.onclose = () => {
         sseTransports.delete(sessionId);
+        policyGates.delete(sessionId);
         logger.info({ sessionId }, 'SSE session closed');
       };
 
@@ -330,6 +386,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
         const sid = transport.sessionId;
         if (sid) {
           streamableTransports.delete(sid);
+          policyGates.delete(sid);
           logger.info({ sessionId: sid }, 'MCP session closed');
         }
       };
@@ -411,6 +468,16 @@ async function shutdown(signal: string) {
     }
   }
   sseTransports.clear();
+
+  // §15 Wave 5: drop the Redis subscriber
+  if (policySubscriber) {
+    try {
+      await policySubscriber.quit();
+    } catch {
+      logger.warn('Error closing agent_policies Redis subscriber');
+    }
+  }
+  policyGates.clear();
 
   httpServer.close(() => {
     logger.info('MCP server shut down');
