@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, requireScope } from '../plugins/auth.js';
 import { requireMinOrgRole, requireBeaconEditAccess, requireBeaconReadAccess } from '../middleware/authorize.js';
 import * as beaconService from '../services/beacon.service.js';
+import * as entryUpsertService from '../services/entry-upsert.service.js';
 import * as verificationService from '../services/verification.service.js';
 import { transitionBeacon } from '../services/lifecycle.service.js';
 import { publishBoltEvent } from '../lib/bolt-events.js';
@@ -41,7 +42,70 @@ const listBeaconsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).optional(),
 });
 
+// AGENTIC_TODO §14 Wave 4: idempotent create-or-update by slug.
+const upsertEntrySchema = z.object({
+  slug: z.string().min(1).max(256),
+  title: z.string().min(1).max(512),
+  summary: z.string().max(500).nullable().optional(),
+  body_markdown: z.string().min(1).max(500_000),
+  body_html: z.string().nullable().optional(),
+  visibility: z.enum(['Public', 'Organization', 'Project', 'Private']).optional(),
+  project_id: z.string().uuid().nullable().optional(),
+  metadata: z.record(z.unknown()).optional(),
+  change_note: z.string().max(500).nullable().optional(),
+});
+
 export default async function beaconRoutes(fastify: FastifyInstance) {
+  // POST /entries/upsert — Idempotent create-or-update on slug
+  // (AGENTIC_TODO §14 Wave 4). Registered with the router's /v1 prefix in
+  // server.ts, so the external path is /v1/entries/upsert. Emits
+  // entry.upserted (source beacon) with `created: boolean`.
+  fastify.post(
+    '/entries/upsert',
+    {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+      preHandler: [requireAuth, requireMinOrgRole('member'), requireScope('read_write')],
+    },
+    async (request, reply) => {
+      const body = upsertEntrySchema.parse(request.body);
+      try {
+        const result = await entryUpsertService.upsertEntryBySlug(
+          body,
+          request.user!.id,
+          request.user!.org_id,
+        );
+        // Fire-and-forget Bolt event. Enrichment matches beacon.created.
+        buildBeaconEventPayload(result.data, request.user!.id, {
+          created: result.created,
+          idempotency_key: result.idempotency_key,
+        })
+          .then((payload) =>
+            publishBoltEvent(
+              'entry.upserted',
+              'beacon',
+              payload,
+              request.user!.org_id,
+              request.user!.id,
+            ),
+          )
+          .catch(() => {});
+        return reply.status(result.created ? 201 : 200).send(result);
+      } catch (err) {
+        if (err instanceof entryUpsertService.EntryUpsertError) {
+          return reply.status(err.statusCode).send({
+            error: {
+              code: err.code,
+              message: err.message,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
   // POST /beacons — Create a new beacon (Draft)
   fastify.post(
     '/beacons',

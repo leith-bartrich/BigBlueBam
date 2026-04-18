@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { betaSignupNotifications } from '../db/schema/beta-signup-notifications.js';
 import { getPlatformSettings } from '../services/platform-settings.service.js';
+import { isBootstrapRequired } from '../services/bootstrap-status.service.js';
 
 /**
  * Unauthenticated public endpoints used by login/register pages.
@@ -46,9 +47,11 @@ function truncate(s: unknown, max: number): string | null {
 export default async function publicConfigRoutes(fastify: FastifyInstance) {
   fastify.get('/public/config', async () => {
     const settings = await getPlatformSettings();
+    const bootstrapRequired = await isBootstrapRequired();
     return {
       data: {
         public_signup_disabled: settings.public_signup_disabled === true,
+        bootstrap_required: bootstrapRequired,
       },
     };
   });

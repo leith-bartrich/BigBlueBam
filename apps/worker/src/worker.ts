@@ -80,6 +80,23 @@ import {
   processHelpdeskEmailNotifyJob,
   type HelpdeskEmailNotifyJobData,
 } from './jobs/helpdesk-email-notify.job.js';
+// §13 Wave 4 scheduled banter
+import {
+  processBanterScheduledPostJob,
+  reconcileScheduledPosts,
+  type BanterScheduledPostJobData,
+} from './jobs/banter-scheduled-post.job.js';
+// §1 Wave 5 banter subs
+import { startBanterPatternMatchConsumer } from './jobs/banter-pattern-match.job.js';
+// §20 Wave 5 webhooks
+import {
+  processAgentWebhookDispatchJob,
+  type AgentWebhookDispatchJobData,
+} from './jobs/agent-webhook-dispatch.job.js';
+import {
+  processAgentWebhookDlqJob,
+  type AgentWebhookDlqJobData,
+} from './jobs/agent-webhook-dlq.job.js';
 
 const env = loadEnv();
 
@@ -223,6 +240,23 @@ banterTranscriptionWorker.on('completed', (job) => {
 
 banterTranscriptionWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'banter-transcription', err }, 'Job failed');
+});
+
+// §13 Wave 4 scheduled banter — delayed and quiet-hours-deferred post delivery.
+const banterScheduledPostWorker = new Worker<BanterScheduledPostJobData>(
+  'banter-scheduled-post',
+  async (job: Job<BanterScheduledPostJobData>) => {
+    await processBanterScheduledPostJob(job, redis, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+
+banterScheduledPostWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'banter-scheduled-post' }, 'Job completed');
+});
+
+banterScheduledPostWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'banter-scheduled-post', err }, 'Job failed');
 });
 
 // Schedule banter retention as a daily cron (1 AM UTC, offset from other sweeps)
@@ -791,6 +825,44 @@ bondBulkScoreQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register bond-bulk-score scheduler'));
 
+// §20 Wave 5 webhooks: outbound dispatcher to agent runners.
+const agentWebhookDispatchWorker = new Worker<AgentWebhookDispatchJobData>(
+  'agent-webhook-dispatch',
+  async (job: Job<AgentWebhookDispatchJobData>) => {
+    await processAgentWebhookDispatchJob(job, redis, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+agentWebhookDispatchWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'agent-webhook-dispatch' }, 'Job completed');
+});
+agentWebhookDispatchWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'agent-webhook-dispatch', err }, 'Job failed');
+});
+
+// §20 Wave 5 webhooks: dead-letter notifier, runs every 5 minutes.
+const agentWebhookDlqWorker = new Worker<AgentWebhookDlqJobData>(
+  'agent-webhook-dlq',
+  async (job: Job<AgentWebhookDlqJobData>) => {
+    await processAgentWebhookDlqJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+agentWebhookDlqWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'agent-webhook-dlq' }, 'Job completed');
+});
+agentWebhookDlqWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'agent-webhook-dlq', err }, 'Job failed');
+});
+const agentWebhookDlqQueue = new Queue('agent-webhook-dlq', { connection: redis });
+agentWebhookDlqQueue
+  .upsertJobScheduler(
+    'agent-webhook-dlq-tick',
+    { pattern: '*/5 * * * *' }, // every 5 minutes
+    { name: 'tick', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register agent-webhook-dlq scheduler'));
+
 // Helpdesk email notification worker.
 const helpdeskEmailNotifyWorker = new Worker<HelpdeskEmailNotifyJobData>(
   'helpdesk-email-notify',
@@ -826,6 +898,44 @@ analyticsWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'analytics', err }, 'Job failed');
 });
 
+// §1 Wave 5 banter subs — pattern-match consumer.
+// Subscribes to the banter:events Redis channel (the same fan-out used by
+// the browser realtime bus), filters message.created events, evaluates
+// every active subscription for the channel, and publishes
+// banter.message.matched Bolt events on hits. Uses a SEPARATE Redis
+// client because ioredis puts a client into subscriber mode exclusively.
+// The rate-limiter continues to share the main `redis` client.
+const banterPatternMatchSubscriber = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: null,
+});
+const banterPatternMatchConsumer = await startBanterPatternMatchConsumer(
+  banterPatternMatchSubscriber,
+  redis,
+  logger,
+  {
+    apiInternalUrl: env.API_INTERNAL_URL,
+    internalServiceSecret: env.INTERNAL_SERVICE_SECRET,
+  },
+);
+
+// §13 Wave 4 scheduled banter — startup reconciler.
+// Re-enqueue any pending scheduled-message rows whose BullMQ job may have been
+// lost (e.g. Redis was flushed). Safe to call because BullMQ dedups by jobId.
+const banterScheduledPostQueue = new Queue('banter-scheduled-post', { connection: redis });
+reconcileScheduledPosts(
+  async (jobId, data, delayMs) => {
+    await banterScheduledPostQueue.add('scheduled-post', data, {
+      jobId,
+      delay: delayMs,
+      removeOnComplete: 500,
+      removeOnFail: 1000,
+    });
+  },
+  logger,
+).catch((err) => {
+  logger.error({ err }, 'banter-scheduled-post: startup reconciler failed');
+});
+
 // Collect all workers for graceful shutdown
 const workers = [
   emailWorker,
@@ -834,6 +944,7 @@ const workers = [
   exportWorker,
   banterNotificationWorker,
   banterRetentionWorker,
+  banterScheduledPostWorker,
   helpdeskTaskCreateWorker,
   beaconVectorSyncWorker,
   beaconExpirySweepWorker,
@@ -861,6 +972,9 @@ const workers = [
   boltExecutionCleanupWorker,
   bondBulkScoreWorker,
   helpdeskEmailNotifyWorker,
+  // §20 Wave 5 webhooks
+  agentWebhookDispatchWorker,
+  agentWebhookDlqWorker,
   analyticsWorker,
 ];
 
@@ -874,6 +988,7 @@ logger.info(
       'banter-notifications',
       'banter-retention',
       'banter-transcription',
+      'banter-scheduled-post',
       'helpdesk-task-create',
       'beacon-vector-sync',
       'beacon-expiry-sweep',
@@ -901,6 +1016,9 @@ logger.info(
       'bolt-execution-cleanup',
       'bond-bulk-score',
       'helpdesk-email-notify',
+      // §20 Wave 5 webhooks
+      'agent-webhook-dispatch',
+      'agent-webhook-dlq',
       'analytics',
     ],
   },
@@ -910,6 +1028,15 @@ logger.info(
 // Graceful shutdown
 async function shutdown(signal: string) {
   logger.info({ signal }, 'Received shutdown signal, closing workers...');
+
+  // §1 Wave 5 banter subs - stop the pattern-match consumer first so no new
+  // matches fire during the queue drain.
+  try {
+    await banterPatternMatchConsumer.stop();
+    banterPatternMatchSubscriber.disconnect();
+  } catch (err) {
+    logger.warn({ err }, 'banter-pattern-match: shutdown stop failed');
+  }
 
   await Promise.all(workers.map((w) => w.close()));
   await closeDb();

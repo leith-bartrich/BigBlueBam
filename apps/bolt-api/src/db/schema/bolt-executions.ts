@@ -35,11 +35,16 @@ export const boltExecutions = pgTable(
     condition_log: jsonb('condition_log'),
     error_message: text('error_message'),
     error_step: integer('error_step'),
+    // §12 Wave 5 bolt observability
+    evaluation_trace: jsonb('evaluation_trace'),
+    event_id: uuid('event_id'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index('idx_bolt_executions_automation_id').on(table.automation_id),
     index('idx_bolt_executions_status').on(table.status),
     index('idx_bolt_executions_started_at').on(table.started_at),
+    // §12 Wave 5 bolt observability
+    index('idx_bolt_executions_event_id').on(table.event_id),
   ],
 );

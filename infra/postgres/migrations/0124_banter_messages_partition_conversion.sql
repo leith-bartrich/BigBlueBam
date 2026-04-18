@@ -36,13 +36,13 @@ BEGIN
   -- Step 1: Rename the existing plain table to _old
   IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'banter_messages_old') THEN
     -- _old already exists from a prior partial run; drop it
-    DROP TABLE banter_messages_old CASCADE;
+    DROP TABLE banter_messages_old CASCADE; -- noqa: drop-if-exists
   END IF;
 
   ALTER TABLE banter_messages RENAME TO banter_messages_old;
 
   -- Step 2: Create the new partitioned table with the same schema
-  CREATE TABLE banter_messages (
+  CREATE TABLE banter_messages ( -- noqa: create-table-if-not-exists
     id UUID NOT NULL DEFAULT gen_random_uuid(),
     channel_id UUID NOT NULL,
     author_id UUID NOT NULL,

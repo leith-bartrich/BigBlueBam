@@ -14,7 +14,7 @@ const envSchema = z.object({
   API_INTERNAL_URL: z.string().url().default('http://localhost:3000'),
   HELPDESK_API_URL: z.string().url().default('http://localhost:4001'),
   BANTER_API_URL: z.string().url().default('http://localhost:4002'),
-  BEACON_API_URL: z.string().url().default('http://beacon-api:4004'),
+  BEACON_API_URL: z.string().url().default('http://beacon-api:4004/v1'),
   BRIEF_API_URL: z.string().url().default('http://brief-api:4005/v1'),
   BOLT_API_URL: z.string().url().default('http://bolt-api:4006/v1'),
   BEARING_API_URL: z.string().url().default('http://bearing-api:4007/v1'),

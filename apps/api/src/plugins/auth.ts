@@ -34,6 +34,12 @@ export interface AuthUser {
   timezone: string;
   is_active: boolean;
   is_superuser: boolean;
+  /**
+   * Actor kind from users.kind (migration 0127 / AGENTIC_TODO §10). Used by
+   * agent-only routes (heartbeat, self-report) to gate on "this must be a
+   * service account" without string-matching the bbam_svc_ key prefix.
+   */
+  kind: 'human' | 'agent' | 'service';
   api_key_scope: string | null;
   org_memberships: OrgMembership[];
   active_org_id: string;
@@ -78,6 +84,7 @@ interface BaseUserRow {
   timezone: string;
   is_active: boolean;
   is_superuser: boolean;
+  kind: 'human' | 'agent' | 'service';
 }
 
 /**
@@ -241,6 +248,7 @@ export async function buildAuthUser(
     timezone: row.timezone,
     is_active: row.is_active,
     is_superuser: row.is_superuser,
+    kind: row.kind,
     api_key_scope: apiKeyScope,
     org_memberships: memberships,
     active_org_id: finalOrgId,
@@ -304,6 +312,7 @@ async function authPlugin(fastify: FastifyInstance) {
             timezone: users.timezone,
             is_active: users.is_active,
             is_superuser: users.is_superuser,
+            kind: users.kind,
             last_seen_at: users.last_seen_at,
           },
         })
@@ -374,6 +383,7 @@ async function authPlugin(fastify: FastifyInstance) {
             timezone: users.timezone,
             is_active: users.is_active,
             is_superuser: users.is_superuser,
+            kind: users.kind,
           },
         })
         .from(apiKeys)
@@ -490,6 +500,7 @@ async function authPlugin(fastify: FastifyInstance) {
         timezone: users.timezone,
         is_active: users.is_active,
         is_superuser: users.is_superuser,
+        kind: users.kind,
       })
       .from(users)
       .where(eq(users.id, impersonateHeader))

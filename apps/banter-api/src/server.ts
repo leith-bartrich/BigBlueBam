@@ -30,6 +30,10 @@ import webhookRoutes from './routes/webhook.routes.js';
 import internalRoutes from './routes/internal.routes.js';
 import presenceRoutes from './routes/presence.routes.js';
 import linkPreviewRoutes from './routes/link-preview.routes.js';
+// §13 Wave 4 scheduled banter
+import scheduledMessagesRoutes from './routes/scheduled-messages.routes.js';
+// §1 Wave 5 banter subs
+import agentSubscriptionsRoutes from './routes/agent-subscriptions.routes.js';
 import { sql } from 'drizzle-orm';
 
 const fastify = Fastify({
@@ -151,6 +155,10 @@ await fastify.register(webhookRoutes);
 await fastify.register(internalRoutes);
 await fastify.register(presenceRoutes);
 await fastify.register(linkPreviewRoutes);
+// §13 Wave 4 scheduled banter
+await fastify.register(scheduledMessagesRoutes);
+// §1 Wave 5 banter subs
+await fastify.register(agentSubscriptionsRoutes);
 
 // WebSocket handler
 await fastify.register(websocketHandler);

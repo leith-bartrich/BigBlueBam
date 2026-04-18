@@ -266,6 +266,31 @@ const bamEvents: EventDefinition[] = [
     ],
   },
   {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake for webhook / import flows.
+    // Fired on every POST /v1/tasks/upsert-by-external-id call; `created`
+    // discriminates insert from update. The task.created event is NOT also
+    // emitted on the insert path so rules do not double-fire.
+    source: 'bam',
+    event_type: 'task.upserted',
+    description: 'Fired when a task is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path.',
+    payload_schema: [
+      { name: 'task.id', type: 'uuid', description: 'Task ID' },
+      { name: 'task.project_id', type: 'uuid', description: 'Project ID' },
+      { name: 'task.external_id', type: 'string', description: 'External idempotency key (project_id, external_id)' },
+      { name: 'task.title', type: 'string', description: 'Task title' },
+      { name: 'task.human_id', type: 'string', description: 'Human-readable task id (e.g. FRND-42)' },
+      { name: 'task.url', type: 'string', description: 'Deep link URL to the task' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'project.id', type: 'uuid', description: 'Project ID' },
+      { name: 'project.name', type: 'string', description: 'Project name' },
+      { name: 'actor.id', type: 'uuid', description: 'User who triggered the upsert' },
+      { name: 'actor.name', type: 'string', description: 'Actor display name' },
+      { name: 'org.id', type: 'uuid', description: 'Organization ID' },
+      { name: 'org.name', type: 'string', description: 'Organization name' },
+      { name: 'org.slug', type: 'string', description: 'Organization slug' },
+    ],
+  },
+  {
     source: 'bam',
     event_type: 'task.deleted',
     description: 'Fired when a task is deleted.',
@@ -541,6 +566,68 @@ const banterEvents: EventDefinition[] = [
       { name: 'org.slug', type: 'string', description: 'Organization slug' },
     ],
   },
+  // §13 Wave 4 scheduled banter
+  {
+    source: 'banter',
+    event_type: 'message.scheduled',
+    description: 'Fired when a Banter post is scheduled for future delivery (either an explicit scheduled_at or an immediate post deferred by quiet hours).',
+    payload_schema: [
+      { name: 'scheduled_message_id', type: 'uuid', description: 'Scheduled-messages row ID' },
+      { name: 'channel_id', type: 'uuid', description: 'Target channel ID' },
+      { name: 'channel_name', type: 'string?', description: 'Target channel name (null if not loaded at publish time)' },
+      { name: 'author_id', type: 'uuid', description: 'User who scheduled the post' },
+      { name: 'scheduled_at', type: 'datetime', description: 'When the post will be delivered (UTC ISO-8601)' },
+      { name: 'defer_reason', type: 'string', description: 'Why the post was scheduled: scheduled | quiet_hours' },
+      { name: 'org.id', type: 'uuid', description: 'Organization ID' },
+    ],
+  },
+  {
+    source: 'banter',
+    event_type: 'message.quiet_hours_deferred',
+    description: 'Fired in addition to message.scheduled when an immediate post was converted to scheduled because the channel was inside a quiet-hours window.',
+    payload_schema: [
+      { name: 'original_requested_at', type: 'datetime', description: 'When the caller originally tried to post (UTC ISO-8601)' },
+      { name: 'new_scheduled_at', type: 'datetime', description: 'The next-allowed time the post will fire (UTC ISO-8601)' },
+      { name: 'channel_id', type: 'uuid', description: 'Target channel ID' },
+      { name: 'policy.timezone', type: 'string', description: 'IANA timezone used for hour-of-day comparison' },
+      { name: 'policy.allowed_hours', type: 'number[]', description: '[startHour, endHourExclusive] window, 0-24' },
+    ],
+  },
+  {
+    source: 'banter',
+    event_type: 'message.scheduled_delivered',
+    description: 'Fired by the worker when a scheduled Banter post is successfully delivered to the channel.',
+    payload_schema: [
+      { name: 'scheduled_message_id', type: 'uuid', description: 'Scheduled-messages row ID' },
+      { name: 'message_id', type: 'uuid', description: 'ID of the now-live banter_messages row' },
+      { name: 'channel_id', type: 'uuid', description: 'Target channel ID' },
+      { name: 'delivered_at', type: 'datetime', description: 'When the worker inserted the message (UTC ISO-8601)' },
+    ],
+  },
+  // §1 Wave 5 banter subs
+  {
+    source: 'banter',
+    event_type: 'message.matched',
+    description:
+      'Fired by the worker pattern-match consumer when a posted message matches an active banter_agent_subscriptions row. One event per matching subscription (an agent with two matching subs sees two events).',
+    payload_schema: [
+      { name: 'message.id', type: 'uuid', format: 'uuid', description: 'Banter message ID' },
+      { name: 'message.channel_id', type: 'uuid', format: 'uuid', description: 'Channel the message was posted to' },
+      { name: 'message.author_id', type: 'uuid', format: 'uuid', description: 'User who posted the message' },
+      { name: 'message.content', type: 'string', description: 'Message plaintext content' },
+      { name: 'match.subscription_id', type: 'uuid', format: 'uuid', description: 'banter_agent_subscriptions row ID that matched' },
+      { name: 'match.subscriber_user_id', type: 'uuid', format: 'uuid', description: 'Subscriber (agent/service) user ID' },
+      {
+        name: 'match.pattern_kind',
+        type: 'enum',
+        enum: ['interrogative', 'keyword', 'regex', 'mention'],
+        description: 'Kind of pattern that matched',
+      },
+      { name: 'match.matched_text', type: 'string', description: 'The content slice that tripped the match (full message for non-regex kinds, or the regex .[0] group)' },
+      { name: 'match.matched_at', type: 'datetime', format: 'iso8601', description: 'When the match was evaluated (UTC ISO-8601)' },
+      { name: 'org.id', type: 'uuid', format: 'uuid', description: 'Organization ID' },
+    ],
+  },
 ];
 
 // Common Beacon payload fields shared across every beacon.* event.
@@ -637,6 +724,24 @@ const beaconEvents: EventDefinition[] = [
       { name: 'verification.outcome', type: 'string', description: 'Outcome (Confirmed/Updated/Challenged/Retired)' },
       { name: 'verification.confidence_score', type: 'number?', description: 'Agent confidence score in [0,1]' },
       { name: 'verification.notes', type: 'string?', description: 'Reviewer notes' },
+    ],
+  },
+  {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake by slug. Fired on every
+    // POST /v1/entries/upsert call; `created` discriminates insert from
+    // update. The beacon.created event is NOT also emitted on the insert
+    // path so rules do not double-fire.
+    source: 'beacon',
+    event_type: 'entry.upserted',
+    description: 'Fired when a Beacon entry is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path (which also bumps version and writes a beacon_versions snapshot).',
+    payload_schema: [
+      { name: 'entry.id', type: 'uuid', description: 'Entry ID' },
+      { name: 'entry.slug', type: 'string', description: 'Entry slug (idempotency key)' },
+      { name: 'entry.title', type: 'string', description: 'Entry title' },
+      { name: 'entry.visibility', type: 'string', description: 'Visibility (Public/Organization/Project/Private)' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'actor.id', type: 'uuid', description: 'User who triggered the upsert' },
+      { name: 'org', type: 'object', description: 'Organization context { id, name, slug }' },
     ],
   },
 ];
@@ -801,6 +906,26 @@ const helpdeskEvents: EventDefinition[] = [
       { name: 'ticket.subject', type: 'string', description: 'Ticket subject' },
       { name: 'sla.type', type: 'string', description: 'SLA type (response/resolution)' },
       { name: 'sla.deadline', type: 'datetime', description: 'SLA deadline that was breached' },
+    ],
+  },
+  {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake by (org_id, email). Fired
+    // on every POST /v1/helpdesk-users/upsert call; `created`
+    // discriminates insert from update. The update path deliberately does
+    // NOT touch password_hash — see user-upsert.service.ts for the
+    // security contract.
+    source: 'helpdesk',
+    event_type: 'user.upserted',
+    description: 'Fired when a helpdesk_user is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path.',
+    payload_schema: [
+      { name: 'helpdesk_user.id', type: 'uuid', description: 'Helpdesk user ID' },
+      { name: 'helpdesk_user.email', type: 'string', description: 'Email (idempotency key, lowercased)' },
+      { name: 'helpdesk_user.org_id', type: 'uuid?', description: 'Organization ID' },
+      { name: 'helpdesk_user.display_name', type: 'string', description: 'Display name' },
+      { name: 'helpdesk_user.email_verified', type: 'boolean', description: 'Whether the email is verified' },
+      { name: 'helpdesk_user.is_active', type: 'boolean', description: 'Whether the account is active' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'org', type: 'object', description: 'Organization context { id }' },
     ],
   },
 ];
@@ -970,6 +1095,29 @@ const bondEvents: EventDefinition[] = [
       { name: 'company', type: 'object?', description: 'Related company object { id, name, url }' },
       { name: 'actor', type: 'object', description: 'User who logged the activity' },
       { name: 'org', type: 'object', description: 'Organization context' },
+    ],
+  },
+  {
+    // AGENTIC_TODO §14 Wave 4: idempotent intake by email. Fired on every
+    // POST /contacts/upsert call; `created` discriminates insert from
+    // update. The contact.created event is NOT also emitted on the insert
+    // path so rules do not double-fire.
+    source: 'bond',
+    event_type: 'contact.upserted',
+    description: 'Fired when a contact is upserted via the natural-key intake endpoint. `created` is true on the insert path, false on the update path (including soft-delete resurrection).',
+    payload_schema: [
+      { name: 'contact.id', type: 'uuid', description: 'Contact ID' },
+      { name: 'contact.email', type: 'string', description: 'Email address (idempotency key)' },
+      { name: 'contact.organization_id', type: 'uuid', description: 'Organization ID' },
+      { name: 'contact.first_name', type: 'string?', description: 'First name' },
+      { name: 'contact.last_name', type: 'string?', description: 'Last name' },
+      { name: 'contact.lifecycle_stage', type: 'string', description: 'Lifecycle stage' },
+      { name: 'contact.owner_id', type: 'uuid?', description: 'Owner user ID' },
+      { name: 'contact.url', type: 'string', description: 'Deep link URL' },
+      { name: 'created', type: 'boolean', description: 'True for insert, false for update' },
+      { name: 'actor.id', type: 'uuid', description: 'User who triggered the upsert' },
+      { name: 'actor.kind', type: 'string', description: 'Actor kind (user/agent/system)' },
+      { name: 'org', type: 'object', description: 'Organization context { id, name, slug }' },
     ],
   },
 ];
@@ -1214,6 +1362,39 @@ const bearingEvents: EventDefinition[] = [
       { name: 'org.slug', type: 'string?', description: 'Organization slug' },
     ],
   },
+  // Worker-emitted brief events. These fire from background jobs rather than
+  // a user-facing request, so actor is usually the document author or system.
+  {
+    source: 'brief',
+    event_type: 'document.exported',
+    description: 'Fired by apps/worker/src/jobs/brief-export.job.ts when a document has been rendered in the requested format and uploaded to object storage. Payload includes the signed download URL for the requesting user.',
+    payload_schema: [
+      { name: 'document_id', type: 'uuid', description: 'Document ID' },
+      { name: 'format', type: 'enum', description: 'Export format', enum: ['markdown', 'html', 'pdf'] },
+      { name: 'bytes', type: 'number', description: 'Size of the exported content' },
+      { name: 'download_url', type: 'string', description: 'Signed URL for the rendered file' },
+    ],
+  },
+  {
+    source: 'brief',
+    event_type: 'document.snapshot_created',
+    description: 'Fired by apps/worker/src/jobs/brief-snapshot.job.ts when the document-version snapshot worker writes a new version row. Payload identifies the document and the new version number.',
+    payload_schema: [
+      { name: 'document_id', type: 'uuid', description: 'Document ID' },
+      { name: 'version_number', type: 'number', description: 'Sequential version number' },
+      { name: 'word_count', type: 'number', description: 'Word count at snapshot time' },
+    ],
+  },
+  {
+    source: 'brief',
+    event_type: 'document.cleanup_completed',
+    description: 'Fired by apps/worker/src/jobs/brief-cleanup.job.ts on each retention sweep. Emits aggregate counts across the org (or system-wide when not scoped).',
+    payload_schema: [
+      { name: 'purged_documents', type: 'number', description: 'Archived documents past the retention window that were hard-deleted' },
+      { name: 'pruned_versions', type: 'number', description: 'Version-history rows pruned beyond the per-document cap' },
+      { name: 'orphaned_vectors_removed', type: 'number', description: 'Qdrant vectors removed for documents that no longer exist' },
+    ],
+  },
 ];
 
 const billEvents: EventDefinition[] = [
@@ -1394,6 +1575,42 @@ const billEvents: EventDefinition[] = [
       { name: 'org.slug', type: 'string', description: 'Organization slug' },
     ],
   },
+  // Worker-emitted bill events.
+  {
+    source: 'bill',
+    event_type: 'invoice.pdf_generated',
+    description: 'Fired by apps/worker/src/jobs/bill-pdf-generate.job.ts after an invoice PDF has been rendered and uploaded to object storage.',
+    payload_schema: [
+      { name: 'invoice_id', type: 'uuid', description: 'Invoice ID' },
+      { name: 'invoice_number', type: 'string', description: 'Invoice number' },
+      { name: 'storage_key', type: 'string', description: 'Object-storage key for the rendered PDF' },
+      { name: 'size_bytes', type: 'number', description: 'Rendered PDF size in bytes' },
+      { name: 'uploaded', type: 'boolean', description: 'True when the worker actually wrote a new object; false on a re-run that found the blob already present' },
+    ],
+  },
+  {
+    source: 'bill',
+    event_type: 'invoice.email_sent',
+    description: 'Fired by apps/worker/src/jobs/bill-email-send.job.ts after an invoice notification email has been handed to the SMTP provider.',
+    payload_schema: [
+      { name: 'invoice_id', type: 'uuid', description: 'Invoice ID' },
+      { name: 'invoice_number', type: 'string', description: 'Invoice number' },
+      { name: 'recipient', type: 'string', description: 'Primary recipient email' },
+    ],
+  },
+  {
+    source: 'bill',
+    event_type: 'invoice.overdue',
+    description: 'Fired by apps/worker/src/jobs/bill-overdue-reminder.job.ts when the daily overdue sweep flags an unpaid invoice. Payload lets Bolt rules send escalating reminders or notify account owners.',
+    payload_schema: [
+      { name: 'invoice_id', type: 'uuid', description: 'Invoice ID' },
+      { name: 'invoice_number', type: 'string', description: 'Invoice number' },
+      { name: 'days_overdue', type: 'number', description: 'Days past due at sweep time' },
+      { name: 'total', type: 'number', description: 'Invoice total in smallest currency units' },
+      { name: 'currency', type: 'string', description: 'ISO currency code' },
+      { name: 'reminder_count', type: 'number', description: 'Cumulative overdue reminders already sent (incremented by this emission)' },
+    ],
+  },
 ];
 
 const bookEvents: EventDefinition[] = [
@@ -1525,6 +1742,40 @@ const blankEvents: EventDefinition[] = [
       { name: 'form.owner_name', type: 'string?', description: 'Form owner display name' },
       { name: 'form.owner_email', type: 'string?', description: 'Form owner email' },
       { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
+    ],
+  },
+  // Worker-emitted blank event. Fires from the confirmation-email sweep.
+  {
+    source: 'blank',
+    event_type: 'submission.confirmation_sent',
+    description: 'Fired by apps/worker/src/jobs/blank-confirmation-email.job.ts after a submission-confirmation email has been handed to SMTP. Tracks whether the submitter received an auto-reply and how many admin notifications went out.',
+    payload_schema: [
+      { name: 'submission_id', type: 'uuid', description: 'Submission ID' },
+      { name: 'form_id', type: 'uuid', description: 'Form ID' },
+      { name: 'form_slug', type: 'string', description: 'Form slug' },
+      { name: 'notified_submitter', type: 'boolean', description: 'True when the submitter had an email to send a confirmation to' },
+      { name: 'notification_recipients_count', type: 'number', description: 'Number of admin notify-on-submit recipients that were emailed' },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Bench: worker-emitted report-delivery events. Added late so kept in its own
+// array rather than wedged inside an existing group.
+// ---------------------------------------------------------------------------
+
+const benchEvents: EventDefinition[] = [
+  {
+    source: 'bench',
+    event_type: 'report.delivered',
+    description: 'Fired by apps/worker/src/jobs/bench-report-deliver.job.ts after a scheduled report has been rendered and delivered (or simulated in demo mode). Payload identifies the report and the delivery target.',
+    payload_schema: [
+      { name: 'report_id', type: 'uuid', description: 'Scheduled report ID' },
+      { name: 'dashboard_id', type: 'uuid', description: 'Source dashboard ID' },
+      { name: 'name', type: 'string', description: 'Report name as configured' },
+      { name: 'delivery_method', type: 'string', description: 'Delivery channel (e.g. email, slack, webhook)' },
+      { name: 'delivery_target', type: 'string', description: 'Channel-specific target (email address, webhook URL, etc.)' },
+      { name: 'export_format', type: 'string', description: 'Export format of the rendered report' },
     ],
   },
 ];
@@ -1953,6 +2204,82 @@ const wave1bEvents: EventDefinition[] = [
       { name: 'requester.id', type: 'uuid', description: 'User who requested the approval' },
     ],
   },
+  {
+    source: 'platform',
+    event_type: 'proposal.created',
+    description: 'Fired when an agent or user creates a durable proposal in the agent_proposals queue (AGENTIC_TODO §9 Wave 2). Emitted by POST /v1/proposals. Consumed by Bolt rules that notify the approver, schedule escalations, or drive follow-up work.',
+    payload_schema: [
+      { name: 'proposal.id', type: 'uuid', description: 'Proposal ID' },
+      { name: 'proposal.proposed_action', type: 'string', description: 'Short identifier for the action being proposed (e.g. "blast.campaign.send", "bond.deal.close")' },
+      { name: 'proposal.approver_id', type: 'uuid', description: 'User designated to approve the proposal' },
+      { name: 'proposal.actor_id', type: 'uuid', description: 'User or service account that created the proposal' },
+      { name: 'proposal.proposer_kind', type: 'enum', description: 'Actor kind of the proposer', enum: ['human', 'agent', 'service'] },
+      { name: 'proposal.expires_at', type: 'datetime', description: 'Timestamp at which the proposal auto-expires if undecided' },
+      { name: 'proposal.subject_type', type: 'string?', description: 'Optional free-form identifier for the subject entity type' },
+      { name: 'proposal.subject_id', type: 'uuid?', description: 'Optional subject entity id' },
+      { name: 'proposal.url', type: 'string', description: 'Deep link for the approver (e.g. /b3/approvals/<id>)' },
+      { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
+    ],
+  },
+  {
+    source: 'platform',
+    event_type: 'proposal.decided',
+    description: 'Fired when a proposal transitions out of pending/revising to approved, rejected, or back into revising (AGENTIC_TODO §9 Wave 2). Emitted by POST /v1/proposals/:id/decide. Expiration is recorded as a separate status but does not fire this event.',
+    payload_schema: [
+      { name: 'proposal.id', type: 'uuid', description: 'Proposal ID' },
+      { name: 'proposal.proposed_action', type: 'string', description: 'Short identifier for the action being proposed' },
+      { name: 'proposal.decision', type: 'enum', description: 'Decision taken', enum: ['approve', 'reject', 'request_revision'] },
+      { name: 'proposal.decision_reason', type: 'string?', description: 'Optional free-form justification from the approver' },
+      { name: 'proposal.approver_id', type: 'uuid', description: 'User who made the decision' },
+      { name: 'proposal.actor_id', type: 'uuid', description: 'User or service account that created the proposal' },
+      { name: 'proposal.decided_at', type: 'datetime', description: 'Timestamp the decision was recorded' },
+      { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
+    ],
+  },
+  // §12 Wave 5 bolt observability
+  {
+    source: 'platform',
+    event_type: 'catalog.drift_detected',
+    description: 'Fired when an ingested Bolt event name or source is not present in the static event-catalog (AGENTIC_TODO §12 Wave 5). Emitted by apps/bolt-api/src/services/catalog-drift-detector.ts with a 24h per-(source,event) Redis-backed suppression window so a misnamed producer does not flood subscribers. Consume to alert ops or auto-open a catalog PR.',
+    payload_schema: [
+      { name: 'drift.source', type: 'string', description: 'Source value on the ingested event' },
+      { name: 'drift.event_type', type: 'string', description: 'Event type string on the ingested event' },
+      { name: 'drift.event_id', type: 'uuid', description: 'Ingest event id that first tripped the detector inside the 24h window' },
+      { name: 'drift.detected_at', type: 'datetime', description: 'When the drift was detected' },
+      { name: 'org', type: 'object', description: 'Full org context of the ingested event' },
+    ],
+  },
+  // §20 Wave 5 outbound webhooks
+  {
+    source: 'platform',
+    event_type: 'agent.webhook.disabled',
+    description: 'Fired when an agent webhook hits 20 consecutive delivery failures and the dispatcher auto-disables it (AGENTIC_TODO §20 Wave 5). Consume to alert the agent owner or reset the runner.',
+    payload_schema: [
+      { name: 'runner.id', type: 'uuid', description: 'Agent runner id' },
+      { name: 'runner.agent_user_id', type: 'uuid', description: 'Service-account user id owning the runner' },
+      { name: 'runner.webhook_url', type: 'string', description: 'Webhook URL that was disabled' },
+      { name: 'runner.consecutive_failures', type: 'number', description: 'Failure count that tripped the circuit breaker' },
+      { name: 'runner.last_error', type: 'string?', description: 'Most recent delivery error message' },
+      { name: 'disabled_at', type: 'datetime', description: 'When the auto-disable fired' },
+      { name: 'org', type: 'object', description: 'Runner org context' },
+    ],
+  },
+  {
+    source: 'platform',
+    event_type: 'agent.webhook.dead_lettered',
+    description: 'Fired by the DLQ sweeper when a webhook delivery has exceeded the backoff schedule and been moved to dead-letter state (AGENTIC_TODO §20 Wave 5). Payload carries the delivery row so operators can trigger agent_webhook_redeliver or investigate the target.',
+    payload_schema: [
+      { name: 'delivery.id', type: 'uuid', description: 'Dead-lettered delivery id' },
+      { name: 'delivery.runner_id', type: 'uuid', description: 'Runner the delivery targeted' },
+      { name: 'delivery.event_id', type: 'uuid', description: 'Bolt event id that originated the delivery' },
+      { name: 'delivery.event_source', type: 'string', description: 'Original event source' },
+      { name: 'delivery.event_type', type: 'string', description: 'Original event type' },
+      { name: 'delivery.attempt_count', type: 'number', description: 'Total delivery attempts before DLQ' },
+      { name: 'delivery.last_error', type: 'string?', description: 'Final error before DLQ' },
+      { name: 'delivery.dead_lettered_at', type: 'datetime', description: 'When the row entered DLQ state' },
+      { name: 'org', type: 'object', description: 'Runner org context' },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1973,6 +2300,7 @@ const ALL_EVENTS: EventDefinition[] = [
   ...billEvents,
   ...bookEvents,
   ...blankEvents,
+  ...benchEvents,
   ...wave1bEvents,
 ];
 

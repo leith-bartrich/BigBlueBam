@@ -30,6 +30,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     avatar_url: users.avatar_url,
     role: users.role,
     is_active: users.is_active,
+    kind: users.kind,
   } as const;
 
   type Row = {
@@ -39,6 +40,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     avatar_url: string | null;
     role: string;
     is_active: boolean;
+    kind: 'human' | 'agent' | 'service';
   };
 
   const shape = (r: Row) => ({
@@ -50,6 +52,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     avatar_url: r.avatar_url,
     role: r.role,
     is_active: r.is_active,
+    kind: r.kind,
   });
 
   /**
@@ -87,6 +90,45 @@ export default async function userRoutes(fastify: FastifyInstance) {
         .limit(limit);
 
       return reply.send({ data: rows.map(shape) });
+    },
+  );
+
+  /**
+   * GET /users/:id — look up a single user by id.
+   *
+   * Org-scoped: returns 404 if the user is not in the caller's active org.
+   * Kept narrow (no password_hash, no verification tokens) for the same
+   * reasons as the other resolvers. Used by the MCP confirm_action flow
+   * (AGENTIC_TODO §9 Wave 2) to look up the approver's `kind` so the
+   * confirmation-token TTL can be adjusted for human vs agent approvers.
+   */
+  fastify.get<{ Params: { id: string } }>(
+    '/users/:id',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const [row] = await db
+        .select(selectCols)
+        .from(users)
+        .where(
+          and(
+            eq(users.id, request.params.id),
+            eq(users.org_id, request.user!.org_id),
+          ),
+        )
+        .limit(1);
+
+      if (!row) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'User not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      return reply.send({ data: shape(row) });
     },
   );
 

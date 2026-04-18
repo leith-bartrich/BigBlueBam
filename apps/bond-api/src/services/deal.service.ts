@@ -164,17 +164,20 @@ export async function listDeals(filters: DealFilters) {
 // Get deal by ID
 // ---------------------------------------------------------------------------
 
-export async function getDeal(id: string, orgId: string) {
+export async function getDeal(id: string, orgId: string, visibilityOwnerId?: string) {
+  const conditions = [
+    eq(bondDeals.id, id),
+    eq(bondDeals.organization_id, orgId),
+    isNull(bondDeals.deleted_at),
+  ];
+  if (visibilityOwnerId) {
+    conditions.push(eq(bondDeals.owner_id, visibilityOwnerId));
+  }
+
   const [deal] = await db
     .select()
     .from(bondDeals)
-    .where(
-      and(
-        eq(bondDeals.id, id),
-        eq(bondDeals.organization_id, orgId),
-        isNull(bondDeals.deleted_at),
-      ),
-    )
+    .where(and(...conditions))
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');
@@ -1150,17 +1153,20 @@ export async function removeDealContact(
 // Stage history
 // ---------------------------------------------------------------------------
 
-export async function getDealStageHistory(dealId: string, orgId: string) {
+export async function getDealStageHistory(dealId: string, orgId: string, visibilityOwnerId?: string) {
+  const conditions = [
+    eq(bondDeals.id, dealId),
+    eq(bondDeals.organization_id, orgId),
+    isNull(bondDeals.deleted_at),
+  ];
+  if (visibilityOwnerId) {
+    conditions.push(eq(bondDeals.owner_id, visibilityOwnerId));
+  }
+
   const [deal] = await db
     .select({ id: bondDeals.id })
     .from(bondDeals)
-    .where(
-      and(
-        eq(bondDeals.id, dealId),
-        eq(bondDeals.organization_id, orgId),
-        isNull(bondDeals.deleted_at),
-      ),
-    )
+    .where(and(...conditions))
     .limit(1);
 
   if (!deal) throw notFound('Deal not found');

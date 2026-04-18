@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type {
   registerSchema,
+  bootstrapSchema,
   loginSchema,
   magicLinkSchema,
   resetPasswordSchema,
@@ -37,6 +38,7 @@ import type {
 // --- Inferred schema types ---
 
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type BootstrapInput = z.infer<typeof bootstrapSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type MagicLinkInput = z.infer<typeof magicLinkSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

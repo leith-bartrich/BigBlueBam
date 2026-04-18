@@ -374,7 +374,22 @@ async function main() {
     console.log(`\n${bold('Step 6: Create admin account')}\n`);
 
     const result = await createSuperUser(platform);
-    if (result.success) {
+    if (result.deferred) {
+      state.adminDeferred = true;
+      markPhaseComplete(state, 'admin');
+      saveState(state);
+      console.log('');
+      console.log(`${check} ${bold('Admin account creation deferred.')}`);
+      console.log('');
+      console.log('  The first visitor to your site will be auto-routed to:');
+      console.log(`    ${cyan('/b3/bootstrap')}`);
+      console.log('  where they can create the SuperUser account.');
+      console.log('');
+      console.log(dim('  Send that URL (or your root domain, which will redirect there) to whoever'));
+      console.log(dim('  should own the SuperUser account. Once the account exists, the bootstrap'));
+      console.log(dim('  page disappears and all routes resolve normally.'));
+      console.log('');
+    } else if (result.success) {
       state.adminEmail = result.email;
       markPhaseComplete(state, 'admin');
       saveState(state);

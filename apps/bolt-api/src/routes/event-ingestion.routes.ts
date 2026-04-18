@@ -11,6 +11,10 @@ import {
   boltExecutions,
 } from '../db/schema/index.js';
 import { evaluateConditions, type ConditionDef } from '../services/condition-engine.js';
+// §12 Wave 5 bolt observability
+import { detectCatalogDrift } from '../services/catalog-drift-detector.js';
+// §20 Wave 5 webhooks
+import { dispatchToSubscribedRunners } from '../services/webhook-dispatch-hook.js';
 import { Queue } from 'bullmq';
 import type Redis from 'ioredis';
 
@@ -116,6 +120,43 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
         'Ingesting bolt event',
       );
 
+      // §12 Wave 5 bolt observability: fire-and-forget catalog drift detector.
+      // If the ingested (source, event_type) is not in the static catalog and
+      // no drift has been fired for this pair in the last 24h, emit a
+      // platform `catalog.drift_detected` event. Never awaited: must not slow
+      // or fail the ingest path.
+      void detectCatalogDrift(
+        fastify.redis,
+        {
+          source: event.source,
+          eventType: event.event_type,
+          eventId,
+          orgId: event.org_id,
+          actorId: event.actor_id,
+        },
+        request.log,
+      ).catch(() => {
+        // swallowed: detector has its own logging
+      });
+
+      // §20 Wave 5 webhooks: fan the event out to any agent runner that
+      // has a matching webhook subscription. Runs in parallel with rule
+      // evaluation; failures are swallowed inside the helper so the
+      // primary ingest flow is unaffected.
+      void dispatchToSubscribedRunners(
+        fastify.redis,
+        {
+          orgId: event.org_id,
+          eventId,
+          source: event.source,
+          eventType: event.event_type,
+          payload: event.payload,
+        },
+        request.log,
+      ).catch(() => {
+        // swallowed: helper has its own logging
+      });
+
       // 1. Find matching enabled automations for this trigger
       const matchingAutomations = await db
         .select({
@@ -162,8 +203,17 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
               automation_id: automation.id,
               status: 'skipped',
               trigger_event: { ...event.payload, _event_id: eventId, _source: event.source, _event_type: event.event_type },
+              event_id: eventId,
               conditions_met: false,
               condition_log: null,
+              evaluation_trace: [{
+                rule_id: automation.id,
+                rule_name: automation.name,
+                matched: false,
+                conditions: [],
+                actions: [],
+                skip_reason: 'max_chain_depth_exceeded',
+              }],
               error_message: `Skipped: max chain depth (${automation.max_chain_depth}) exceeded at depth ${event.chain_depth}`,
               completed_at: new Date(),
               duration_ms: 0,
@@ -193,7 +243,16 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
               automation_id: automation.id,
               status: 'skipped',
               trigger_event: { ...event.payload, _event_id: eventId, _source: event.source, _event_type: event.event_type },
+              event_id: eventId,
               conditions_met: false,
+              evaluation_trace: [{
+                rule_id: automation.id,
+                rule_name: automation.name,
+                matched: false,
+                conditions: [],
+                actions: [],
+                skip_reason: 'cooldown_active',
+              }],
               error_message: 'Skipped: cooldown period active',
               completed_at: new Date(),
               duration_ms: 0,
@@ -222,7 +281,16 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
               automation_id: automation.id,
               status: 'skipped',
               trigger_event: { ...event.payload, _event_id: eventId, _source: event.source, _event_type: event.event_type },
+              event_id: eventId,
               conditions_met: false,
+              evaluation_trace: [{
+                rule_id: automation.id,
+                rule_name: automation.name,
+                matched: false,
+                conditions: [],
+                actions: [],
+                skip_reason: 'rate_limited',
+              }],
               error_message: `Skipped: rate limit exceeded (${automation.max_executions_per_hour}/hour)`,
               completed_at: new Date(),
               duration_ms: 0,
@@ -292,14 +360,39 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
         }
 
         if (!conditionsMet) {
+          const traceConditions = Array.isArray(conditionLog)
+            ? (conditionLog as Array<{
+                field: string;
+                operator: string;
+                expected: unknown;
+                actual: unknown;
+                result: boolean;
+              }>).map((c) => ({
+                condition_id: null,
+                operator: c.operator,
+                field: c.field,
+                result: c.result,
+                actual: c.actual,
+                expected: c.expected,
+              }))
+            : [];
           const [skippedExec] = await db
             .insert(boltExecutions)
             .values({
               automation_id: automation.id,
               status: 'skipped',
               trigger_event: { ...event.payload, _event_id: eventId, _source: event.source, _event_type: event.event_type },
+              event_id: eventId,
               conditions_met: false,
               condition_log: conditionLog,
+              evaluation_trace: [{
+                rule_id: automation.id,
+                rule_name: automation.name,
+                matched: false,
+                conditions: traceConditions,
+                actions: [],
+                skip_reason: 'conditions_not_met',
+              }],
               error_message: 'Conditions not met',
               completed_at: new Date(),
               duration_ms: 0,
@@ -317,14 +410,42 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
         }
 
         // 6. Create execution record as 'running'
+        const traceConditionsRunning = Array.isArray(conditionLog)
+          ? (conditionLog as Array<{
+              field: string;
+              operator: string;
+              expected: unknown;
+              actual: unknown;
+              result: boolean;
+            }>).map((c) => ({
+              condition_id: null,
+              operator: c.operator,
+              field: c.field,
+              result: c.result,
+              actual: c.actual,
+              expected: c.expected,
+            }))
+          : [];
         const [execution] = await db
           .insert(boltExecutions)
           .values({
             automation_id: automation.id,
             status: 'running',
             trigger_event: { ...event.payload, _event_id: eventId, _source: event.source, _event_type: event.event_type },
+            event_id: eventId,
             conditions_met: true,
             condition_log: conditionLog,
+            // §12 Wave 5 bolt observability: seed evaluation_trace with the
+            // condition outcomes; the worker does not extend this field, so
+            // action entries are reconstructed by the trace service from
+            // bolt_execution_steps at read time.
+            evaluation_trace: [{
+              rule_id: automation.id,
+              rule_name: automation.name,
+              matched: true,
+              conditions: traceConditionsRunning,
+              actions: [],
+            }],
           })
           .returning();
 

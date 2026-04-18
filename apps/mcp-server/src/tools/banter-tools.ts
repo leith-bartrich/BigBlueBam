@@ -440,9 +440,18 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
     },
   });
 
+  // §13 Wave 4 scheduled banter — shape for the scheduled-envelope branch of
+  // the banter_post_message union return.
+  const scheduledEnvelopeShape = z.object({
+    scheduled: z.literal(true),
+    scheduled_message_id: z.string().uuid(),
+    scheduled_at: z.string(),
+    defer_reason: z.string().nullable().optional(),
+  }).passthrough();
+
   registerTool(server, {
     name: 'banter_post_message',
-    description: 'Post a new message to a Banter channel. Accepts a channel UUID, a bare channel name, or #name — the common Bolt automation pattern "post to #general when X" collapses to a single step with no UUIDs visible.',
+    description: 'Post a new message to a Banter channel. Accepts a channel UUID, a bare channel name, or #name. §13 Wave 4: optionally accepts scheduled_at (ISO-8601, max 30 days out), defer_if_quiet (convert to scheduled if channel is in quiet hours), and urgency_override (bypass quiet hours when both caller and channel policy consent). When a post is scheduled or deferred, the tool returns a scheduled envelope ({ scheduled: true, scheduled_message_id, scheduled_at, defer_reason }) instead of an immediate message.',
     input: {
       channel_id: z
         .string()
@@ -450,8 +459,22 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
         .describe('Channel UUID, name, or #name to post in'),
       content: z.string().min(1).describe('Message content (markdown supported)'),
       attachment_ids: z.array(z.string().uuid()).optional().describe('File attachment IDs'),
+      // §13 Wave 4 scheduled banter
+      scheduled_at: z
+        .string()
+        .datetime({ offset: true })
+        .optional()
+        .describe('Optional ISO-8601 future timestamp. Max 30 days out. If set, the post is scheduled (202) instead of posted immediately.'),
+      defer_if_quiet: z
+        .boolean()
+        .optional()
+        .describe('If true and the channel is currently in a quiet-hours window, convert this immediate post into a scheduled post at the next-allowed time instead of rejecting with 409.'),
+      urgency_override: z
+        .boolean()
+        .optional()
+        .describe('If true AND the channel policy.urgency_override flag is true, bypass the quiet-hours check. The caller cannot override unless the policy explicitly allows it.'),
     },
-    returns: messageShape,
+    returns: z.union([messageShape, scheduledEnvelopeShape]),
     handler: async ({ channel_id, ...body }) => {
       const resolved = await resolveChannelId(banter, channel_id);
       if (!resolved) {
@@ -459,6 +482,38 @@ export function registerBanterTools(server: McpServer, api: ApiClient, banterApi
       }
       const result = await banter.post(`/banter/api/v1/channels/${resolved}/messages`, body);
       return result.ok ? ok(result.data) : writeErr('banter_post_message', 'posting message', result);
+    },
+  });
+
+  // §13 Wave 4 scheduled banter — dedicated scheduling alias.
+  registerTool(server, {
+    name: 'banter_schedule_post',
+    description: 'Schedule a Banter post for future delivery. Thin wrapper over banter_post_message with scheduled_at REQUIRED. Returns the scheduled envelope { scheduled: true, scheduled_message_id, scheduled_at, defer_reason }. If respect_quiet_hours is true (default) the scheduled_at is honored as-is; if the channel is in quiet hours at fire time, the worker still delivers because scheduled posts are explicit. Use defer_if_quiet on banter_post_message to instead reschedule around a quiet-hours window at request time.',
+    input: {
+      channel_id: z
+        .string()
+        .min(1)
+        .describe('Channel UUID, name, or #name to post in'),
+      content: z.string().min(1).describe('Message content (markdown supported)'),
+      scheduled_at: z
+        .string()
+        .datetime({ offset: true })
+        .describe('ISO-8601 future timestamp (max 30 days out).'),
+      attachment_ids: z.array(z.string().uuid()).optional().describe('File attachment IDs'),
+      respect_quiet_hours: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe('Reserved for future use. Currently scheduled posts are delivered at scheduled_at regardless; use defer_if_quiet on banter_post_message for quiet-hours-aware immediate posts.'),
+    },
+    returns: scheduledEnvelopeShape,
+    handler: async ({ channel_id, respect_quiet_hours: _respect, ...body }) => {
+      const resolved = await resolveChannelId(banter, channel_id);
+      if (!resolved) {
+        return err('Channel not found', `Channel '${channel_id}' could not be resolved`);
+      }
+      const result = await banter.post(`/banter/api/v1/channels/${resolved}/messages`, body);
+      return result.ok ? ok(result.data) : writeErr('banter_schedule_post', 'scheduling message', result);
     },
   });
 

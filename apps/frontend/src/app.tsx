@@ -20,6 +20,8 @@ import { PasswordChangePage } from '@/pages/password-change';
 import { TaskRefResolverPage } from '@/pages/task-ref-resolver';
 import { BetaGatePage } from '@/pages/beta-gate';
 import { BetaNotifyPage } from '@/pages/beta-notify';
+import { SuperuserBootstrapPage } from '@/pages/superuser-bootstrap';
+import { usePublicConfig } from '@/hooks/use-public-config';
 import { HelpdeskAgentQueuePage } from '@/pages/helpdesk-agent-queue';
 import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
@@ -46,6 +48,7 @@ type Route =
   | { page: 'helpdesk-queue' }
   | { page: 'beta-gate' }
   | { page: 'beta-notify' }
+  | { page: 'bootstrap' }
   | { page: 'help' };
 
 const BASE_PATH = '/b3';
@@ -102,6 +105,7 @@ function parseRoute(path: string): Route {
   if (p === '/helpdesk-queue') return { page: 'helpdesk-queue' };
   if (p === '/help') return { page: 'help' };
   if (p === '/register') return { page: 'register' };
+  if (p === '/bootstrap') return { page: 'bootstrap' };
   if (p === '/beta-gate') return { page: 'beta-gate' };
   if (p === '/notify') return { page: 'beta-notify' };
   if (p === '/login') return { page: 'login' };
@@ -115,6 +119,7 @@ function parseRoute(path: string): Route {
 export function App() {
   const { isAuthenticated, isLoading, fetchMe, user } = useAuthStore();
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
+  const publicConfig = usePublicConfig();
 
   useEffect(() => {
     fetchMe();
@@ -169,6 +174,23 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigate]);
 
+  // Bootstrap gate: when the install has no real SuperUser yet, force the
+  // unauthenticated visitor onto the bootstrap page regardless of what they
+  // typed. The gate is skipped for authenticated users so a fresh bootstrap
+  // submit (which logs in and leaves publicConfig temporarily stale) does
+  // not bounce the new SuperUser back onto the form they just completed.
+  useEffect(() => {
+    if (isLoading || publicConfig.isLoading || !publicConfig.data) return;
+    if (isAuthenticated) return;
+    if (publicConfig.data.bootstrap_required) {
+      if (route.page !== 'bootstrap') {
+        navigate('/bootstrap');
+      }
+    } else if (route.page === 'bootstrap') {
+      navigate('/');
+    }
+  }, [isLoading, isAuthenticated, publicConfig.isLoading, publicConfig.data, route.page, navigate]);
+
   // Force-password-change gate: if the server has flagged this user, block
   // every page except the password-change form (and the public auth pages).
   useEffect(() => {
@@ -211,6 +233,13 @@ export function App() {
   }
   if (route.page === 'beta-notify') {
     return <BetaNotifyPage onNavigate={navigate} />;
+  }
+  // SuperUser bootstrap: first-run page when no real SuperUser exists yet.
+  // Public because there is no account to authenticate against at that point.
+  // An already-authenticated user hitting /b3/bootstrap falls through to the
+  // normal routing below — the endpoint would reject them with 409 anyway.
+  if (route.page === 'bootstrap' && !isAuthenticated) {
+    return <SuperuserBootstrapPage onNavigate={navigate} />;
   }
 
   if (!isAuthenticated) {

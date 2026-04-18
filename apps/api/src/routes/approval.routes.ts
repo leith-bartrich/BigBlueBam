@@ -10,6 +10,17 @@ import { publishBoltEvent } from '../lib/bolt-events.js';
 /**
  * POST /v1/approvals  (Wave 4 follow-up)
  *
+ * DEPRECATED for new callers. Prefer the durable proposals surface introduced
+ * in AGENTIC_TODO §9 Wave 2 (migration 0128):
+ *   - POST   /v1/proposals              create a tracked, decidable proposal
+ *   - GET    /v1/proposals              list proposals visible to caller
+ *   - POST   /v1/proposals/:id/decide   approve / reject / request_revision
+ *
+ * This endpoint continues to work as a fire-and-forget `approval.requested`
+ * event producer (the Banter approval-DM template in apps/bolt-api/src/templates
+ * still consumes it). It does NOT persist state, so callers that want a durable
+ * inbox entry should migrate to /v1/proposals/*.
+ *
  * Minimum-viable approval-request producer. Any app (Brief publish,
  * Bond deal-close sign-off, Bill invoice approval, etc.) can call this
  * route to emit `approval.requested` into Bolt. The Banter approval-DM

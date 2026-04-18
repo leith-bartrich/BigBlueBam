@@ -23,19 +23,35 @@ import taskRoutes from './routes/task.routes.js';
 import commentRoutes from './routes/comment.routes.js';
 import orgRoutes from './routes/org.routes.js';
 import activityRoutes from './routes/activity.routes.js';
+import activityUnifiedRoutes from './routes/activity-unified.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import labelRoutes from './routes/label.routes.js';
 import taskStateRoutes from './routes/task-state.routes.js';
 import epicRoutes from './routes/epic.routes.js';
 import customFieldRoutes from './routes/custom-field.routes.js';
 import attachmentRoutes from './routes/attachment.routes.js';
+// §17 Wave 4 attachments
+import attachmentMetaRoutes from './routes/attachment-meta.routes.js';
 import timeEntryRoutes from './routes/time-entry.routes.js';
 import reportRoutes from './routes/report.routes.js';
+// §4 Wave 5 task phrase-count analytics
+import taskAnalyticsRoutes from './routes/task-analytics.routes.js';
 import exportRoutes from './routes/export.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import apiKeyRoutes from './routes/api-key.routes.js';
 import oauthRoutes from './routes/oauth.routes.js';
 import approvalRoutes from './routes/approval.routes.js';
+import proposalRoutes from './routes/proposals.routes.js';
+// §16 Wave 4 entity links
+import entityLinksRoutes from './routes/entity-links.routes.js';
+// §15 Wave 5 agent policies
+import agentPoliciesRoutes from './routes/agent-policies.routes.js';
+// §20 Wave 5 webhooks
+import agentWebhooksRoutes from './routes/agent-webhooks.routes.js';
+// §7 Wave 5 dedupe
+import dedupeDecisionsRoutes from './routes/dedupe-decisions.routes.js';
+// §8 Wave 5 expertise-for-topic
+import expertiseRoutes from './routes/expertise.routes.js';
 import importRoutes from './routes/import.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import reactionRoutes from './routes/reaction.routes.js';
@@ -43,6 +59,8 @@ import icalRoutes from './routes/ical.routes.js';
 import viewRoutes from './routes/view.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
 import platformRoutes from './routes/platform.routes.js';
+import agentRoutes from './routes/agent.routes.js';
+import visibilityRoutes from './routes/visibility.routes.js';
 import guestRoutes from './routes/guest.routes.js';
 import superuserRoutes from './routes/superuser.routes.js';
 import emailVerifyRoutes from './routes/email-verify.routes.js';
@@ -197,19 +215,35 @@ await fastify.register(taskRoutes);
 await fastify.register(commentRoutes);
 await fastify.register(orgRoutes);
 await fastify.register(activityRoutes);
+await fastify.register(activityUnifiedRoutes);
 await fastify.register(notificationRoutes);
 await fastify.register(labelRoutes);
 await fastify.register(taskStateRoutes);
 await fastify.register(epicRoutes);
 await fastify.register(customFieldRoutes);
 await fastify.register(attachmentRoutes);
+// §17 Wave 4 attachments: federated attachment metadata dispatcher
+await fastify.register(attachmentMetaRoutes);
 await fastify.register(timeEntryRoutes);
 await fastify.register(reportRoutes);
+// §4 Wave 5 task phrase-count analytics
+await fastify.register(taskAnalyticsRoutes);
 await fastify.register(exportRoutes);
 await fastify.register(webhookRoutes);
 await fastify.register(apiKeyRoutes);
 await fastify.register(oauthRoutes);
 await fastify.register(approvalRoutes);
+await fastify.register(proposalRoutes);
+// §16 Wave 4 entity links
+await fastify.register(entityLinksRoutes);
+// §15 Wave 5 agent policies
+await fastify.register(agentPoliciesRoutes);
+// §20 Wave 5 webhooks
+await fastify.register(agentWebhooksRoutes);
+// §7 Wave 5 dedupe
+await fastify.register(dedupeDecisionsRoutes);
+// §8 Wave 5 expertise-for-topic
+await fastify.register(expertiseRoutes);
 await fastify.register(importRoutes);
 await fastify.register(templateRoutes);
 await fastify.register(reactionRoutes);
@@ -217,6 +251,8 @@ await fastify.register(icalRoutes);
 await fastify.register(viewRoutes);
 await fastify.register(uploadRoutes);
 await fastify.register(platformRoutes);
+await fastify.register(agentRoutes);
+await fastify.register(visibilityRoutes);
 await fastify.register(guestRoutes);
 await fastify.register(superuserRoutes, { prefix: '/superuser' });
 await fastify.register(emailVerifyRoutes);

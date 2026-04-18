@@ -76,13 +76,40 @@ function tryStoreInKeychain(service, account, password) {
  * @param {{ runCommand: (service: string, cmd: string) => Promise<string> }} platform
  *   Platform adapter with a `runCommand` method that executes a command inside
  *   a running service container and returns stdout.
+ * @param {{ skip?: boolean }} [opts]
+ *   Short-circuit knobs. Pass `skip: true` (or set BBB_SKIP_ADMIN_SETUP=1, or
+ *   run with --skip-admin) to defer account creation entirely — the caller is
+ *   expected to tell the operator that the first visitor will be routed to
+ *   the SuperUser sign-up page on the website.
  */
-export async function createSuperUser(platform) {
+export async function createSuperUser(platform, opts = {}) {
+  const envSkip =
+    process.env.BBB_SKIP_ADMIN_SETUP === '1' ||
+    process.env.BBB_SKIP_ADMIN_SETUP === 'true';
+  const flagSkip = process.argv.includes('--skip-admin');
+
+  if (opts.skip || envSkip || flagSkip) {
+    return { deferred: true };
+  }
+
   console.log('');
   console.log(bold("Let's create your admin account."));
   console.log('');
   console.log('This will be the first user -- a SuperUser with full access to everything.');
   console.log('');
+  console.log(dim('  You can also defer this and create the account from the website after launch.'));
+  console.log(dim('  The first visitor will be routed to the SuperUser sign-up page until an'));
+  console.log(dim('  account exists.'));
+  console.log('');
+
+  const choice = await select('How do you want to create the first admin?', [
+    { label: 'Create it now (enter email, password, etc.)', value: 'now' },
+    { label: 'Defer -- I\'ll set it up via the website after the stack is running', value: 'defer' },
+  ]);
+
+  if (choice === 'defer') {
+    return { deferred: true };
+  }
 
   // Email
   let email = '';

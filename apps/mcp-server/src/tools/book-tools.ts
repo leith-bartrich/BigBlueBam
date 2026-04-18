@@ -415,6 +415,66 @@ export function registerBookTools(server: McpServer, api: ApiClient, bookApiUrl:
       return result.ok ? ok(result.data) : err('RSVPing to event', result.data);
     },
   });
+
+  // ===== §18 + §19 Wave 5 misc =====
+  // book_find_meeting_time_for_users: finds meeting slots across a roster of
+  // humans and agents. Agents and service-account users have no calendars;
+  // they are treated as unconditionally available when
+  // respect_working_hours_for_humans_only=true (default). Each entry in
+  // user_ids accepts either a UUID or an email address.
+  registerTool(server, {
+    name: 'book_find_meeting_time_for_users',
+    description:
+      'Find meeting-time slots across a mixed roster of humans and agents/service accounts. Agents/service accounts have no calendars; when respect_working_hours_for_humans_only is true (default) they are treated as unconditionally available and skipped from conflict detection. Each entry in user_ids accepts a UUID or an email address. Returns slots with per-attendee availability annotations so the caller can render "agent: always available" alongside the human conflict picture.',
+    input: {
+      user_ids: z.array(z.string()).min(1).describe('Attendee user UUIDs or emails'),
+      duration_minutes: z.number().int().min(5).max(480).describe('Meeting duration in minutes'),
+      window: z.object({
+        since: z.string().describe('ISO 8601 window start'),
+        until: z.string().describe('ISO 8601 window end'),
+      }).describe('Search window'),
+      respect_working_hours_for_humans_only: z
+        .boolean()
+        .optional()
+        .describe('Default true. When true, agents/service accounts are unconditionally available; when false, every user is treated as a human for scheduling purposes.'),
+      timezone: z.string().optional().describe('IANA timezone for the caller, used only for rendering hints downstream.'),
+    },
+    returns: z.object({
+      slots: z.array(
+        z.object({
+          start: z.string(),
+          end: z.string(),
+          attendees: z.array(
+            z.object({
+              user_id: z.string().uuid(),
+              kind: z.enum(['human', 'agent', 'service']),
+              available: z.boolean(),
+            }),
+          ),
+        }),
+      ),
+    }),
+    handler: async ({ user_ids, duration_minutes, window, respect_working_hours_for_humans_only, timezone }) => {
+      const resolved = await Promise.all(
+        user_ids.map(async (u) => ({ input: u, id: await resolveUserIdByEmail(api, u) })),
+      );
+      const unresolved = resolved.filter((r) => !r.id).map((r) => r.input);
+      if (unresolved.length > 0) {
+        return err('finding meeting time for users', {
+          error: `Unresolved user(s): ${unresolved.join(', ')}`,
+        });
+      }
+      const ids = resolved.map((r) => r.id!);
+      const result = await client.request('POST', '/availability/meeting-time-mixed', {
+        user_ids: ids,
+        duration_minutes,
+        window,
+        respect_working_hours_for_humans_only,
+        timezone,
+      });
+      return result.ok ? ok(result.data) : err('finding meeting time for users', result.data);
+    },
+  });
 }
 
 // Helper: intersect two lists of time slots

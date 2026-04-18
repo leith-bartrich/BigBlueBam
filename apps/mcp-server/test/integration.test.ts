@@ -70,6 +70,49 @@ import { registerMeTools } from '../src/tools/me-tools.js';
 import { registerPlatformTools } from '../src/tools/platform-tools.js';
 import { registerBeaconTools } from '../src/tools/beacon-tools.js';
 import { registerBamResolverTools } from '../src/tools/bam-resolver-tools.js';
+import { registerAgentTools } from '../src/tools/agent-tools.js';
+import { registerProposalTools } from '../src/tools/proposal-tools.js';
+import { registerVisibilityTools } from '../src/tools/visibility-tools.js';
+import { registerSearchTools } from '../src/tools/search-tools.js';
+import { registerResolveTools } from '../src/tools/resolve-tools.js';
+import { registerActivityTools } from '../src/tools/activity-tools.js';
+import { registerCompositeTools } from '../src/tools/composite-tools.js';
+// §16 Wave 4 entity links
+import { registerEntityLinksTools } from '../src/tools/entity-links-tools.js';
+// §17 Wave 4 attachments
+import { registerAttachmentTools } from '../src/tools/attachment-tools.js';
+// §13 Wave 4 scheduled banter
+import { registerBanterTools } from '../src/tools/banter-tools.js';
+// §15 Wave 5 agent policies
+import { registerAgentPolicyTools } from '../src/tools/agent-policy-tools.js';
+// §20 Wave 5 webhooks
+import { registerAgentWebhookTools } from '../src/tools/agent-webhook-tools.js';
+// §12 Wave 5 bolt observability
+import { registerBoltObservabilityTools } from '../src/tools/bolt-observability-tools.js';
+// §18 + §19 Wave 5 misc
+import { registerIngestFingerprintTools } from '../src/tools/ingest-fingerprint-tools.js';
+import type { FingerprintStore } from '../src/lib/fingerprint-store.js';
+// §7 Wave 5 dedupe
+import { registerDedupeTools } from '../src/tools/dedupe-tools.js';
+// §4 + §8 Wave 5 trends/expertise
+import { registerPhraseCountTools } from '../src/tools/phrase-count-tools.js';
+import { registerExpertiseTools } from '../src/tools/expertise-tools.js';
+// §1 Wave 5 banter subs
+import { registerBanterSubscriptionTools } from '../src/tools/banter-subscription-tools.js';
+// Cleanup pass: register every peer-app tool suite so the integration
+// test's tools.size === expectedTools.length invariant catches drift
+// across the full MCP surface, not just the Bam core.
+import { registerUserResolverTools } from '../src/tools/user-resolver-tools.js';
+import { registerHelpdeskTools } from '../src/tools/helpdesk-tools.js';
+import { registerBriefTools } from '../src/tools/brief-tools.js';
+import { registerBoltTools } from '../src/tools/bolt-tools.js';
+import { registerBearingTools } from '../src/tools/bearing-tools.js';
+import { registerBondTools } from '../src/tools/bond-tools.js';
+import { registerBlastTools } from '../src/tools/blast-tools.js';
+import { registerBookTools } from '../src/tools/book-tools.js';
+import { registerBenchTools } from '../src/tools/bench-tools.js';
+import { registerBillTools } from '../src/tools/bill-tools.js';
+import { registerBlankTools } from '../src/tools/blank-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -94,6 +137,89 @@ describe('MCP Integration Tests', () => {
     registerPlatformTools(mock.server, api);
     registerBeaconTools(mock.server, api, 'http://localhost:4004');
     registerBamResolverTools(mock.server, api);
+    registerAgentTools(mock.server, api);
+    registerProposalTools(mock.server, api);
+    registerVisibilityTools(mock.server, api);
+    registerSearchTools(mock.server, api, {
+      apiUrl: 'http://localhost:4000',
+      helpdeskApiUrl: 'http://localhost:4001',
+      bondApiUrl: 'http://localhost:4009',
+      briefApiUrl: 'http://localhost:4005',
+      beaconApiUrl: 'http://localhost:4004',
+      banterApiUrl: 'http://localhost:4002',
+      boardApiUrl: 'http://localhost:4008',
+    });
+    registerResolveTools(mock.server, api, {
+      bondApiUrl: 'http://localhost:4009',
+      briefApiUrl: 'http://localhost:4005',
+      helpdeskApiUrl: 'http://localhost:4001',
+    });
+    registerActivityTools(mock.server, api);
+    registerCompositeTools(mock.server, api, {
+      apiUrl: 'http://localhost:4000',
+      bondApiUrl: 'http://localhost:4009',
+      helpdeskApiUrl: 'http://localhost:4001',
+      billApiUrl: 'http://localhost:4014',
+      bearingApiUrl: 'http://localhost:4007',
+      briefApiUrl: 'http://localhost:4005',
+      beaconApiUrl: 'http://localhost:4004',
+    });
+    // §16 Wave 4 entity links
+    registerEntityLinksTools(mock.server, api);
+    // §17 Wave 4 attachments
+    registerAttachmentTools(mock.server, api);
+    // §13 Wave 4 scheduled banter — registers the full banter suite so
+    // tests covering banter_post_message / banter_schedule_post can exercise
+    // the handlers. Every banter_* tool name is listed in expectedTools below.
+    registerBanterTools(mock.server, api, 'http://localhost:4002');
+    // §15 Wave 5 agent policies
+    registerAgentPolicyTools(mock.server, api);
+    // §20 Wave 5 webhooks
+    registerAgentWebhookTools(mock.server, api);
+    // §12 Wave 5 bolt observability
+    registerBoltObservabilityTools(mock.server, api, 'http://localhost:4006');
+    // §18 + §19 Wave 5 misc: ingest fingerprint tool uses an injected
+    // FingerprintStore so the harness doesn't need a real Redis. This stub
+    // returns first_seen: true on every call; dedicated tests exercise the
+    // full SET NX EX surface.
+    const stubFingerprintStore: FingerprintStore = {
+      checkAndSet: async (_org, _src, _fp, window) => ({
+        first_seen: true,
+        window_seconds: window,
+      }),
+      close: async () => {},
+    };
+    registerIngestFingerprintTools(mock.server, api, stubFingerprintStore);
+    // §7 Wave 5 dedupe: dedupe_record_decision and dedupe_list_pending run
+    // against the main api client; bond_find_duplicates and
+    // helpdesk_find_similar_tickets hit the per-app services via fetch.
+    registerDedupeTools(mock.server, api, {
+      bondApiUrl: 'http://localhost:4009',
+      helpdeskApiUrl: 'http://localhost:4001',
+    });
+    // §4 + §8 Wave 5 trends/expertise
+    registerPhraseCountTools(mock.server, api, {
+      helpdeskApiUrl: 'http://localhost:4001',
+      apiUrl: 'http://localhost:4000',
+    });
+    registerExpertiseTools(mock.server, api);
+    // §1 Wave 5 banter subs
+    registerBanterSubscriptionTools(mock.server, api, 'http://localhost:4002');
+    // Peer-app tool suites. These were previously not wired into the harness
+    // so their tool names were missing from expectedTools and drift went
+    // undetected. All tool names from these suites are in the expectedTools
+    // allowlist below.
+    registerUserResolverTools(mock.server, api);
+    registerHelpdeskTools(mock.server, api, 'http://localhost:4001');
+    registerBriefTools(mock.server, api, 'http://localhost:4005');
+    registerBoltTools(mock.server, api, 'http://localhost:4006');
+    registerBearingTools(mock.server, api, 'http://localhost:4007');
+    registerBondTools(mock.server, api, 'http://localhost:4009');
+    registerBlastTools(mock.server, api, 'http://localhost:4010');
+    registerBookTools(mock.server, api, 'http://localhost:4012');
+    registerBenchTools(mock.server, api, 'http://localhost:4011');
+    registerBillTools(mock.server, api, 'http://localhost:4014');
+    registerBlankTools(mock.server, api, 'http://localhost:4013');
   });
 
   function getTool(name: string): RegisteredTool {
@@ -903,6 +1029,214 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== AGENT TOOLS (AGENTIC_TODO §10) =====
+
+  describe('agent tools', () => {
+    it('agent_heartbeat POSTs to /v1/agents/heartbeat with merged payload', async () => {
+      mockApiOk({
+        data: {
+          id: UUID,
+          org_id: UUID2,
+          user_id: UUID,
+          name: 'intake-worker',
+          version: '1.0.0',
+          capabilities: ['helpdesk.triage'],
+          last_heartbeat_at: new Date().toISOString(),
+          first_seen_at: new Date().toISOString(),
+        },
+      });
+      const result = await getTool('agent_heartbeat').handler({
+        runner_name: 'intake-worker',
+        version: '1.0.0',
+        capabilities: ['helpdesk.triage'],
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/agents/heartbeat');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.runner_name).toBe('intake-worker');
+      expect(body.version).toBe('1.0.0');
+      expect(body.capabilities).toEqual(['helpdesk.triage']);
+    });
+
+    it('agent_heartbeat surfaces 403 NOT_A_SERVICE_ACCOUNT as error', async () => {
+      mockApiError(403, {
+        error: {
+          code: 'NOT_A_SERVICE_ACCOUNT',
+          message: 'This endpoint requires a service-account caller',
+        },
+      });
+      const result = await getTool('agent_heartbeat').handler({ runner_name: 'x' });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('NOT_A_SERVICE_ACCOUNT');
+    });
+
+    it('agent_audit builds a query string from since/limit/cursor', async () => {
+      mockApiOk({
+        data: [
+          {
+            id: UUID,
+            project_id: UUID2,
+            actor_id: UUID,
+            actor_type: 'service',
+            action: 'task.create',
+            created_at: new Date().toISOString(),
+          },
+        ],
+        meta: { next_cursor: null, has_more: false },
+      });
+      const result = await getTool('agent_audit').handler({
+        agent_user_id: UUID,
+        since: '2026-04-01T00:00:00Z',
+        limit: 10,
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/v1/agents/${UUID}/audit`);
+      expect(call[0]).toContain('since=2026-04-01T00');
+      expect(call[0]).toContain('limit=10');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('agent_audit omits query string when only agent_user_id is given', async () => {
+      mockApiOk({ data: [], meta: { next_cursor: null, has_more: false } });
+      await getTool('agent_audit').handler({ agent_user_id: UUID });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toMatch(new RegExp(`/v1/agents/${UUID}/audit$`));
+    });
+
+    it('agent_self_report requires project_id (enforced at the API layer)', async () => {
+      // Simulate the 400 PROJECT_ID_REQUIRED the server returns.
+      mockApiError(400, {
+        error: {
+          code: 'PROJECT_ID_REQUIRED',
+          message: 'project_id is required for agent self-report',
+        },
+      });
+      const result = await getTool('agent_self_report').handler({
+        summary: 'done',
+        project_id: UUID,
+      });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('PROJECT_ID_REQUIRED');
+    });
+
+    it('agent_self_report posts summary + metrics when provided', async () => {
+      mockApiOk({
+        data: {
+          id: UUID,
+          project_id: UUID2,
+          actor_id: UUID,
+          actor_type: 'service',
+          action: 'agent.self_report',
+          details: { summary: 'done', metrics: { count: 3 } },
+          created_at: new Date().toISOString(),
+        },
+      });
+      const result = await getTool('agent_self_report').handler({
+        summary: 'done',
+        metrics: { count: 3 },
+        project_id: UUID2,
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/agents/self-report');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.summary).toBe('done');
+      expect(body.project_id).toBe(UUID2);
+      expect(body.metrics).toEqual({ count: 3 });
+    });
+  });
+
+  // ===== PROPOSAL TOOLS (AGENTIC_TODO §9 Wave 2) =====
+
+  describe('proposal tools', () => {
+    it('proposal_create POSTs to /v1/proposals with the full body', async () => {
+      mockApiOk({
+        data: {
+          id: UUID,
+          org_id: UUID2,
+          actor_id: UUID,
+          proposer_kind: 'agent',
+          proposed_action: 'blast.campaign.send',
+          status: 'pending',
+          approver_id: UUID2,
+          expires_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        },
+      });
+      const result = await getTool('proposal_create').handler({
+        proposed_action: 'blast.campaign.send',
+        approver_id: UUID2,
+        subject_type: 'blast.campaign',
+        subject_id: UUID,
+        ttl_seconds: 3600,
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/proposals');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.proposed_action).toBe('blast.campaign.send');
+      expect(body.approver_id).toBe(UUID2);
+      expect(body.ttl_seconds).toBe(3600);
+    });
+
+    it('proposal_list builds a filtered query string', async () => {
+      mockApiOk({ data: [], meta: { next_cursor: null, has_more: false } });
+      await getTool('proposal_list').handler({
+        approver_id: UUID,
+        status: 'pending',
+        limit: 25,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/proposals');
+      expect(call[0]).toContain('filter%5Bapprover_id%5D=' + UUID);
+      expect(call[0]).toContain('filter%5Bstatus%5D=pending');
+      expect(call[0]).toContain('limit=25');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('proposal_list omits the query string when no filters are given', async () => {
+      mockApiOk({ data: [], meta: { next_cursor: null, has_more: false } });
+      await getTool('proposal_list').handler({});
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toMatch(/\/v1\/proposals$/);
+    });
+
+    it('proposal_decide POSTs to the decide sub-route and forwards the decision', async () => {
+      mockApiOk({
+        data: { id: UUID, status: 'approved', decided_at: new Date().toISOString() },
+      });
+      const result = await getTool('proposal_decide').handler({
+        proposal_id: UUID,
+        decision: 'approve',
+        reason: 'looks good',
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/v1/proposals/${UUID}/decide`);
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.decision).toBe('approve');
+      expect(body.reason).toBe('looks good');
+    });
+
+    it('proposal_decide surfaces 409 PROPOSAL_ALREADY_DECIDED as an error', async () => {
+      mockApiError(409, {
+        error: { code: 'PROPOSAL_ALREADY_DECIDED', message: 'Already decided' },
+      });
+      const result = await getTool('proposal_decide').handler({
+        proposal_id: UUID,
+        decision: 'approve',
+      });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('PROPOSAL_ALREADY_DECIDED');
+    });
+  });
+
   // ===== BEACON TOOLS =====
 
   describe('beacon_create', () => {
@@ -991,6 +1325,182 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== §13 WAVE 4 SCHEDULED BANTER =====
+
+  describe('banter_post_message (back-compat and scheduled)', () => {
+    const CHANNEL_UUID = '770e8400-e29b-41d4-a716-446655440002';
+
+    it('immediate post with only channel_id + content is unchanged', async () => {
+      // No scheduled_at → hits the banter-api POST /messages path and returns
+      // a normal message envelope.
+      mockApiOk({ data: { id: UUID, channel_id: CHANNEL_UUID, content: 'hi', created_at: '2026-04-15T12:00:00Z', updated_at: '2026-04-15T12:00:00Z' } });
+      const result = await getTool('banter_post_message').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'hi',
+      });
+      expect(result.isError).toBeUndefined();
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/banter/api/v1/channels/${CHANNEL_UUID}/messages`);
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body);
+      // Back-compat: no scheduled_at or quiet-hours keys are sent.
+      expect(body).toEqual({ content: 'hi' });
+    });
+
+    it('passes scheduled_at / defer_if_quiet through to banter-api', async () => {
+      mockApiOk({
+        data: {
+          scheduled: true,
+          scheduled_message_id: UUID,
+          scheduled_at: '2026-05-01T12:00:00Z',
+          defer_reason: 'scheduled',
+        },
+      });
+      const result = await getTool('banter_post_message').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'later',
+        scheduled_at: '2026-05-01T12:00:00Z',
+        defer_if_quiet: true,
+      });
+      expect(result.isError).toBeUndefined();
+      const call = mockFetch.mock.calls[0]!;
+      const body = JSON.parse(call[1].body);
+      expect(body.scheduled_at).toBe('2026-05-01T12:00:00Z');
+      expect(body.defer_if_quiet).toBe(true);
+    });
+  });
+
+  describe('banter_schedule_post', () => {
+    const CHANNEL_UUID = '770e8400-e29b-41d4-a716-446655440002';
+
+    it('posts to banter-api with scheduled_at and returns the scheduled envelope', async () => {
+      mockApiOk({
+        data: {
+          scheduled: true,
+          scheduled_message_id: UUID,
+          scheduled_at: '2026-05-01T12:00:00Z',
+          defer_reason: 'scheduled',
+        },
+      });
+      const result = await getTool('banter_schedule_post').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'morning update',
+        scheduled_at: '2026-05-01T12:00:00Z',
+      });
+      expect(result.isError).toBeUndefined();
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/banter/api/v1/channels/${CHANNEL_UUID}/messages`);
+      const body = JSON.parse(call[1].body);
+      expect(body.scheduled_at).toBe('2026-05-01T12:00:00Z');
+      // respect_quiet_hours is a placeholder flag; it must not be forwarded
+      // because the banter-api schema does not yet accept it.
+      expect('respect_quiet_hours' in body).toBe(false);
+    });
+
+    it('surfaces banter-api errors cleanly', async () => {
+      mockApiError(400, { error: { code: 'INVALID_SCHEDULED_AT', message: 'scheduled_at in past' } });
+      const result = await getTool('banter_schedule_post').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'too late',
+        scheduled_at: '2000-01-01T00:00:00Z',
+      });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  // ===== §7 WAVE 5 DEDUPE =====
+
+  describe('dedupe tools (§7 Wave 5)', () => {
+    const CONTACT_A = '00000000-0000-0000-0000-0000000000aa';
+    const CONTACT_B = '00000000-0000-0000-0000-0000000000bb';
+    const TICKET_A = '00000000-0000-0000-0000-0000000000cc';
+
+    it('bond_find_duplicates hits bond-api without duplicating /v1', async () => {
+      mockApiOk({ source_contact_id: CONTACT_A, candidates: [] });
+      await getTool('bond_find_duplicates').handler({ contact_id: CONTACT_A, limit: 5 });
+      const call = mockFetch.mock.calls[0]!;
+      // BOND_API_URL in the harness is http://localhost:4009 without /v1.
+      // dedupe-tools.ts sends /contacts/:id/duplicates and relies on the
+      // base URL carrying whatever prefix the deployment uses.
+      expect(call[0]).toBe(`http://localhost:4009/contacts/${CONTACT_A}/duplicates?limit=5`);
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('helpdesk_find_similar_tickets hits the /helpdesk/agents/tickets route', async () => {
+      mockApiOk({ source_ticket_id: TICKET_A, candidates: [] });
+      await getTool('helpdesk_find_similar_tickets').handler({
+        ticket_id: TICKET_A,
+        status_filter: 'open',
+        limit: 7,
+        window_days: 14,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/helpdesk/agents/tickets/${TICKET_A}/similar`);
+      expect(call[0]).toContain('status_filter=open');
+      expect(call[0]).toContain('limit=7');
+      expect(call[0]).toContain('window_days=14');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('dedupe_record_decision POSTs the canonical body to /v1/dedupe-decisions', async () => {
+      mockApiOk({ data: { id: UUID, decision: 'not_duplicate' }, created: true });
+      await getTool('dedupe_record_decision').handler({
+        entity_type: 'bond.contact',
+        id_a: CONTACT_B,
+        id_b: CONTACT_A,
+        decision: 'not_duplicate',
+        reason: 'different companies',
+        confidence: 0.82,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/dedupe-decisions');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      // The tool does NOT sort ids itself; canonicalization happens
+      // server-side in recordDecision. This is a coverage assertion that
+      // the tool forwards inputs verbatim.
+      expect(body.id_a).toBe(CONTACT_B);
+      expect(body.id_b).toBe(CONTACT_A);
+      expect(body.decision).toBe('not_duplicate');
+      expect(body.confidence).toBe(0.82);
+    });
+
+    it('dedupe_record_decision surfaces 409 HUMAN_DECISION_EXISTS as an isError result', async () => {
+      mockApiError(409, {
+        error: { code: 'HUMAN_DECISION_EXISTS', message: 'blocked' },
+        prior_decision: { decision: 'not_duplicate', decided_by: UUID },
+      });
+      const result = await getTool('dedupe_record_decision').handler({
+        entity_type: 'bond.contact',
+        id_a: CONTACT_A,
+        id_b: CONTACT_B,
+        decision: 'duplicate',
+      });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('HUMAN_DECISION_EXISTS');
+    });
+
+    it('dedupe_list_pending builds a query string from optional filters', async () => {
+      mockApiOk({ pending: [] });
+      await getTool('dedupe_list_pending').handler({
+        entity_type: 'helpdesk.ticket',
+        limit: 25,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/dedupe-decisions/pending');
+      expect(call[0]).toContain('entity_type=helpdesk.ticket');
+      expect(call[0]).toContain('limit=25');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('dedupe_list_pending omits the query string when no filters are given', async () => {
+      mockApiOk({ pending: [] });
+      await getTool('dedupe_list_pending').handler({});
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toMatch(/\/v1\/dedupe-decisions\/pending$/);
+    });
+  });
+
   // ===== TOOL REGISTRATION COMPLETENESS =====
 
   describe('tool registration', () => {
@@ -1032,6 +1542,86 @@ describe('MCP Integration Tests', () => {
         // platform (superuser)
         'get_platform_settings', 'set_public_signup_disabled',
         'list_beta_signups', 'get_public_config', 'submit_beta_signup',
+        // agent (AGENTIC_TODO §10)
+        'agent_heartbeat', 'agent_audit', 'agent_self_report',
+        // proposals (AGENTIC_TODO §9 Wave 2)
+        'proposal_create', 'proposal_list', 'proposal_decide',
+        // visibility preflight (AGENTIC_TODO §11 Wave 2)
+        'can_access',
+        // cross-app unified search (AGENTIC_TODO §2 Wave 3)
+        'search_everything',
+        // fuzzy entity resolver (AGENTIC_TODO §3 Wave 3)
+        'resolve_references',
+        // unified activity-log querying (AGENTIC_TODO §5 Wave 3)
+        'activity_query',
+        'activity_by_actor',
+        // composite subject-centric views (AGENTIC_TODO §6 Wave 3)
+        'account_view',
+        'project_view',
+        'user_view',
+        // §16 Wave 4 entity links
+        'entity_links_list',
+        'entity_link_create',
+        'entity_link_remove',
+        // §17 Wave 4 attachments
+        'attachment_get',
+        'attachment_list',
+        // §13 Wave 4 scheduled banter — the full banter tool suite is
+        // registered by registerBanterTools above. banter_schedule_post is
+        // the §13 addition; every other name predates Wave 4.
+        'banter_add_channel_members',
+        'banter_add_group_members',
+        'banter_archive_channel',
+        'banter_browse_channels',
+        'banter_create_channel',
+        'banter_create_user_group',
+        'banter_delete_channel',
+        'banter_delete_message',
+        'banter_edit_message',
+        'banter_end_call',
+        'banter_find_user_by_email',
+        'banter_find_user_by_handle',
+        'banter_get_active_huddle',
+        'banter_get_call',
+        'banter_get_channel',
+        'banter_get_channel_by_name',
+        'banter_get_message',
+        'banter_get_preferences',
+        'banter_get_transcript',
+        'banter_get_unread',
+        'banter_get_user_group_by_handle',
+        'banter_invite_agent_to_call',
+        'banter_join_call',
+        'banter_join_channel',
+        'banter_leave_call',
+        'banter_leave_channel',
+        'banter_list_calls',
+        'banter_list_channels',
+        'banter_list_messages',
+        'banter_list_thread_replies',
+        'banter_list_user_groups',
+        'banter_list_users',
+        'banter_pin_message',
+        'banter_post_call_text',
+        'banter_post_message',
+        'banter_react',
+        'banter_remove_channel_member',
+        'banter_remove_group_member',
+        'banter_reply_to_thread',
+        'banter_schedule_post',
+        'banter_search_messages',
+        'banter_search_transcripts',
+        'banter_send_dm',
+        'banter_send_group_dm',
+        'banter_set_presence',
+        'banter_share_sprint',
+        'banter_share_task',
+        'banter_share_ticket',
+        'banter_start_call',
+        'banter_unpin_message',
+        'banter_update_channel',
+        'banter_update_preferences',
+        'banter_update_user_group',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
@@ -1042,6 +1632,107 @@ describe('MCP Integration Tests', () => {
         'beacon_link_create', 'beacon_link_remove',
         'beacon_query_save', 'beacon_query_list', 'beacon_query_get', 'beacon_query_delete',
         'beacon_graph_neighbors', 'beacon_graph_hubs', 'beacon_graph_recent',
+        // §14 Wave 4 upserts. bond_upsert_contact and helpdesk_upsert_user
+        // land via the bond-tools and helpdesk-tools suites registered below.
+        'beacon_upsert_by_slug',
+        'task_upsert_by_external_id',
+        // §15 Wave 5 agent policies
+        'agent_policy_get',
+        'agent_policy_set',
+        'agent_policy_list',
+        // §20 Wave 5 webhooks
+        'agent_webhook_configure',
+        'agent_webhook_rotate_secret',
+        'agent_webhook_deliveries_list',
+        'agent_webhook_redeliver',
+        // §12 Wave 5 bolt observability
+        'bolt_event_trace',
+        'bolt_recent_events',
+        // §18 + §19 Wave 5 misc. book_find_meeting_time_for_users lands via
+        // the book-tools suite registered below.
+        'ingest_fingerprint_check',
+        // §7 Wave 5 dedupe
+        'bond_find_duplicates',
+        'helpdesk_find_similar_tickets',
+        'dedupe_record_decision',
+        'dedupe_list_pending',
+        // §4 + §8 Wave 5 trends/expertise
+        'helpdesk_ticket_count_by_phrase',
+        'bam_task_count_by_phrase',
+        'expertise_for_topic',
+        // §1 Wave 5 banter subs
+        'banter_subscribe_pattern',
+        'banter_unsubscribe_pattern',
+        'banter_list_subscriptions',
+        // Peer-app tool suites registered in beforeEach above.
+        // user-resolver
+        'find_user_by_email', 'find_user_by_name', 'list_users',
+        // helpdesk
+        'get_ticket', 'helpdesk_get_public_settings', 'helpdesk_get_settings',
+        'helpdesk_get_ticket_by_number', 'helpdesk_search_tickets',
+        'helpdesk_set_default_project', 'helpdesk_update_settings',
+        'helpdesk_upsert_user', 'list_tickets', 'reply_to_ticket',
+        'update_ticket_status',
+        // brief
+        'brief_append_content', 'brief_archive', 'brief_comment_add',
+        'brief_comment_list', 'brief_comment_resolve', 'brief_create',
+        'brief_duplicate', 'brief_get', 'brief_link_task', 'brief_list',
+        'brief_promote_to_beacon', 'brief_restore', 'brief_search',
+        'brief_update', 'brief_update_content', 'brief_version_get',
+        'brief_version_restore', 'brief_versions',
+        // bolt
+        'bolt_actions', 'bolt_create', 'bolt_delete', 'bolt_disable',
+        'bolt_enable', 'bolt_events', 'bolt_execution_detail',
+        'bolt_executions', 'bolt_get', 'bolt_get_automation_by_name',
+        'bolt_list', 'bolt_test', 'bolt_update',
+        // bearing
+        'bearing_at_risk', 'bearing_goal_create', 'bearing_goal_get',
+        'bearing_goal_update', 'bearing_goals', 'bearing_kr_create',
+        'bearing_kr_link', 'bearing_kr_update', 'bearing_period_get',
+        'bearing_periods', 'bearing_report', 'bearing_update_post',
+        // bond
+        'bond_close_deal_lost', 'bond_close_deal_won', 'bond_create_company',
+        'bond_create_contact', 'bond_create_deal', 'bond_get_company',
+        'bond_get_contact', 'bond_get_deal', 'bond_get_forecast',
+        'bond_get_pipeline_summary', 'bond_get_stale_deals',
+        'bond_list_companies', 'bond_list_contacts', 'bond_list_deals',
+        'bond_log_activity', 'bond_merge_contacts', 'bond_move_deal_stage',
+        'bond_score_lead', 'bond_search_contacts', 'bond_update_company',
+        'bond_update_contact', 'bond_update_deal', 'bond_upsert_contact',
+        // blast
+        'blast_check_unsubscribed', 'blast_create_segment',
+        'blast_create_template', 'blast_draft_campaign',
+        'blast_draft_email_content', 'blast_get_campaign',
+        'blast_get_campaign_analytics', 'blast_get_engagement_summary',
+        'blast_get_template', 'blast_list_segments', 'blast_list_templates',
+        'blast_preview_segment', 'blast_send_campaign',
+        'blast_suggest_subject_lines',
+        // book
+        'book_cancel_event', 'book_create_booking_page', 'book_create_event',
+        'book_find_meeting_time', 'book_find_meeting_time_for_users',
+        'book_get_availability', 'book_get_team_availability',
+        'book_get_timeline', 'book_list_events', 'book_rsvp_event',
+        'book_update_event',
+        // bench
+        'bench_compare_periods', 'bench_detect_anomalies',
+        'bench_generate_report', 'bench_get_dashboard',
+        'bench_list_dashboards', 'bench_list_data_sources',
+        'bench_list_scheduled_reports', 'bench_list_widgets',
+        'bench_query_ad_hoc', 'bench_query_widget',
+        'bench_summarize_dashboard',
+        // bill
+        'bill_add_line_item', 'bill_create_expense', 'bill_create_invoice',
+        'bill_create_invoice_from_deal', 'bill_create_invoice_from_time',
+        'bill_finalize_invoice', 'bill_get_invoice', 'bill_get_overdue',
+        'bill_get_profitability', 'bill_get_revenue_summary',
+        'bill_list_clients', 'bill_list_expenses', 'bill_list_invoices',
+        'bill_record_payment', 'bill_resolve_rate', 'bill_send_invoice',
+        // blank
+        'blank_create_form', 'blank_export_submissions',
+        'blank_generate_form', 'blank_get_form', 'blank_get_form_analytics',
+        'blank_get_submission', 'blank_list_forms', 'blank_list_submissions',
+        'blank_publish_form', 'blank_summarize_responses',
+        'blank_update_form',
       ];
 
       for (const name of expectedTools) {

@@ -1,6 +1,14 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, boolean, index, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, uuid, varchar, text, jsonb, timestamp, boolean, index, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { organizations } from './organizations.js';
+
+/**
+ * Agent-identity actor type (AGENTIC_TODO §10, migration 0127). Distinguishes
+ * human users from agent runtimes from service accounts without relying on
+ * email-pattern inference. Mirrored onto activity_log.actor_type so auditors
+ * can filter mutations by actor kind.
+ */
+export const actorTypeEnum = pgEnum('actor_type', ['human', 'agent', 'service']);
 
 export const users = pgTable(
   'users',
@@ -18,6 +26,7 @@ export const users = pgTable(
     notification_prefs: jsonb('notification_prefs').default({}).notNull(),
     is_active: boolean('is_active').default(true).notNull(),
     is_superuser: boolean('is_superuser').default(false).notNull(),
+    kind: actorTypeEnum('kind').default('human').notNull(),
     last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
     disabled_at: timestamp('disabled_at', { withTimezone: true }),
     disabled_by: uuid('disabled_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
@@ -32,6 +41,7 @@ export const users = pgTable(
   (table) => [
     index('users_org_id_idx').on(table.org_id),
     index('users_email_idx').on(table.email),
+    index('users_kind_idx').on(table.kind),
     check('users_role_check', sql`role IN ('owner', 'admin', 'member', 'viewer', 'guest')`),
   ],
 );
