@@ -1,11 +1,19 @@
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
+import type { Redis } from 'ioredis';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { agentRunners } from '../db/schema/agent-runners.js';
 import { agentWebhookDeliveries } from '../db/schema/agent-webhook-deliveries.js';
 import { agentPolicies } from '../db/schema/agent-policies.js';
 import { validateWebhookUrl } from '../lib/webhook-url-validator.js';
+
+// The dispatcher worker signs outbound deliveries with the runner's
+// plaintext secret. We stash it in Redis at configure/rotate time so the
+// worker has something to sign with (the DB only stores the argon2
+// hash). The key has no TTL; deletes happen on reconfigure / rotate /
+// disable.
+const SECRET_REDIS_KEY_PREFIX = 'agent_webhook_secret:';
 
 /**
  * Agent webhook service (AGENTIC_TODO §20, Wave 5).
@@ -70,6 +78,7 @@ export async function configureWebhook(
   runnerUserId: string,
   actor: { org_id: string },
   input: ConfigureInput,
+  redis: Redis | null,
 ): Promise<ConfigureResult> {
   const urlCheck = validateWebhookUrl(input.webhook_url);
   if (!urlCheck.safe) {
@@ -106,6 +115,18 @@ export async function configureWebhook(
     })
     .where(eq(agentRunners.id, runner.id));
 
+  // Stash the plaintext in Redis so the worker dispatcher can sign. No
+  // TTL; the overwrite on the next rotate is the only way to retire it.
+  if (redis) {
+    try {
+      await redis.set(`${SECRET_REDIS_KEY_PREFIX}${runner.id}`, plaintext);
+    } catch {
+      // Caller already committed the hash to the DB; a Redis outage
+      // means the dispatcher will fail-closed with "secret missing",
+      // which is operator-visible and recoverable via rotate.
+    }
+  }
+
   return {
     ok: true,
     runner_id: runner.id,
@@ -125,6 +146,7 @@ export async function configureWebhook(
 export async function rotateWebhookSecret(
   runnerUserId: string,
   actor: { org_id: string },
+  redis: Redis | null,
 ): Promise<RotateResult> {
   const [runner] = await db
     .select()
@@ -152,6 +174,17 @@ export async function rotateWebhookSecret(
       updated_at: new Date(),
     })
     .where(eq(agentRunners.id, runner.id));
+
+  // Overwrite the Redis plaintext atomically from the caller's POV. The
+  // predecessor is immediately invalidated; receivers that were mid-retry
+  // will see signature mismatches until they swap in the new secret.
+  if (redis) {
+    try {
+      await redis.set(`${SECRET_REDIS_KEY_PREFIX}${runner.id}`, plaintext);
+    } catch {
+      // See configureWebhook for the failure posture.
+    }
+  }
 
   return { ok: true, runner_id: runner.id, plaintext_secret: plaintext };
 }

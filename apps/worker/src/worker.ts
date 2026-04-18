@@ -86,6 +86,15 @@ import {
   reconcileScheduledPosts,
   type BanterScheduledPostJobData,
 } from './jobs/banter-scheduled-post.job.js';
+// §20 Wave 5 webhooks
+import {
+  processAgentWebhookDispatchJob,
+  type AgentWebhookDispatchJobData,
+} from './jobs/agent-webhook-dispatch.job.js';
+import {
+  processAgentWebhookDlqJob,
+  type AgentWebhookDlqJobData,
+} from './jobs/agent-webhook-dlq.job.js';
 
 const env = loadEnv();
 
@@ -814,6 +823,44 @@ bondBulkScoreQueue
   )
   .catch((err) => logger.error({ err }, 'Failed to register bond-bulk-score scheduler'));
 
+// §20 Wave 5 webhooks: outbound dispatcher to agent runners.
+const agentWebhookDispatchWorker = new Worker<AgentWebhookDispatchJobData>(
+  'agent-webhook-dispatch',
+  async (job: Job<AgentWebhookDispatchJobData>) => {
+    await processAgentWebhookDispatchJob(job, redis, logger);
+  },
+  { ...connection, concurrency: env.WORKER_CONCURRENCY },
+);
+agentWebhookDispatchWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'agent-webhook-dispatch' }, 'Job completed');
+});
+agentWebhookDispatchWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'agent-webhook-dispatch', err }, 'Job failed');
+});
+
+// §20 Wave 5 webhooks: dead-letter notifier, runs every 5 minutes.
+const agentWebhookDlqWorker = new Worker<AgentWebhookDlqJobData>(
+  'agent-webhook-dlq',
+  async (job: Job<AgentWebhookDlqJobData>) => {
+    await processAgentWebhookDlqJob(job, logger);
+  },
+  { ...connection, concurrency: 1 },
+);
+agentWebhookDlqWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id, queue: 'agent-webhook-dlq' }, 'Job completed');
+});
+agentWebhookDlqWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, queue: 'agent-webhook-dlq', err }, 'Job failed');
+});
+const agentWebhookDlqQueue = new Queue('agent-webhook-dlq', { connection: redis });
+agentWebhookDlqQueue
+  .upsertJobScheduler(
+    'agent-webhook-dlq-tick',
+    { pattern: '*/5 * * * *' }, // every 5 minutes
+    { name: 'tick', data: {} },
+  )
+  .catch((err) => logger.error({ err }, 'Failed to register agent-webhook-dlq scheduler'));
+
 // Helpdesk email notification worker.
 const helpdeskEmailNotifyWorker = new Worker<HelpdeskEmailNotifyJobData>(
   'helpdesk-email-notify',
@@ -903,6 +950,9 @@ const workers = [
   boltExecutionCleanupWorker,
   bondBulkScoreWorker,
   helpdeskEmailNotifyWorker,
+  // §20 Wave 5 webhooks
+  agentWebhookDispatchWorker,
+  agentWebhookDlqWorker,
   analyticsWorker,
 ];
 
@@ -944,6 +994,9 @@ logger.info(
       'bolt-execution-cleanup',
       'bond-bulk-score',
       'helpdesk-email-notify',
+      // §20 Wave 5 webhooks
+      'agent-webhook-dispatch',
+      'agent-webhook-dlq',
       'analytics',
     ],
   },

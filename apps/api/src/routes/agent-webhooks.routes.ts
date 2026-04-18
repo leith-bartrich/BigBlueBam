@@ -62,10 +62,12 @@ export default async function agentWebhooksRoutes(fastify: FastifyInstance) {
         });
       }
 
+      const redis = (fastify as unknown as { redis?: import('ioredis').Redis }).redis ?? null;
       const result = await configureWebhook(
         request.params.runner_user_id,
         { org_id: request.user!.active_org_id },
         parsed.data,
+        redis,
       );
 
       if (!result.ok) {
@@ -105,9 +107,11 @@ export default async function agentWebhooksRoutes(fastify: FastifyInstance) {
     '/v1/agent-runners/:runner_user_id/webhook/rotate',
     { preHandler: [requireAuth, requireScope('read_write')] },
     async (request, reply) => {
+      const redis = (fastify as unknown as { redis?: import('ioredis').Redis }).redis ?? null;
       const result = await rotateWebhookSecret(
         request.params.runner_user_id,
         { org_id: request.user!.active_org_id },
+        redis,
       );
 
       if (!result.ok) {
