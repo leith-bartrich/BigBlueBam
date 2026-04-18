@@ -47,6 +47,12 @@ export const banterChannels = pgTable(
     // Shape: { timezone, allowed_hours:[start,end], weekday_only?, urgency_override? }.
     // Null means no policy (unrestricted posting).
     quiet_hours_policy: jsonb('quiet_hours_policy'),
+    // §1 Wave 5 banter subs - per-channel agent subscription gate.
+    // Shape: { allow: boolean, allowed_agent_ids: uuid[] }. Default is
+    // { allow: false, allowed_agent_ids: [] } - channels opt in by
+    // flipping allow=true. allowed_agent_ids is an optional narrower
+    // allowlist; empty means "any agent with an agent_policies row".
+    agent_subscription_policy: jsonb('agent_subscription_policy').notNull().default({ allow: false, allowed_agent_ids: [] }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

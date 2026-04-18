@@ -50,6 +50,11 @@ import { registerEntityLinksTools } from './tools/entity-links-tools.js';
 import { registerAttachmentTools } from './tools/attachment-tools.js';
 // §15 Wave 5 agent policies
 import { registerAgentPolicyTools } from './tools/agent-policy-tools.js';
+// §12 Wave 5 bolt observability
+import { registerBoltObservabilityTools } from './tools/bolt-observability-tools.js';
+// §18 + §19 Wave 5 misc
+import { registerIngestFingerprintTools } from './tools/ingest-fingerprint-tools.js';
+import { createFingerprintStore, type FingerprintStore } from './lib/fingerprint-store.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -81,6 +86,15 @@ const sseTransports = new Map<string, SSEServerTransport>();
 // when a policy row changes for one of its callers. Entries are removed when
 // the transport closes (see the onclose hooks further down).
 const policyGates = new Map<string, ReturnType<typeof createPolicyGate>>();
+
+// §19 Wave 5 misc: process-wide ingest fingerprint store. Single Redis
+// connection shared across every session so every ingest_fingerprint_check
+// call lands in the same keyspace. The store connects lazily and fails open
+// if Redis is unavailable, so the mcp-server stays online even without Redis.
+const fingerprintStore: FingerprintStore = createFingerprintStore({
+  redisUrl: env.REDIS_URL,
+  logger,
+});
 
 // §15 Wave 5: Redis PubSub listener. When an operator updates a policy via
 // POST /v1/agent-policies/:id the API publishes the agent_user_id on
@@ -171,6 +185,8 @@ function createMcpServer(
   registerBeaconTools(server, apiClient, env.BEACON_API_URL);
   registerBriefTools(server, apiClient, env.BRIEF_API_URL);
   registerBoltTools(server, apiClient, env.BOLT_API_URL);
+  // §12 Wave 5 bolt observability
+  registerBoltObservabilityTools(server, apiClient, env.BOLT_API_URL);
   registerBearingTools(server, apiClient, env.BEARING_API_URL);
   registerBondTools(server, apiClient, env.BOND_API_URL);
   registerBlastTools(server, apiClient, env.BLAST_API_URL);
@@ -213,6 +229,8 @@ function createMcpServer(
   registerAttachmentTools(server, apiClient);
   // §15 Wave 5 agent policies
   registerAgentPolicyTools(server, apiClient);
+  // §18 + §19 Wave 5 misc
+  registerIngestFingerprintTools(server, apiClient, fingerprintStore);
 
   // Register resources and prompts
   registerResources(server, apiClient);
@@ -482,6 +500,13 @@ async function shutdown(signal: string) {
     }
   }
   policyGates.clear();
+
+  // §19 Wave 5: close the ingest fingerprint store's Redis connection.
+  try {
+    await fingerprintStore.close();
+  } catch {
+    logger.warn('Error closing ingest fingerprint store');
+  }
 
   httpServer.close(() => {
     logger.info('MCP server shut down');

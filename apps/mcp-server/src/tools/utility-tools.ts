@@ -126,6 +126,9 @@ const TOOL_NAMES = [
   'agent_policy_get',
   'agent_policy_set',
   'agent_policy_list',
+  // §12 Wave 5 bolt observability
+  'bolt_event_trace',
+  'bolt_recent_events',
   // §18 + §19 Wave 5 misc
   'book_find_meeting_time_for_users',
   'ingest_fingerprint_check',

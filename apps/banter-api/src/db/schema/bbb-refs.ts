@@ -45,6 +45,11 @@ export const users = pgTable(
     notification_prefs: jsonb('notification_prefs').default({}).notNull(),
     is_active: boolean('is_active').default(true).notNull(),
     is_superuser: boolean('is_superuser').default(false).notNull(),
+    // §1 Wave 5 banter subs - mirror users.kind so the banter-api side
+    // can gate subscription writes on actor type (agent/service only).
+    // Enum is defined in apps/api migration 0127; we render it as varchar
+    // here to avoid coupling to a Drizzle pgEnum declared elsewhere.
+    kind: varchar('kind', { length: 20 }).default('human').notNull(),
     last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -54,6 +59,21 @@ export const users = pgTable(
     index('users_email_idx').on(table.email),
   ],
 );
+
+// §1 Wave 5 banter subs - minimal stub for agent_policies so the banter
+// subscription service can check the §15 policy (enabled + channel_subscriptions)
+// without duplicating the full schema. Full schema lives at
+// apps/api/src/db/schema/agent-policies.ts.
+export const agentPolicies = pgTable('agent_policies', {
+  agent_user_id: uuid('agent_user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  org_id: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').default(true).notNull(),
+  channel_subscriptions: uuid('channel_subscriptions').array().notNull(),
+});
 
 export const sessions = pgTable(
   'sessions',
