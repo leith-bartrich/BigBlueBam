@@ -34,6 +34,7 @@ import { registerBillTools } from './tools/bill-tools.js';
 import { registerBlankTools } from './tools/blank-tools.js';
 import { registerMeTools } from './tools/me-tools.js';
 import { registerPlatformTools } from './tools/platform-tools.js';
+import { registerAgentTools } from './tools/agent-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -115,6 +116,7 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
   registerBlankTools(server, apiClient, env.BLANK_API_URL);
   registerMeTools(server, apiClient);
   registerPlatformTools(server, apiClient);
+  registerAgentTools(server, apiClient);
 
   // Register resources and prompts
   registerResources(server, apiClient);
