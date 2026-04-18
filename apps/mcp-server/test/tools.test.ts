@@ -164,3 +164,66 @@ describe('MCP response format', () => {
     expect(response.content[0].text).toContain('Error');
   });
 });
+
+// ========================================================================
+// confirm_action TTL resolver (AGENTIC_TODO §9 Wave 2)
+// ========================================================================
+import { resolveConfirmTtlMs } from '../src/tools/utility-tools.js';
+
+describe('confirm_action TTL resolution', () => {
+  let client: ApiClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    client = new ApiClient('http://localhost:4000', 'test-token', logger);
+  });
+
+  it('returns the short 60s TTL when no approver_user_id is supplied', async () => {
+    const ttl = await resolveConfirmTtlMs(client, undefined);
+    expect(ttl).toBe(60_000);
+    // No /users/:id probe should have happened.
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('returns the 5-minute TTL when the approver resolves to a human', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { id: '550e8400-e29b-41d4-a716-446655440000', kind: 'human' } }),
+    });
+    const ttl = await resolveConfirmTtlMs(client, '550e8400-e29b-41d4-a716-446655440000');
+    expect(ttl).toBe(300_000);
+    const call = mockFetch.mock.calls[0]!;
+    expect(call[0]).toContain('/users/550e8400-e29b-41d4-a716-446655440000');
+  });
+
+  it('returns the short 60s TTL when the approver is an agent', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { id: '550e8400-e29b-41d4-a716-446655440000', kind: 'agent' } }),
+    });
+    const ttl = await resolveConfirmTtlMs(client, '550e8400-e29b-41d4-a716-446655440000');
+    expect(ttl).toBe(60_000);
+  });
+
+  it('returns the short 60s TTL when the approver is a service account', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { id: '550e8400-e29b-41d4-a716-446655440000', kind: 'service' } }),
+    });
+    const ttl = await resolveConfirmTtlMs(client, '550e8400-e29b-41d4-a716-446655440000');
+    expect(ttl).toBe(60_000);
+  });
+
+  it('falls back to the short TTL when the probe fails (e.g. user not found)', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'NOT_FOUND' }),
+    });
+    const ttl = await resolveConfirmTtlMs(client, '550e8400-e29b-41d4-a716-446655440000');
+    expect(ttl).toBe(60_000);
+  });
+});

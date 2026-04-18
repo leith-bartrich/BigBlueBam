@@ -71,6 +71,7 @@ import { registerPlatformTools } from '../src/tools/platform-tools.js';
 import { registerBeaconTools } from '../src/tools/beacon-tools.js';
 import { registerBamResolverTools } from '../src/tools/bam-resolver-tools.js';
 import { registerAgentTools } from '../src/tools/agent-tools.js';
+import { registerProposalTools } from '../src/tools/proposal-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -96,6 +97,7 @@ describe('MCP Integration Tests', () => {
     registerBeaconTools(mock.server, api, 'http://localhost:4004');
     registerBamResolverTools(mock.server, api);
     registerAgentTools(mock.server, api);
+    registerProposalTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1026,6 +1028,93 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== PROPOSAL TOOLS (AGENTIC_TODO §9 Wave 2) =====
+
+  describe('proposal tools', () => {
+    it('proposal_create POSTs to /v1/proposals with the full body', async () => {
+      mockApiOk({
+        data: {
+          id: UUID,
+          org_id: UUID2,
+          actor_id: UUID,
+          proposer_kind: 'agent',
+          proposed_action: 'blast.campaign.send',
+          status: 'pending',
+          approver_id: UUID2,
+          expires_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        },
+      });
+      const result = await getTool('proposal_create').handler({
+        proposed_action: 'blast.campaign.send',
+        approver_id: UUID2,
+        subject_type: 'blast.campaign',
+        subject_id: UUID,
+        ttl_seconds: 3600,
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/proposals');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.proposed_action).toBe('blast.campaign.send');
+      expect(body.approver_id).toBe(UUID2);
+      expect(body.ttl_seconds).toBe(3600);
+    });
+
+    it('proposal_list builds a filtered query string', async () => {
+      mockApiOk({ data: [], meta: { next_cursor: null, has_more: false } });
+      await getTool('proposal_list').handler({
+        approver_id: UUID,
+        status: 'pending',
+        limit: 25,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/proposals');
+      expect(call[0]).toContain('filter%5Bapprover_id%5D=' + UUID);
+      expect(call[0]).toContain('filter%5Bstatus%5D=pending');
+      expect(call[0]).toContain('limit=25');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('proposal_list omits the query string when no filters are given', async () => {
+      mockApiOk({ data: [], meta: { next_cursor: null, has_more: false } });
+      await getTool('proposal_list').handler({});
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toMatch(/\/v1\/proposals$/);
+    });
+
+    it('proposal_decide POSTs to the decide sub-route and forwards the decision', async () => {
+      mockApiOk({
+        data: { id: UUID, status: 'approved', decided_at: new Date().toISOString() },
+      });
+      const result = await getTool('proposal_decide').handler({
+        proposal_id: UUID,
+        decision: 'approve',
+        reason: 'looks good',
+      });
+      expectSuccessFormat(result);
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/v1/proposals/${UUID}/decide`);
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      expect(body.decision).toBe('approve');
+      expect(body.reason).toBe('looks good');
+    });
+
+    it('proposal_decide surfaces 409 PROPOSAL_ALREADY_DECIDED as an error', async () => {
+      mockApiError(409, {
+        error: { code: 'PROPOSAL_ALREADY_DECIDED', message: 'Already decided' },
+      });
+      const result = await getTool('proposal_decide').handler({
+        proposal_id: UUID,
+        decision: 'approve',
+      });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('PROPOSAL_ALREADY_DECIDED');
+    });
+  });
+
   // ===== BEACON TOOLS =====
 
   describe('beacon_create', () => {
@@ -1157,6 +1246,8 @@ describe('MCP Integration Tests', () => {
         'list_beta_signups', 'get_public_config', 'submit_beta_signup',
         // agent (AGENTIC_TODO §10)
         'agent_heartbeat', 'agent_audit', 'agent_self_report',
+        // proposals (AGENTIC_TODO §9 Wave 2)
+        'proposal_create', 'proposal_list', 'proposal_decide',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
