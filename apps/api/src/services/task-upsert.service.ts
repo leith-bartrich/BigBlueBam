@@ -162,7 +162,7 @@ export async function upsertTaskByExternalId(
     // the insert, the conflict branch updates the title/description so the
     // caller still gets a consistent row. `xmax = 0` tells us which branch
     // fired: new inserts have xmax = 0; updated-by-conflict rows do not.
-    try {
+    {
       const inserted = await db
         .insert(tasks)
         .values({
@@ -230,8 +230,6 @@ export async function upsertTaskByExternalId(
         created,
         idempotency_key: `external_id:${input.project_id}:${input.external_id}`,
       };
-    } catch (err) {
-      throw err;
     }
   }
 

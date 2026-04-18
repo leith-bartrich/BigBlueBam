@@ -160,7 +160,7 @@ export default class MarkdownReporter implements Reporter {
 
   private extractSuiteName(test: TestCase): string {
     const parts: string[] = [];
-    let parent = test.parent;
+    let parent: typeof test.parent | undefined = test.parent;
     while (parent) {
       if (parent.title && !parent.project()) {
         parts.unshift(parent.title);

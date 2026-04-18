@@ -122,7 +122,7 @@ export function decayFactor(
   const deltaMs = now.getTime() - eventAt.getTime();
   if (deltaMs <= 0) return 1;
   const ageDays = deltaMs / (1000 * 60 * 60 * 24);
-  return Math.pow(0.5, ageDays / halfLifeDays);
+  return 0.5 ** (ageDays / halfLifeDays);
 }
 
 function resolveWeights(w: ExpertiseWeights | undefined): Required<ExpertiseWeights> {

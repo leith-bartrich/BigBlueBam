@@ -86,7 +86,7 @@ test.describe('Blast — Campaign CRUD', () => {
     test.skip(!campaignId, 'No campaign available');
 
     const campaignsPage = new CampaignsPage(page, screenshots);
-    await campaignsPage.goto(`/campaigns/${campaignId}`);
+    await campaignsPage.navigate(`/campaigns/${campaignId}`);
     await screenshots.capture(page, 'campaign-detail-loaded');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'campaign-detail-content');
