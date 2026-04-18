@@ -13,6 +13,8 @@ import {
 import { evaluateConditions, type ConditionDef } from '../services/condition-engine.js';
 // §12 Wave 5 bolt observability
 import { detectCatalogDrift } from '../services/catalog-drift-detector.js';
+// §20 Wave 5 webhooks
+import { dispatchToSubscribedRunners } from '../services/webhook-dispatch-hook.js';
 import { Queue } from 'bullmq';
 import type Redis from 'ioredis';
 
@@ -135,6 +137,24 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
         request.log,
       ).catch(() => {
         // swallowed: detector has its own logging
+      });
+
+      // §20 Wave 5 webhooks: fan the event out to any agent runner that
+      // has a matching webhook subscription. Runs in parallel with rule
+      // evaluation; failures are swallowed inside the helper so the
+      // primary ingest flow is unaffected.
+      void dispatchToSubscribedRunners(
+        fastify.redis,
+        {
+          orgId: event.org_id,
+          eventId,
+          source: event.source,
+          eventType: event.event_type,
+          payload: event.payload,
+        },
+        request.log,
+      ).catch(() => {
+        // swallowed: helper has its own logging
       });
 
       // 1. Find matching enabled automations for this trigger
