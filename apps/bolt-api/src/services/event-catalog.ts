@@ -604,6 +604,30 @@ const banterEvents: EventDefinition[] = [
       { name: 'delivered_at', type: 'datetime', description: 'When the worker inserted the message (UTC ISO-8601)' },
     ],
   },
+  // §1 Wave 5 banter subs
+  {
+    source: 'banter',
+    event_type: 'message.matched',
+    description:
+      'Fired by the worker pattern-match consumer when a posted message matches an active banter_agent_subscriptions row. One event per matching subscription (an agent with two matching subs sees two events).',
+    payload_schema: [
+      { name: 'message.id', type: 'uuid', format: 'uuid', description: 'Banter message ID' },
+      { name: 'message.channel_id', type: 'uuid', format: 'uuid', description: 'Channel the message was posted to' },
+      { name: 'message.author_id', type: 'uuid', format: 'uuid', description: 'User who posted the message' },
+      { name: 'message.content', type: 'string', description: 'Message plaintext content' },
+      { name: 'match.subscription_id', type: 'uuid', format: 'uuid', description: 'banter_agent_subscriptions row ID that matched' },
+      { name: 'match.subscriber_user_id', type: 'uuid', format: 'uuid', description: 'Subscriber (agent/service) user ID' },
+      {
+        name: 'match.pattern_kind',
+        type: 'enum',
+        enum: ['interrogative', 'keyword', 'regex', 'mention'],
+        description: 'Kind of pattern that matched',
+      },
+      { name: 'match.matched_text', type: 'string', description: 'The content slice that tripped the match (full message for non-regex kinds, or the regex .[0] group)' },
+      { name: 'match.matched_at', type: 'datetime', format: 'iso8601', description: 'When the match was evaluated (UTC ISO-8601)' },
+      { name: 'org.id', type: 'uuid', format: 'uuid', description: 'Organization ID' },
+    ],
+  },
 ];
 
 // Common Beacon payload fields shared across every beacon.* event.

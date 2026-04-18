@@ -12,6 +12,9 @@ const envSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   BOLT_API_INTERNAL_URL: z.string().url().default('http://bolt-api:4006'),
+  // §1 Wave 5 banter subs - pattern-match consumer posts can_access preflights
+  // against the Bam api on this URL. Default mirrors docker-compose.
+  API_INTERNAL_URL: z.string().url().default('http://api:4000'),
   INTERNAL_SERVICE_SECRET: z.string().default(''),
 });
 

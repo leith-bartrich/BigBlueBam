@@ -86,6 +86,8 @@ import {
   reconcileScheduledPosts,
   type BanterScheduledPostJobData,
 } from './jobs/banter-scheduled-post.job.js';
+// §1 Wave 5 banter subs
+import { startBanterPatternMatchConsumer } from './jobs/banter-pattern-match.job.js';
 // §20 Wave 5 webhooks
 import {
   processAgentWebhookDispatchJob,
@@ -896,6 +898,26 @@ analyticsWorker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, queue: 'analytics', err }, 'Job failed');
 });
 
+// §1 Wave 5 banter subs — pattern-match consumer.
+// Subscribes to the banter:events Redis channel (the same fan-out used by
+// the browser realtime bus), filters message.created events, evaluates
+// every active subscription for the channel, and publishes
+// banter.message.matched Bolt events on hits. Uses a SEPARATE Redis
+// client because ioredis puts a client into subscriber mode exclusively.
+// The rate-limiter continues to share the main `redis` client.
+const banterPatternMatchSubscriber = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: null,
+});
+const banterPatternMatchConsumer = await startBanterPatternMatchConsumer(
+  banterPatternMatchSubscriber,
+  redis,
+  logger,
+  {
+    apiInternalUrl: env.API_INTERNAL_URL,
+    internalServiceSecret: env.INTERNAL_SERVICE_SECRET,
+  },
+);
+
 // §13 Wave 4 scheduled banter — startup reconciler.
 // Re-enqueue any pending scheduled-message rows whose BullMQ job may have been
 // lost (e.g. Redis was flushed). Safe to call because BullMQ dedups by jobId.
@@ -1006,6 +1028,15 @@ logger.info(
 // Graceful shutdown
 async function shutdown(signal: string) {
   logger.info({ signal }, 'Received shutdown signal, closing workers...');
+
+  // §1 Wave 5 banter subs - stop the pattern-match consumer first so no new
+  // matches fire during the queue drain.
+  try {
+    await banterPatternMatchConsumer.stop();
+    banterPatternMatchSubscriber.disconnect();
+  } catch (err) {
+    logger.warn({ err }, 'banter-pattern-match: shutdown stop failed');
+  }
 
   await Promise.all(workers.map((w) => w.close()));
   await closeDb();
