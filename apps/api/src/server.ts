@@ -30,6 +30,8 @@ import taskStateRoutes from './routes/task-state.routes.js';
 import epicRoutes from './routes/epic.routes.js';
 import customFieldRoutes from './routes/custom-field.routes.js';
 import attachmentRoutes from './routes/attachment.routes.js';
+// §17 Wave 4 attachments
+import attachmentMetaRoutes from './routes/attachment-meta.routes.js';
 import timeEntryRoutes from './routes/time-entry.routes.js';
 import reportRoutes from './routes/report.routes.js';
 import exportRoutes from './routes/export.routes.js';
@@ -210,6 +212,8 @@ await fastify.register(taskStateRoutes);
 await fastify.register(epicRoutes);
 await fastify.register(customFieldRoutes);
 await fastify.register(attachmentRoutes);
+// §17 Wave 4 attachments: federated attachment metadata dispatcher
+await fastify.register(attachmentMetaRoutes);
 await fastify.register(timeEntryRoutes);
 await fastify.register(reportRoutes);
 await fastify.register(exportRoutes);

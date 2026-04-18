@@ -26,6 +26,8 @@ import {
   pgTable,
   uuid,
   varchar,
+  text,
+  bigint,
   timestamp,
   index,
 } from 'drizzle-orm/pg-core';
@@ -112,3 +114,58 @@ export const beaconEntriesStub = pgTable('beacon_entries', {
   owned_by: uuid('owned_by').notNull(),
   visibility: varchar('visibility', { length: 30 }).notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// §17 Wave 4 attachments: peer-app attachment tables
+// ---------------------------------------------------------------------------
+// Real schemas:
+//   - apps/helpdesk-api/src/db/schema/helpdesk-ticket-attachments.ts
+//   - apps/beacon-api/src/db/schema/beacon-attachments.ts
+//
+// The Bam attachments table is declared directly in
+// apps/api/src/db/schema/attachments.ts and is NOT stubbed here since Bam
+// owns it. Brief has no attachment table today.
+//
+// These stubs only carry the columns the federated attachment-meta
+// dispatcher reads (services/attachment-meta.service.ts). Keep them
+// minimal; beacon_attachments has no scanner columns in its current
+// schema, so the dispatcher surfaces scan_status='pending' for beacon
+// rows. Helpdesk has scan_status, scan_error, scanned_at but NO
+// scan_signature column, so that is left as null.
+
+export const helpdeskTicketAttachmentsStub = pgTable(
+  'helpdesk_ticket_attachments',
+  {
+    id: uuid('id').primaryKey(),
+    ticket_id: uuid('ticket_id').notNull(),
+    uploaded_by: uuid('uploaded_by').notNull(),
+    filename: varchar('filename', { length: 512 }).notNull(),
+    content_type: varchar('content_type', { length: 128 }).notNull(),
+    size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    storage_key: varchar('storage_key', { length: 1024 }).notNull(),
+    scan_status: varchar('scan_status', { length: 50 }).notNull(),
+    scan_error: text('scan_error'),
+    scanned_at: timestamp('scanned_at', { withTimezone: true }),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('pas_helpdesk_ticket_attachments_ticket_idx').on(table.ticket_id),
+  ],
+);
+
+export const beaconAttachmentsStub = pgTable(
+  'beacon_attachments',
+  {
+    id: uuid('id').primaryKey(),
+    beacon_id: uuid('beacon_id').notNull(),
+    uploaded_by: uuid('uploaded_by').notNull(),
+    filename: varchar('filename', { length: 512 }).notNull(),
+    content_type: varchar('content_type', { length: 128 }).notNull(),
+    size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    storage_key: varchar('storage_key', { length: 1024 }).notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('pas_beacon_attachments_beacon_idx').on(table.beacon_id),
+  ],
+);
