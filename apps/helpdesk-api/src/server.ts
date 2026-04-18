@@ -20,6 +20,7 @@ import settingsRoutes from './routes/settings.routes.js';
 import publicTenantRoutes from './routes/public-tenant.routes.js';
 import helpdeskUploadRoutes from './routes/upload.routes.js';
 import attachmentRoutes from './routes/attachments.routes.js';
+import helpdeskUsersRoutes from './routes/users.routes.js';
 import websocketHandler from './ws/handler.js';
 import { sql } from 'drizzle-orm';
 
@@ -156,6 +157,8 @@ await fastify.register(helpdeskUploadRoutes);
 // G6: ticket-scoped attachments. Shares the @fastify/multipart plugin
 // registered inside upload.routes.ts.
 await fastify.register(attachmentRoutes);
+// §14 Wave 4: idempotent helpdesk_users upsert for webhook intake flows.
+await fastify.register(helpdeskUsersRoutes);
 await fastify.register(websocketHandler);
 
 // Graceful shutdown
