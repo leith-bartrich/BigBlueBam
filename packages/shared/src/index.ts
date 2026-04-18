@@ -5,3 +5,4 @@ export * from './bolt-events.js';
 export * from './bolt-graph.js';
 export * from './bolt-graph-shape.js';
 export * from './bolt-automation-versions/index.js';
+export * from './mention-syntax.js';
