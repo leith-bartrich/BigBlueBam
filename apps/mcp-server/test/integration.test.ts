@@ -77,6 +77,10 @@ import { registerSearchTools } from '../src/tools/search-tools.js';
 import { registerResolveTools } from '../src/tools/resolve-tools.js';
 import { registerActivityTools } from '../src/tools/activity-tools.js';
 import { registerCompositeTools } from '../src/tools/composite-tools.js';
+// §16 Wave 4 entity links
+import { registerEntityLinksTools } from '../src/tools/entity-links-tools.js';
+// §17 Wave 4 attachments
+import { registerAttachmentTools } from '../src/tools/attachment-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -128,6 +132,8 @@ describe('MCP Integration Tests', () => {
       briefApiUrl: 'http://localhost:4005',
       beaconApiUrl: 'http://localhost:4004',
     });
+    // §16 Wave 4 entity links
+    registerEntityLinksTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1291,6 +1297,10 @@ describe('MCP Integration Tests', () => {
         'account_view',
         'project_view',
         'user_view',
+        // §16 Wave 4 entity links
+        'entity_links_list',
+        'entity_link_create',
+        'entity_link_remove',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',

@@ -41,6 +41,10 @@ import { registerSearchTools } from './tools/search-tools.js';
 import { registerResolveTools } from './tools/resolve-tools.js';
 import { registerActivityTools } from './tools/activity-tools.js';
 import { registerCompositeTools } from './tools/composite-tools.js';
+// §16 Wave 4 entity links
+import { registerEntityLinksTools } from './tools/entity-links-tools.js';
+// §17 Wave 4 attachments
+import { registerAttachmentTools } from './tools/attachment-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -149,6 +153,10 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
     briefApiUrl: env.BRIEF_API_URL,
     beaconApiUrl: env.BEACON_API_URL,
   });
+  // §16 Wave 4 entity links
+  registerEntityLinksTools(server, apiClient);
+  // §17 Wave 4 attachments
+  registerAttachmentTools(server, apiClient);
 
   // Register resources and prompts
   registerResources(server, apiClient);

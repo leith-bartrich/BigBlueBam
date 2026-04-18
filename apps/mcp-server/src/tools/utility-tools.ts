@@ -108,6 +108,13 @@ const TOOL_NAMES = [
   'account_view',
   'project_view',
   'user_view',
+  // §16 Wave 4 entity links
+  'entity_links_list',
+  'entity_link_create',
+  'entity_link_remove',
+  // §17 Wave 4 attachments
+  'attachment_get',
+  'attachment_list',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.
