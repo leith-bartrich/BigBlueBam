@@ -91,6 +91,12 @@ const TOOL_NAMES = [
   'beacon_graph_neighbors',
   'beacon_graph_hubs',
   'beacon_graph_recent',
+  // visibility preflight (AGENTIC_TODO §11, Wave 2)
+  'can_access',
+  // durable proposals (AGENTIC_TODO §9, Wave 2)
+  'proposal_create',
+  'proposal_list',
+  'proposal_decide',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }
