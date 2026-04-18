@@ -134,6 +134,8 @@ describe('MCP Integration Tests', () => {
     });
     // §16 Wave 4 entity links
     registerEntityLinksTools(mock.server, api);
+    // §17 Wave 4 attachments
+    registerAttachmentTools(mock.server, api);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1301,6 +1303,9 @@ describe('MCP Integration Tests', () => {
         'entity_links_list',
         'entity_link_create',
         'entity_link_remove',
+        // §17 Wave 4 attachments
+        'attachment_get',
+        'attachment_list',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
