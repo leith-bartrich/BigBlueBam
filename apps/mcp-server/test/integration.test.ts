@@ -74,6 +74,7 @@ import { registerAgentTools } from '../src/tools/agent-tools.js';
 import { registerProposalTools } from '../src/tools/proposal-tools.js';
 import { registerVisibilityTools } from '../src/tools/visibility-tools.js';
 import { registerSearchTools } from '../src/tools/search-tools.js';
+import { registerResolveTools } from '../src/tools/resolve-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -109,6 +110,11 @@ describe('MCP Integration Tests', () => {
       beaconApiUrl: 'http://localhost:4004',
       banterApiUrl: 'http://localhost:4002',
       boardApiUrl: 'http://localhost:4008',
+    });
+    registerResolveTools(mock.server, api, {
+      bondApiUrl: 'http://localhost:4009',
+      briefApiUrl: 'http://localhost:4005',
+      helpdeskApiUrl: 'http://localhost:4001',
     });
   });
 
@@ -1264,6 +1270,8 @@ describe('MCP Integration Tests', () => {
         'can_access',
         // cross-app unified search (AGENTIC_TODO §2 Wave 3)
         'search_everything',
+        // fuzzy entity resolver (AGENTIC_TODO §3 Wave 3)
+        'resolve_references',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',

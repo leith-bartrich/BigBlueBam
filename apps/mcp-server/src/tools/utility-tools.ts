@@ -101,6 +101,9 @@ const TOOL_NAMES = [
   'search_everything',
   // fuzzy entity resolver (AGENTIC_TODO §3, Wave 3)
   'resolve_references',
+  // unified activity-log querying (AGENTIC_TODO §5, Wave 3)
+  'activity_query',
+  'activity_by_actor',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.
