@@ -178,7 +178,10 @@ export default async function entityLinksRoutes(fastify: FastifyInstance) {
           },
         });
       }
-      return reply.status(204).send();
+      // Return 200 with body so the MCP tool (which parses JSON unconditionally)
+      // does not see an empty-body 204. The plan's spec for entity_link_remove
+      // is { ok: true } anyway.
+      return reply.status(200).send({ ok: true });
     },
   );
 }
