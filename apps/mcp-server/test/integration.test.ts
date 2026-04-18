@@ -99,6 +99,20 @@ import { registerPhraseCountTools } from '../src/tools/phrase-count-tools.js';
 import { registerExpertiseTools } from '../src/tools/expertise-tools.js';
 // §1 Wave 5 banter subs
 import { registerBanterSubscriptionTools } from '../src/tools/banter-subscription-tools.js';
+// Cleanup pass: register every peer-app tool suite so the integration
+// test's tools.size === expectedTools.length invariant catches drift
+// across the full MCP surface, not just the Bam core.
+import { registerUserResolverTools } from '../src/tools/user-resolver-tools.js';
+import { registerHelpdeskTools } from '../src/tools/helpdesk-tools.js';
+import { registerBriefTools } from '../src/tools/brief-tools.js';
+import { registerBoltTools } from '../src/tools/bolt-tools.js';
+import { registerBearingTools } from '../src/tools/bearing-tools.js';
+import { registerBondTools } from '../src/tools/bond-tools.js';
+import { registerBlastTools } from '../src/tools/blast-tools.js';
+import { registerBookTools } from '../src/tools/book-tools.js';
+import { registerBenchTools } from '../src/tools/bench-tools.js';
+import { registerBillTools } from '../src/tools/bill-tools.js';
+import { registerBlankTools } from '../src/tools/blank-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -191,6 +205,21 @@ describe('MCP Integration Tests', () => {
     registerExpertiseTools(mock.server, api);
     // §1 Wave 5 banter subs
     registerBanterSubscriptionTools(mock.server, api, 'http://localhost:4002');
+    // Peer-app tool suites. These were previously not wired into the harness
+    // so their tool names were missing from expectedTools and drift went
+    // undetected. All tool names from these suites are in the expectedTools
+    // allowlist below.
+    registerUserResolverTools(mock.server, api);
+    registerHelpdeskTools(mock.server, api, 'http://localhost:4001');
+    registerBriefTools(mock.server, api, 'http://localhost:4005');
+    registerBoltTools(mock.server, api, 'http://localhost:4006');
+    registerBearingTools(mock.server, api, 'http://localhost:4007');
+    registerBondTools(mock.server, api, 'http://localhost:4009');
+    registerBlastTools(mock.server, api, 'http://localhost:4010');
+    registerBookTools(mock.server, api, 'http://localhost:4012');
+    registerBenchTools(mock.server, api, 'http://localhost:4011');
+    registerBillTools(mock.server, api, 'http://localhost:4014');
+    registerBlankTools(mock.server, api, 'http://localhost:4013');
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1603,12 +1632,8 @@ describe('MCP Integration Tests', () => {
         'beacon_link_create', 'beacon_link_remove',
         'beacon_query_save', 'beacon_query_list', 'beacon_query_get', 'beacon_query_delete',
         'beacon_graph_neighbors', 'beacon_graph_hubs', 'beacon_graph_recent',
-        // §14 Wave 4 upserts — only the two whose tool modules are already
-        // registered in the harness above. bond_upsert_contact and
-        // helpdesk_upsert_user live in bond-tools / helpdesk-tools, neither
-        // of which is wired into this test harness; they are still listed in
-        // TOOL_NAMES (utility-tools.ts) for the server.get_server_info
-        // surface and covered by their own unit tests.
+        // §14 Wave 4 upserts. bond_upsert_contact and helpdesk_upsert_user
+        // land via the bond-tools and helpdesk-tools suites registered below.
         'beacon_upsert_by_slug',
         'task_upsert_by_external_id',
         // §15 Wave 5 agent policies
@@ -1623,10 +1648,8 @@ describe('MCP Integration Tests', () => {
         // §12 Wave 5 bolt observability
         'bolt_event_trace',
         'bolt_recent_events',
-        // §18 + §19 Wave 5 misc — book_find_meeting_time_for_users is
-        // registered via registerBookTools which this harness does not wire
-        // up; it is listed in TOOL_NAMES (utility-tools.ts) for the
-        // get_server_info surface and covered by book-tools tests.
+        // §18 + §19 Wave 5 misc. book_find_meeting_time_for_users lands via
+        // the book-tools suite registered below.
         'ingest_fingerprint_check',
         // §7 Wave 5 dedupe
         'bond_find_duplicates',
@@ -1641,6 +1664,75 @@ describe('MCP Integration Tests', () => {
         'banter_subscribe_pattern',
         'banter_unsubscribe_pattern',
         'banter_list_subscriptions',
+        // Peer-app tool suites registered in beforeEach above.
+        // user-resolver
+        'find_user_by_email', 'find_user_by_name', 'list_users',
+        // helpdesk
+        'get_ticket', 'helpdesk_get_public_settings', 'helpdesk_get_settings',
+        'helpdesk_get_ticket_by_number', 'helpdesk_search_tickets',
+        'helpdesk_set_default_project', 'helpdesk_update_settings',
+        'helpdesk_upsert_user', 'list_tickets', 'reply_to_ticket',
+        'update_ticket_status',
+        // brief
+        'brief_append_content', 'brief_archive', 'brief_comment_add',
+        'brief_comment_list', 'brief_comment_resolve', 'brief_create',
+        'brief_duplicate', 'brief_get', 'brief_link_task', 'brief_list',
+        'brief_promote_to_beacon', 'brief_restore', 'brief_search',
+        'brief_update', 'brief_update_content', 'brief_version_get',
+        'brief_version_restore', 'brief_versions',
+        // bolt
+        'bolt_actions', 'bolt_create', 'bolt_delete', 'bolt_disable',
+        'bolt_enable', 'bolt_events', 'bolt_execution_detail',
+        'bolt_executions', 'bolt_get', 'bolt_get_automation_by_name',
+        'bolt_list', 'bolt_test', 'bolt_update',
+        // bearing
+        'bearing_at_risk', 'bearing_goal_create', 'bearing_goal_get',
+        'bearing_goal_update', 'bearing_goals', 'bearing_kr_create',
+        'bearing_kr_link', 'bearing_kr_update', 'bearing_period_get',
+        'bearing_periods', 'bearing_report', 'bearing_update_post',
+        // bond
+        'bond_close_deal_lost', 'bond_close_deal_won', 'bond_create_company',
+        'bond_create_contact', 'bond_create_deal', 'bond_get_company',
+        'bond_get_contact', 'bond_get_deal', 'bond_get_forecast',
+        'bond_get_pipeline_summary', 'bond_get_stale_deals',
+        'bond_list_companies', 'bond_list_contacts', 'bond_list_deals',
+        'bond_log_activity', 'bond_merge_contacts', 'bond_move_deal_stage',
+        'bond_score_lead', 'bond_search_contacts', 'bond_update_company',
+        'bond_update_contact', 'bond_update_deal', 'bond_upsert_contact',
+        // blast
+        'blast_check_unsubscribed', 'blast_create_segment',
+        'blast_create_template', 'blast_draft_campaign',
+        'blast_draft_email_content', 'blast_get_campaign',
+        'blast_get_campaign_analytics', 'blast_get_engagement_summary',
+        'blast_get_template', 'blast_list_segments', 'blast_list_templates',
+        'blast_preview_segment', 'blast_send_campaign',
+        'blast_suggest_subject_lines',
+        // book
+        'book_cancel_event', 'book_create_booking_page', 'book_create_event',
+        'book_find_meeting_time', 'book_find_meeting_time_for_users',
+        'book_get_availability', 'book_get_team_availability',
+        'book_get_timeline', 'book_list_events', 'book_rsvp_event',
+        'book_update_event',
+        // bench
+        'bench_compare_periods', 'bench_detect_anomalies',
+        'bench_generate_report', 'bench_get_dashboard',
+        'bench_list_dashboards', 'bench_list_data_sources',
+        'bench_list_scheduled_reports', 'bench_list_widgets',
+        'bench_query_ad_hoc', 'bench_query_widget',
+        'bench_summarize_dashboard',
+        // bill
+        'bill_add_line_item', 'bill_create_expense', 'bill_create_invoice',
+        'bill_create_invoice_from_deal', 'bill_create_invoice_from_time',
+        'bill_finalize_invoice', 'bill_get_invoice', 'bill_get_overdue',
+        'bill_get_profitability', 'bill_get_revenue_summary',
+        'bill_list_clients', 'bill_list_expenses', 'bill_list_invoices',
+        'bill_record_payment', 'bill_resolve_rate', 'bill_send_invoice',
+        // blank
+        'blank_create_form', 'blank_export_submissions',
+        'blank_generate_form', 'blank_get_form', 'blank_get_form_analytics',
+        'blank_get_submission', 'blank_list_forms', 'blank_list_submissions',
+        'blank_publish_form', 'blank_summarize_responses',
+        'blank_update_form',
       ];
 
       for (const name of expectedTools) {
