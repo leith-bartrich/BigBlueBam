@@ -1379,6 +1379,99 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== §7 WAVE 5 DEDUPE =====
+
+  describe('dedupe tools (§7 Wave 5)', () => {
+    const CONTACT_A = '00000000-0000-0000-0000-0000000000aa';
+    const CONTACT_B = '00000000-0000-0000-0000-0000000000bb';
+    const TICKET_A = '00000000-0000-0000-0000-0000000000cc';
+
+    it('bond_find_duplicates hits bond-api without duplicating /v1', async () => {
+      mockApiOk({ source_contact_id: CONTACT_A, candidates: [] });
+      await getTool('bond_find_duplicates').handler({ contact_id: CONTACT_A, limit: 5 });
+      const call = mockFetch.mock.calls[0]!;
+      // BOND_API_URL in the harness is http://localhost:4009 without /v1.
+      // dedupe-tools.ts sends /contacts/:id/duplicates and relies on the
+      // base URL carrying whatever prefix the deployment uses.
+      expect(call[0]).toBe(`http://localhost:4009/contacts/${CONTACT_A}/duplicates?limit=5`);
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('helpdesk_find_similar_tickets hits the /helpdesk/agents/tickets route', async () => {
+      mockApiOk({ source_ticket_id: TICKET_A, candidates: [] });
+      await getTool('helpdesk_find_similar_tickets').handler({
+        ticket_id: TICKET_A,
+        status_filter: 'open',
+        limit: 7,
+        window_days: 14,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/helpdesk/agents/tickets/${TICKET_A}/similar`);
+      expect(call[0]).toContain('status_filter=open');
+      expect(call[0]).toContain('limit=7');
+      expect(call[0]).toContain('window_days=14');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('dedupe_record_decision POSTs the canonical body to /v1/dedupe-decisions', async () => {
+      mockApiOk({ data: { id: UUID, decision: 'not_duplicate' }, created: true });
+      await getTool('dedupe_record_decision').handler({
+        entity_type: 'bond.contact',
+        id_a: CONTACT_B,
+        id_b: CONTACT_A,
+        decision: 'not_duplicate',
+        reason: 'different companies',
+        confidence: 0.82,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/dedupe-decisions');
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body as string);
+      // The tool does NOT sort ids itself; canonicalization happens
+      // server-side in recordDecision. This is a coverage assertion that
+      // the tool forwards inputs verbatim.
+      expect(body.id_a).toBe(CONTACT_B);
+      expect(body.id_b).toBe(CONTACT_A);
+      expect(body.decision).toBe('not_duplicate');
+      expect(body.confidence).toBe(0.82);
+    });
+
+    it('dedupe_record_decision surfaces 409 HUMAN_DECISION_EXISTS as an isError result', async () => {
+      mockApiError(409, {
+        error: { code: 'HUMAN_DECISION_EXISTS', message: 'blocked' },
+        prior_decision: { decision: 'not_duplicate', decided_by: UUID },
+      });
+      const result = await getTool('dedupe_record_decision').handler({
+        entity_type: 'bond.contact',
+        id_a: CONTACT_A,
+        id_b: CONTACT_B,
+        decision: 'duplicate',
+      });
+      expectErrorFormat(result);
+      expect(result.content[0]!.text).toContain('HUMAN_DECISION_EXISTS');
+    });
+
+    it('dedupe_list_pending builds a query string from optional filters', async () => {
+      mockApiOk({ pending: [] });
+      await getTool('dedupe_list_pending').handler({
+        entity_type: 'helpdesk.ticket',
+        limit: 25,
+      });
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain('/v1/dedupe-decisions/pending');
+      expect(call[0]).toContain('entity_type=helpdesk.ticket');
+      expect(call[0]).toContain('limit=25');
+      expect(call[1].method).toBe('GET');
+    });
+
+    it('dedupe_list_pending omits the query string when no filters are given', async () => {
+      mockApiOk({ pending: [] });
+      await getTool('dedupe_list_pending').handler({});
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toMatch(/\/v1\/dedupe-decisions\/pending$/);
+    });
+  });
+
   // ===== TOOL REGISTRATION COMPLETENESS =====
 
   describe('tool registration', () => {
