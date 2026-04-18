@@ -339,7 +339,7 @@ export const APP_SERVICES = [
     name: 'frontend',
     description: 'Public nginx ingress — serves all SPAs and proxies APIs',
     dockerfile: 'apps/frontend/Dockerfile',
-    port: 80,
+    port: 8080,
     healthcheck: '/',
     start_command: null,
     required: true,
