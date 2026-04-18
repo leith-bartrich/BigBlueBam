@@ -1,0 +1,114 @@
+/**
+ * Peer-app schema stubs (AGENTIC_TODO §11, Wave 2).
+ *
+ * WARNING: cross-app coupling point.
+ * -----------------------------------------------------------------
+ * The Bam api historically does not import schema from peer apps
+ * (bond-api, brief-api, beacon-api, helpdesk-api). The visibility
+ * preflight service needs to look up peer-app entities to decide
+ * whether an asker can see them, so we declare minimal Drizzle
+ * stubs here that match the physical Postgres tables.
+ *
+ * Pattern mirrors apps/bond-api/src/db/schema/bbb-refs.ts which
+ * does the same thing in reverse (bond declaring stubs for the
+ * Bam tables it needs).
+ *
+ * Keep the column set MINIMAL: only the fields visibility.service.ts
+ * reads. Any drift from the real physical schema will surface as a
+ * runtime error; the drift guard (pnpm db:check) will NOT catch it
+ * because these stubs deliberately shadow existing tables.
+ *
+ * When the peer app's schema changes in a way that affects a column
+ * listed here, update this file in lockstep.
+ */
+
+import {
+  pgTable,
+  uuid,
+  varchar,
+  timestamp,
+  index,
+} from 'drizzle-orm/pg-core';
+
+// ---------------------------------------------------------------------------
+// helpdesk - tickets
+// ---------------------------------------------------------------------------
+// Real schema: apps/helpdesk-api/src/db/schema/tickets.ts
+// We only need id, project_id, helpdesk_user_id for visibility.
+export const helpdeskTicketsStub = pgTable('tickets', {
+  id: uuid('id').primaryKey(),
+  project_id: uuid('project_id'),
+  helpdesk_user_id: uuid('helpdesk_user_id'),
+});
+
+// ---------------------------------------------------------------------------
+// bond - deals, contacts, companies
+// ---------------------------------------------------------------------------
+// Real schema: apps/bond-api/src/db/schema/bond-deals.ts etc.
+// The Bam users table is NOT duplicated here - we read it from the
+// existing users schema since org_id / role already live on it.
+export const bondDealsStub = pgTable(
+  'bond_deals',
+  {
+    id: uuid('id').primaryKey(),
+    organization_id: uuid('organization_id').notNull(),
+    owner_id: uuid('owner_id'),
+    deleted_at: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [index('pas_bond_deals_org_idx').on(table.organization_id)],
+);
+
+export const bondContactsStub = pgTable(
+  'bond_contacts',
+  {
+    id: uuid('id').primaryKey(),
+    organization_id: uuid('organization_id').notNull(),
+    owner_id: uuid('owner_id'),
+    deleted_at: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [index('pas_bond_contacts_org_idx').on(table.organization_id)],
+);
+
+export const bondCompaniesStub = pgTable(
+  'bond_companies',
+  {
+    id: uuid('id').primaryKey(),
+    organization_id: uuid('organization_id').notNull(),
+    deleted_at: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [index('pas_bond_companies_org_idx').on(table.organization_id)],
+);
+
+// ---------------------------------------------------------------------------
+// brief - documents, collaborators
+// ---------------------------------------------------------------------------
+// Real schema: apps/brief-api/src/db/schema/brief-documents.ts.
+// We need id, org_id, project_id, created_by, visibility for the
+// visibility predicate that mirrors document.service.ts.
+export const briefDocumentsStub = pgTable('brief_documents', {
+  id: uuid('id').primaryKey(),
+  org_id: uuid('org_id').notNull(),
+  project_id: uuid('project_id'),
+  created_by: uuid('created_by').notNull(),
+  visibility: varchar('visibility', { length: 30 }).notNull(),
+});
+
+export const briefCollaboratorsStub = pgTable('brief_collaborators', {
+  id: uuid('id').primaryKey(),
+  document_id: uuid('document_id').notNull(),
+  user_id: uuid('user_id').notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// beacon - entries
+// ---------------------------------------------------------------------------
+// Real schema: apps/beacon-api/src/db/schema/beacon-entries.ts.
+// We need id, organization_id, project_id, created_by, owned_by, visibility.
+export const beaconEntriesStub = pgTable('beacon_entries', {
+  id: uuid('id').primaryKey(),
+  organization_id: uuid('organization_id').notNull(),
+  project_id: uuid('project_id'),
+  created_by: uuid('created_by').notNull(),
+  owned_by: uuid('owned_by').notNull(),
+  visibility: varchar('visibility', { length: 30 }).notNull(),
+});
