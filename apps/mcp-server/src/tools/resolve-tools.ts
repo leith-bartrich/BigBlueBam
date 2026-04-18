@@ -351,11 +351,10 @@ async function resolveOnePinnedMention(
       };
     }
     case 'user': {
-      // Handle-as-email: if the value contains '@', treat it as an email
-      // and hit /users/by-email directly. Otherwise try /users/by-email
-      // once (some orgs use full emails as handles), then fall back to
-      // /users/search for a fuzzy match.
-      const asEmail = m.value.includes('@') ? m.value : `${m.value}@`;
+      // Handle-as-email first: if the value contains '@' treat the whole
+      // thing as an email and hit /users/by-email directly. Otherwise
+      // fall back to /users/search and prefer an exact local-part match
+      // so @jane.doe resolves to jane.doe@* over janedoe2@*.
       if (m.value.includes('@')) {
         const res = await api.get<{ data?: { id?: string; email?: string; display_name?: string } }>(
           `/users/by-email?email=${encodeURIComponent(m.value)}`,
@@ -378,12 +377,11 @@ async function resolveOnePinnedMention(
       );
       if (!search.ok) return null;
       const rows = search.data?.data ?? [];
-      // Prefer an exact local-part match so @jane.doe resolves to
-      // jane.doe@* over janedoe2@*.
-      const exact = rows.find((r) => (r.email ?? '').split('@')[0]?.toLowerCase() === m.value.toLowerCase());
+      const exact = rows.find(
+        (r) => (r.email ?? '').split('@')[0]?.toLowerCase() === m.value.toLowerCase(),
+      );
       const pick = exact ?? rows[0];
       if (!pick?.id) return null;
-      void asEmail;
       return {
         entity_type: 'user',
         entity_id: pick.id,

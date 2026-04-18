@@ -19,13 +19,13 @@ import {
 
 describe('resolve_references / mention syntax guards', () => {
   it('does not import any LLM SDK', async () => {
-    // Import the module under test and inspect its dependency graph by
-    // looking at the module source on disk. No @anthropic-ai/sdk or
-    // openai imports are allowed.
+    // Inspect the module source on disk. No LLM SDK imports allowed.
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
+    const url = await import('node:url');
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
     const src = await fs.readFile(
-      path.resolve(__dirname, '..', 'src', 'tools', 'resolve-tools.ts'),
+      path.resolve(here, '..', 'src', 'tools', 'resolve-tools.ts'),
       'utf8',
     );
     expect(src).not.toMatch(/@anthropic-ai\/sdk/);
