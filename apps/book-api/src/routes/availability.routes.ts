@@ -27,6 +27,18 @@ const workingHoursSchema = z.array(
   }),
 );
 
+// §18 Wave 5 misc: mixed availability body schema
+const meetingTimeMixedSchema = z.object({
+  user_ids: z.array(z.string().uuid()).min(1),
+  duration_minutes: z.number().int().min(5).max(480),
+  window: z.object({
+    since: z.string().datetime(),
+    until: z.string().datetime(),
+  }),
+  respect_working_hours_for_humans_only: z.boolean().optional().default(true),
+  timezone: z.string().max(50).optional(),
+});
+
 export default async function availabilityRoutes(fastify: FastifyInstance) {
   // GET /availability/:userId
   fastify.get<{ Params: { userId: string } }>(
@@ -116,6 +128,43 @@ export default async function availabilityRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const hours = workingHoursSchema.parse(request.body);
       const result = await availabilityService.setWorkingHours(request.user!.id, hours);
+      return reply.send(result);
+    },
+  );
+
+  // §18 Wave 5 misc
+  // POST /availability/meeting-time-mixed — find meeting slots across a roster
+  // of humans and agents, where agents/service accounts are treated as
+  // unconditionally available (they have no calendars to conflict with).
+  fastify.post(
+    '/availability/meeting-time-mixed',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const body = meetingTimeMixedSchema.parse(request.body);
+
+      // Org-scope: only consider user_ids that are members of the caller's
+      // active org. Unknown or cross-org ids are silently dropped so callers
+      // never learn about users outside their visibility (BOOK-004 parity).
+      const sameOrgMembers = body.user_ids.length > 0
+        ? await db
+            .select({ user_id: organizationMemberships.user_id })
+            .from(organizationMemberships)
+            .where(
+              and(
+                inArray(organizationMemberships.user_id, body.user_ids),
+                eq(organizationMemberships.org_id, request.user!.org_id),
+              ),
+            )
+        : [];
+      const filteredIds = sameOrgMembers.map((m) => m.user_id);
+
+      const result = await availabilityService.findMeetingTimeForMixedRoster({
+        user_ids: filteredIds,
+        duration_minutes: body.duration_minutes,
+        window: body.window,
+        respect_working_hours_for_humans_only: body.respect_working_hours_for_humans_only,
+        timezone: body.timezone,
+      });
       return reply.send(result);
     },
   );

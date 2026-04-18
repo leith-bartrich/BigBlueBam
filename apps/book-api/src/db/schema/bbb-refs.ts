@@ -45,6 +45,12 @@ export const users = pgTable(
     notification_prefs: jsonb('notification_prefs').default({}).notNull(),
     is_active: boolean('is_active').default(true).notNull(),
     is_superuser: boolean('is_superuser').default(false).notNull(),
+    // §18 Wave 5 misc: mixed availability needs to distinguish humans from
+    // agents/service accounts so the scheduler can skip agents' conflict
+    // checks. Column is defined in migration 0127 (actor_type pgEnum).
+    // Typed as varchar here because the stub layer doesn't redefine the
+    // pgEnum; the DB constraint comes from the canonical api schema.
+    kind: varchar('kind', { length: 20 }).default('human').notNull(),
     last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
