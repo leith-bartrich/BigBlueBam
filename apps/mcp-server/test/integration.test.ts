@@ -1248,6 +1248,8 @@ describe('MCP Integration Tests', () => {
         'agent_heartbeat', 'agent_audit', 'agent_self_report',
         // proposals (AGENTIC_TODO §9 Wave 2)
         'proposal_create', 'proposal_list', 'proposal_decide',
+        // visibility preflight (AGENTIC_TODO §11 Wave 2)
+        'can_access',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
