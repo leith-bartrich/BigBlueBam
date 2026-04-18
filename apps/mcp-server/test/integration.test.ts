@@ -1247,6 +1247,89 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===== §13 WAVE 4 SCHEDULED BANTER =====
+
+  describe('banter_post_message (back-compat and scheduled)', () => {
+    const CHANNEL_UUID = '770e8400-e29b-41d4-a716-446655440002';
+
+    it('immediate post with only channel_id + content is unchanged', async () => {
+      // No scheduled_at → hits the banter-api POST /messages path and returns
+      // a normal message envelope.
+      mockApiOk({ data: { id: UUID, channel_id: CHANNEL_UUID, content: 'hi', created_at: '2026-04-15T12:00:00Z', updated_at: '2026-04-15T12:00:00Z' } });
+      const result = await getTool('banter_post_message').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'hi',
+      });
+      expect(result.isError).toBeUndefined();
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/banter/api/v1/channels/${CHANNEL_UUID}/messages`);
+      expect(call[1].method).toBe('POST');
+      const body = JSON.parse(call[1].body);
+      // Back-compat: no scheduled_at or quiet-hours keys are sent.
+      expect(body).toEqual({ content: 'hi' });
+    });
+
+    it('passes scheduled_at / defer_if_quiet through to banter-api', async () => {
+      mockApiOk({
+        data: {
+          scheduled: true,
+          scheduled_message_id: UUID,
+          scheduled_at: '2026-05-01T12:00:00Z',
+          defer_reason: 'scheduled',
+        },
+      });
+      const result = await getTool('banter_post_message').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'later',
+        scheduled_at: '2026-05-01T12:00:00Z',
+        defer_if_quiet: true,
+      });
+      expect(result.isError).toBeUndefined();
+      const call = mockFetch.mock.calls[0]!;
+      const body = JSON.parse(call[1].body);
+      expect(body.scheduled_at).toBe('2026-05-01T12:00:00Z');
+      expect(body.defer_if_quiet).toBe(true);
+    });
+  });
+
+  describe('banter_schedule_post', () => {
+    const CHANNEL_UUID = '770e8400-e29b-41d4-a716-446655440002';
+
+    it('posts to banter-api with scheduled_at and returns the scheduled envelope', async () => {
+      mockApiOk({
+        data: {
+          scheduled: true,
+          scheduled_message_id: UUID,
+          scheduled_at: '2026-05-01T12:00:00Z',
+          defer_reason: 'scheduled',
+        },
+      });
+      const result = await getTool('banter_schedule_post').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'morning update',
+        scheduled_at: '2026-05-01T12:00:00Z',
+      });
+      expect(result.isError).toBeUndefined();
+      const call = mockFetch.mock.calls[0]!;
+      expect(call[0]).toContain(`/banter/api/v1/channels/${CHANNEL_UUID}/messages`);
+      const body = JSON.parse(call[1].body);
+      expect(body.scheduled_at).toBe('2026-05-01T12:00:00Z');
+      // respect_quiet_hours is a placeholder flag; it must not be forwarded
+      // because the banter-api schema does not yet accept it.
+      expect('respect_quiet_hours' in body).toBe(false);
+    });
+
+    it('surfaces banter-api errors cleanly', async () => {
+      mockApiError(400, { error: { code: 'INVALID_SCHEDULED_AT', message: 'scheduled_at in past' } });
+      const result = await getTool('banter_schedule_post').handler({
+        channel_id: CHANNEL_UUID,
+        content: 'too late',
+        scheduled_at: '2000-01-01T00:00:00Z',
+      });
+      expect(result.isError).toBe(true);
+    });
+  });
+
   // ===== TOOL REGISTRATION COMPLETENESS =====
 
   describe('tool registration', () => {
@@ -1378,6 +1461,11 @@ describe('MCP Integration Tests', () => {
         'beacon_link_create', 'beacon_link_remove',
         'beacon_query_save', 'beacon_query_list', 'beacon_query_get', 'beacon_query_delete',
         'beacon_graph_neighbors', 'beacon_graph_hubs', 'beacon_graph_recent',
+        // §14 Wave 4 upserts
+        'bond_upsert_contact',
+        'beacon_upsert_by_slug',
+        'helpdesk_upsert_user',
+        'task_upsert_by_external_id',
       ];
 
       for (const name of expectedTools) {
