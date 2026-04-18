@@ -6,6 +6,7 @@ import { systemSettings } from '../db/schema/system-settings.js';
 import { requireAuth } from '../plugins/auth.js';
 import { requireSuperuser } from '../middleware/require-superuser.js';
 import { logSuperuserAction } from '../services/superuser-audit.service.js';
+import { isBootstrapRequired } from '../services/bootstrap-status.service.js';
 
 // Valid values for the root_redirect setting
 const ROOT_REDIRECT_VALUES = [
@@ -190,7 +191,14 @@ export default async function systemSettingsRoutes(fastify: FastifyInstance) {
 
   // ─── GET /root-redirect — unauthenticated, for nginx/site redirect ────
   // Returns { redirect: "/helpdesk/" } or { redirect: null } (serve site).
+  // When the install has not been bootstrapped yet, overrides any configured
+  // redirect and sends the visitor to the SuperUser sign-up page so the
+  // first person to hit the site can create the root account.
   fastify.get('/root-redirect', async () => {
+    if (await isBootstrapRequired()) {
+      return { redirect: '/b3/bootstrap' };
+    }
+
     const [row] = await db
       .select()
       .from(systemSettings)
