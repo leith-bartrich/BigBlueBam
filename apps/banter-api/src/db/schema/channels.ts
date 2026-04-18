@@ -6,6 +6,7 @@ import {
   integer,
   boolean,
   timestamp,
+  jsonb,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -42,6 +43,10 @@ export const banterChannels = pgTable(
     message_count: integer('message_count').notNull().default(0),
     member_count: integer('member_count').notNull().default(0),
     active_huddle_id: uuid('active_huddle_id'),
+    // §13 Wave 4 scheduled banter — per-channel quiet-hours policy.
+    // Shape: { timezone, allowed_hours:[start,end], weekday_only?, urgency_override? }.
+    // Null means no policy (unrestricted posting).
+    quiet_hours_policy: jsonb('quiet_hours_policy'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

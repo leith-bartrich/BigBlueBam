@@ -17,3 +17,5 @@ export { banterSettings } from './settings.js';
 export { banterAuditLog } from './audit-log.js';
 export { banterUserPresence } from './user-presence.js';
 export type { BanterPresenceStatus } from './user-presence.js';
+// §13 Wave 4 scheduled banter
+export { banterScheduledMessages } from './scheduled-messages.js';
