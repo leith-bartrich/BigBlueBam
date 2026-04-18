@@ -99,6 +99,8 @@ const TOOL_NAMES = [
   'proposal_decide',
   // cross-app unified search (AGENTIC_TODO §2, Wave 3)
   'search_everything',
+  // fuzzy entity resolver (AGENTIC_TODO §3, Wave 3)
+  'resolve_references',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.
