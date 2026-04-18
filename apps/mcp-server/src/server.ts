@@ -62,6 +62,8 @@ import { createFingerprintStore, type FingerprintStore } from './lib/fingerprint
 // §4 + §8 Wave 5 trends/expertise
 import { registerPhraseCountTools } from './tools/phrase-count-tools.js';
 import { registerExpertiseTools } from './tools/expertise-tools.js';
+// §1 Wave 5 banter subs
+import { registerBanterSubscriptionTools } from './tools/banter-subscription-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -251,6 +253,9 @@ function createMcpServer(
     apiUrl: env.API_INTERNAL_URL,
   });
   registerExpertiseTools(server, apiClient);
+
+  // §1 Wave 5 banter subs
+  registerBanterSubscriptionTools(server, apiClient, env.BANTER_API_URL);
 
   // Register resources and prompts
   registerResources(server, apiClient);

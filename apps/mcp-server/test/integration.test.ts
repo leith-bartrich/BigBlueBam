@@ -97,6 +97,8 @@ import { registerDedupeTools } from '../src/tools/dedupe-tools.js';
 // §4 + §8 Wave 5 trends/expertise
 import { registerPhraseCountTools } from '../src/tools/phrase-count-tools.js';
 import { registerExpertiseTools } from '../src/tools/expertise-tools.js';
+// §1 Wave 5 banter subs
+import { registerBanterSubscriptionTools } from '../src/tools/banter-subscription-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -187,6 +189,8 @@ describe('MCP Integration Tests', () => {
       apiUrl: 'http://localhost:4000',
     });
     registerExpertiseTools(mock.server, api);
+    // §1 Wave 5 banter subs
+    registerBanterSubscriptionTools(mock.server, api, 'http://localhost:4002');
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1540,6 +1544,10 @@ describe('MCP Integration Tests', () => {
         'helpdesk_ticket_count_by_phrase',
         'bam_task_count_by_phrase',
         'expertise_for_topic',
+        // §1 Wave 5 banter subs
+        'banter_subscribe_pattern',
+        'banter_unsubscribe_pattern',
+        'banter_list_subscriptions',
       ];
 
       for (const name of expectedTools) {
