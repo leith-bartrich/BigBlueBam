@@ -9,6 +9,9 @@ COPY package.json pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml* ./
 COPY apps/blank-api/package.json ./apps/blank-api/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/logging/package.json ./packages/logging/
+COPY packages/service-health/package.json ./packages/service-health/
+COPY packages/db-stubs/package.json ./packages/db-stubs/
 
 RUN pnpm install --no-frozen-lockfile
 
@@ -18,6 +21,9 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/tsconfig.json packages/shared/tsup.config.ts ./packages/shared/
+COPY packages/logging/ ./packages/logging/
+COPY packages/service-health/ ./packages/service-health/
+COPY packages/db-stubs/ ./packages/db-stubs/
 COPY apps/blank-api/src ./apps/blank-api/src
 COPY apps/blank-api/tsconfig.json apps/blank-api/tsup.config.ts ./apps/blank-api/
 
@@ -33,6 +39,9 @@ FROM deps AS dev
 
 COPY tsconfig.base.json ./
 COPY packages/shared/ ./packages/shared/
+COPY packages/logging/ ./packages/logging/
+COPY packages/service-health/ ./packages/service-health/
+COPY packages/db-stubs/ ./packages/db-stubs/
 COPY apps/blank-api/ ./apps/blank-api/
 
 WORKDIR /app/apps/blank-api

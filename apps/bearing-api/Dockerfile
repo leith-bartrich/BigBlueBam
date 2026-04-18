@@ -9,6 +9,9 @@ COPY package.json pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml* ./
 COPY apps/bearing-api/package.json ./apps/bearing-api/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/logging/package.json ./packages/logging/
+COPY packages/service-health/package.json ./packages/service-health/
+COPY packages/db-stubs/package.json ./packages/db-stubs/
 
 RUN pnpm install --no-frozen-lockfile
 
@@ -18,6 +21,9 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/tsconfig.json packages/shared/tsup.config.ts ./packages/shared/
+COPY packages/logging/ ./packages/logging/
+COPY packages/service-health/ ./packages/service-health/
+COPY packages/db-stubs/ ./packages/db-stubs/
 COPY apps/bearing-api/src ./apps/bearing-api/src
 COPY apps/bearing-api/tsconfig.json apps/bearing-api/tsup.config.ts ./apps/bearing-api/
 
@@ -33,6 +39,9 @@ FROM deps AS dev
 
 COPY tsconfig.base.json ./
 COPY packages/shared/ ./packages/shared/
+COPY packages/logging/ ./packages/logging/
+COPY packages/service-health/ ./packages/service-health/
+COPY packages/db-stubs/ ./packages/db-stubs/
 COPY apps/bearing-api/ ./apps/bearing-api/
 
 WORKDIR /app/apps/bearing-api
