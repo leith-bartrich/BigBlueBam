@@ -76,6 +76,7 @@ import { registerVisibilityTools } from '../src/tools/visibility-tools.js';
 import { registerSearchTools } from '../src/tools/search-tools.js';
 import { registerResolveTools } from '../src/tools/resolve-tools.js';
 import { registerActivityTools } from '../src/tools/activity-tools.js';
+import { registerCompositeTools } from '../src/tools/composite-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -118,6 +119,15 @@ describe('MCP Integration Tests', () => {
       helpdeskApiUrl: 'http://localhost:4001',
     });
     registerActivityTools(mock.server, api);
+    registerCompositeTools(mock.server, api, {
+      apiUrl: 'http://localhost:4000',
+      bondApiUrl: 'http://localhost:4009',
+      helpdeskApiUrl: 'http://localhost:4001',
+      billApiUrl: 'http://localhost:4014',
+      bearingApiUrl: 'http://localhost:4007',
+      briefApiUrl: 'http://localhost:4005',
+      beaconApiUrl: 'http://localhost:4004',
+    });
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1277,6 +1287,10 @@ describe('MCP Integration Tests', () => {
         // unified activity-log querying (AGENTIC_TODO §5 Wave 3)
         'activity_query',
         'activity_by_actor',
+        // composite subject-centric views (AGENTIC_TODO §6 Wave 3)
+        'account_view',
+        'project_view',
+        'user_view',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',

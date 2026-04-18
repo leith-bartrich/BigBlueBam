@@ -104,6 +104,10 @@ const TOOL_NAMES = [
   // unified activity-log querying (AGENTIC_TODO §5, Wave 3)
   'activity_query',
   'activity_by_actor',
+  // composite subject-centric views (AGENTIC_TODO §6, Wave 3)
+  'account_view',
+  'project_view',
+  'user_view',
 ] as const;
 
 // Pending confirmation tokens: token -> { action, resource_id, expires }.

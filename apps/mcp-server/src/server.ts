@@ -40,6 +40,7 @@ import { registerVisibilityTools } from './tools/visibility-tools.js';
 import { registerSearchTools } from './tools/search-tools.js';
 import { registerResolveTools } from './tools/resolve-tools.js';
 import { registerActivityTools } from './tools/activity-tools.js';
+import { registerCompositeTools } from './tools/composite-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -139,6 +140,15 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
     helpdeskApiUrl: env.HELPDESK_API_URL,
   });
   registerActivityTools(server, apiClient);
+  registerCompositeTools(server, apiClient, {
+    apiUrl: env.API_INTERNAL_URL,
+    bondApiUrl: env.BOND_API_URL,
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+    billApiUrl: env.BILL_API_URL,
+    bearingApiUrl: env.BEARING_API_URL,
+    briefApiUrl: env.BRIEF_API_URL,
+    beaconApiUrl: env.BEACON_API_URL,
+  });
 
   // Register resources and prompts
   registerResources(server, apiClient);
