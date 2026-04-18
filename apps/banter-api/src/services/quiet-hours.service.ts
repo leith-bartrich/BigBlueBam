@@ -242,6 +242,11 @@ export function nextAllowedTime(
   // First advance to the start of the next allowed block on the current day
   // (or wrap to the next day if we are past it).
   const [start, end] = policy.allowed_hours;
+  // Reference both ends of the policy for future extension (e.g. snapping
+  // the scheduled_at to `end` of the current window). Preserving the
+  // destructure keeps the types wired; `void` silences unused-var lints.
+  void start;
+  void end;
 
   // Walk hour-by-hour up to 14 days of safety (typical is < 48h).
   for (let i = 0; i < 14 * 24 + 1; i += 1) {
@@ -269,9 +274,6 @@ export function nextAllowedTime(
     }
   }
   return from;
-  // Reference `end` so TS knows we read both ends of the policy for future
-  // extension (e.g. snapping the scheduled_at to `end` of the current window).
-  void start; void end;
 }
 
 // ---------------------------------------------------------------------------
