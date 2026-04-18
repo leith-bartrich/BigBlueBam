@@ -1953,6 +1953,38 @@ const wave1bEvents: EventDefinition[] = [
       { name: 'requester.id', type: 'uuid', description: 'User who requested the approval' },
     ],
   },
+  {
+    source: 'platform',
+    event_type: 'proposal.created',
+    description: 'Fired when an agent or user creates a durable proposal in the agent_proposals queue (AGENTIC_TODO §9 Wave 2). Emitted by POST /v1/proposals. Consumed by Bolt rules that notify the approver, schedule escalations, or drive follow-up work.',
+    payload_schema: [
+      { name: 'proposal.id', type: 'uuid', description: 'Proposal ID' },
+      { name: 'proposal.proposed_action', type: 'string', description: 'Short identifier for the action being proposed (e.g. "blast.campaign.send", "bond.deal.close")' },
+      { name: 'proposal.approver_id', type: 'uuid', description: 'User designated to approve the proposal' },
+      { name: 'proposal.actor_id', type: 'uuid', description: 'User or service account that created the proposal' },
+      { name: 'proposal.proposer_kind', type: 'enum', description: 'Actor kind of the proposer', enum: ['human', 'agent', 'service'] },
+      { name: 'proposal.expires_at', type: 'datetime', description: 'Timestamp at which the proposal auto-expires if undecided' },
+      { name: 'proposal.subject_type', type: 'string?', description: 'Optional free-form identifier for the subject entity type' },
+      { name: 'proposal.subject_id', type: 'uuid?', description: 'Optional subject entity id' },
+      { name: 'proposal.url', type: 'string', description: 'Deep link for the approver (e.g. /b3/approvals/<id>)' },
+      { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
+    ],
+  },
+  {
+    source: 'platform',
+    event_type: 'proposal.decided',
+    description: 'Fired when a proposal transitions out of pending/revising to approved, rejected, or back into revising (AGENTIC_TODO §9 Wave 2). Emitted by POST /v1/proposals/:id/decide. Expiration is recorded as a separate status but does not fire this event.',
+    payload_schema: [
+      { name: 'proposal.id', type: 'uuid', description: 'Proposal ID' },
+      { name: 'proposal.proposed_action', type: 'string', description: 'Short identifier for the action being proposed' },
+      { name: 'proposal.decision', type: 'enum', description: 'Decision taken', enum: ['approve', 'reject', 'request_revision'] },
+      { name: 'proposal.decision_reason', type: 'string?', description: 'Optional free-form justification from the approver' },
+      { name: 'proposal.approver_id', type: 'uuid', description: 'User who made the decision' },
+      { name: 'proposal.actor_id', type: 'uuid', description: 'User or service account that created the proposal' },
+      { name: 'proposal.decided_at', type: 'datetime', description: 'Timestamp the decision was recorded' },
+      { name: 'org', type: 'object', description: 'Full org context (id/name/slug)' },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
