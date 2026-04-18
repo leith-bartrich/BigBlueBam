@@ -81,6 +81,8 @@ import { registerCompositeTools } from '../src/tools/composite-tools.js';
 import { registerEntityLinksTools } from '../src/tools/entity-links-tools.js';
 // §17 Wave 4 attachments
 import { registerAttachmentTools } from '../src/tools/attachment-tools.js';
+// §13 Wave 4 scheduled banter
+import { registerBanterTools } from '../src/tools/banter-tools.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -136,6 +138,10 @@ describe('MCP Integration Tests', () => {
     registerEntityLinksTools(mock.server, api);
     // §17 Wave 4 attachments
     registerAttachmentTools(mock.server, api);
+    // §13 Wave 4 scheduled banter — registers the full banter suite so
+    // tests covering banter_post_message / banter_schedule_post can exercise
+    // the handlers. Every banter_* tool name is listed in expectedTools below.
+    registerBanterTools(mock.server, api, 'http://localhost:4002');
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1306,6 +1312,62 @@ describe('MCP Integration Tests', () => {
         // §17 Wave 4 attachments
         'attachment_get',
         'attachment_list',
+        // §13 Wave 4 scheduled banter — the full banter tool suite is
+        // registered by registerBanterTools above. banter_schedule_post is
+        // the §13 addition; every other name predates Wave 4.
+        'banter_add_channel_members',
+        'banter_add_group_members',
+        'banter_archive_channel',
+        'banter_browse_channels',
+        'banter_create_channel',
+        'banter_create_user_group',
+        'banter_delete_channel',
+        'banter_delete_message',
+        'banter_edit_message',
+        'banter_end_call',
+        'banter_find_user_by_email',
+        'banter_find_user_by_handle',
+        'banter_get_active_huddle',
+        'banter_get_call',
+        'banter_get_channel',
+        'banter_get_channel_by_name',
+        'banter_get_message',
+        'banter_get_preferences',
+        'banter_get_transcript',
+        'banter_get_unread',
+        'banter_get_user_group_by_handle',
+        'banter_invite_agent_to_call',
+        'banter_join_call',
+        'banter_join_channel',
+        'banter_leave_call',
+        'banter_leave_channel',
+        'banter_list_calls',
+        'banter_list_channels',
+        'banter_list_messages',
+        'banter_list_thread_replies',
+        'banter_list_user_groups',
+        'banter_list_users',
+        'banter_pin_message',
+        'banter_post_call_text',
+        'banter_post_message',
+        'banter_react',
+        'banter_remove_channel_member',
+        'banter_remove_group_member',
+        'banter_reply_to_thread',
+        'banter_schedule_post',
+        'banter_search_messages',
+        'banter_search_transcripts',
+        'banter_send_dm',
+        'banter_send_group_dm',
+        'banter_set_presence',
+        'banter_share_sprint',
+        'banter_share_task',
+        'banter_share_ticket',
+        'banter_start_call',
+        'banter_unpin_message',
+        'banter_update_channel',
+        'banter_update_preferences',
+        'banter_update_user_group',
         // beacon
         'beacon_create', 'beacon_list', 'beacon_get', 'beacon_update',
         'beacon_retire', 'beacon_publish', 'beacon_verify', 'beacon_challenge',
