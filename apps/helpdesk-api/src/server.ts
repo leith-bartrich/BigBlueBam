@@ -21,6 +21,8 @@ import publicTenantRoutes from './routes/public-tenant.routes.js';
 import helpdeskUploadRoutes from './routes/upload.routes.js';
 import attachmentRoutes from './routes/attachments.routes.js';
 import helpdeskUsersRoutes from './routes/users.routes.js';
+// §4 Wave 5 phrase-count analytics
+import analyticsRoutes from './routes/analytics.routes.js';
 import websocketHandler from './ws/handler.js';
 import { sql } from 'drizzle-orm';
 
@@ -159,6 +161,8 @@ await fastify.register(helpdeskUploadRoutes);
 await fastify.register(attachmentRoutes);
 // §14 Wave 4: idempotent helpdesk_users upsert for webhook intake flows.
 await fastify.register(helpdeskUsersRoutes);
+// §4 Wave 5: time-bucketed phrase-count analytics for tickets.
+await fastify.register(analyticsRoutes);
 await fastify.register(websocketHandler);
 
 // Graceful shutdown
