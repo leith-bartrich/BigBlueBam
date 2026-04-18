@@ -15,6 +15,7 @@ interface AuthState {
   error: AuthError | null;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; password: string; display_name: string; org_name: string }) => Promise<void>;
+  bootstrap: (data: { email: string; password: string; display_name: string; org_name: string }) => Promise<void>;
   logout: () => Promise<void>;
   fetchMe: () => Promise<void>;
   clearError: () => void;
@@ -58,6 +59,17 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: res.data.user, isAuthenticated: true, isLoading: false });
     } catch (err) {
       set({ isLoading: false, error: toAuthError(err, 'Registration failed') });
+      throw err;
+    }
+  },
+
+  bootstrap: async (data) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await api.post<{ data: { user: User } }>('/auth/bootstrap', data);
+      set({ user: res.data.user, isAuthenticated: true, isLoading: false });
+    } catch (err) {
+      set({ isLoading: false, error: toAuthError(err, 'Bootstrap failed') });
       throw err;
     }
   },
