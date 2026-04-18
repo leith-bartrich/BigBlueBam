@@ -85,6 +85,8 @@ import { registerAttachmentTools } from '../src/tools/attachment-tools.js';
 import { registerBanterTools } from '../src/tools/banter-tools.js';
 // §15 Wave 5 agent policies
 import { registerAgentPolicyTools } from '../src/tools/agent-policy-tools.js';
+// §20 Wave 5 webhooks
+import { registerAgentWebhookTools } from '../src/tools/agent-webhook-tools.js';
 // §12 Wave 5 bolt observability
 import { registerBoltObservabilityTools } from '../src/tools/bolt-observability-tools.js';
 // §18 + §19 Wave 5 misc
@@ -156,6 +158,8 @@ describe('MCP Integration Tests', () => {
     registerBanterTools(mock.server, api, 'http://localhost:4002');
     // §15 Wave 5 agent policies
     registerAgentPolicyTools(mock.server, api);
+    // §20 Wave 5 webhooks
+    registerAgentWebhookTools(mock.server, api);
     // §12 Wave 5 bolt observability
     registerBoltObservabilityTools(mock.server, api, 'http://localhost:4006');
     // §18 + §19 Wave 5 misc: ingest fingerprint tool uses an injected
@@ -1514,6 +1518,11 @@ describe('MCP Integration Tests', () => {
         'agent_policy_get',
         'agent_policy_set',
         'agent_policy_list',
+        // §20 Wave 5 webhooks
+        'agent_webhook_configure',
+        'agent_webhook_rotate_secret',
+        'agent_webhook_deliveries_list',
+        'agent_webhook_redeliver',
         // §12 Wave 5 bolt observability
         'bolt_event_trace',
         'bolt_recent_events',
