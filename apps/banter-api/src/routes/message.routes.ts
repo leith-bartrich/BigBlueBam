@@ -26,6 +26,16 @@ import {
   loadEnrichedOrg,
   buildMessageUrl,
 } from '../lib/bolt-enrich.js';
+// §13 Wave 4 scheduled banter
+import {
+  coercePolicy,
+  isInsideQuietHours,
+  nextAllowedTime,
+} from '../services/quiet-hours.service.js';
+import {
+  scheduleMessage,
+  ScheduledPostError,
+} from '../services/scheduled-post.service.js';
 
 const createMessageSchema = z.object({
   content: z.string().min(1).max(40000),
@@ -33,6 +43,24 @@ const createMessageSchema = z.object({
   thread_parent_id: z.string().uuid().optional(),
   metadata: z.record(z.unknown()).optional(),
   edit_permission: z.enum(['own', 'thread_starter', 'none']).optional(),
+  // §13 Wave 4 scheduled banter — optional scheduling and quiet-hours opts.
+  scheduled_at: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe('ISO-8601 future timestamp to deliver at. Max 30 days out.'),
+  defer_if_quiet: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true and an immediate post falls in a quiet window, convert to a scheduled post at the next allowed time.',
+    ),
+  urgency_override: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true AND the channel policy.urgency_override is true, bypass quiet-hours rejection.',
+    ),
 });
 
 const updateMessageSchema = z.object({
@@ -185,6 +213,199 @@ export default async function messageRoutes(fastify: FastifyInstance) {
 
       // Strip HTML tags for plain text
       const contentPlain = sanitizedContent.replace(/<[^>]*>/g, '').slice(0, 500);
+
+      // §13 Wave 4 scheduled banter — load channel (with quiet-hours policy)
+      // and branch on scheduled_at / quiet-hours. Done once per POST; the
+      // immediate path and the deferred path share the same sanitized content.
+      const [channelRow] = await db
+        .select({
+          id: banterChannels.id,
+          org_id: banterChannels.org_id,
+          quiet_hours_policy: banterChannels.quiet_hours_policy,
+        })
+        .from(banterChannels)
+        .where(and(eq(banterChannels.id, id), eq(banterChannels.org_id, user.org_id)))
+        .limit(1);
+
+      if (!channelRow) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Channel not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
+      const policy = coercePolicy(channelRow.quiet_hours_policy);
+      const now = new Date();
+
+      // ── Scheduled path ────────────────────────────────────────────────
+      if (body.scheduled_at) {
+        const scheduledAt = new Date(body.scheduled_at);
+        if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() <= now.getTime()) {
+          return reply.status(400).send({
+            error: {
+              code: 'INVALID_SCHEDULED_AT',
+              message: 'scheduled_at must be a future ISO-8601 timestamp',
+              details: [{ field: 'scheduled_at', issue: 'in past or invalid' }],
+              request_id: request.id,
+            },
+          });
+        }
+        try {
+          const scheduled = await scheduleMessage({
+            org_id: user.org_id,
+            channel_id: id,
+            author_id: user.id,
+            content: sanitizedContent,
+            content_format: body.content_format,
+            thread_parent_id: body.thread_parent_id ?? null,
+            metadata: body.metadata ?? {},
+            scheduled_at: scheduledAt,
+            defer_reason: 'scheduled',
+          });
+          // Bolt event (fire-and-forget)
+          void publishBoltEvent(
+            'message.scheduled',
+            'banter',
+            {
+              scheduled_message_id: scheduled.id,
+              channel_id: id,
+              channel_name: null,
+              author_id: user.id,
+              scheduled_at: scheduled.scheduled_at.toISOString(),
+              defer_reason: scheduled.defer_reason,
+              org: { id: user.org_id },
+            },
+            user.org_id,
+            user.id,
+            'user',
+          ).catch(() => {});
+          return reply.status(202).send({
+            data: {
+              scheduled: true,
+              scheduled_message_id: scheduled.id,
+              scheduled_at: scheduled.scheduled_at.toISOString(),
+              defer_reason: scheduled.defer_reason,
+            },
+          });
+        } catch (err) {
+          if (err instanceof ScheduledPostError) {
+            const status =
+              err.code === 'SCHEDULED_AT_IN_PAST' || err.code === 'INVALID_SCHEDULED_AT'
+                ? 400
+                : err.code === 'SCHEDULED_AT_HORIZON_EXCEEDED'
+                  ? 400
+                  : 500;
+            return reply.status(status).send({
+              error: {
+                code: err.code,
+                message: err.message,
+                details: [],
+                request_id: request.id,
+              },
+            });
+          }
+          throw err;
+        }
+      }
+
+      // ── Immediate path: evaluate quiet hours ──────────────────────────
+      if (policy && isInsideQuietHours(policy, now)) {
+        const policyAllowsOverride = policy.urgency_override === true;
+        const callerUrgent = body.urgency_override === true;
+        if (callerUrgent && policyAllowsOverride) {
+          // Post immediately — fall through.
+        } else if (body.defer_if_quiet) {
+          const nextAt = nextAllowedTime(policy, now);
+          try {
+            const scheduled = await scheduleMessage({
+              org_id: user.org_id,
+              channel_id: id,
+              author_id: user.id,
+              content: sanitizedContent,
+              content_format: body.content_format,
+              thread_parent_id: body.thread_parent_id ?? null,
+              metadata: body.metadata ?? {},
+              scheduled_at: nextAt,
+              defer_reason: 'quiet_hours',
+            });
+            // Bolt events (fire-and-forget)
+            void publishBoltEvent(
+              'message.scheduled',
+              'banter',
+              {
+                scheduled_message_id: scheduled.id,
+                channel_id: id,
+                channel_name: null,
+                author_id: user.id,
+                scheduled_at: scheduled.scheduled_at.toISOString(),
+                defer_reason: scheduled.defer_reason,
+                org: { id: user.org_id },
+              },
+              user.org_id,
+              user.id,
+              'user',
+            ).catch(() => {});
+            void publishBoltEvent(
+              'message.quiet_hours_deferred',
+              'banter',
+              {
+                original_requested_at: now.toISOString(),
+                new_scheduled_at: scheduled.scheduled_at.toISOString(),
+                channel_id: id,
+                policy: {
+                  timezone: policy.timezone,
+                  allowed_hours: policy.allowed_hours,
+                },
+              },
+              user.org_id,
+              user.id,
+              'user',
+            ).catch(() => {});
+            return reply.status(202).send({
+              data: {
+                scheduled: true,
+                scheduled_message_id: scheduled.id,
+                scheduled_at: scheduled.scheduled_at.toISOString(),
+                defer_reason: scheduled.defer_reason,
+              },
+            });
+          } catch (err) {
+            if (err instanceof ScheduledPostError) {
+              return reply.status(500).send({
+                error: {
+                  code: err.code,
+                  message: err.message,
+                  details: [],
+                  request_id: request.id,
+                },
+              });
+            }
+            throw err;
+          }
+        } else {
+          // Rejection — either caller did not request override, or policy
+          // forbids override, or neither flag was set.
+          return reply.status(409).send({
+            error: {
+              code: 'QUIET_HOURS',
+              message: 'Channel is currently in a quiet-hours window',
+              details: [
+                {
+                  field: 'channel',
+                  issue: 'quiet_hours',
+                  next_allowed_at: nextAllowedTime(policy, now).toISOString(),
+                  timezone: policy.timezone,
+                },
+              ],
+              request_id: request.id,
+            },
+          });
+        }
+      }
 
       const [message] = await db
         .insert(banterMessages)
