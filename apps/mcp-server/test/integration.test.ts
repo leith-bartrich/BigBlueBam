@@ -87,6 +87,9 @@ import { registerBanterTools } from '../src/tools/banter-tools.js';
 import { registerAgentPolicyTools } from '../src/tools/agent-policy-tools.js';
 // §12 Wave 5 bolt observability
 import { registerBoltObservabilityTools } from '../src/tools/bolt-observability-tools.js';
+// §18 + §19 Wave 5 misc
+import { registerIngestFingerprintTools } from '../src/tools/ingest-fingerprint-tools.js';
+import type { FingerprintStore } from '../src/lib/fingerprint-store.js';
 
 describe('MCP Integration Tests', () => {
   let api: ApiClient;
@@ -150,6 +153,18 @@ describe('MCP Integration Tests', () => {
     registerAgentPolicyTools(mock.server, api);
     // §12 Wave 5 bolt observability
     registerBoltObservabilityTools(mock.server, api, 'http://localhost:4006');
+    // §18 + §19 Wave 5 misc: ingest fingerprint tool uses an injected
+    // FingerprintStore so the harness doesn't need a real Redis. This stub
+    // returns first_seen: true on every call; dedicated tests exercise the
+    // full SET NX EX surface.
+    const stubFingerprintStore: FingerprintStore = {
+      checkAndSet: async (_org, _src, _fp, window) => ({
+        first_seen: true,
+        window_seconds: window,
+      }),
+      close: async () => {},
+    };
+    registerIngestFingerprintTools(mock.server, api, stubFingerprintStore);
   });
 
   function getTool(name: string): RegisteredTool {
@@ -1484,6 +1499,11 @@ describe('MCP Integration Tests', () => {
         // §12 Wave 5 bolt observability
         'bolt_event_trace',
         'bolt_recent_events',
+        // §18 + §19 Wave 5 misc — book_find_meeting_time_for_users is
+        // registered via registerBookTools which this harness does not wire
+        // up; it is listed in TOOL_NAMES (utility-tools.ts) for the
+        // get_server_info surface and covered by book-tools tests.
+        'ingest_fingerprint_check',
       ];
 
       for (const name of expectedTools) {
