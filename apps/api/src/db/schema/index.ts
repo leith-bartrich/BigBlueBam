@@ -36,3 +36,4 @@ export { systemSettings } from './system-settings.js';
 export { oauthProviders } from './oauth-providers.js';
 export { oauthUserLinks } from './oauth-user-links.js';
 export { agentRunners } from './agent-runners.js';
+export { agentProposals, proposalStatusEnum } from './agent-proposals.js';
