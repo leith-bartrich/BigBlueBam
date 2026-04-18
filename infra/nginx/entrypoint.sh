@@ -47,7 +47,18 @@ if cp "/etc/nginx/profiles/${PROFILE}.conf" /etc/nginx/conf.d/default.conf 2>/de
   # unexpectedly empty — nginx would refuse to start with a literal
   # `__RESOLVER__` token otherwise.
   if grep -q '__RESOLVER__' /etc/nginx/conf.d/default.conf; then
-    RESOLVERS=$(awk '/^nameserver/ { printf "%s ", $2 }' /etc/resolv.conf | sed 's/ $//')
+    # nginx's resolver directive requires IPv6 addresses to be wrapped in
+    # brackets (resolver [fd12::10] valid=10s;), otherwise it parses the
+    # final "::10" as a :port specifier and emits "invalid port" at startup.
+    # Railway's container DNS is IPv6 (fd12::10 on the railway-internal
+    # network), so this wrapping is the common case there.
+    RESOLVERS=$(awk '
+      /^nameserver/ {
+        ip = $2
+        if (index(ip, ":") > 0) ip = "[" ip "]"
+        printf "%s ", ip
+      }
+    ' /etc/resolv.conf | sed 's/ $//')
     if [ -z "$RESOLVERS" ]; then
       RESOLVERS="127.0.0.11"
     fi
