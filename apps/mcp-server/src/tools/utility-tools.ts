@@ -4,6 +4,7 @@ import type { ApiClient } from '../middleware/api-client.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import crypto from 'node:crypto';
 import { registerTool } from '../lib/register-tool.js';
+import type { ConfirmTokenStore } from '../lib/confirm-token-store.js';
 
 const TOOL_NAMES = [
   'list_projects',
@@ -152,15 +153,11 @@ const TOOL_NAMES = [
   'agent_webhook_redeliver',
 ] as const;
 
-// Pending confirmation tokens: token -> { action, resource_id, expires }.
-//
-// NOTE (AGENTIC_TODO §9 Wave 2, pre-existing limitation): this Map lives
-// in-process and does not survive MCP server restarts. A token minted before
-// a rolling deploy will vanish. This matters for the 5-minute human-approver
-// TTL more than it did for the 60-second agent-only one. Tracked as future
-// work: move token storage to Redis so confirm_action tolerates restarts
-// and so the confirm and execute legs can land on different MCP instances.
-const pendingTokens = new Map<string, { action: string; resource_id: string; expires: number; ttlMs: number }>();
+// Pending confirmation tokens live in a ConfirmTokenStore (Redis-backed with
+// an in-process fallback; see apps/mcp-server/src/lib/confirm-token-store.ts).
+// The store is injected from createMcpServer so tokens can survive rolling
+// deploys and so the staging and confirm legs can land on different MCP
+// instances behind a load balancer. TTL is enforced by Redis' PX expiry.
 
 // Default TTLs. Agent-to-agent chains tolerate 60 seconds fine; async human
 // review needs a wider window. A request that supplies `approver_user_id`
@@ -169,16 +166,6 @@ const pendingTokens = new Map<string, { action: string; resource_id: string; exp
 // TTL (backward compat with pre-Wave-2 callers).
 const CONFIRM_TTL_AGENT_MS = 60_000;
 const CONFIRM_TTL_HUMAN_MS = 5 * 60_000;
-
-// Clean up expired tokens periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [token, entry] of pendingTokens) {
-    if (entry.expires <= now) {
-      pendingTokens.delete(token);
-    }
-  }
-}, 30_000);
 
 /**
  * Resolve the TTL to apply to a new confirm_action token. If an approver
@@ -200,7 +187,12 @@ export async function resolveConfirmTtlMs(
   return kind === 'human' ? CONFIRM_TTL_HUMAN_MS : CONFIRM_TTL_AGENT_MS;
 }
 
-export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimiter: RateLimiter): void {
+export function registerUtilityTools(
+  server: McpServer,
+  api: ApiClient,
+  rateLimiter: RateLimiter,
+  confirmTokenStore: ConfirmTokenStore,
+): void {
   registerTool(server, {
     name: 'get_server_info',
     description: 'Get information about this MCP server including version, available tools, authenticated user, and rate limit status',
@@ -257,15 +249,14 @@ export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimi
     }),
     handler: async ({ action, resource_id, token, approver_user_id }) => {
       if (!token) {
-        // Stage the action: resolve TTL, generate a token, record the expiry
-        // and TTL so the staging response is accurate and so we don't have
-        // to re-probe on the confirm leg.
+        // Stage the action: resolve TTL, generate a token, and store in the
+        // Redis-backed ConfirmTokenStore so the token survives restarts and
+        // works across MCP instances behind a load balancer.
         const ttlMs = await resolveConfirmTtlMs(api, approver_user_id);
         const confirmToken = crypto.randomBytes(16).toString('hex');
-        pendingTokens.set(confirmToken, {
+        await confirmTokenStore.set(confirmToken, {
           action,
           resource_id,
-          expires: Date.now() + ttlMs,
           ttlMs,
         });
 
@@ -285,25 +276,16 @@ export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimi
         };
       }
 
-      // Validate the token
-      const pending = pendingTokens.get(token);
+      // Validate the token. Redis-side PX expiry means get() returns null
+      // for expired keys, so the "expired" and "not found" paths collapse
+      // into one response: both ask the caller to stage again.
+      const pending = await confirmTokenStore.get(token);
 
       if (!pending) {
         return {
           content: [{
             type: 'text' as const,
             text: 'Invalid or expired confirmation token. Please stage the action again.',
-          }],
-          isError: true,
-        };
-      }
-
-      if (pending.expires <= Date.now()) {
-        pendingTokens.delete(token);
-        return {
-          content: [{
-            type: 'text' as const,
-            text: 'Confirmation token has expired. Please stage the action again.',
           }],
           isError: true,
         };
@@ -320,7 +302,7 @@ export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimi
       }
 
       // Token is valid - consume it (single use)
-      pendingTokens.delete(token);
+      await confirmTokenStore.delete(token);
 
       return {
         content: [{

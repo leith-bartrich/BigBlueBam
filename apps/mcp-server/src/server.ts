@@ -59,6 +59,7 @@ import { registerBoltObservabilityTools } from './tools/bolt-observability-tools
 // §18 + §19 Wave 5 misc
 import { registerIngestFingerprintTools } from './tools/ingest-fingerprint-tools.js';
 import { createFingerprintStore, type FingerprintStore } from './lib/fingerprint-store.js';
+import { createConfirmTokenStore, type ConfirmTokenStore } from './lib/confirm-token-store.js';
 // §4 + §8 Wave 5 trends/expertise
 import { registerPhraseCountTools } from './tools/phrase-count-tools.js';
 import { registerExpertiseTools } from './tools/expertise-tools.js';
@@ -101,6 +102,15 @@ const policyGates = new Map<string, ReturnType<typeof createPolicyGate>>();
 // call lands in the same keyspace. The store connects lazily and fails open
 // if Redis is unavailable, so the mcp-server stays online even without Redis.
 const fingerprintStore: FingerprintStore = createFingerprintStore({
+  redisUrl: env.REDIS_URL,
+  logger,
+});
+
+// Process-wide confirm_action token store. Redis-backed so staging and
+// confirm legs can land on different MCP instances and tokens survive
+// rolling deploys. Falls back to an in-process map with a sweeper when
+// Redis is unavailable.
+const confirmTokenStore: ConfirmTokenStore = createConfirmTokenStore({
   redisUrl: env.REDIS_URL,
   logger,
 });
@@ -188,7 +198,7 @@ function createMcpServer(
   registerReportTools(server, apiClient);
   registerTemplateTools(server, apiClient);
   registerImportTools(server, apiClient);
-  registerUtilityTools(server, apiClient, rateLimiter);
+  registerUtilityTools(server, apiClient, rateLimiter, confirmTokenStore);
   registerHelpdeskTools(server, apiClient, env.HELPDESK_API_URL);
   registerBanterTools(server, apiClient, env.BANTER_API_URL);
   registerBeaconTools(server, apiClient, env.BEACON_API_URL);
@@ -531,6 +541,13 @@ async function shutdown(signal: string) {
     await fingerprintStore.close();
   } catch {
     logger.warn('Error closing ingest fingerprint store');
+  }
+
+  // Close the confirm_action token store's Redis connection.
+  try {
+    await confirmTokenStore.close();
+  } catch {
+    logger.warn('Error closing confirm-token store');
   }
 
   httpServer.close(() => {
