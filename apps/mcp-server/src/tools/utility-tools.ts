@@ -99,8 +99,23 @@ const TOOL_NAMES = [
   'proposal_decide',
 ] as const;
 
-// Pending confirmation tokens: token -> { action, resource_id, expires }
-const pendingTokens = new Map<string, { action: string; resource_id: string; expires: number }>();
+// Pending confirmation tokens: token -> { action, resource_id, expires }.
+//
+// NOTE (AGENTIC_TODO §9 Wave 2, pre-existing limitation): this Map lives
+// in-process and does not survive MCP server restarts. A token minted before
+// a rolling deploy will vanish. This matters for the 5-minute human-approver
+// TTL more than it did for the 60-second agent-only one. Tracked as future
+// work: move token storage to Redis so confirm_action tolerates restarts
+// and so the confirm and execute legs can land on different MCP instances.
+const pendingTokens = new Map<string, { action: string; resource_id: string; expires: number; ttlMs: number }>();
+
+// Default TTLs. Agent-to-agent chains tolerate 60 seconds fine; async human
+// review needs a wider window. A request that supplies `approver_user_id`
+// with `users.kind === 'human'` gets the human TTL; everything else gets
+// the short one. The default without an approver_user_id hint is the short
+// TTL (backward compat with pre-Wave-2 callers).
+const CONFIRM_TTL_AGENT_MS = 60_000;
+const CONFIRM_TTL_HUMAN_MS = 5 * 60_000;
 
 // Clean up expired tokens periodically
 setInterval(() => {
@@ -111,6 +126,26 @@ setInterval(() => {
     }
   }
 }, 30_000);
+
+/**
+ * Resolve the TTL to apply to a new confirm_action token. If an approver
+ * user id is supplied, we probe /users/:id to check the approver's kind:
+ * humans get CONFIRM_TTL_HUMAN_MS, agents/service accounts get the short
+ * CONFIRM_TTL_AGENT_MS. If the probe fails (user not found, network error,
+ * etc.) we fall back to the short TTL to stay safe. Exported for tests.
+ */
+export async function resolveConfirmTtlMs(
+  api: ApiClient,
+  approverUserId: string | undefined,
+): Promise<number> {
+  if (!approverUserId) return CONFIRM_TTL_AGENT_MS;
+  const res = await api.get<{ data?: { kind?: string } }>(
+    `/users/${approverUserId}`,
+  );
+  if (!res.ok) return CONFIRM_TTL_AGENT_MS;
+  const kind = res.data?.data?.kind;
+  return kind === 'human' ? CONFIRM_TTL_HUMAN_MS : CONFIRM_TTL_AGENT_MS;
+}
 
 export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimiter: RateLimiter): void {
   registerTool(server, {
@@ -148,11 +183,17 @@ export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimi
 
   registerTool(server, {
     name: 'confirm_action',
-    description: 'Confirm a destructive action using a confirmation token. First call without a token to stage the action and receive a token. Then call again with the token to execute.',
+    description:
+      'Confirm a destructive action using a confirmation token. First call without a token to stage the action and receive a token. Then call again with the token to execute. TTL is 60 seconds by default; if approver_user_id is supplied and resolves to a human user, TTL is extended to 5 minutes so async human review is feasible (AGENTIC_TODO §9 Wave 2).',
     input: {
       action: z.string().describe('Description of the action to confirm'),
       resource_id: z.string().describe('ID of the resource being affected'),
       token: z.string().optional().describe('Confirmation token received from the staging call. Omit to stage a new action.'),
+      approver_user_id: z
+        .string()
+        .uuid()
+        .optional()
+        .describe('Optional approver user id. If present and the user is a human, TTL is 5 minutes. Otherwise TTL is 60 seconds.'),
     },
     returns: z.object({
       status: z.enum(['pending_confirmation', 'confirmed']),
@@ -161,22 +202,27 @@ export function registerUtilityTools(server: McpServer, api: ApiClient, rateLimi
       resource_id: z.string(),
       confirmation_token: z.string().optional().describe('Present when status is pending_confirmation'),
     }),
-    handler: async ({ action, resource_id, token }) => {
+    handler: async ({ action, resource_id, token, approver_user_id }) => {
       if (!token) {
-        // Stage the action: generate a token
+        // Stage the action: resolve TTL, generate a token, record the expiry
+        // and TTL so the staging response is accurate and so we don't have
+        // to re-probe on the confirm leg.
+        const ttlMs = await resolveConfirmTtlMs(api, approver_user_id);
         const confirmToken = crypto.randomBytes(16).toString('hex');
         pendingTokens.set(confirmToken, {
           action,
           resource_id,
-          expires: Date.now() + 60_000, // 60-second expiry
+          expires: Date.now() + ttlMs,
+          ttlMs,
         });
 
+        const ttlSeconds = Math.floor(ttlMs / 1000);
         return {
           content: [{
             type: 'text' as const,
             text: JSON.stringify({
               status: 'pending_confirmation',
-              message: `Action requires confirmation. Token expires in 60 seconds.`,
+              message: `Action requires confirmation. Token expires in ${ttlSeconds} seconds.`,
               action,
               resource_id,
               confirmation_token: confirmToken,
