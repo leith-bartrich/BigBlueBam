@@ -160,7 +160,10 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
       // 1. Find matching enabled automations for this trigger
       const matchingAutomations = await db
         .select({
-          automation: boltAutomations,
+          // Same table-as-field cast used across other upsert/select sites
+          // under @bigbluebam/db-stubs; drizzle's typed returning/select
+          // does not accept a full table ref without an explicit SQL cast.
+          automation: boltAutomations as unknown as import('drizzle-orm').SQL<typeof boltAutomations.$inferSelect>,
         })
         .from(boltAutomations)
         .where(

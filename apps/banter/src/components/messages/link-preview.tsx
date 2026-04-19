@@ -41,8 +41,8 @@ export function extractExternalUrls(content: string): string[] {
   }
 
   while ((hrefMatch = hrefRe.exec(content)) !== null) {
-    if (!INTERNAL_PATH_RE.test(hrefMatch[1])) {
-      urls.add(hrefMatch[1]);
+    if (!INTERNAL_PATH_RE.test(hrefMatch[1]!)) {
+      urls.add(hrefMatch[1]!);
     }
   }
 

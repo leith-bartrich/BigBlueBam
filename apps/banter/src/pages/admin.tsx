@@ -82,7 +82,7 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
   const [testingTts, setTestingTts] = useState(false);
   const [ttsStatus, setTtsStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [voiceAgentOnline, setVoiceAgentOnline] = useState<boolean | null>(null);
-  const [voiceAgentConfig, setVoiceAgentConfig] = useState<{
+  const [voiceAgentConfig, _setVoiceAgentConfig] = useState<{
     stt: { provider: string | null; configured: boolean; has_api_key: boolean };
     tts: { provider: string | null; configured: boolean; has_api_key: boolean };
     llm: { provider: string | null; configured: boolean; has_api_key: boolean };
@@ -90,12 +90,12 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
   const [syncingConfig, setSyncingConfig] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  const checkVoiceAgentStatus = useCallback(async () => {
+  const _checkVoiceAgentStatus = useCallback(async () => {
     try {
       // The banter-api proxies to the voice agent, or we check indirectly
       // For now we use the push-voice-config endpoint as a proxy health check
       // by doing a GET to the voice agent /config via a lightweight admin endpoint
-      const res = await api.get<{ data: { online: boolean; config?: typeof voiceAgentConfig } }>(
+      await api.get<{ data: { online: boolean; config?: typeof voiceAgentConfig } }>(
         '/admin/settings/push-voice-config',
       ).catch(() => null);
       // If the endpoint doesn't support GET, we'll rely on the push response
