@@ -109,7 +109,7 @@ describe('scheduleMessage horizon and past-date guards', () => {
         scheduled_at: new Date(Date.now() + 35 * 24 * 60 * 60 * 1000),
         defer_reason: 'scheduled',
       }),
-    ).rejects.toThrow(/SCHEDULED_AT_HORIZON_EXCEEDED|horizon/);
+    ).rejects.toThrow(/SCHEDULED_AT_HORIZON_EXCEEDED|horizon|within 30 days/);
   });
 
   it('accepts a valid future timestamp', async () => {
