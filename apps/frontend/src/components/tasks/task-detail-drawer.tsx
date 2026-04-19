@@ -1087,7 +1087,7 @@ export function TaskDetailDrawer({
                       )}
 
                       {/* Helpdesk Tab */}
-                      {activeTab === 'helpdesk' && task.custom_fields?.helpdesk_ticket_id && (
+                      {activeTab === 'helpdesk' && Boolean(task.custom_fields?.helpdesk_ticket_id) && (
                         <HelpdeskPanel ticketId={task.custom_fields.helpdesk_ticket_id as string} />
                       )}
                     </div>

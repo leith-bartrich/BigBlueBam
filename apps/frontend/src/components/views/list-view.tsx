@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
-import type { Task, Phase } from '@bigbluebam/shared';
+import type { Task, Phase, Priority } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
 import { cn, formatDate, isOverdue } from '@/lib/utils';
 import { Badge } from '@/components/common/badge';
