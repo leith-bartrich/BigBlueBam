@@ -123,6 +123,9 @@ importers:
 
   apps/banter:
     dependencies:
+      '@bigbluebam/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@hookform/resolvers':
         specifier: ^5.0.1
         version: 5.2.2(react-hook-form@7.72.0(react@19.2.4))
@@ -308,6 +311,9 @@ importers:
 
   apps/beacon:
     dependencies:
+      '@bigbluebam/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@hookform/resolvers':
         specifier: ^5.0.1
         version: 5.2.2(react-hook-form@7.72.0(react@19.2.4))
@@ -484,6 +490,9 @@ importers:
 
   apps/bearing:
     dependencies:
+      '@bigbluebam/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@hookform/resolvers':
         specifier: ^5.0.1
         version: 5.2.2(react-hook-form@7.72.0(react@19.2.4))
@@ -654,6 +663,9 @@ importers:
 
   apps/bench:
     dependencies:
+      '@bigbluebam/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@hookform/resolvers':
         specifier: ^5.0.1
         version: 5.2.2(react-hook-form@7.72.0(react@19.2.4))

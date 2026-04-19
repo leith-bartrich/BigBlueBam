@@ -1,4 +1,4 @@
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { banterCallTranscripts, banterCalls } from '../db/schema/index.js';
 import { broadcastToChannel } from './realtime.js';

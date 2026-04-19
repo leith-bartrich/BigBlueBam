@@ -4,7 +4,6 @@ import * as RadixDialog from '@radix-ui/react-dialog';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
-  Calendar,
   User,
   Tag,
   Hash,
@@ -36,7 +35,7 @@ import {
 } from 'lucide-react';
 import type { Task, Priority, ApiResponse, PaginatedResponse } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
-import { cn, formatDate, formatRelativeTime, isOverdue, priorityColor } from '@/lib/utils';
+import { cn, formatDate, formatRelativeTime, isOverdue } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';

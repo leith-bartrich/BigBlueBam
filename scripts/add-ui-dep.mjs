@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
-const apps = ['frontend', 'bill', 'book', 'blank', 'blast', 'board', 'bolt', 'bond', 'brief', 'helpdesk'];
+const apps = ['frontend', 'bill', 'book', 'blank', 'blast', 'board', 'bolt', 'bond', 'brief', 'helpdesk', 'banter', 'beacon', 'bearing', 'bench'];
 
 for (const app of apps) {
   const pkgPath = `H:/BigBlueBam/apps/${app}/package.json`;

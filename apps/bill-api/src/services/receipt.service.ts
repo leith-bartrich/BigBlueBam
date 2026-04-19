@@ -6,7 +6,7 @@
  */
 
 import { Client as MinioClient } from 'minio';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { billExpenses } from '../db/schema/index.js';
 import { env } from '../env.js';

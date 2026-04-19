@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Loader2, RotateCcw, Archive, XCircle } from 'lucide-react';
+import { RotateCcw, Archive, XCircle } from 'lucide-react';
 import type { Task, Sprint } from '@bigbluebam/shared';
 import { Dialog } from '@/components/common/dialog';
 import { Button } from '@/components/common/button';

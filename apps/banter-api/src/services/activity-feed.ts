@@ -2,7 +2,6 @@ import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   banterChannels,
-  banterChannelMemberships,
   banterMessages,
 } from '../db/schema/index.js';
 import { broadcastToChannel } from './realtime.js';

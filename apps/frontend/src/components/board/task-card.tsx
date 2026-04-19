@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import type { Task, Priority } from '@bigbluebam/shared';
 import { cn, formatDate, isOverdue, truncate } from '@/lib/utils';
-import { Avatar } from '@/components/common/avatar';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 interface TaskCardProps {
