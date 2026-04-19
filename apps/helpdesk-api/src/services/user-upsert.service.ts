@@ -135,7 +135,10 @@ export async function upsertHelpdeskUserByEmail(
       },
     })
     .returning({
-      user: helpdeskUsers,
+      // Same table-as-field cast pattern used in apps/bond-api and
+      // apps/beacon-api upsert services to satisfy drizzle's typing
+      // under @bigbluebam/db-stubs.
+      user: helpdeskUsers as unknown as import('drizzle-orm').SQL<typeof helpdeskUsers.$inferSelect>,
       created: sql<boolean>`(xmax = 0)`.as('created'),
     });
 

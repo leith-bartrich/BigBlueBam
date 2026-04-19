@@ -178,6 +178,14 @@ describe('search_everything MCP tool', () => {
       title: `doc ${i}`,
     }));
     installRouter([
+      // '/documents/search' must come before '/search' — the router matches
+      // on `url.includes(route.match)`, and a brief URL like
+      // '/brief/api/documents/search' would also match a bare '/search'
+      // entry, accidentally routing the brief call into the beacon mock.
+      {
+        match: '/documents/search',
+        respond: () => ({ body: { data: briefDocs } }),
+      },
       {
         match: '/search',
         respond: (): unknown => ({
@@ -192,10 +200,6 @@ describe('search_everything MCP tool', () => {
             ],
           },
         }),
-      },
-      {
-        match: '/documents/search',
-        respond: () => ({ body: { data: briefDocs } }),
       },
     ]);
 
