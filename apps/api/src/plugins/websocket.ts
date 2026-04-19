@@ -8,7 +8,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 type WebSocket = {
   send: (data: string | Buffer) => void;
   close: (code?: number, reason?: string) => void;
-  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  // Overload so the callers can type their listener args precisely
+  // (Buffer|string for 'message', etc.). `any` for listener matches
+  // the real ws EventEmitter surface without pulling in @types/ws.
+  // biome-ignore lint/suspicious/noExplicitAny: ws-compat surface
+  on: (event: string, listener: (...args: any[]) => void) => void;
   readyState: number;
   OPEN: number;
 };
