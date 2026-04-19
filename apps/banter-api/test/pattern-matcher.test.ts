@@ -3,7 +3,22 @@
 // Covers evaluateBanterPattern for all four kinds, plus the
 // validatePatternSpec gate that runs at subscription write time.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock env + db so loading the service (which transitively imports these)
+// does not run env validation against CI's test environment.
+vi.mock('../src/env.js', () => ({
+  env: {
+    NODE_ENV: 'test',
+    SESSION_SECRET: 'x'.repeat(32),
+    DATABASE_URL: 'postgres://test:test@localhost:5432/test',
+    REDIS_URL: 'redis://localhost:6379',
+  },
+}));
+vi.mock('../src/db/index.js', () => ({
+  db: {},
+}));
+
 import {
   evaluateBanterPattern,
   isInterrogative,

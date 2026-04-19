@@ -28,7 +28,7 @@ function pickColor(userId: string): string {
   for (let i = 0; i < userId.length; i++) {
     hash = (hash * 31 + userId.charCodeAt(i)) | 0;
   }
-  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
+  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length]!;
 }
 
 export interface CollaborationState {
