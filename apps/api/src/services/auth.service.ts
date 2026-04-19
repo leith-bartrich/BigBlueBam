@@ -7,7 +7,7 @@ import { users } from '../db/schema/users.js';
 import { sessions } from '../db/schema/sessions.js';
 import { organizationMemberships } from '../db/schema/organization-memberships.js';
 import { env } from '../env.js';
-import type { BootstrapInput, RegisterInput, LoginInput, UpdateProfileInput } from '@bigbluebam/shared';
+import type { BootstrapInput, RegisterInput, UpdateProfileInput } from '@bigbluebam/shared';
 
 export type LoginFailureReason =
   | 'user_not_found'

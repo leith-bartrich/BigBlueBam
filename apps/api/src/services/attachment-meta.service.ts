@@ -61,12 +61,9 @@ export const SUPPORTED_PARENT_TYPES: readonly AttachmentParentType[] = [
 
 export type ScanStatus = 'pending' | 'clean' | 'infected' | 'error';
 
-export const SUPPORTED_SCAN_STATUSES: readonly ScanStatus[] = [
-  'pending',
-  'clean',
-  'infected',
-  'error',
-] as const;
+// No explicit type annotation so TS keeps the exact tuple, which
+// z.enum(SUPPORTED_SCAN_STATUSES) requires as a non-empty readonly tuple.
+export const SUPPORTED_SCAN_STATUSES = ['pending', 'clean', 'infected', 'error'] as const;
 
 export interface AttachmentMeta {
   id: string;

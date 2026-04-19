@@ -18,7 +18,7 @@ async function fetchLatestRemoteCommit() {
       sha: string;
       commit: { committer: { date: string }; message: string };
     };
-    return { sha: data.sha, date: data.commit.committer.date, message: data.commit.message.split('\n')[0] };
+    return { sha: data.sha, date: data.commit.committer.date, message: data.commit.message.split('\n')[0] ?? '' };
   } catch {
     return null;
   }

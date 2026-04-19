@@ -1,19 +1,17 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-// @types/ws is not installed; declare it with just the WebSocket symbol
-// we import so tsc stops warning. The runtime type comes from
-// @fastify/websocket's SocketStream.
-// biome-ignore lint/style/useImportType: needs runtime augmentation
-declare module 'ws' {
-  export class WebSocket {
-    send: (data: string | Buffer) => void;
-    close: (code?: number, reason?: string) => void;
-    on: (event: string, listener: (...args: unknown[]) => void) => void;
-    readyState: number;
-    OPEN: number;
-  }
-}
-import type { WebSocket } from 'ws';
+
+// @types/ws is not in the dep tree, so we declare a minimal shape for
+// the WebSocket surface the plugin actually uses. @fastify/websocket
+// passes the real `ws` WebSocket at runtime; this type just pins the
+// methods/fields we read.
+type WebSocket = {
+  send: (data: string | Buffer) => void;
+  close: (code?: number, reason?: string) => void;
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  readyState: number;
+  OPEN: number;
+};
 import { eq, and } from 'drizzle-orm';
 import Redis from 'ioredis';
 import { db } from '../db/index.js';
