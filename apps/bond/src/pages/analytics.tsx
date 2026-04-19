@@ -1,15 +1,5 @@
-import {
-  BarChart3,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Clock,
-  AlertTriangle,
-  Trophy,
-  XCircle,
-} from 'lucide-react';
+import { TrendingUp, DollarSign, Clock, AlertTriangle, Trophy } from 'lucide-react';
 import { Badge } from '@/components/common/badge';
-import { Button } from '@/components/common/button';
 import {
   usePipelineSummary,
   useConversionRates,
@@ -19,7 +9,7 @@ import {
   useStaleDeals,
 } from '@/hooks/use-analytics';
 import { usePipelineStore } from '@/stores/pipeline.store';
-import { formatCurrencyCompact, formatCurrency, cn } from '@/lib/utils';
+import { formatCurrencyCompact, cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 
 interface AnalyticsPageProps {

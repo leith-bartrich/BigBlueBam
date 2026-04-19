@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { bbbGet, BbbApiError } from '@/lib/bbb-api';
-import {
-  ClipboardList,
-  Handshake,
-  ExternalLink,
-  AlertCircle,
-  Calendar,
-  User,
-} from 'lucide-react';
+import { ClipboardList, Handshake, ExternalLink, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── URL detection patterns ──────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, Mail, Phone, Star, RotateCcw } from 'lucide-react';
+import { Search, Plus, Star, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
 import { Avatar } from '@/components/common/avatar';

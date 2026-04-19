@@ -2,7 +2,7 @@ interface SettingsPageProps {
   onNavigate: (path: string) => void;
 }
 
-export function SettingsPage({ onNavigate }: SettingsPageProps) {
+export function SettingsPage({ onNavigate: _onNavigate }: SettingsPageProps) {
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">

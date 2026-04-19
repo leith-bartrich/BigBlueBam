@@ -74,11 +74,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build shared + api packages
-        # Every workspace package under packages/ exports from ./dist, so
-        # vitest cannot resolve them (Failed to resolve entry for ...) unless
-        # they are built before the test pass.
+        # Every workspace package under packages/ that exports from ./dist
+        # needs to be built before vitest runs, or api-side tests will fail
+        # with "Failed to resolve entry for package ..." when they import
+        # @bigbluebam/db-stubs and similar. --if-present skips packages
+        # (like @bigbluebam/ui) that have no build script.
         run: |
-          pnpm --filter './packages/*' build
+          pnpm -r --filter './packages/*' --if-present run build
           pnpm --filter @bigbluebam/api build
 
       - name: Wait for Postgres

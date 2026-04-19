@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Plus, Search, Send, Clock, FileEdit, MoreHorizontal } from 'lucide-react';
-import { useCampaigns, type Campaign } from '@/hooks/use-campaigns';
+import { Plus, Search, Send } from 'lucide-react';
+import { useCampaigns } from '@/hooks/use-campaigns';
 import { cn, campaignStatusLabel, campaignStatusColor, formatDate, formatPercentage, formatNumber } from '@/lib/utils';
 
 interface CampaignListPageProps {

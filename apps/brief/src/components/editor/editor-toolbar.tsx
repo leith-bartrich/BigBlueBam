@@ -1,31 +1,5 @@
 import type { Editor } from '@tiptap/react';
-import {
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Code,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  Highlighter,
-  List,
-  ListOrdered,
-  ListChecks,
-  Quote,
-  CodeSquare,
-  Link2,
-  ImagePlus,
-  Table2,
-  Minus,
-  Undo2,
-  Redo2,
-  Heading1,
-  Heading2,
-  Heading3,
-  Heading4,
-  Type,
-} from 'lucide-react';
+import { Bold, Italic, Underline, Strikethrough, Code, AlignLeft, AlignCenter, AlignRight, Highlighter, List, ListOrdered, ListChecks, Quote, CodeSquare, Link2, ImagePlus, Table2, Minus, Undo2, Redo2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
 

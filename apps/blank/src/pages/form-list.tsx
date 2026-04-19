@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Plus, FileText, Copy, Trash2, Eye, MoreHorizontal, Globe, Lock, Send, Archive } from 'lucide-react';
+import { Plus, FileText, Copy, Trash2, Eye, MoreHorizontal, Send } from 'lucide-react';
 import { useForms, useCreateForm, useDeleteForm, useDuplicateForm } from '@/hooks/use-forms';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';

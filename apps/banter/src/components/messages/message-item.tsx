@@ -39,7 +39,7 @@ interface MessageItemProps {
   onNavigate: (path: string) => void;
 }
 
-export function MessageItem({ message, channelId, grouped, onNavigate }: MessageItemProps) {
+export function MessageItem({ message, channelId, grouped, onNavigate: _onNavigate }: MessageItemProps) {
   const [hovered, setHovered] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const openThread = useChannelStore((s) => s.openThread);

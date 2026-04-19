@@ -1,9 +1,4 @@
-import {
-  FileText,
-  LayoutList,
-  BarChart3,
-  Settings,
-} from 'lucide-react';
+import { FileText, LayoutList, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BlankSidebarProps {

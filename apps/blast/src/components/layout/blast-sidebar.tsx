@@ -1,13 +1,4 @@
-import {
-  Mail,
-  LayoutDashboard,
-  FileText,
-  Users,
-  BarChart3,
-  Settings,
-  Globe,
-  Server,
-} from 'lucide-react';
+import { Mail, LayoutDashboard, FileText, Users, BarChart3, Globe, Server } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BlastSidebarProps {

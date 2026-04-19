@@ -1,26 +1,12 @@
 import { useState } from 'react';
-import {
-  Settings as SettingsIcon,
-  Layers,
-  FormInput,
-  Star,
-  Plus,
-  Trash2,
-  GripVertical,
-  Edit2,
-  Power,
-  PowerOff,
-  AlertTriangle,
-  Check,
-  X,
-} from 'lucide-react';
+import { Layers, FormInput, Star, Plus, Trash2, GripVertical, Edit2, X } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { Badge } from '@/components/common/badge';
 import { Dialog } from '@/components/common/dialog';
 import { Select } from '@/components/common/select';
 import { cn } from '@/lib/utils';
-import { usePipelines, useCreatePipeline, useCreateStage, useDeleteStage, type Pipeline, type PipelineStage } from '@/hooks/use-pipelines';
+import { usePipelines, useCreatePipeline, useCreateStage, useDeleteStage, type PipelineStage } from '@/hooks/use-pipelines';
 import {
   useScoringRules,
   useCreateScoringRule,
@@ -126,7 +112,7 @@ function PipelinesSettings() {
                 {isExpanded && (
                   <div className="border-t border-zinc-100 dark:border-zinc-800 px-5 py-4">
                     <div className="space-y-2">
-                      {stages.map((stage, i) => (
+                      {stages.map((stage) => (
                         <StageRow key={stage.id} stage={stage} pipelineId={pipeline.id} />
                       ))}
                     </div>

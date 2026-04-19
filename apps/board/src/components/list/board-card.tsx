@@ -1,6 +1,5 @@
 import { Star, Lock, MoreHorizontal, Copy, Trash2, History } from 'lucide-react';
 import { cn, formatRelativeTime } from '@/lib/utils';
-import { Avatar } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { type Board, useToggleStar, useDuplicateBoard, useArchiveBoard } from '@/hooks/use-boards';

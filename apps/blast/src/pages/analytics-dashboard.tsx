@@ -1,6 +1,6 @@
 import { useAnalyticsOverview, useEngagementTrend } from '@/hooks/use-analytics';
 import { formatNumber, formatPercentage } from '@/lib/utils';
-import { BarChart3, Mail, MousePointerClick, Eye, AlertTriangle, UserMinus } from 'lucide-react';
+import { Mail, MousePointerClick, Eye, AlertTriangle, UserMinus } from 'lucide-react';
 
 interface AnalyticsDashboardPageProps {
   onNavigate: (path: string) => void;
@@ -27,7 +27,7 @@ function StatCard({ icon: Icon, label, value, subValue, color }: {
   );
 }
 
-export function AnalyticsDashboardPage({ onNavigate }: AnalyticsDashboardPageProps) {
+export function AnalyticsDashboardPage({ onNavigate: _onNavigate }: AnalyticsDashboardPageProps) {
   const { data: overviewData, isLoading } = useAnalyticsOverview();
   const { data: trendData } = useEngagementTrend('weekly');
 

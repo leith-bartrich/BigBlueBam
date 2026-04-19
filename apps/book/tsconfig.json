@@ -6,13 +6,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@bigbluebam/ui/help-viewer": ["../../packages/ui/help-viewer.tsx"],
-      "@bigbluebam/ui/launchpad": ["../../packages/ui/launchpad.tsx"],
-      "@bigbluebam/ui/org-switcher": ["../../packages/ui/org-switcher.tsx"],
-      "@bigbluebam/ui/notifications-bell": ["../../packages/ui/notifications-bell.tsx"],
-      "@bigbluebam/ui/user-menu": ["../../packages/ui/user-menu.tsx"],
-      "@bigbluebam/ui/markdown": ["../../packages/ui/markdown.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"],

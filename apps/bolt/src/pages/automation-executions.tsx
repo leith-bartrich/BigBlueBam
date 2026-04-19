@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Activity, Loader2 } from 'lucide-react';
 import { useAutomation, type ExecutionStatus } from '@/hooks/use-automations';
-import { useExecutions, type BoltExecution } from '@/hooks/use-executions';
+import { useExecutions } from '@/hooks/use-executions';
 import { StatusBadge } from '@/components/execution/status-badge';
 import { formatRelativeTime, formatDuration } from '@/lib/utils';
 

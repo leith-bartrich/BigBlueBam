@@ -1,19 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  ArrowLeft,
-  Video,
-  MessageSquare,
-  Bot,
-  Hash,
-  Save,
-  Loader2,
-  CheckCircle,
-  AlertCircle,
-  Mic,
-  Volume2,
-  Brain,
-  RefreshCw,
-} from 'lucide-react';
+import { ArrowLeft, Video, MessageSquare, Bot, Hash, Save, Loader2, CheckCircle, AlertCircle, Mic, Volume2, Brain } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
