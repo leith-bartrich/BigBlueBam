@@ -225,7 +225,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
 
       const allKrs: Record<string, unknown>[] = [];
       for (const gid of goalIds) {
-        const krs = await krService.listKeyResults(gid);
+        const { data: krs } = await krService.listKeyResults(gid);
         for (const kr of krs) {
           allKrs.push({ ...kr, goal_id: gid });
         }
