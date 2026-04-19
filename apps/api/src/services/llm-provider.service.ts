@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { eq, and, or, isNull, sql } from 'drizzle-orm';
+import { eq, and, or, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { llmProviders } from '../db/schema/llm-providers.js';
 import type { LlmProvider, NewLlmProvider } from '../db/schema/llm-providers.js';

@@ -1,5 +1,18 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+// @types/ws is not installed; declare it with just the WebSocket symbol
+// we import so tsc stops warning. The runtime type comes from
+// @fastify/websocket's SocketStream.
+// biome-ignore lint/style/useImportType: needs runtime augmentation
+declare module 'ws' {
+  export class WebSocket {
+    send: (data: string | Buffer) => void;
+    close: (code?: number, reason?: string) => void;
+    on: (event: string, listener: (...args: unknown[]) => void) => void;
+    readyState: number;
+    OPEN: number;
+  }
+}
 import type { WebSocket } from 'ws';
 import { eq, and } from 'drizzle-orm';
 import Redis from 'ioredis';
@@ -114,6 +127,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<AuthUser | 
         timezone: users.timezone,
         is_active: users.is_active,
         is_superuser: users.is_superuser,
+        kind: users.kind,
       },
     })
     .from(sessions)
@@ -288,7 +302,7 @@ async function websocketPlugin(fastify: FastifyInstance) {
           removeConnection(conn);
         });
 
-        socket.on('error', (err) => {
+        socket.on('error', (err: unknown) => {
           fastify.log.error({ err, userId: user.id }, '[ws] Socket error');
           removeConnection(conn);
         });

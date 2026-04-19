@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql, lte, gte, isNull } from 'drizzle-orm';
+import { and, desc, eq, or, sql, lte, gte } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { dedupeDecisions } from '../db/schema/dedupe-decisions.js';
 import { users } from '../db/schema/users.js';
@@ -155,6 +155,11 @@ export async function recordDecision(input: RecordDecisionInput): Promise<Record
       })
       .where(eq(dedupeDecisions.id, existing.id))
       .returning();
+    if (!updated) {
+      // Should not happen: the SELECT-and-check above confirmed the row
+      // exists before we updated. Throw so caller surfaces a 500.
+      throw new Error('dedupe-decisions update returned no row');
+    }
     return { ok: true, data: rowToDto(updated), created: false };
   }
 
@@ -172,6 +177,9 @@ export async function recordDecision(input: RecordDecisionInput): Promise<Record
       resurface_after: input.resurface_after ?? null,
     })
     .returning();
+  if (!inserted) {
+    throw new Error('dedupe-decisions insert returned no row');
+  }
   return { ok: true, data: rowToDto(inserted), created: true };
 }
 

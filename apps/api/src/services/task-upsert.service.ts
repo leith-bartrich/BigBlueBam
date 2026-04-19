@@ -197,7 +197,10 @@ export async function upsertTaskByExternalId(
           },
         })
         .returning({
-          task: tasks,
+          // Table-as-field cast (same as beacon-api/bond-api/helpdesk-api
+          // upsert services) to satisfy drizzle's returning() type under
+          // @bigbluebam/db-stubs.
+          task: tasks as unknown as import('drizzle-orm').SQL<typeof tasks.$inferSelect>,
           // xmax = 0 on a fresh insert; non-zero when ON CONFLICT fired.
           created: sql<boolean>`(xmax = 0)`.as('created'),
         });

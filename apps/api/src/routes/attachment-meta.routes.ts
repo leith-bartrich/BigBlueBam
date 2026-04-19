@@ -70,12 +70,14 @@ export default async function attachmentMetaRoutes(fastify: FastifyInstance) {
           },
         });
       }
-      // FORBIDDEN
+      // FORBIDDEN or UNSUPPORTED_PARENT_TYPE. 'reason' only exists on the
+      // FORBIDDEN branch; narrow first so tsc doesn't widen the error type.
+      const reason = result.error.code === 'FORBIDDEN' ? result.error.reason : result.error.code;
       return reply.status(403).send({
         error: {
           code: 'FORBIDDEN',
           message: 'Access to this attachment is denied',
-          details: [{ field: 'reason', issue: result.error.reason }],
+          details: [{ field: 'reason', issue: reason }],
           request_id: request.id,
         },
       });
@@ -92,13 +94,10 @@ export default async function attachmentMetaRoutes(fastify: FastifyInstance) {
       const querySchema = z.object({
         entity_type: z.string().min(1).max(64),
         entity_id: z.string().uuid(),
-        limit: z.coerce
-          .number()
-          .int()
-          .positive()
-          .max(MAX_LIST_LIMIT)
-          .default(DEFAULT_LIST_LIMIT)
-          .optional(),
+        // .default(...) already makes the field optional in the parsed
+        // output; chaining .optional() after it trips a TS overload
+        // mismatch under zod's type surface.
+        limit: z.coerce.number().int().positive().max(MAX_LIST_LIMIT).default(DEFAULT_LIST_LIMIT),
         scan_status: z.enum(SUPPORTED_SCAN_STATUSES).optional(),
       });
       const parsed = querySchema.safeParse(request.query);

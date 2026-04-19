@@ -17,7 +17,6 @@
 
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { tasks } from '../db/schema/tasks.js';
 import { users } from '../db/schema/users.js';
 import { projects } from '../db/schema/projects.js';
 import { phases } from '../db/schema/phases.js';
