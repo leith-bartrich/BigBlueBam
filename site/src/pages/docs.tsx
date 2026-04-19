@@ -1440,7 +1440,7 @@ const faqs: Faq[] = [
   },
   {
     question: 'How many apps are included?',
-    answer: 'BigBlueBam ships with nine integrated applications: Bam (Kanban project management with sprints), Banter (real-time messaging with channels, DMs, threads, and voice/video calls), Beacon (knowledge base with semantic search and a knowledge graph), Brief (collaborative WYSIWYG documents), Bolt (WHEN/IF/THEN workflow automations), Bearing (goals and OKR tracking with automatic progress from linked tasks), Board (infinite-canvas visual collaboration whiteboards with real-time editing and audio conferencing), Bond (CRM with visual deal pipeline, contact/company management, and activity tracking), and Helpdesk (customer support ticket portal). All nine apps share a single authentication system and cross-link to each other seamlessly.',
+    answer: 'BigBlueBam ships with fourteen integrated applications: Bam (Kanban project management with sprints), Banter (real-time messaging with channels, DMs, threads, voice/video calls, and scheduled posts), Beacon (knowledge base with semantic search and a knowledge graph), Brief (collaborative WYSIWYG documents), Bolt (WHEN/IF/THEN workflow automations with runtime observability), Bearing (goals and OKR tracking), Board (infinite-canvas visual collaboration whiteboards with real-time editing and audio conferencing), Bond (CRM with visual deal pipeline, contact and company management, activity tracking, and dedupe primitives), Blast (email campaigns with templates, segments, and analytics), Bill (invoicing, expenses, PDF generation, and recurring billing), Blank (forms with conditional logic routing), Book (scheduling and public booking pages), Bench (analytics dashboards and scheduled reports), and Helpdesk (customer support ticket portal with similar-ticket lookup). All fourteen apps share a single authentication system, cross-link to each other seamlessly, and surface into a single cross-app search, composite subject views, and a durable entity-links table.',
   },
   {
     question: 'What is the difference between Beacon and Brief?',
@@ -1448,11 +1448,11 @@ const faqs: Faq[] = [
   },
   {
     question: 'How do AI agents work with BigBlueBam?',
-    answer: 'BigBlueBam exposes 215 MCP (Model Context Protocol) tools on a dedicated server endpoint at /mcp/. Any MCP-compatible AI agent -- Claude, GPT, or custom agents -- can connect and manage tasks, post messages, search the knowledge base, write documents, create automations, track goals, collaborate on visual whiteboards, and manage the CRM pipeline. Destructive actions require a two-step confirmation flow to prevent accidental data loss. The MCP server supports Streamable HTTP, SSE, and stdio transports.',
+    answer: 'BigBlueBam exposes 340 MCP (Model Context Protocol) tools on a dedicated server endpoint at /mcp/. Any MCP-compatible AI agent -- Claude, GPT, or custom agents -- can connect and manage tasks, post messages, search the knowledge base, write documents, create automations, track goals, collaborate on visual whiteboards, manage the CRM pipeline, invoice clients, run email campaigns, build dashboards, and schedule meetings. Destructive actions require a two-step confirmation flow with Redis-backed tokens to prevent accidental data loss. Service-account agents run behind a fail-closed policy gate (kill switches plus per-agent tool allowlists) and a first-class approval queue routes human-gated actions through a durable inbox. The MCP server supports Streamable HTTP, SSE, and stdio transports.',
   },
   {
     question: 'What is MCP?',
-    answer: 'MCP stands for Model Context Protocol, an open standard for connecting AI models to external tools and data sources. Instead of building custom integrations for each AI provider, BigBlueBam implements MCP once and any compliant agent can use all 215 tools. You can learn more at modelcontextprotocol.io.',
+    answer: 'MCP stands for Model Context Protocol, an open standard for connecting AI models to external tools and data sources. Instead of building custom integrations for each AI provider, BigBlueBam implements MCP once and any compliant agent can use all 340 tools. You can learn more at modelcontextprotocol.io.',
   },
   {
     question: 'Can I use my own LLM?',
@@ -1460,11 +1460,11 @@ const faqs: Faq[] = [
   },
   {
     question: 'Is BigBlueBam open source?',
-    answer: 'BigBlueBam is source-available on GitHub. The full codebase -- frontend, API, all nine apps, Docker Compose stack, Helm chart, and migrations -- is in a single monorepo. You can self-host it on your own infrastructure with no external dependencies beyond the Docker images. Check the repository for the specific license terms.',
+    answer: 'BigBlueBam is source-available on GitHub. The full codebase -- frontends, fourteen app APIs, Docker Compose stack, Helm chart, and migrations -- is in a single monorepo. You can self-host it on your own infrastructure with no external dependencies beyond the Docker images. Check the repository for the specific license terms.',
   },
   {
     question: 'How do I deploy BigBlueBam?',
-    answer: 'The quickest way is to clone the repository, copy .env.example to .env, fill in your secrets, and run docker compose up -d. This starts 19 services including PostgreSQL, Redis, MinIO, Qdrant, all nine app APIs, their frontends, the MCP server, and a background worker. Everything is accessible through a single nginx reverse proxy on port 80. For production, a Helm chart is provided at infra/helm/ for Kubernetes deployment.',
+    answer: 'The quickest way is to clone the repository, copy .env.example to .env, fill in your secrets, and run docker compose up -d. This starts a full stack including PostgreSQL, Redis, MinIO, Qdrant, all fourteen app APIs, their frontends, the MCP server, and a background worker. Everything is accessible through a single nginx reverse proxy on port 80. For production, a Helm chart is provided at infra/helm/ for Kubernetes deployment. Operators can also skip the CLI admin prompt entirely and have the first visitor create the SuperUser account from the site via the new /b3/bootstrap page.',
   },
   {
     question: 'What database does it use?',
@@ -1803,7 +1803,7 @@ function UserGuideContent() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">User Guide</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
-          A practical guide to using BigBlueBam's nine integrated applications. Whether you are managing sprints,
+          A practical guide to using BigBlueBam's fourteen integrated applications. Whether you are managing sprints,
           messaging your team, building a knowledge base, writing documents, automating workflows, collaborating on whiteboards, managing your CRM pipeline, or handling
           customer support tickets, this guide covers the essentials.
         </p>
@@ -1833,8 +1833,8 @@ function UserGuideContent() {
             <h3 className="mb-3 text-lg font-semibold text-zinc-900">Navigation Overview</h3>
             <p className="mb-3 text-sm text-zinc-600">
               BigBlueBam uses a cross-app navigation system with colored pills at the top of the screen. Each pill
-              represents one of the nine apps: Bam (blue), Banter (violet), Beacon (amber), Brief (emerald), Bolt (rose),
-              Bearing (indigo), Board (cyan), Bond (pink), and Helpdesk (sky). Click any pill to switch apps without losing your place. Within each app, a collapsible
+              represents one of the fourteen apps: Bam, Banter, Beacon, Brief, Bolt, Bearing, Board, Bond,
+              Blast, Bill, Blank, Book, Bench, and Helpdesk. Click any pill to switch apps without losing your place. Within each app, a collapsible
               sidebar provides contextual navigation -- projects in Bam, channels in Banter, folders in Brief, and so on.
             </p>
             <p className="text-sm text-zinc-600">
@@ -2165,7 +2165,7 @@ function UserGuideContent() {
               <strong> IF</strong> adds optional conditions that filter when the automation fires -- for example, "if the
               task has the label 'bug'" or "if the message contains '@urgent'." <strong>THEN</strong> defines one or more
               actions to execute -- for example, "post a message in the #releases channel" or "create a Beacon article."
-              Actions are MCP tools, which means automations have access to the full 215-tool catalog.
+              Actions are MCP tools, which means automations have access to the full 340-tool catalog.
             </p>
           </div>
 
@@ -2282,7 +2282,7 @@ function UserGuideContent() {
               Bearing provides three report types: period reports (summary of all goals in a period with completion
               rates), at-risk reports (all goals currently flagged as at-risk or behind across the organization), and
               owner reports (all goals owned by a specific user). Reports can be generated via the UI or through
-              12 MCP tools that let AI agents produce and share reports in Banter channels.
+              12 MCP tools that let AI agents produce reports, flag risks, and share summaries in Banter channels.
             </p>
           </div>
         </div>
@@ -2413,7 +2413,9 @@ function UserGuideContent() {
               Bond provides pipeline analytics including conversion rates between stages, average deal size,
               average stage duration, revenue forecast (weighted by deal probability), and win/loss analysis.
               Reports can be filtered by date range, pipeline, owner, and company. AI agents can generate and
-              share pipeline reports in Banter channels through 19 dedicated MCP tools.
+              share pipeline reports in Banter channels through 23 dedicated MCP tools, including a
+              contact upsert-by-email endpoint and dedupe primitives that surface likely duplicate
+              contacts with confidence scores.
             </p>
           </div>
         </div>
@@ -2451,12 +2453,145 @@ function UserGuideContent() {
           </div>
 
           <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Scheduled Posts and Quiet Hours</h3>
+            <p className="text-sm text-zinc-600">
+              Every channel can carry a quiet-hours policy (IANA timezone, allowed hours, optional
+              weekday-only, optional urgency-override consent flag). Immediate posts that land in a
+              quiet window return 409 unless the caller explicitly defers (auto-converts to a
+              scheduled post at the next allowed time) or the channel policy grants an urgency
+              override. Scheduled posts are persisted to banter_scheduled_messages and fire via a
+              BullMQ delayed job; a startup reconciler re-enqueues any pending rows that survived
+              a Redis flush. The banter_schedule_post MCP tool is the clean-named caller for
+              deferred sends.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Agent Pattern Subscriptions</h3>
+            <p className="text-sm text-zinc-600">
+              Agent-class callers can register pattern subscriptions on a channel (keyword,
+              interrogative, mention, or admin-only regex). A worker consumes banter message
+              events, evaluates active subscriptions, and fires a banter.message.matched Bolt event
+              per match so downstream rules can route the signal. Channels gate who may subscribe
+              via agent_subscription_policy, rate-limits are per-subscription-per-hour plus a
+              per-subscriber ceiling, and a can_access preflight runs before any event emits so
+              private-channel content cannot leak into public routing fan-outs.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
             <h3 className="mb-3 text-lg font-semibold text-zinc-900">Admin Settings</h3>
             <p className="text-sm text-zinc-600">
               Workspace admins can configure Banter settings including default notification preferences, message
               retention policies, who can create channels, file upload limits, and external webhook integrations.
               User groups (like @backend-team or @design) can be created to mention and notify groups of people at once.
               Presence status (online, away, do not disturb, offline) is shown next to user avatars across the platform.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Agentic Platform */}
+      <div className="mb-12">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+            <Bot className="h-4 w-4" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-900">Agentic Platform -- Cross-App Capabilities</h2>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Agent Identity, Audit, and Heartbeat</h3>
+            <p className="text-sm text-zinc-600">
+              Every user carries an actor_type (human, agent, service). activity_log rows mirror
+              the actor_type at write time so queries like "everything an agent did in the last
+              24 hours" run without email-pattern inference. Agent runners call agent_heartbeat
+              on a schedule; the platform tracks last_heartbeat_at and surface liveness alongside
+              the runner's advertised capabilities. agent_audit and agent_self_report round out
+              the self-observation surface so an agent can produce its own daily digest.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Approval Queues (agent_proposals)</h3>
+            <p className="text-sm text-zinc-600">
+              Durable proposal registry replaces ad-hoc Banter-thread HITL. Agents call
+              proposal_create with a proposed action, payload, and approver; humans see
+              everything waiting on them via proposal_list; proposal_decide records the verdict
+              and fires proposal.created and proposal.decided Bolt events. The confirm_action
+              two-step token flow runs in Redis with a dynamic TTL (5 minutes for human approvers,
+              60 seconds for agent-to-agent chains).
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Visibility Preflight (can_access)</h3>
+            <p className="text-sm text-zinc-600">
+              Before an agent surfaces any entity into a shared surface, it must preflight the
+              asker's ability to see it. can_access resolves a user + entity_type + entity_id
+              pair to a structured allow/deny reason, reusing each app's existing visibility
+              predicates so answers are consistent with what the list and detail endpoints
+              would return.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Read Plane: Search, Resolve, Activity, Composite Views</h3>
+            <p className="text-sm text-zinc-600">
+              search_everything fans out across all seven searchable apps with normalized scoring
+              and optional asker-mode filtering via can_access. resolve_references turns
+              free-text mentions (plus the canonical [[TASK-123]], [[deal:Acme]], @jane,
+              #project-slug syntax) into ranked entity candidates with confidence and
+              disambiguation hints. activity_query and activity_by_actor read a unified view
+              over Bam, Bond, and Helpdesk activity logs with correct actor_type mapping.
+              account_view, project_view, and user_view compose parallel fan-outs across the
+              suite with partial-failure semantics and a five-second per-arm timeout.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Write Plane: Upserts, Entity Links, Attachments</h3>
+            <p className="text-sm text-zinc-600">
+              Idempotent upserts land for bond_upsert_contact (by email), beacon_upsert_by_slug,
+              helpdesk_upsert_user, and task_upsert_by_external_id. Each returns a created flag
+              so callers can log create vs. update correctly, and each emits a *.upserted Bolt
+              event. entity_links is a durable cross-app linking table backfilled from existing
+              per-app FKs (tickets.task_id, bill_invoices.bond_deal_id, etc.) with three MCP
+              tools for listing, creating, and removing links. Attachment metadata is exposed
+              through a federated Bam-api dispatcher so attachment_get and attachment_list
+              surface scan_status, mime, size, signature, and uploader across Bam, Helpdesk,
+              Beacon, and Brief without reaching into MinIO directly.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Agent Policies and Outbound Webhooks</h3>
+            <p className="text-sm text-zinc-600">
+              agent_policies drives per-agent kill switches and tool allowlists. A register-tool
+              wrapper in the MCP server fails closed on any service-account invocation when
+              enabled=false or the tool is not in allowed_tools; a short-TTL cache with Redis
+              PubSub invalidation makes policy flips propagate across MCP instances in seconds.
+              Outbound webhook delivery pushes subscribed Bolt events to agent runners via
+              HMAC-signed POSTs with a 0s/30s/2m/10m/30m/2h/6h/dead-letter backoff schedule,
+              SSRF guards on the target URL, a 256KB payload cap, and a circuit breaker that
+              auto-disables the webhook after 20 consecutive failures.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-6">
+            <h3 className="mb-3 text-lg font-semibold text-zinc-900">Long Tail: Dedupe, Trends, Expertise, Observability</h3>
+            <p className="text-sm text-zinc-600">
+              dedupe_decisions records "duplicate" / "not duplicate" / "needs review" verdicts
+              in a canonical ordered-pair form so the same pair cannot be re-surfaced without
+              consensus. bond_find_duplicates and helpdesk_find_similar_tickets return scored
+              candidates with prior-decision annotations. helpdesk_ticket_count_by_phrase and
+              bam_task_count_by_phrase bucket tsvector hits by hour/day/week over a bounded
+              window. expertise_for_topic ranks people across Beacon ownership, Bam activity,
+              Brief authorship, and Bond coverage with a configurable time-decay half-life.
+              bolt_event_trace and bolt_recent_events explain why rules fired or skipped, and
+              a runtime catalog.drift_detected event surfaces producer/catalog drift with 24h
+              Redis-backed suppression.
             </p>
           </div>
         </div>
@@ -2472,7 +2607,7 @@ function DeploymentContent() {
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Deployment Guide</h1>
         <p className="mt-3 max-w-2xl text-base text-zinc-600">
           Everything you need to deploy, configure, and maintain a BigBlueBam instance. The platform runs
-          as a 19-service Docker Compose stack behind a single nginx reverse proxy.
+          as a multi-service Docker Compose stack (fourteen app APIs plus MCP server, worker, voice agent, frontends, and data services) behind a single nginx reverse proxy.
         </p>
       </div>
 
@@ -2654,7 +2789,7 @@ function DeploymentContent() {
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">board-api</td><td className="py-2 pr-4">4008</td><td className="py-2">Board visual collaboration whiteboard API + WebSocket</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">bond-api</td><td className="py-2 pr-4">4009</td><td className="py-2">Bond CRM pipeline and contact management API</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">helpdesk-api</td><td className="py-2 pr-4">4001</td><td className="py-2">Helpdesk support ticket API</td></tr>
-                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">mcp-server</td><td className="py-2 pr-4">3001</td><td className="py-2">MCP protocol server (215 tools)</td></tr>
+                <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">mcp-server</td><td className="py-2 pr-4">3001</td><td className="py-2">MCP protocol server (340 tools)</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">worker</td><td className="py-2 pr-4">--</td><td className="py-2">BullMQ background jobs (email, notifications, export, sprint-close)</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">migrate</td><td className="py-2 pr-4">--</td><td className="py-2">Runs SQL migrations on startup, then exits</td></tr>
                 <tr className="border-b border-zinc-100"><td className="py-2 pr-4 font-medium">postgres</td><td className="py-2 pr-4">5432</td><td className="py-2">PostgreSQL 16 primary database</td></tr>
@@ -2916,7 +3051,7 @@ interface SidebarSection {
 }
 
 const sidebarSections: SidebarSection[] = [
-  { id: 'mcp-tools', label: 'MCP Tools', sublabel: '215 tools', icon: <Zap className="h-4 w-4" /> },
+  { id: 'mcp-tools', label: 'MCP Tools', sublabel: '340 tools', icon: <Zap className="h-4 w-4" /> },
   { id: 'api-endpoints', label: 'API Endpoints', icon: <Server className="h-4 w-4" /> },
   { id: 'user-guide', label: 'User Guide', icon: <Users className="h-4 w-4" /> },
   { id: 'deployment', label: 'Deployment', icon: <Rocket className="h-4 w-4" /> },

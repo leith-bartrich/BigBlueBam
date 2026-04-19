@@ -22,6 +22,11 @@
   <a href="#bearing">Bearing</a> &bull;
   <a href="#board">Board</a> &bull;
   <a href="#bond">Bond</a> &bull;
+  <a href="#blast">Blast</a> &bull;
+  <a href="#bench">Bench</a> &bull;
+  <a href="#book">Book</a> &bull;
+  <a href="#blank">Blank</a> &bull;
+  <a href="#bill">Bill</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#documentation">Docs</a>
@@ -29,8 +34,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/tests-900%2B%20passing-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/MCP%20tools-215-blue" alt="MCP Tools" />
-  <img src="https://img.shields.io/badge/Docker%20services-19-blueviolet" alt="Docker Services" />
+  <img src="https://img.shields.io/badge/MCP%20tools-340-blue" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/apps-14-blueviolet" alt="Apps" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
 </p>
 
@@ -46,7 +51,7 @@ Most work platforms are built for humans talking to humans. BigBlueBam is built 
 
 The **suite** is the shared workspace. When an AI agent creates a task, replies to a customer, updates a deal, or posts to a Banter channel, it shows up in real time, right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
-This is made possible by **215 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to project boards, sprints, team messaging, helpdesk tickets, knowledge base, collaborative docs, workflow automations, goals and OKRs, whiteboards, CRM pipelines, email campaigns, analytics dashboards, and more.
+This is made possible by **340 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to project boards, sprints, team messaging (with scheduled posts and pattern subscriptions), helpdesk tickets, knowledge base, collaborative docs, workflow automations with runtime observability, goals and OKRs, whiteboards, CRM pipelines with dedupe, email campaigns, analytics dashboards, scheduling with mixed human-and-agent rosters, forms, invoicing, plus cross-cutting platform capabilities (cross-app search, composite subject views, entity linking, durable proposal queues, per-agent kill switches, HMAC-signed outbound webhooks). Service-account agents run behind a fail-closed policy gate with confirm-action tokens backed by Redis so destructive flows survive rolling deploys.
 
 ---
 
@@ -306,22 +311,29 @@ Configure calendar feeds, API keys, and webhooks under Settings:
 
 ## For AI Agents
 
-BigBlueBam exposes **215 MCP (Model Context Protocol) tools** that give AI assistants full access to your project management workflow, team messaging, customer support, knowledge base, collaborative documents, workflow automations, goals & OKRs, visual collaboration whiteboards, and CRM pipeline management. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
+BigBlueBam exposes **340 MCP (Model Context Protocol) tools** that give AI assistants full access to every app in the suite plus cross-cutting platform capabilities. Connect Claude, Claude Code, or any MCP-compatible agent and let it work alongside your team.
 
 ### What AI Agents Can Do
 
-- **Create and manage tasks** — create tasks, set priority and assignee, move cards across phases, add subtasks
+- **Create and manage tasks** — create tasks, set priority and assignee, move cards across phases, add subtasks, and upsert by external id for idempotent webhook/import flows
 - **Run sprints** — create sprints, assign tasks, start/complete sprints, generate sprint reports
-- **Triage helpdesk tickets** — when a customer submits a ticket, a task is auto-created; AI agents can then triage by adjusting priority, setting timelines, assigning to the right engineer, rejecting out-of-scope requests, and posting responses to customers
-- **Generate reports** — velocity reports, burndown charts, cumulative flow, workload distribution, overdue task alerts
+- **Triage helpdesk tickets** — when a customer submits a ticket, a task is auto-created; AI agents can then triage by adjusting priority, upserting the requester by email, checking for similar open tickets via the dedupe primitives, setting timelines, assigning to the right engineer, and posting responses to customers
+- **Generate reports** — velocity reports, burndown charts, cumulative flow, workload distribution, overdue task alerts, plus phrase-count trend queries across helpdesk tickets and Bam tasks
 - **Collaborate** — post comments, log time, bulk update tasks, suggest branch names
-- **Message the team via Banter** — post messages, read channels, respond in threads, share task updates, manage channels, react to messages, search conversations, and participate in voice calls as spoken participants
-- **Manage the knowledge base via Beacon** — create and publish Beacons, search with semantic + graph retrieval, verify content freshness, link related knowledge, manage governance policies, and save reusable queries
-- **Author collaborative documents via Brief** — create, edit, and search documents, manage version history, leave inline comments, apply templates, and graduate finished documents into Beacons
-- **Automate workflows with Bolt** — create trigger-condition-action rules, manage executions, browse templates, and orchestrate cross-product automations that compile to MCP tool calls
-- **Track goals & OKRs with Bearing** — create time-boxed periods, define goals with key results, link KRs to Bam tasks for automatic progress, post status updates, and generate at-risk reports
+- **Message the team via Banter** — post messages immediately or schedule for later while respecting per-channel quiet hours, manage channels, react, search conversations and call transcripts, subscribe to message patterns, and participate in voice calls as spoken participants
+- **Manage the knowledge base via Beacon** — create, publish, upsert-by-slug, search with semantic plus graph retrieval, verify content freshness, link related knowledge, manage governance policies, and save reusable queries
+- **Author collaborative documents via Brief** — create, edit, upsert-by-slug, search documents, manage version history, leave inline comments, apply templates, and graduate finished documents into Beacons
+- **Automate workflows with Bolt** — create trigger-condition-action rules, inspect executions, trace why each rule fired or skipped, browse templates, and orchestrate cross-product automations against the full 340-tool catalog
+- **Track goals and OKRs with Bearing** — create time-boxed periods, define goals with key results, link KRs to Bam tasks for automatic progress, post status updates, and generate at-risk reports
 - **Collaborate visually on Board** — create and manage whiteboard rooms, add and arrange shapes, read canvas content for AI analysis, manage participants, embed cross-product content, and run sticky-to-task pipelines
-- **Manage CRM pipeline with Bond** — create and update contacts, companies, and deals, advance deals through pipeline stages, log activities, search the contact database, and generate pipeline reports
+- **Manage CRM pipeline with Bond** — create, update, upsert-by-email, merge contacts, advance deals through pipeline stages, detect likely duplicates with confidence scores, log activities, and generate pipeline reports
+- **Run email campaigns with Blast** — draft campaigns, build segments, generate templates and subject lines, schedule sends, and pull engagement analytics
+- **Bill clients with Bill** — create invoices from deals or time entries, add line items, record payments, send reminders, and surface profitability and revenue summaries
+- **Collect with Blank forms** — generate form definitions from a prompt, publish forms, export submissions, and summarize free-text responses
+- **Schedule with Book** — create, update, cancel, and RSVP to events, and find meeting times across mixed human-plus-agent rosters
+- **Analyze with Bench** — create dashboards, run ad-hoc queries, schedule reports, detect anomalies, and compare metrics across time periods
+- **Find anything with cross-app platform tools** — `search_everything` fans out across seven searchable apps with normalized scoring; `resolve_references` turns free text into ranked entity candidates; `account_view` / `project_view` / `user_view` compose full subject-centric pictures; `entity_links_list` exposes durable cross-app relationships; `activity_query` and `activity_by_actor` read a unified activity log
+- **Run responsibly** — `can_access` preflights visibility before surfacing entities to askers; `proposal_create` / `proposal_list` / `proposal_decide` drive a durable approval queue; `agent_heartbeat` tracks runner liveness; `agent_policy_set` gives operators kill switches and per-agent tool allowlists that fail closed; `agent_webhook_configure` pushes events to external runners with HMAC-signed retries, SSRF guards, and a dead-letter queue
 
 ### Example: AI-Powered Helpdesk Triage
 
@@ -343,30 +355,53 @@ BigBlueBam exposes **215 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Tools Reference
 
-**215 tools** across 20 categories:
+**340 tools** across the fourteen apps plus cross-cutting agentic platform surfaces:
 
 | Category | Count | What they cover |
 |----------|------:|-----------------|
-| **Task Management** | 10 | CRUD, move, bulk update, duplicate, time logging |
-| **Board & Phases** | 4 | Board view, phase CRUD, reorder |
+| **Task Management** | 12 | CRUD, move, bulk update, duplicate, time logging, task-by-human-id, upsert-by-external-id |
 | **Sprints** | 5 | CRUD, start, complete, report |
 | **Projects** | 5 | List, get, create, test Slack webhook, disconnect GitHub |
 | **Reports** | 8 | Velocity, burndown, CFD, cycle time, time tracking, overdue, workload, status distribution |
 | **Comments** | 2 | List, add |
-| **Members** | 2 | List, get my tasks |
+| **Members** | 4 | List, get my tasks, find user by name/email |
+| **Bam Resolvers** | 4 | Phases, labels, states, epics |
 | **Templates** | 2 | List, create from template |
 | **Import** | 2 | CSV import, GitHub Issues import |
 | **User Profile & Notifications** | 10 | Profile CRUD, org switching, password, logout, notification feed management |
+| **User Resolver** | 3 | find_user_by_email, find_user_by_name, list_users |
 | **Platform Admin** | 5 | Platform settings toggle, beta signups, public config (SuperUser-gated) |
-| **Banter Messaging** | 47 | Channels, DMs, messages, threads, reactions, calls, search, admin, presence, preferences |
-| **Beacon Knowledge Base** | 29 | CRUD, search, verification, graph, policies, saved queries |
-| **Brief Documents** | 18 | CRUD, collaboration, versions, search, graduation, templates |
-| **Bolt Automation** | 12 | Rule CRUD, execution management, templates, triggers, conditions, actions |
+| **Banter Messaging** | 53 | Channels, DMs, messages, threads, reactions, calls, search, scheduled posts, quiet-hours deferrals, admin, presence, preferences |
+| **Banter Subscriptions** | 3 | Agent pattern-match subscribe / unsubscribe / list |
+| **Beacon Knowledge Base** | 30 | CRUD, upsert-by-slug, search, verification, graph, policies, saved queries |
+| **Brief Documents** | 18 | CRUD, upsert-by-slug, collaboration, versions, search, graduation, templates |
+| **Bolt Automation** | 13 | Rule CRUD, execution management, templates, triggers, conditions, actions, get-by-name |
+| **Bolt Observability** | 2 | bolt_event_trace, bolt_recent_events |
 | **Bearing Goals** | 12 | Periods, goals, key results, progress, links, reports, at-risk detection |
 | **Board Whiteboard** | 14 | Room CRUD, shapes, assets, canvas reading, participants, embeds, sticky-to-task |
-| **Bond CRM** | 19 | Contacts, companies, deals, pipeline stages, activities, notes, search, reports |
-| **Helpdesk** | 7 | Ticket operations, public/admin settings |
-| **Utility** | 2 | Server info, action confirmation |
+| **Bond CRM** | 23 | Contacts (with upsert-by-email), companies, deals, pipeline stages, activities, notes, search, reports |
+| **Blast Email Campaigns** | 14 | Campaigns, templates, segments, analytics, subject-line generation |
+| **Bill Invoicing** | 16 | Invoices, line items, payments, expenses, clients, profitability, revenue summary |
+| **Bench Analytics** | 11 | Dashboards, widgets, ad-hoc queries, scheduled reports, anomaly detection, period compare |
+| **Book Scheduling** | 11 | Events, RSVPs, booking pages, availability (including mixed human-and-agent rosters) |
+| **Blank Forms** | 11 | Forms, submissions, analytics, AI generation, response summarization |
+| **Helpdesk** | 11 | Ticket operations, public/admin settings, user upsert-by-email |
+| **Agent Identity** | 3 | agent_heartbeat, agent_audit, agent_self_report |
+| **Agent Proposals** | 3 | proposal_create, proposal_list, proposal_decide |
+| **Agent Policies** | 3 | agent_policy_get / set / list (per-agent kill switches and allowlists) |
+| **Agent Webhooks** | 4 | Configure, rotate-secret, deliveries list, redeliver |
+| **Visibility Preflight** | 1 | can_access |
+| **Unified Activity** | 2 | activity_query, activity_by_actor |
+| **Cross-App Search** | 1 | search_everything |
+| **Fuzzy Entity Resolver** | 1 | resolve_references |
+| **Composite Views** | 3 | account_view, project_view, user_view |
+| **Entity Links** | 3 | entity_links_list / create / remove |
+| **Attachments** | 2 | attachment_get, attachment_list (federated across apps) |
+| **Dedupe** | 4 | bond_find_duplicates, helpdesk_find_similar_tickets, dedupe_record_decision, dedupe_list_pending |
+| **Trend Queries** | 2 | helpdesk_ticket_count_by_phrase, bam_task_count_by_phrase |
+| **Expertise** | 1 | expertise_for_topic (ranked across Beacon, Bam, Brief, Bond) |
+| **Ingest Fingerprint** | 1 | ingest_fingerprint_check (Redis-backed intake dedup) |
+| **Utility** | 2 | Server info, action confirmation (Redis-backed tokens with dynamic TTL) |
 
 ### MCP Setup
 
@@ -652,7 +687,7 @@ All services are accessed through a single nginx container on port 80:
 | `/board/ws` | Fastify `:4008` | Board WebSocket (real-time canvas sync) |
 | `/bond/` | nginx | Bond CRM SPA |
 | `/bond/api/` | Fastify `:4009` | Bond REST API |
-| `/mcp/` | MCP Server `:3001` | Model Context Protocol (215 tools) |
+| `/mcp/` | MCP Server `:3001` | Model Context Protocol (340 tools) |
 
 Infrastructure services (internal, not exposed via nginx):
 
@@ -721,7 +756,7 @@ pnpm test  # 900+ tests across all packages
 ┌──────▼────┐ ┌──▼───────┐ ┌▼──────────┐ ┌──────────┐ ┌───────▼──────┐ ┌──────────┐
 │ Bam API   │ │ Banter   │ │ MCP Server│ │ Brief    │ │ Bolt API │ │ LiveKit SFU  │ │ Worker   │
 │ :4000     │ │ API :4002│ │ :3001     │ │ API :4005│ │ :4006    │ │ :7880 (voice)│ │ BullMQ   │
-│ +WebSocket│ │ +WS      │ │ 215 tools │ │ +WS      │ │          │ │ +voice-agent │ │ jobs     │
+│ +WebSocket│ │ +WS      │ │ 340 tools │ │ +WS      │ │          │ │ +voice-agent │ │ jobs     │
 └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └────┬─────┘ └──────────────┘ └────┬─────┘
       │             │             │            │                  │
 ┌─────▼─────────────▼─────────────▼────────────▼───────────────────▼───┐
@@ -749,48 +784,52 @@ pnpm test  # 900+ tests across all packages
 
 ```
 apps/
-  api/              → Fastify REST API + WebSocket (23 route modules)
-  frontend/         → React SPA (33 components, 8 pages)
-  mcp-server/       → MCP protocol server (215 tools)
-  worker/           → BullMQ background jobs (incl. Banter notifications & retention)
-  helpdesk-api/     → Helpdesk Fastify API (auth, tickets, messages)
-  helpdesk/         → Helpdesk React SPA (client-facing portal)
-  banter-api/       → Banter Fastify API + WebSocket (15 route modules, 18 DB tables)
-  banter/           → Banter React SPA (14 components, 7 pages)
-  beacon-api/       → Beacon Fastify API (knowledge base, search, graph, policies)
-  beacon/           → Beacon React SPA (knowledge home, graph explorer, editor)
-  brief-api/        → Brief Fastify REST API + WebSocket (8 route modules, 11 DB tables)
-  brief/            → Brief React SPA (collaborative editor, templates, version history)
-  bolt-api/         → Bolt Fastify REST API (workflow automation, rules, executions)
-  bolt/             → Bolt React SPA (visual rule builder, execution log, templates)
+  api/              → Bam Fastify REST API + WebSocket (project management core)
+  frontend/         → Every React SPA under one container
+  mcp-server/       → MCP protocol server (340 tools, Redis-backed confirm tokens)
+  worker/           → BullMQ background jobs (emails, notifications, scheduled Banter posts, webhook dispatch + DLQ)
+  helpdesk-api/     → Helpdesk Fastify API (tickets, messages, similar-tickets lookup, user upsert)
+  banter-api/       → Banter Fastify API + WebSocket (channels, threads, calls, quiet hours, scheduled posts, agent subscriptions)
+  beacon-api/       → Beacon Fastify API (knowledge base, search, graph, policies, upsert-by-slug)
+  brief-api/        → Brief Fastify REST API + WebSocket (collaborative docs with upsert-by-slug)
+  bolt-api/         → Bolt Fastify REST API (workflow automation, rules, executions, event trace, drift detection)
   bearing-api/      → Bearing Fastify REST API (goals, key results, progress, reporting)
-  bearing/          → Bearing React SPA (goal dashboard, timeline, detail views)
-  board-api/        → Board Fastify REST API + WebSocket (whiteboard rooms, shapes, assets, conferencing)
-  board/            → Board React SPA (infinite canvas, real-time collaboration, audio conferencing)
-  bond-api/         → Bond Fastify REST API (contacts, companies, deals, pipeline, activities)
-  bond/             → Bond React SPA (pipeline board, contact/company detail, deal tracking)
+  board-api/        → Board Fastify REST API + WebSocket (whiteboard rooms, shapes, conferencing)
+  bond-api/         → Bond Fastify REST API (CRM with upsert-by-email and dedupe primitives)
+  blast-api/        → Blast Fastify REST API (email campaigns, templates, segments, analytics)
+  bench-api/        → Bench Fastify REST API (analytics dashboards, ad-hoc queries, scheduled reports)
+  book-api/         → Book Fastify REST API (scheduling with mixed human/agent availability)
+  blank-api/        → Blank Fastify REST API (forms, submissions, conditional routing)
+  bill-api/         → Bill Fastify REST API (invoicing, expenses, PDF generation, recurring billing)
   voice-agent/      → AI voice agent (Python/FastAPI, LiveKit Agents SDK)
+  integration-tests/→ Cross-app integration harness (Vitest + mock service clients)
+  e2e/              → Playwright end-to-end suite
 packages/
-  shared/           → Zod schemas, TypeScript types, constants
+  shared/           → Zod schemas, TypeScript types, mention-syntax, publishBoltEvent helper
+  ui/               → Shared React component library
+  logging/          → Pino-based structured logger shared across services
+  service-health/   → /healthz + /readyz Fastify plugin
+  db-stubs/         → Drizzle stubs and test bootstraps
+  livekit-tokens/   → LiveKit access-token minting
 infra/
-  postgres/         → Database schema (init.sql — 40+ tables)
-  nginx/            → Reverse proxy config (single nginx serves all SPAs)
+  postgres/         → 140 idempotent numbered migrations (tip 0140)
+  nginx/            → Reverse proxy config (single nginx serves every SPA)
   livekit/          → LiveKit SFU configuration
-docs/               → 8 documentation pages with Mermaid diagrams
-scripts/            → Utility and seed scripts
+  helm/             → Kubernetes Helm chart
+docs/               → Hand-authored plus generated per-app docs
+scripts/            → Deploy adapters, seeders, drift guards, screenshot generators
+site/               → Marketing site (served at /)
 ```
 
 ### Key Numbers
 
 | Metric | Count |
 |--------|-------|
-| Docker services | 19 |
-| MCP tools | 215 (64 Bam + 47 Banter + 29 Beacon + 18 Brief + 12 Bolt + 12 Bearing + 14 Board + 19 Bond) |
+| Apps | 14 (Bam, Banter, Beacon, Bearing, Bench, Bill, Blank, Blast, Board, Bolt, Bond, Book, Brief, Helpdesk) |
+| MCP tools | 340 (54 Bam core + 53 Banter + 30 Beacon + 23 Bond + 18 Brief + 16 Bill + 14 Board + 14 Blast + 13 Bolt + 12 Bearing + 11 Helpdesk + 11 Book + 11 Blank + 11 Bench + 49 cross-cutting platform) |
+| Bolt event catalog | 109 registered events across app and platform sources |
 | Test cases | 900+ |
-| API route modules | 46 (23 Bam + 15 Banter + 8 Brief) |
-| Database tables | 51+ (25 Bam + 18 Banter + 11 Brief) |
-| Frontend components | 47+ (33 Bam + 14 Banter) |
-| Documentation pages | 8 |
+| Migrations | 140 (tip 0140, additive + idempotent) |
 
 ---
 

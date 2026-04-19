@@ -4,6 +4,7 @@ import {
   Users,
   RefreshCw,
   Globe,
+  Bot,
 } from 'lucide-react';
 import { SectionWrapper } from '@/components/ui/section-wrapper';
 import { AnimatedReveal } from '@/components/ui/animated-reveal';
@@ -38,6 +39,13 @@ const features = [
     description:
       'Timezone-aware scheduling with automatic conversion, world clock overlay, and team availability heatmaps.',
     color: 'bg-blue-100 text-blue-600',
+  },
+  {
+    icon: Bot,
+    title: 'AI Scheduling Operations',
+    description:
+      '11 MCP tools let AI agents create, update, cancel, and RSVP to events, and find meeting times across mixed human-plus-agent rosters where agents have unlimited virtual availability and humans carry their working hours.',
+    color: 'bg-sky-100 text-sky-600',
   },
 ];
 
