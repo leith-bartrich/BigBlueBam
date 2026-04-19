@@ -1,6 +1,21 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { WebSocket } from 'ws';
+
+// @types/ws is not in the dep tree, so we declare a minimal shape for
+// the WebSocket surface the plugin actually uses. @fastify/websocket
+// passes the real `ws` WebSocket at runtime; this type just pins the
+// methods/fields we read.
+type WebSocket = {
+  send: (data: string | Buffer) => void;
+  close: (code?: number, reason?: string) => void;
+  // Overload so the callers can type their listener args precisely
+  // (Buffer|string for 'message', etc.). `any` for listener matches
+  // the real ws EventEmitter surface without pulling in @types/ws.
+  // biome-ignore lint/suspicious/noExplicitAny: ws-compat surface
+  on: (event: string, listener: (...args: any[]) => void) => void;
+  readyState: number;
+  OPEN: number;
+};
 import { eq, and } from 'drizzle-orm';
 import Redis from 'ioredis';
 import { db } from '../db/index.js';
@@ -114,6 +129,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<AuthUser | 
         timezone: users.timezone,
         is_active: users.is_active,
         is_superuser: users.is_superuser,
+        kind: users.kind,
       },
     })
     .from(sessions)
@@ -288,7 +304,7 @@ async function websocketPlugin(fastify: FastifyInstance) {
           removeConnection(conn);
         });
 
-        socket.on('error', (err) => {
+        socket.on('error', (err: unknown) => {
           fastify.log.error({ err, userId: user.id }, '[ws] Socket error');
           removeConnection(conn);
         });

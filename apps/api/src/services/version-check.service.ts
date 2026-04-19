@@ -14,8 +14,11 @@ async function fetchLatestRemoteCommit() {
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
-    const data = await res.json();
-    return { sha: data.sha, date: data.commit.committer.date, message: data.commit.message.split('\n')[0] };
+    const data = (await res.json()) as {
+      sha: string;
+      commit: { committer: { date: string }; message: string };
+    };
+    return { sha: data.sha, date: data.commit.committer.date, message: data.commit.message.split('\n')[0] ?? '' };
   } catch {
     return null;
   }

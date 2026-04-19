@@ -170,9 +170,8 @@ export function App() {
         return <FormSettingsPage formId={route.id} onNavigate={navigate} />;
       case 'settings':
         return <SettingsPage onNavigate={navigate} />;
-      case 'public-form':
-        // Handled by the early return above; fallback for type-exhaustiveness.
-        return <PublicFormPage slug={route.slug} />;
+      // 'public-form' handled by the early return above; excluded from the
+      // narrowed union that reaches this switch.
       default:
         return null;
     }

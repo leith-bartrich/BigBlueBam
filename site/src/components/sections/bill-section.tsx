@@ -5,6 +5,7 @@ import {
   CreditCard,
   Users,
   RefreshCw,
+  Bot,
 } from 'lucide-react';
 import { SectionWrapper } from '@/components/ui/section-wrapper';
 import { AnimatedReveal } from '@/components/ui/animated-reveal';
@@ -39,6 +40,13 @@ const features = [
     description:
       'Set up recurring invoices on any schedule with automatic generation, sending, and overdue escalation.',
     color: 'bg-green-100 text-green-600',
+  },
+  {
+    icon: Bot,
+    title: 'AI Billing Operations',
+    description:
+      '16 MCP tools let AI agents create invoices from deals or time entries, add line items, record payments, send reminders, and surface profitability and revenue summaries.',
+    color: 'bg-emerald-100 text-emerald-600',
   },
 ];
 

@@ -1,5 +1,5 @@
-import { Plus, Link2, ExternalLink, Trash2, ToggleLeft, ToggleRight, Construction } from 'lucide-react';
-import { useBookingPages, useDeleteBookingPage, useUpdateBookingPage } from '@/hooks/use-booking-pages';
+import { Plus, Link2, ExternalLink, Trash2, Construction } from 'lucide-react';
+import { useBookingPages, useDeleteBookingPage } from '@/hooks/use-booking-pages';
 import { formatDate } from '@/lib/utils';
 
 interface BookingPageListPageProps {

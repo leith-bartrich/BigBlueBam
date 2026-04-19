@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, DollarSign } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useRates, useCreateRate, useDeleteRate } from '@/hooks/use-rates';
 import { formatCents, formatDate } from '@/lib/utils';
 
@@ -7,7 +7,7 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-export function RateListPage({ onNavigate }: Props) {
+export function RateListPage({ onNavigate: _onNavigate }: Props) {
   const { data: rates, isLoading } = useRates();
   const createRate = useCreateRate();
   const deleteRate = useDeleteRate();

@@ -88,8 +88,9 @@ export function BriefSection() {
             </div>
             <h3 className="text-base font-semibold text-zinc-900">AI Co-authoring</h3>
             <p className="mt-2 text-sm text-zinc-600">
-              AI agents create, edit, and comment on documents through 18 MCP tools. Draft content,
-              suggest edits, and graduate documents programmatically.
+              AI agents create, edit, comment on, upsert by slug, and graduate documents through
+              18 MCP tools. Attachment metadata surfaces through a federated dispatcher so agents
+              see mime, size, scan verdict, and uploader without reaching into object storage.
             </p>
           </div>
         </div>

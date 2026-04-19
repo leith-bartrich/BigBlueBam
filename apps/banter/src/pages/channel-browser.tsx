@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Search, Hash, Users, Plus, Check } from 'lucide-react';
 import { useBrowseChannels, useJoinChannel, useChannels } from '@/hooks/use-channels';
-import { cn, formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/utils';
 
 interface ChannelBrowserProps {
   onNavigate: (path: string) => void;

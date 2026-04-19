@@ -99,7 +99,7 @@ export async function getTimeline(
   // Fetch Bond deals with expected close dates in range
   // Bond API internal URL is derived from the Bam API base.
   // If BOND_API_INTERNAL_URL is not set, try the conventional address.
-  const bondBaseUrl = (env as Record<string, string>).BOND_API_INTERNAL_URL ?? 'http://bond-api:4009';
+  const bondBaseUrl = (env as unknown as Record<string, string | undefined>).BOND_API_INTERNAL_URL ?? 'http://bond-api:4009';
   const dealsPromise = fetchInternalJson(
     bondBaseUrl,
     `/v1/deals?expected_close_after=${startDate}&expected_close_before=${endDate}&limit=100`,

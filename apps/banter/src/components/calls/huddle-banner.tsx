@@ -13,7 +13,7 @@ interface HuddleBannerProps {
   onJoin: () => void;
 }
 
-export function HuddleBanner({ huddleId, participants, onJoin }: HuddleBannerProps) {
+export function HuddleBanner({ huddleId: _huddleId, participants, onJoin }: HuddleBannerProps) {
   return (
     <div className="flex items-center gap-3 px-4 py-2 bg-green-50 dark:bg-green-900/20 border-b border-green-200 dark:border-green-800">
       <div className="flex items-center gap-2">

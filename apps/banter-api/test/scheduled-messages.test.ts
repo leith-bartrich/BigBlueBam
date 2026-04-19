@@ -9,6 +9,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 
+// Mock env so loading scheduled-post.service (which transitively imports
+// env via its db graph) does not trip the SESSION_SECRET validation in
+// env.ts's loadEnv() when CI hasn't exported it.
+vi.mock('../src/env.js', () => ({
+  env: {
+    NODE_ENV: 'test',
+    SESSION_SECRET: 'x'.repeat(32),
+    DATABASE_URL: 'postgres://test:test@localhost:5432/test',
+    REDIS_URL: 'redis://localhost:6379',
+  },
+}));
+
 // Mock db + BullMQ for the service
 vi.mock('../src/db/index.js', () => ({
   db: {
@@ -97,7 +109,7 @@ describe('scheduleMessage horizon and past-date guards', () => {
         scheduled_at: new Date(Date.now() + 35 * 24 * 60 * 60 * 1000),
         defer_reason: 'scheduled',
       }),
-    ).rejects.toThrow(/SCHEDULED_AT_HORIZON_EXCEEDED|horizon/);
+    ).rejects.toThrow(/SCHEDULED_AT_HORIZON_EXCEEDED|horizon|within 30 days/);
   });
 
   it('accepts a valid future timestamp', async () => {

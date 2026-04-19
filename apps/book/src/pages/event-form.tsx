@@ -129,7 +129,7 @@ export function EventFormPage({ eventId, onNavigate }: EventFormPageProps) {
       await updateEvent.mutateAsync(payload as any);
       onNavigate(`/events/${eventId}`);
     } else {
-      const result = await createEvent.mutateAsync(payload as any);
+      await createEvent.mutateAsync(payload as any);
       onNavigate('/');
     }
   };

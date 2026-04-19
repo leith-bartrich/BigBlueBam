@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Play, Download, Save } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { useDataSources } from '@/hooks/use-data-sources';
 import { api } from '@/lib/api';
 
@@ -7,7 +7,7 @@ interface ExplorerPageProps {
   onNavigate: (path: string) => void;
 }
 
-export function ExplorerPage({ onNavigate }: ExplorerPageProps) {
+export function ExplorerPage({ onNavigate: _onNavigate }: ExplorerPageProps) {
   const { data: sourcesData } = useDataSources();
   const sources = sourcesData?.data ?? [];
 

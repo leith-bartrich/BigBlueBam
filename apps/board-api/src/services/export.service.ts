@@ -53,7 +53,7 @@ function computeBBox(elements: Record<string, unknown>[]): BBox {
     if (y + h > maxY) maxY = y + h;
   }
 
-  if (!isFinite(minX)) {
+  if (!Number.isFinite(minX)) {
     return { minX: 0, minY: 0, maxX: 800, maxY: 600 };
   }
 

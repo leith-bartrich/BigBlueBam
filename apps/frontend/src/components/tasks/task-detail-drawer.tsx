@@ -4,7 +4,6 @@ import * as RadixDialog from '@radix-ui/react-dialog';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
-  Calendar,
   User,
   Tag,
   Hash,
@@ -36,7 +35,7 @@ import {
 } from 'lucide-react';
 import type { Task, Priority, ApiResponse, PaginatedResponse } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
-import { cn, formatDate, formatRelativeTime, isOverdue, priorityColor } from '@/lib/utils';
+import { cn, formatDate, formatRelativeTime, isOverdue } from '@/lib/utils';
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
@@ -144,7 +143,7 @@ export function TaskDetailDrawer({
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [showTimeForm, setShowTimeForm] = useState(false);
   const [timeMinutes, setTimeMinutes] = useState('');
-  const [timeDate, setTimeDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [timeDate, setTimeDate] = useState(() => new Date().toISOString().split('T')[0]!);
   const [timeDescription, setTimeDescription] = useState('');
   const [showShareBanter, setShowShareBanter] = useState(false);
   const [banterChannelId, setBanterChannelId] = useState('');
@@ -268,7 +267,7 @@ export function TaskDetailDrawer({
       queryClient.invalidateQueries({ queryKey: ['task-time-entries', task?.id] });
       setShowTimeForm(false);
       setTimeMinutes('');
-      setTimeDate(new Date().toISOString().split('T')[0]);
+      setTimeDate(new Date().toISOString().split('T')[0]!);
       setTimeDescription('');
     },
   });
@@ -660,7 +659,7 @@ export function TaskDetailDrawer({
                             )}
                           </button>
                         ))}
-                        {task.custom_fields?.helpdesk_ticket_id && (
+                        {Boolean(task.custom_fields?.helpdesk_ticket_id) && (
                           <button
                             onClick={() => setActiveTab('helpdesk')}
                             className={cn(
@@ -1088,7 +1087,7 @@ export function TaskDetailDrawer({
                       )}
 
                       {/* Helpdesk Tab */}
-                      {activeTab === 'helpdesk' && task.custom_fields?.helpdesk_ticket_id && (
+                      {activeTab === 'helpdesk' && Boolean(task.custom_fields?.helpdesk_ticket_id) && (
                         <HelpdeskPanel ticketId={task.custom_fields.helpdesk_ticket_id as string} />
                       )}
                     </div>

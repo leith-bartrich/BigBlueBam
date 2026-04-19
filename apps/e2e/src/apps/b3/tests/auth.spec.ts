@@ -1,4 +1,5 @@
 import { test, expect } from '../../../fixtures/base.fixture';
+import type { BrowserContextOptions } from '@playwright/test';
 import { LoginPage } from '../../../page-objects/login.page';
 import { TEST_USERS } from '../../../auth/test-users';
 
@@ -6,7 +7,7 @@ import { TEST_USERS } from '../../../auth/test-users';
 // including those created via browser.newContext(). To exercise the login
 // form we need an explicitly unauthenticated context — empty cookies +
 // empty origins.
-const EMPTY_STORAGE = { cookies: [], origins: [] } as const;
+const EMPTY_STORAGE: BrowserContextOptions['storageState'] = { cookies: [], origins: [] };
 
 test.describe('B3 — Authentication', () => {
   test('login page renders correctly', async ({ browser, screenshots }) => {

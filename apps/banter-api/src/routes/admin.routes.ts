@@ -189,6 +189,16 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .insert(banterSettings)
           .values({ org_id: user.org_id })
           .returning();
+        if (!created) {
+          return reply.status(500).send({
+            error: {
+              code: 'INTERNAL_ERROR',
+              message: 'Settings insert returned no row',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
         return reply.send({ data: maskSensitiveFields(created) });
       }
 
@@ -307,12 +317,12 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
       try {
         // Attempt to create a test room via the LiveKit HTTP API
-        const { generateLiveKitToken, buildRoomName } = await import(
+        const { generateLiveKitToken } = await import(
           '../services/livekit-token.js'
         );
 
         const testRoomName = `banter_test_${user.org_id}_${Date.now()}`;
-        const token = await generateLiveKitToken({
+        await generateLiveKitToken({
           participantIdentity: 'test-connection',
           participantName: 'Test',
           roomName: testRoomName,

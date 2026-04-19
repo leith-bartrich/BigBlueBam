@@ -3,7 +3,7 @@ import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { fileTypeFromBuffer } from 'file-type';
 import { env } from '../env.js';
-import { uploadFile, getFileStream, deleteFile } from '../services/upload.service.js';
+import { uploadFile, getFileStream } from '../services/upload.service.js';
 import { requireAuth, requireMinRole } from '../plugins/auth.js';
 
 const MAX_FILE_SIZE = env.UPLOAD_MAX_FILE_SIZE; // 25MB

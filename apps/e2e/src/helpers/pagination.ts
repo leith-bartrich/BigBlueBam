@@ -63,10 +63,6 @@ export async function testInfiniteScrollPagination(
   let itemCount = await page.locator(options.itemSelector).count();
 
   for (let i = 0; i < maxScrolls; i++) {
-    const container = options.scrollContainerSelector
-      ? page.locator(options.scrollContainerSelector)
-      : page;
-
     const responsePromise = page
       .waitForResponse(
         (r) => r.url().includes(options.apiPathContains) && r.status() === 200,
@@ -75,7 +71,7 @@ export async function testInfiniteScrollPagination(
       .catch(() => null);
 
     if (options.scrollContainerSelector) {
-      await container.evaluate((el) => {
+      await page.locator(options.scrollContainerSelector).evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
     } else {

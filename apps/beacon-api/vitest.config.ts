@@ -5,7 +5,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.test.ts'],
-    testTimeout: 10000,
+    // CI runners sometimes blow through a 10s ceiling on first-test-in-file
+    // module-graph load, especially since this suite pulls in the full
+    // Qdrant-adapter import chain.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

@@ -3,10 +3,6 @@ import {
   addDays,
   differenceInDays,
   startOfDay,
-  startOfWeek,
-  startOfMonth,
-  endOfMonth,
-  endOfWeek,
   format,
   isToday,
   parseISO,
@@ -126,13 +122,6 @@ export function TimelineView({ phases, onTaskClick }: TimelineViewProps) {
   }, [zoom, timelineStart, timelineEnd]);
 
   const totalWidth = columns.reduce((sum, c) => sum + c.width, 0);
-
-  // Column unit duration in days
-  const colDurationDays = useMemo(() => {
-    if (zoom === 'day') return 1;
-    if (zoom === 'week') return 7;
-    return 30; // approx for month
-  }, [zoom]);
 
   // Convert a date to pixel X position
   const dateToX = (date: Date): number => {

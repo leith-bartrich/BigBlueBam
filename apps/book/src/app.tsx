@@ -186,9 +186,9 @@ export function App() {
         return <ConnectionsPage onNavigate={navigate} />;
       case 'calendars':
         return <CalendarsPage onNavigate={navigate} />;
-      case 'meet':
-        // Handled by early return above.
-        return <MeetPage slug={route.slug} />;
+      // 'meet' handled by the early-return branch above so it never reaches
+      // here. The type narrowing at the early return excludes it from the
+      // switch's discriminated union.
       default:
         return null;
     }

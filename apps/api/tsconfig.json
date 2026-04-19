@@ -4,7 +4,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "paths": {
-      "@bigbluebam/shared": ["../../packages/shared/src/index.ts"]
+      "@bigbluebam/shared": ["../../packages/shared/dist/index.d.ts"]
     }
   },
   "include": ["src"],

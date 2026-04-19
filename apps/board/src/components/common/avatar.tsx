@@ -6,6 +6,8 @@ interface AvatarProps {
   name?: string | null;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  /** Optional ring color (used by presence bar to mark each collaborator). */
+  borderColor?: string;
 }
 
 const sizeClasses = {
@@ -14,14 +16,16 @@ const sizeClasses = {
   lg: 'h-10 w-10 text-sm',
 };
 
-export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
+export function Avatar({ src, name, size = 'md', className, borderColor }: AvatarProps) {
   return (
     <RadixAvatar.Root
       className={cn(
         'inline-flex items-center justify-center overflow-hidden rounded-full bg-primary-100 select-none shrink-0',
         sizeClasses[size],
+        borderColor && 'ring-2',
         className,
       )}
+      style={borderColor ? { boxShadow: `0 0 0 2px ${borderColor}` } : undefined}
     >
       {src && (
         <RadixAvatar.Image

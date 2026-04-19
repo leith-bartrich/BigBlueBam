@@ -311,11 +311,26 @@ const sql = postgres(databaseUrl, { max: 1, idle_timeout: 5, connect_timeout: 10
 const dbTables = new Map();
 
 try {
+  // Join to pg_class so we can filter out:
+  //   - partition children (they inherit columns from the parent, which is
+  //     already declared in Drizzle as a single pgTable; Drizzle does not
+  //     need a per-month `banter_messages_2026_04` declaration);
+  //   - views and materialized views (pg_class.relkind in ('v','m'), not
+  //     declared via pgTable).
+  // We keep:
+  //   - ordinary tables (relkind = 'r')
+  //   - partitioned parents (relkind = 'p')
+  //   - non-partition children of those parents (relispartition = false)
   const rows = await sql`
-    SELECT table_name, column_name, data_type, udt_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-    ORDER BY table_name, ordinal_position
+    SELECT c.table_name, c.column_name, c.data_type, c.udt_name
+    FROM information_schema.columns c
+    JOIN pg_class pc ON pc.relname = c.table_name
+    JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+    WHERE c.table_schema = 'public'
+      AND pn.nspname = 'public'
+      AND pc.relkind IN ('r', 'p')
+      AND NOT pc.relispartition
+    ORDER BY c.table_name, c.ordinal_position
   `;
   for (const r of rows) {
     if (DB_IGNORE_TABLES.has(r.table_name)) continue;

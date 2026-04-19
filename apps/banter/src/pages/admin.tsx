@@ -1,19 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  ArrowLeft,
-  Video,
-  MessageSquare,
-  Bot,
-  Hash,
-  Save,
-  Loader2,
-  CheckCircle,
-  AlertCircle,
-  Mic,
-  Volume2,
-  Brain,
-  RefreshCw,
-} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Video, MessageSquare, Bot, Hash, Save, Loader2, CheckCircle, AlertCircle, Mic, Volume2, Brain } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -96,29 +82,12 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
   const [testingTts, setTestingTts] = useState(false);
   const [ttsStatus, setTtsStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [voiceAgentOnline, setVoiceAgentOnline] = useState<boolean | null>(null);
-  const [voiceAgentConfig, setVoiceAgentConfig] = useState<{
-    stt: { provider: string | null; configured: boolean; has_api_key: boolean };
-    tts: { provider: string | null; configured: boolean; has_api_key: boolean };
-    llm: { provider: string | null; configured: boolean; has_api_key: boolean };
-  } | null>(null);
   const [syncingConfig, setSyncingConfig] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  const checkVoiceAgentStatus = useCallback(async () => {
-    try {
-      // The banter-api proxies to the voice agent, or we check indirectly
-      // For now we use the push-voice-config endpoint as a proxy health check
-      // by doing a GET to the voice agent /config via a lightweight admin endpoint
-      const res = await api.get<{ data: { online: boolean; config?: typeof voiceAgentConfig } }>(
-        '/admin/settings/push-voice-config',
-      ).catch(() => null);
-      // If the endpoint doesn't support GET, we'll rely on the push response
-      // Instead, just try to push and check the result
-      setVoiceAgentOnline(true);
-    } catch {
-      setVoiceAgentOnline(false);
-    }
-  }, []);
+  // TODO: wire up checkVoiceAgentStatus() when the voice-agent /config
+  // proxy endpoint is available. Removed the dead callback to keep
+  // noUnusedLocals happy.
 
   const handleSyncConfig = async () => {
     setSyncingConfig(true);

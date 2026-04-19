@@ -11,7 +11,6 @@ import { useBeaconStats } from '@/hooks/use-beacons';
 import { useGraphRecent } from '@/hooks/use-graph';
 import { StatusBadge } from '@/components/beacon/status-badge';
 import { FreshnessIndicator } from '@/components/beacon/freshness-indicator';
-import { formatRelativeTime } from '@/lib/utils';
 
 interface HomePageProps {
   onNavigate: (path: string) => void;

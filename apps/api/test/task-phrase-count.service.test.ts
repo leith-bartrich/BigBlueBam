@@ -149,8 +149,17 @@ describe('task-phrase-count.service', () => {
         until,
         orgId: ORG,
       });
-      const first = String(mockTx.execute.mock.calls[0]![0]);
-      expect(first.toLowerCase()).toContain('statement_timeout');
+      // drizzle's sql tag's default String() is '[object Object]'; walk the
+      // queryChunks array to pull the literal SQL text out.
+      const firstCallArg = mockTx.execute.mock.calls[0]![0] as {
+        queryChunks?: Array<{ value?: string[] } | string>;
+      };
+      const chunksText = Array.isArray(firstCallArg?.queryChunks)
+        ? firstCallArg.queryChunks
+            .map((c) => (typeof c === 'string' ? c : c?.value?.join(' ') ?? ''))
+            .join(' ')
+        : JSON.stringify(firstCallArg);
+      expect(chunksText.toLowerCase()).toContain('statement_timeout');
     });
   });
 });

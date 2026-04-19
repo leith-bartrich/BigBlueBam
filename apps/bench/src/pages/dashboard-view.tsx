@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Edit2, RefreshCw, Maximize2, Copy, Download, Clock } from 'lucide-react';
+import { Edit2, RefreshCw, Maximize2, Clock } from 'lucide-react';
 import { useDashboard } from '@/hooks/use-dashboards';
 import { useWidgetQuery } from '@/hooks/use-widgets';
 import { ChartRenderer } from '@/components/widgets/chart-renderer';
 import { DateRangePicker, type DateRange } from '@/components/dashboards/date-range-picker';
-import { formatRelativeTime } from '@/lib/utils';
 
 interface DashboardViewPageProps {
   dashboardId: string;

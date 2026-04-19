@@ -53,7 +53,7 @@ const features = [
     icon: Bot,
     title: 'AI Pipeline Management',
     description:
-      '19 MCP tools let AI agents manage contacts, advance deals, log activities, and generate pipeline reports.',
+      '23 MCP tools let AI agents manage contacts, advance deals, log activities, generate pipeline reports, upsert by email, and surface likely duplicates.',
     color: 'bg-fuchsia-100 text-fuchsia-600',
   },
 ];
@@ -72,8 +72,9 @@ export function BondSection() {
           <p className="mt-4 text-lg text-zinc-600">
             A visual deal pipeline that lives alongside your project board, helpdesk, and knowledge
             base. Bond tracks contacts, companies, and deals through configurable pipeline stages --
-            with activity logging, cross-product links, and 19 MCP tools so AI agents can manage
-            your CRM pipeline as naturally as they manage tasks.
+            with activity logging, cross-product links, and 23 MCP tools so AI agents can manage
+            your CRM pipeline, upsert contacts by email, and detect likely duplicates as naturally
+            as they manage tasks.
           </p>
         </div>
       </AnimatedReveal>

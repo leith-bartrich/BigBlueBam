@@ -162,7 +162,7 @@ export async function upsertTaskByExternalId(
     // the insert, the conflict branch updates the title/description so the
     // caller still gets a consistent row. `xmax = 0` tells us which branch
     // fired: new inserts have xmax = 0; updated-by-conflict rows do not.
-    try {
+    {
       const inserted = await db
         .insert(tasks)
         .values({
@@ -197,7 +197,10 @@ export async function upsertTaskByExternalId(
           },
         })
         .returning({
-          task: tasks,
+          // Table-as-field cast (same as beacon-api/bond-api/helpdesk-api
+          // upsert services) to satisfy drizzle's returning() type under
+          // @bigbluebam/db-stubs.
+          task: tasks as unknown as import('drizzle-orm').SQL<typeof tasks.$inferSelect>,
           // xmax = 0 on a fresh insert; non-zero when ON CONFLICT fired.
           created: sql<boolean>`(xmax = 0)`.as('created'),
         });
@@ -230,8 +233,6 @@ export async function upsertTaskByExternalId(
         created,
         idempotency_key: `external_id:${input.project_id}:${input.external_id}`,
       };
-    } catch (err) {
-      throw err;
     }
   }
 

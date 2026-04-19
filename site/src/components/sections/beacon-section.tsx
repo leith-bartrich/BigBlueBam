@@ -76,8 +76,9 @@ export function BeaconSection() {
             </div>
             <h3 className="text-base font-semibold text-zinc-900">Agent verification</h3>
             <p className="mt-2 text-sm text-zinc-600">
-              AI agents verify and challenge Beacons within confidence bounds. Freshness scores
-              track how much of your knowledge base stays current.
+              30 MCP tools let AI agents publish, verify, challenge, and upsert entries by slug
+              within confidence bounds. Freshness scores track how much of your knowledge base
+              stays current.
             </p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">

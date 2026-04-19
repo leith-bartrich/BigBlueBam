@@ -26,6 +26,10 @@ export interface BriefDocument {
   created_by: string;
   updated_by: string | null;
   creator_name: string | null;
+  creator_avatar_url?: string | null;
+  summary?: string | null;
+  published_at?: string | null;
+  version?: number;
   created_at: string;
   updated_at: string;
   archived_at: string | null;

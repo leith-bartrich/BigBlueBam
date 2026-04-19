@@ -160,14 +160,22 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
       // 1. Find matching enabled automations for this trigger
       const matchingAutomations = await db
         .select({
-          automation: boltAutomations,
+          // Same table-as-field cast used across other upsert/select sites
+          // under @bigbluebam/db-stubs; drizzle's typed returning/select
+          // does not accept a full table ref without an explicit SQL cast.
+          automation: boltAutomations as unknown as import('drizzle-orm').SQL<typeof boltAutomations.$inferSelect>,
         })
         .from(boltAutomations)
         .where(
           and(
             eq(boltAutomations.org_id, event.org_id),
             eq(boltAutomations.enabled, true),
-            eq(boltAutomations.trigger_source, event.source),
+            // event.source widens to include 'platform' which the bolt
+            // automations enum does not list. Narrow to any for the eq
+            // call; platform-scoped events simply won't match any
+            // automation row at runtime.
+            // biome-ignore lint/suspicious/noExplicitAny: see comment above
+            eq(boltAutomations.trigger_source, event.source as any),
             eq(boltAutomations.trigger_event, event.event_type),
           ),
         );

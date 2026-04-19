@@ -173,7 +173,7 @@ function extractOgTags(html: string, pageUrl: string): OgPreview | null {
   );
   if (faviconMatch) {
     try {
-      preview.favicon = new URL(faviconMatch[1], pageUrl).href;
+      preview.favicon = new URL(faviconMatch[1]!, pageUrl).href;
     } catch {
       // ignore
     }
@@ -196,7 +196,7 @@ function extractMeta(html: string, property: string): string | undefined {
     'i',
   );
   const match = html.match(re);
-  if (match) return decodeHtmlEntities(match[1]);
+  if (match) return decodeHtmlEntities(match[1]!);
 
   // Also try content before property (some sites reverse attribute order)
   const re2 = new RegExp(
@@ -204,7 +204,7 @@ function extractMeta(html: string, property: string): string | undefined {
     'i',
   );
   const match2 = html.match(re2);
-  if (match2) return decodeHtmlEntities(match2[1]);
+  if (match2) return decodeHtmlEntities(match2[1]!);
 
   return undefined;
 }
@@ -215,14 +215,14 @@ function extractMetaName(html: string, name: string): string | undefined {
     'i',
   );
   const match = html.match(re);
-  if (match) return decodeHtmlEntities(match[1]);
+  if (match) return decodeHtmlEntities(match[1]!);
 
   const re2 = new RegExp(
     `<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escapeRegExp(name)}["']`,
     'i',
   );
   const match2 = html.match(re2);
-  if (match2) return decodeHtmlEntities(match2[1]);
+  if (match2) return decodeHtmlEntities(match2[1]!);
 
   return undefined;
 }

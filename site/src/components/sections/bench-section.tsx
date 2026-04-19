@@ -53,7 +53,7 @@ const features = [
     icon: Bot,
     title: 'AI Analytics',
     description:
-      '9 MCP tools let AI agents create dashboards, add widgets, run ad-hoc queries, and schedule reports.',
+      '11 MCP tools let AI agents create dashboards, add widgets, run ad-hoc queries, and schedule reports.',
     color: 'bg-indigo-100 text-indigo-600',
   },
 ];
@@ -72,7 +72,7 @@ export function BenchSection() {
           <p className="mt-4 text-lg text-zinc-600">
             Build custom dashboards with drag-and-drop widgets, explore data with an ad-hoc query
             runner, schedule recurring reports, and accelerate large datasets with materialized views.
-            Bench provides 9 MCP tools for AI-powered analytics workflows.
+            Bench provides 11 MCP tools for AI-powered analytics workflows.
           </p>
         </div>
       </AnimatedReveal>

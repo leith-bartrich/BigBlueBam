@@ -7,7 +7,7 @@ import { Badge } from '@/components/common/badge';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProjects } from '@/hooks/use-projects';
 import { api } from '@/lib/api';
-import { cn, formatDate, isOverdue, priorityColor } from '@/lib/utils';
+import { cn, formatDate, isOverdue } from '@/lib/utils';
 
 interface MyWorkPageProps {
   onNavigate: (path: string) => void;

@@ -12,11 +12,6 @@ function hashWebhookSecret(secret: string): string {
   return createHash('sha256').update(secret).digest('hex');
 }
 
-/** Return a masked version of a secret (only for display; never the real value). */
-function maskSecret(hash: string): string {
-  return `${hash.slice(0, 8)}${'*'.repeat(24)}`;
-}
-
 export default async function webhookRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
     '/projects/:id/webhooks',

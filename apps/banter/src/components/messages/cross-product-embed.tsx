@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { bbbGet, BbbApiError } from '@/lib/bbb-api';
-import {
-  ClipboardList,
-  Handshake,
-  ExternalLink,
-  AlertCircle,
-  Calendar,
-  User,
-} from 'lucide-react';
+import { ClipboardList, Handshake, ExternalLink, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── URL detection patterns ──────────────────────────────────────
@@ -48,7 +41,7 @@ export function extractCrossProductUrls(content: string): Array<{
   let hrefMatch;
   const urls: string[] = [plain];
   while ((hrefMatch = hrefRe.exec(content)) !== null) {
-    urls.push(hrefMatch[1]);
+    urls.push(hrefMatch[1]!);
   }
 
   const combined = urls.join(' ');
@@ -56,26 +49,26 @@ export function extractCrossProductUrls(content: string): Array<{
   // Find /b3/ task references
   const bamTaskMatch = combined.match(BAM_TASK_RE);
   if (bamTaskMatch) {
-    const key = `bam-task:${bamTaskMatch[1]}`;
+    const key = `bam-task:${bamTaskMatch[1]!}`;
     if (!seen.has(key)) {
       seen.add(key);
       results.push({
         type: 'bam-task',
-        id: bamTaskMatch[1],
-        url: `/b3/tasks/ref/${bamTaskMatch[1]}`,
+        id: bamTaskMatch[1]!,
+        url: `/b3/tasks/ref/${bamTaskMatch[1]!}`,
       });
     }
   }
 
   const bamIdMatch = combined.match(BAM_TASK_ID_RE);
   if (bamIdMatch) {
-    const key = `bam-task:${bamIdMatch[1]}`;
+    const key = `bam-task:${bamIdMatch[1]!}`;
     if (!seen.has(key)) {
       seen.add(key);
       results.push({
         type: 'bam-task',
-        id: bamIdMatch[1],
-        url: `/b3/tasks/${bamIdMatch[1]}`,
+        id: bamIdMatch[1]!,
+        url: `/b3/tasks/${bamIdMatch[1]!}`,
       });
     }
   }
@@ -83,13 +76,13 @@ export function extractCrossProductUrls(content: string): Array<{
   // Find /bond/ deal references
   const bondDealMatch = combined.match(BOND_DEAL_RE);
   if (bondDealMatch) {
-    const key = `bond-deal:${bondDealMatch[1]}`;
+    const key = `bond-deal:${bondDealMatch[1]!}`;
     if (!seen.has(key)) {
       seen.add(key);
       results.push({
         type: 'bond-deal',
-        id: bondDealMatch[1],
-        url: `/bond/deals/${bondDealMatch[1]}`,
+        id: bondDealMatch[1]!,
+        url: `/bond/deals/${bondDealMatch[1]!}`,
       });
     }
   }
@@ -97,13 +90,13 @@ export function extractCrossProductUrls(content: string): Array<{
   // Find /bond/ contact references
   const bondContactMatch = combined.match(BOND_CONTACT_RE);
   if (bondContactMatch) {
-    const key = `bond-contact:${bondContactMatch[1]}`;
+    const key = `bond-contact:${bondContactMatch[1]!}`;
     if (!seen.has(key)) {
       seen.add(key);
       results.push({
         type: 'bond-contact',
-        id: bondContactMatch[1],
-        url: `/bond/contacts/${bondContactMatch[1]}`,
+        id: bondContactMatch[1]!,
+        url: `/bond/contacts/${bondContactMatch[1]!}`,
       });
     }
   }
@@ -111,13 +104,13 @@ export function extractCrossProductUrls(content: string): Array<{
   // Find /bond/ company references
   const bondCompanyMatch = combined.match(BOND_COMPANY_RE);
   if (bondCompanyMatch) {
-    const key = `bond-company:${bondCompanyMatch[1]}`;
+    const key = `bond-company:${bondCompanyMatch[1]!}`;
     if (!seen.has(key)) {
       seen.add(key);
       results.push({
         type: 'bond-company',
-        id: bondCompanyMatch[1],
-        url: `/bond/companies/${bondCompanyMatch[1]}`,
+        id: bondCompanyMatch[1]!,
+        url: `/bond/companies/${bondCompanyMatch[1]!}`,
       });
     }
   }
@@ -159,25 +152,6 @@ async function fetchBamTask(id: string): Promise<EmbedData | null> {
   } catch (err) {
     if (err instanceof BbbApiError && err.status === 404) return null;
     console.warn('Failed to fetch Bam task embed:', err);
-    return null;
-  }
-}
-
-async function fetchBondDeal(id: string): Promise<EmbedData | null> {
-  try {
-    const res = await bbbGet<{ data: {
-      id: string;
-      name: string;
-      stage_name?: string;
-      value?: number;
-      currency?: string;
-      owner_display_name?: string;
-      company_name?: string;
-    } }>(`/bond/deals/${id}`);
-
-    // Bond API is at /bond/api, not /b3/api. Use a direct fetch.
-    return null; // Will be handled by direct fetch below
-  } catch {
     return null;
   }
 }

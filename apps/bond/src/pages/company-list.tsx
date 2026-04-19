@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Search, Plus, Globe, Users, Handshake, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/common/button';
-import { Badge } from '@/components/common/badge';
 import { EmptyState } from '@/components/common/empty-state';
 import { CreateCompanyDialog } from '@/components/companies/create-company-dialog';
 import { useCompanies, useRestoreCompany } from '@/hooks/use-companies';

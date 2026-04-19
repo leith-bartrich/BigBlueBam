@@ -181,12 +181,19 @@ describe('phrase-count.service', () => {
         since,
         until,
       });
-      // First call was SET LOCAL.
-      const firstCallArg = mockTx.execute.mock.calls[0]![0];
-      // drizzle sql tag toString contains a placeholder; safer to check its
-      // rendered SQL contains 'statement_timeout'.
-      const renderedSqlString = String(firstCallArg);
-      expect(renderedSqlString.toLowerCase()).toContain('statement_timeout');
+      // First call was SET LOCAL. drizzle's sql tag exposes queryChunks;
+      // naive String() returns '[object Object]'. Walk the chunks for the
+      // literal text, falling back to JSON so assertion failures are
+      // legible.
+      const firstCallArg = mockTx.execute.mock.calls[0]![0] as {
+        queryChunks?: Array<{ value?: string[] } | string>;
+      };
+      const chunksText = Array.isArray(firstCallArg?.queryChunks)
+        ? firstCallArg.queryChunks
+            .map((c) => (typeof c === 'string' ? c : c?.value?.join(' ') ?? ''))
+            .join(' ')
+        : JSON.stringify(firstCallArg);
+      expect(chunksText.toLowerCase()).toContain('statement_timeout');
     });
 
     it('coerces numeric-string counts from the driver', async () => {

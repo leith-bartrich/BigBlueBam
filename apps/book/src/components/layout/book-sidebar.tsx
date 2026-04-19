@@ -4,7 +4,6 @@ import {
   CalendarRange,
   Link2,
   Clock,
-  Settings,
   Plug,
   GanttChart,
 } from 'lucide-react';

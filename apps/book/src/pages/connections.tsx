@@ -1,11 +1,10 @@
-import { Plug, Plus, Trash2 } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { Plug, Plus } from 'lucide-react';
 
 interface ConnectionsPageProps {
   onNavigate?: (path: string) => void;
 }
 
-export function ConnectionsPage({ onNavigate }: ConnectionsPageProps) {
+export function ConnectionsPage({ onNavigate: _onNavigate }: ConnectionsPageProps) {
   // Placeholder: external calendar sync connections
   // Real implementation would fetch from /v1/connections
   const connections: Array<{

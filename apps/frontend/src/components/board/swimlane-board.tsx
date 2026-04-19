@@ -20,7 +20,6 @@ import { useMoveTask } from '@/hooks/use-tasks';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { PhaseColumn } from './phase-column';
 import { TaskCard } from './task-card';
-import { cn } from '@/lib/utils';
 
 export type SwimlanGroupBy = 'none' | 'assignee' | 'priority' | 'epic';
 

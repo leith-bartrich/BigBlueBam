@@ -399,9 +399,15 @@ export async function processAgentWebhookDispatchJob(
 
   // Re-enqueue with the delay so BullMQ carries the schedule. The
   // delivery row itself is the source of truth; the queued job is a
-  // kicker.
+  // kicker. `job.queue` is `protected` in the BullMQ type surface but
+  // has the `.add` method we need at runtime; cast through unknown.
   const delayMs = retryDelay * 1000;
-  await job.queue.add(
+  const jobQueue = (job as unknown as { queue: { add: (
+    name: string,
+    data: AgentWebhookDispatchJobData,
+    opts: { delay: number; attempts: number; removeOnComplete: number; removeOnFail: number },
+  ) => Promise<unknown> } }).queue;
+  await jobQueue.add(
     'dispatch',
     { delivery_id: deliveryId },
     {

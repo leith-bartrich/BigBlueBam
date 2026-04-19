@@ -179,7 +179,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         .map((r) => r.channel.id);
       const dmParticipants = new Map<
         string,
-        { id: string; display_name: string; avatar_url: string | null }
+        { id: string; display_name: string; avatar_url: string | null; presence?: string }
       >();
       if (dmChannelIds.length > 0) {
         const participantRows = await db
@@ -367,6 +367,17 @@ export default async function channelRoutes(fastify: FastifyInstance) {
           member_count: 1,
         })
         .returning();
+
+      if (!channel) {
+        return reply.status(500).send({
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Channel insert returned no row',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
 
       // Auto-add creator as owner
       await db.insert(banterChannelMemberships).values({
@@ -604,6 +615,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         id: string;
         display_name: string;
         avatar_url: string | null;
+        presence?: string;
       } | null = null;
       if (channel.type === 'dm') {
         const [other] = await db

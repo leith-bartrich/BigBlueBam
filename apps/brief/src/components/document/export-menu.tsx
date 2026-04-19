@@ -7,7 +7,7 @@ interface ExportMenuProps {
   slug: string;
 }
 
-export function ExportMenu({ documentId, slug }: ExportMenuProps) {
+export function ExportMenu({ documentId, slug: _slug }: ExportMenuProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 

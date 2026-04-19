@@ -93,7 +93,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
 
       if (page.auto_create_bond_contact !== false) {
         // Create or find a Bond contact by email
-        const bondBaseUrl = (env as Record<string, string>).BOND_API_INTERNAL_URL ?? 'http://bond-api:4009';
+        const bondBaseUrl = (env as unknown as Record<string, string | undefined>).BOND_API_INTERNAL_URL ?? 'http://bond-api:4009';
         fetch(`${bondBaseUrl}/v1/contacts`, {
           method: 'POST',
           headers: internalHeaders,

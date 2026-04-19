@@ -192,7 +192,10 @@ await fastify.register(authPlugin);
 await fastify.register(rlsPlugin);
 
 // Wave 1.A: boot-time role flip based on BBB_RLS_ENFORCE.
-await rlsBoot(fastify.log);
+// fastify.log is a FastifyBaseLogger; rlsBoot accepts pino-shaped loggers
+// which is the same call surface. Cast to unknown to bridge the nominal
+// type mismatch.
+await rlsBoot(fastify.log as unknown as Parameters<typeof rlsBoot>[0]);
 
 // WebSocket handler (realtime events via Redis PubSub)
 await fastify.register(websocketHandlerPlugin);

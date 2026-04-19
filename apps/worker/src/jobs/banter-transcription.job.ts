@@ -1,7 +1,5 @@
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
-import { sql } from 'drizzle-orm';
-import { getDb } from '../utils/db.js';
 
 export interface BanterTranscriptionJobData {
   call_id: string;
