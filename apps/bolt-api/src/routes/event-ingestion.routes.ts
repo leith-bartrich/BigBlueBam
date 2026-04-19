@@ -170,7 +170,12 @@ export default async function eventIngestionRoutes(fastify: FastifyInstance) {
           and(
             eq(boltAutomations.org_id, event.org_id),
             eq(boltAutomations.enabled, true),
-            eq(boltAutomations.trigger_source, event.source),
+            // event.source widens to include 'platform' which the bolt
+            // automations enum does not list. Narrow to any for the eq
+            // call; platform-scoped events simply won't match any
+            // automation row at runtime.
+            // biome-ignore lint/suspicious/noExplicitAny: see comment above
+            eq(boltAutomations.trigger_source, event.source as any),
             eq(boltAutomations.trigger_event, event.event_type),
           ),
         );
