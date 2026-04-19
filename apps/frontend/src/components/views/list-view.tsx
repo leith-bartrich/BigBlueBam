@@ -1,15 +1,8 @@
 import { useState, useMemo } from 'react';
-import {
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  AlertTriangle,
-  Minus,
-} from 'lucide-react';
-import type { Task, Phase, Priority } from '@bigbluebam/shared';
+import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import type { Task, Phase } from '@bigbluebam/shared';
 import { PRIORITIES } from '@bigbluebam/shared';
-import { cn, formatDate, isOverdue, priorityColor } from '@/lib/utils';
-import { Avatar } from '@/components/common/avatar';
+import { cn, formatDate, isOverdue } from '@/lib/utils';
 import { Badge } from '@/components/common/badge';
 import { Select } from '@/components/common/select';
 
@@ -30,20 +23,8 @@ const priorityOrder: Record<string, number> = {
   none: 4,
 };
 
-function PriorityIcon({ priority }: { priority: Priority }) {
-  switch (priority) {
-    case 'critical':
-      return <AlertTriangle className="h-3.5 w-3.5 text-red-600" />;
-    case 'high':
-      return <ArrowUp className="h-3.5 w-3.5 text-orange-500" />;
-    case 'medium':
-      return <Minus className="h-3.5 w-3.5 text-yellow-500" />;
-    case 'low':
-      return <ArrowDown className="h-3.5 w-3.5 text-blue-400" />;
-    default:
-      return <Minus className="h-3.5 w-3.5 text-zinc-300" />;
-  }
-}
+// PriorityIcon removed — not currently rendered by this view. Reintroduce
+// from git history if columns start showing priority badges again.
 
 export function ListView({ phases, onTaskClick, onUpdateTask }: ListViewProps) {
   const [sortField, setSortField] = useState<SortField>('created_at');

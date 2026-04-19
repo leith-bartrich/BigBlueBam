@@ -1058,15 +1058,16 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
                   <div>
                     <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1 block">Project</label>
-                    <Select
+                    <select
                       value={slackProjectId}
                       onChange={(e) => setSlackProjectId(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:bg-zinc-900 dark:border-zinc-700"
                     >
                       <option value="">Select a project…</option>
                       {projects.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
-                    </Select>
+                    </select>
                   </div>
 
                   {slackProjectId && (

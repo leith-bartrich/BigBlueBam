@@ -143,7 +143,7 @@ export function TaskDetailDrawer({
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [showTimeForm, setShowTimeForm] = useState(false);
   const [timeMinutes, setTimeMinutes] = useState('');
-  const [timeDate, setTimeDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [timeDate, setTimeDate] = useState(() => new Date().toISOString().split('T')[0]!);
   const [timeDescription, setTimeDescription] = useState('');
   const [showShareBanter, setShowShareBanter] = useState(false);
   const [banterChannelId, setBanterChannelId] = useState('');
@@ -267,7 +267,7 @@ export function TaskDetailDrawer({
       queryClient.invalidateQueries({ queryKey: ['task-time-entries', task?.id] });
       setShowTimeForm(false);
       setTimeMinutes('');
-      setTimeDate(new Date().toISOString().split('T')[0]);
+      setTimeDate(new Date().toISOString().split('T')[0]!);
       setTimeDescription('');
     },
   });
@@ -659,7 +659,7 @@ export function TaskDetailDrawer({
                             )}
                           </button>
                         ))}
-                        {task.custom_fields?.helpdesk_ticket_id && (
+                        {Boolean(task.custom_fields?.helpdesk_ticket_id) && (
                           <button
                             onClick={() => setActiveTab('helpdesk')}
                             className={cn(

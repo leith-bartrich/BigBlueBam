@@ -67,7 +67,6 @@ export function TaskCard({ task, onClick, isDragOverlay = false }: TaskCardProps
       style={style}
       {...(!isDragOverlay ? { ...sortable.attributes, ...sortable.listeners } : {})}
       layout={!isDragOverlay}
-      layoutTransition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', damping: 20, stiffness: 250 }}
       initial={!isDragOverlay ? { opacity: 0, y: prefersReducedMotion ? 0 : -8 } : false}
       animate={
         isDragOverlay
@@ -95,8 +94,10 @@ export function TaskCard({ task, onClick, isDragOverlay = false }: TaskCardProps
             {task.carry_forward_count}
           </span>
         )}
-        {task.custom_fields?.helpdesk_ticket_id && (
-          <Headset className="h-3 w-3 text-purple-500" title={`Ticket #${task.custom_fields.helpdesk_ticket_number}`} />
+        {Boolean(task.custom_fields?.helpdesk_ticket_id) && (
+          <span title={`Ticket #${String(task.custom_fields.helpdesk_ticket_number ?? '')}`}>
+            <Headset className="h-3 w-3 text-purple-500" />
+          </span>
         )}
       </div>
 

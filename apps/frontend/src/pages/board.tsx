@@ -237,7 +237,11 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
   };
 
   const handleUpdateTask = (taskId: string, updates: Partial<Task>) => {
-    updateTask.mutate({ taskId, data: updates });
+    // updateTask.mutate's data is the server's UpdateTaskInput shape, which
+    // overlaps but is not identical to Partial<Task>. Cast through the
+    // mutation's own parameter type so any drift stays scoped to this
+    // call instead of widening the handler signature.
+    updateTask.mutate({ taskId, data: updates as Parameters<typeof updateTask.mutate>[0]['data'] });
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -555,7 +559,10 @@ export function BoardPage({ projectId, onNavigate }: BoardPageProps) {
       <TaskDetailDrawer
         open={!!selectedTaskId}
         onOpenChange={(open) => { if (!open) setSelectedTaskId(null); }}
-        task={selectedTask}
+        // TaskDetailDrawer expects the extended Task shape (human_id,
+        // labels, assignee, etc.) that the board query returns; the
+        // flatMap-lookup narrows to the base Task, so widen here.
+        task={selectedTask as Parameters<typeof TaskDetailDrawer>[0]['task']}
         onUpdate={handleUpdateTask}
         onDelete={handleDeleteTask}
         phases={boardPhases.map((p) => ({ id: p.id, name: p.name }))}
