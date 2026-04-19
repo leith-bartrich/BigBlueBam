@@ -40,7 +40,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build shared packages
-        run: pnpm --filter @bigbluebam/shared build
+        # Every workspace package under packages/ exports from ./dist, so
+        # tsc cannot resolve types for consumers until they are built.
+        run: pnpm --filter './packages/*' build
 
       - name: Run typecheck
         run: pnpm -r --parallel --if-present typecheck

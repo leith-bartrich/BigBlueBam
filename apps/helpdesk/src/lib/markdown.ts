@@ -52,7 +52,7 @@ export function markdownToHtml(md: string): string {
         processed.push('</ul>');
         inList = false;
       }
-      const level = line.match(/^(#+)/)?.[1].length ?? 2;
+      const level = line.match(/^(#+)/)?.[1]?.length ?? 2;
       const text = line.replace(/^#+\s*/, '');
       processed.push(`<h${level} class="rich-text-heading">${text}</h${level}>`);
       continue;

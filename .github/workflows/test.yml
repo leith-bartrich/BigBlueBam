@@ -74,8 +74,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build shared + api packages
+        # Every workspace package under packages/ exports from ./dist, so
+        # vitest cannot resolve them (Failed to resolve entry for ...) unless
+        # they are built before the test pass.
         run: |
-          pnpm --filter @bigbluebam/shared build
+          pnpm --filter './packages/*' build
           pnpm --filter @bigbluebam/api build
 
       - name: Wait for Postgres
