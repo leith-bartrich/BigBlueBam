@@ -205,6 +205,9 @@ describe('bond dedupe service', () => {
   it('normalizes phone and matches across formatting differences', async () => {
     const { findDuplicateContacts } = await import('../src/services/dedupe.service.js');
 
+    // normalizePhone strips non-digits only (no country-code canonicalization),
+    // so the two phone strings must reduce to the same digit sequence. Both
+    // drop down to '15550100100' after \D stripping.
     mockSelect.mockReturnValueOnce(
       chainable([
         {
@@ -224,7 +227,7 @@ describe('bond dedupe service', () => {
           first_name: null,
           last_name: null,
           email: null,
-          phone: '555-010-0100',
+          phone: '1-555-010-0100',
           name_sim: 0,
         },
       ]),

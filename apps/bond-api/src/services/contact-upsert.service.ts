@@ -157,7 +157,15 @@ export async function upsertContactByEmail(
       created_by: actingUserId,
     })
     .onConflictDoUpdate({
-      target: [bondContacts.organization_id, sql`lower(${bondContacts.email})`],
+      // Postgres has a partial unique index on (organization_id, lower(email))
+      // but Drizzle's onConflictDoUpdate target type only accepts PgColumn
+      // references, not SQL expressions. Cast the sql`lower(...)` through
+      // unknown so tsc accepts it while the runtime SQL still references
+      // the lower(email) index.
+      target: [
+        bondContacts.organization_id,
+        sql`lower(${bondContacts.email})` as unknown as typeof bondContacts.email,
+      ],
       targetWhere: and(
         isNotNull(bondContacts.email),
         isNull(bondContacts.deleted_at),
@@ -168,7 +176,8 @@ export async function upsertContactByEmail(
       },
     })
     .returning({
-      contact: bondContacts,
+      // Same table-as-field cast as beacon-api entry-upsert.
+      contact: bondContacts as unknown as import('drizzle-orm').SQL<typeof bondContacts.$inferSelect>,
       created: sql<boolean>`(xmax = 0)`.as('created'),
     });
 

@@ -570,14 +570,15 @@ describe('deleteDeal', () => {
   });
 
   it('should delete an existing deal', async () => {
-    mockDelete.mockReturnValue(chainable([{ id: DEAL_ID }]));
+    // deleteDeal is a soft-delete via db.update(...).set({ deleted_at }).
+    mockUpdate.mockReturnValue(chainable([{ id: DEAL_ID }]));
 
     const result = await deleteDeal(DEAL_ID, ORG_ID);
     expect(result.id).toBe(DEAL_ID);
   });
 
   it('should throw NOT_FOUND when deal does not exist', async () => {
-    mockDelete.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([]));
 
     await expect(deleteDeal(DEAL_ID, ORG_ID)).rejects.toThrow('Deal not found');
   });
