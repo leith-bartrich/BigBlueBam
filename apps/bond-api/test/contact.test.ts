@@ -364,15 +364,17 @@ describe('deleteContact', () => {
   });
 
   it('should delete an existing contact', async () => {
-    mockDelete.mockReturnValue(chainable([{ id: CONTACT_ID }]));
+    // deleteContact is a soft-delete: db.update(...).set({ deleted_at })
+    // with .returning({ id }). Uses mockUpdate, not mockDelete.
+    mockUpdate.mockReturnValue(chainable([{ id: CONTACT_ID }]));
 
     const result = await deleteContact(CONTACT_ID, ORG_ID);
     expect(result.id).toBe(CONTACT_ID);
-    expect(mockDelete).toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalled();
   });
 
   it('should throw NOT_FOUND when contact does not exist', async () => {
-    mockDelete.mockReturnValue(chainable([]));
+    mockUpdate.mockReturnValue(chainable([]));
 
     await expect(deleteContact(CONTACT_ID, ORG_ID)).rejects.toThrow('Contact not found');
   });
@@ -426,7 +428,9 @@ describe('mergeContacts', () => {
 
     expect(result).toBeDefined();
     expect(result.id).toBe(CONTACT_ID);
-    expect(mockDelete).toHaveBeenCalled(); // source deleted
+    // Source is soft-deleted via db.update(...).set({ deleted_at }),
+    // not db.delete. Assert mockUpdate was called instead.
+    expect(mockUpdate).toHaveBeenCalled();
   });
 
   it('should throw when merging same contact into itself', async () => {

@@ -142,7 +142,10 @@ export async function upsertEntryBySlug(
         },
       })
       .returning({
-        entry: beaconEntries,
+        // Drizzle's returning() types do not accept a full table reference
+        // under @bigbluebam/db-stubs; cast so we still get the whole row
+        // back without enumerating every column by hand.
+        entry: beaconEntries as unknown as import('drizzle-orm').SQL<typeof beaconEntries.$inferSelect>,
         created: sql<boolean>`(xmax = 0)`.as('created'),
       });
 
