@@ -116,6 +116,7 @@ export function useCreateBoard() {
       project_id?: string;
       template_id?: string;
       visibility?: Board['visibility'];
+      icon?: string | null;
     }) => api.post<BoardResponse>('/boards', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boards'] });

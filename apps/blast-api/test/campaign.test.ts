@@ -81,8 +81,12 @@ function makeCampaign(overrides: Record<string, unknown> = {}) {
     name: 'April Newsletter',
     template_id: TEMPLATE_ID,
     subject: 'Check out what is new!',
-    html_body: '<h1>Hello</h1><p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>',
-    plain_text_body: 'Hello\n\nUnsubscribe: {{unsubscribe_url}}',
+    html_body:
+      '<h1>Hello</h1><p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>' +
+      '<p>Acme Corp, 123 Main St, Springfield, IL 62701, USA</p>',
+    plain_text_body:
+      'Hello\n\nUnsubscribe: {{unsubscribe_url}}\n\n' +
+      'Acme Corp, 123 Main St, Springfield, IL 62701, USA',
     segment_id: SEGMENT_ID,
     recipient_count: 500,
     from_name: 'Acme Corp',
