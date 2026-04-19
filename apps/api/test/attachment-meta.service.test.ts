@@ -89,7 +89,19 @@ const UPLOADER_ID = 'ffffffff-0000-0000-0000-000000000006';
 function pushSelect(rows: unknown[]) {
   const limit = vi.fn().mockResolvedValue(rows);
   const orderBy = vi.fn().mockReturnValue({ limit });
-  const where = vi.fn().mockReturnValue({ limit, orderBy });
+  // `where` is sometimes awaited directly (no .limit), sometimes followed
+  // by .limit(). Make the returned object thenable so `await where(...)`
+  // resolves to the rows.
+  const whereReturn: {
+    limit: typeof limit;
+    orderBy: typeof orderBy;
+    then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => Promise<unknown>;
+  } = {
+    limit,
+    orderBy,
+    then: (resolve, reject) => Promise.resolve(rows).then(resolve, reject),
+  };
+  const where = vi.fn().mockReturnValue(whereReturn);
   const from = vi.fn().mockReturnValue({ where });
   mockDb.select.mockImplementationOnce(() => ({ from }));
 }

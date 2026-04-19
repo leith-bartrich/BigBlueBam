@@ -272,8 +272,9 @@ function FieldsSettings() {
 
   const groupedFields: Record<string, CustomFieldDefinition[]> = {};
   for (const field of fields) {
-    if (!groupedFields[field.entity_type]) groupedFields[field.entity_type] = [];
-    groupedFields[field.entity_type].push(field);
+    const bucket = groupedFields[field.entity_type] ?? [];
+    bucket.push(field);
+    groupedFields[field.entity_type] = bucket;
   }
 
   return (
