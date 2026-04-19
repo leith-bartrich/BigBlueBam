@@ -157,7 +157,10 @@ export default async function messageRoutes(fastify: FastifyInstance) {
         author_display_name: row.author.display_name,
         author_avatar_url: row.author.avatar_url,
         is_bot: row.message.is_bot ?? false,
-        is_pinned: row.message.is_pinned ?? false,
+        // Pin state lives in a separate banter_pinned_messages table; the
+        // list endpoint does not join it today. Consumers treat absence
+        // as false.
+        is_pinned: false,
         is_edited: row.message.is_edited ?? false,
         thread_reply_count: row.message.reply_count ?? 0,
         thread_latest_reply_at: row.message.last_reply_at ?? null,

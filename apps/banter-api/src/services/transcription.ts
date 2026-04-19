@@ -18,7 +18,9 @@ export async function writeTranscriptSegment(params: {
 }): Promise<void> {
   const { call_id, speaker_id, content, started_at, ended_at, confidence, is_final } = params;
 
-  // Insert the transcript segment
+  // Insert the transcript segment. ended_at is NOT NULL in the schema —
+  // if the caller doesn't supply it (e.g. partial STT stream), fall back
+  // to started_at so the row satisfies the constraint.
   const [segment] = await db
     .insert(banterCallTranscripts)
     .values({
@@ -26,7 +28,7 @@ export async function writeTranscriptSegment(params: {
       speaker_id,
       content,
       started_at,
-      ended_at: ended_at ?? null,
+      ended_at: ended_at ?? started_at,
       confidence: confidence ?? null,
       is_final,
     })
