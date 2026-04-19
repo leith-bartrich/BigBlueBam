@@ -14,7 +14,7 @@ export function CalendarWeekPage({ onNavigate }: CalendarWeekPageProps) {
   const startAfter = weekDays[0]!.toISOString();
   const startBefore = new Date(weekDays[6]!.getTime() + 86400000).toISOString();
 
-  const { data, isLoading } = useEvents({ start_after: startAfter, start_before: startBefore });
+  const { data } = useEvents({ start_after: startAfter, start_before: startBefore });
   const events = data?.data ?? [];
 
   const eventsForDay = (day: Date): BookEvent[] =>

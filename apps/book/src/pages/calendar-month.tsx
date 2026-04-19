@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useEvents, type BookEvent } from '@/hooks/use-events';
-import { cn, format, getMonthDays, addMonths, isSameDay, isSameMonth, startOfMonth, endOfMonth } from '@/lib/utils';
+import { cn, format, getMonthDays, addMonths, isSameDay, isSameMonth } from '@/lib/utils';
 
 interface CalendarMonthPageProps {
   onNavigate: (path: string) => void;
@@ -14,8 +14,6 @@ export function CalendarMonthPage({ onNavigate, month }: CalendarMonthPageProps)
   );
 
   const monthDays = useMemo(() => getMonthDays(currentDate), [currentDate]);
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
 
   const startAfter = monthDays[0]!.toISOString();
   const startBefore = new Date(monthDays[monthDays.length - 1]!.getTime() + 86400000).toISOString();

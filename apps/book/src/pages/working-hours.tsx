@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Save, Clock } from 'lucide-react';
-import { useWorkingHours, useSetWorkingHours, type WorkingHours } from '@/hooks/use-working-hours';
+import { useWorkingHours, useSetWorkingHours } from '@/hooks/use-working-hours';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -8,7 +8,7 @@ interface WorkingHoursPageProps {
   onNavigate?: (path: string) => void;
 }
 
-export function WorkingHoursPage({ onNavigate }: WorkingHoursPageProps) {
+export function WorkingHoursPage({ onNavigate: _onNavigate }: WorkingHoursPageProps) {
   const { data, isLoading } = useWorkingHours();
   const setWorkingHours = useSetWorkingHours();
 

@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { useEvents, type BookEvent } from '@/hooks/use-events';
-import { cn, format, addDays, HOURS, isSameDay } from '@/lib/utils';
+import { useEvents } from '@/hooks/use-events';
+import { format, addDays, HOURS } from '@/lib/utils';
 
 interface CalendarDayPageProps {
   onNavigate: (path: string) => void;
@@ -16,9 +16,8 @@ export function CalendarDayPage({ onNavigate, date }: CalendarDayPageProps) {
   const startAfter = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()).toISOString();
   const startBefore = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + 1).toISOString();
 
-  const { data, isLoading } = useEvents({ start_after: startAfter, start_before: startBefore });
+  const { data } = useEvents({ start_after: startAfter, start_before: startBefore });
   const events = data?.data ?? [];
-  const isToday = isSameDay(currentDate, new Date());
 
   return (
     <div className="flex flex-col h-full">
