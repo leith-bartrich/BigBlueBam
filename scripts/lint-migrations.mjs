@@ -24,6 +24,17 @@
 // Inline escape: append `-- noqa: <rule-name>` on the offending line to
 // silence a single rule. Use sparingly and only with justification.
 //
+// ⚠ MIGRATION IMMUTABILITY. Once a migration has been applied in ANY
+// environment (dev, staging, prod), its SQL body is frozen — the runner in
+// apps/api/src/migrate.ts hashes the body (leading `--` comment block is
+// stripped, but everything after the header including inline comments is
+// part of the hash) and refuses to run the file when the hash drifts. If a
+// lint violation fires on an already-applied migration, do NOT add an
+// inline `-- noqa:` tag: that changes the body and breaks every environment
+// that has the file recorded with the old hash. Instead, register the
+// suppression in the OFF_FILE_SUPPRESSIONS map below. See CLAUDE.md under
+// "Migration conventions" for the incident that motivated this mechanism.
+//
 // Usage: node scripts/lint-migrations.mjs
 // Exit:  0 on clean, 1 on any violation.
 
@@ -36,6 +47,37 @@ const MIGRATIONS_DIR = resolve(__dirname, '..', 'infra', 'postgres', 'migrations
 
 const FILENAME_RE = /^[0-9]{4}_[a-z][a-z0-9_]*\.sql$/;
 const HEADER_SCAN_LINES = 20;
+
+/**
+ * Off-file suppressions for already-applied migrations. Shape:
+ *   { [filename]: { [lineNumber]: [rule, ...] } }
+ *
+ * Use this instead of adding an inline `-- noqa:` tag to a migration that has
+ * already been applied in any environment. Editing the body retroactively
+ * triggers the runner's checksum-mismatch guard and blocks every subsequent
+ * migration on that DB (the 2026-04-18 incident where production stalled at
+ * 0124 until an operator ran once with MIGRATE_ALLOW_HEADER_RESTAMP=1).
+ *
+ * The 0124 entries below document the false positives that were inside a
+ * `DO $$ BEGIN IF EXISTS ... END $$` block with runtime idempotency guards.
+ * They are also still silenced by inline `-- noqa:` tags left in the file so
+ * production's re-stamped hash continues to match; removing the tags would
+ * re-break the hash. Keep BOTH suppressions in place — the file is frozen.
+ */
+const OFF_FILE_SUPPRESSIONS = {
+  '0124_banter_messages_partition_conversion.sql': {
+    39: ['drop-if-exists'],
+    45: ['create-table-if-not-exists'],
+  },
+};
+
+function hasOffFileSuppression(filename, lineNumber, rule) {
+  const fileMap = OFF_FILE_SUPPRESSIONS[filename];
+  if (!fileMap) return false;
+  const rules = fileMap[lineNumber];
+  if (!rules) return false;
+  return rules.includes(rule) || rules.includes('all');
+}
 
 // Strip SQL comments from lines for DDL matching. Preserves line count so
 // that line numbers reported to the user match the original file. Handles
@@ -102,7 +144,9 @@ function checkFile(filename, content) {
   const hasWhy = /--\s*Why:\s*\S/i.test(headerSlice);
   const hasImpact = /--\s*Client impact:\s*\S/i.test(headerSlice);
 
-  const headerNoqa = rawLines.slice(0, HEADER_SCAN_LINES).some((l) => hasNoqa(l, 'header-required'));
+  const headerNoqa =
+    rawLines.slice(0, HEADER_SCAN_LINES).some((l) => hasNoqa(l, 'header-required'))
+    || hasOffFileSuppression(filename, 1, 'header-required');
   if (!headerNoqa) {
     if (!hasFilenameLine) {
       violations.push({ line: 1, rule: 'header-required', msg: `missing "-- ${prefix}_<name>.sql" line in first ${HEADER_SCAN_LINES} lines` });
@@ -120,6 +164,7 @@ function checkFile(filename, content) {
 
   const check = (lineIdx, rule, msg) => {
     if (hasNoqa(rawLines[lineIdx], rule)) return;
+    if (hasOffFileSuppression(filename, lineIdx + 1, rule)) return;
     violations.push({ line: lineIdx + 1, rule, msg });
   };
 
@@ -187,7 +232,8 @@ function checkFile(filename, content) {
     }
 
     if (reCreateEnum.test(line)) {
-      if (!hasNoqa(rawLines[i], 'create-enum-guarded')) {
+      if (!hasNoqa(rawLines[i], 'create-enum-guarded')
+          && !hasOffFileSuppression(filename, i + 1, 'create-enum-guarded')) {
         warnings.push({ line: i + 1, rule: 'create-enum-guarded', msg: 'CREATE TYPE ... AS ENUM has no IF NOT EXISTS; wrap in DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;' });
       }
     }
