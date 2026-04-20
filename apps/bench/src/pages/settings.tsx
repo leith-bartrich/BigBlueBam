@@ -4,7 +4,7 @@ interface SettingsPageProps {
   onNavigate: (path: string) => void;
 }
 
-export function SettingsPage({ onNavigate }: SettingsPageProps) {
+export function SettingsPage({ onNavigate: _onNavigate }: SettingsPageProps) {
   const { data: sourcesData, isLoading } = useDataSources();
   const sources = sourcesData?.data ?? [];
 

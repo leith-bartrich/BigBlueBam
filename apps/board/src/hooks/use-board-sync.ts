@@ -158,9 +158,14 @@ export function useBoardSync(
             });
             collaboratorsRef.current = next;
 
-            // Push updated collaborators to Excalidraw
+            // Push updated collaborators to Excalidraw. The Map's value
+            // type is intentionally `any` at the ref level (we build
+            // plain objects from WS messages); Excalidraw's API signature
+            // expects its Collaborator-shaped Map, so cast through
+            // Parameters to keep tsc happy without importing the full
+            // internal Collaborator type.
             api.updateScene({
-              collaborators: next,
+              collaborators: next as unknown as Parameters<typeof api.updateScene>[0]['collaborators'],
             });
             break;
           }
@@ -176,7 +181,9 @@ export function useBoardSync(
               collaboratorsRef.current = next;
               const api = getAPI();
               if (api) {
-                api.updateScene({ collaborators: next });
+                api.updateScene({
+                  collaborators: next as unknown as Parameters<typeof api.updateScene>[0]['collaborators'],
+                });
               }
             }
             break;

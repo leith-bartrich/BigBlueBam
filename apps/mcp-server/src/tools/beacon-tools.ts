@@ -190,6 +190,32 @@ export function registerBeaconTools(server: McpServer, api: ApiClient, beaconApi
     },
   });
 
+  // §14 Wave 4: idempotent create-or-update by slug.
+  registerTool(server, {
+    name: 'beacon_upsert_by_slug',
+    description: 'Idempotent create-or-update of a Beacon entry by slug. Natural key is the globally-unique slug. On update, bumps version and writes a beacon_versions snapshot. Returns { data, created, idempotency_key } — `created` is true on insert, false on update.',
+    input: {
+      slug: z.string().min(1).max(256).describe('Slug — idempotency key (must be a URL-safe string)'),
+      title: z.string().min(1).max(512).describe('Entry title'),
+      summary: z.string().max(500).nullable().optional().describe('Short summary (plain text)'),
+      body_markdown: z.string().min(1).max(500_000).describe('Entry body (Markdown)'),
+      body_html: z.string().nullable().optional().describe('Optional pre-rendered HTML (sanitized server-side)'),
+      visibility: z.enum(['Public', 'Organization', 'Project', 'Private']).optional().describe('Visibility level'),
+      project_id: z.string().uuid().nullable().optional().describe('Project scope (UUID)'),
+      metadata: z.record(z.unknown()).optional().describe('Arbitrary metadata JSON'),
+      change_note: z.string().max(500).nullable().optional().describe('Note attached to the new version row on update'),
+    },
+    returns: z.object({
+      data: beaconShape.extend({ body_markdown: z.string().optional(), version: z.number().optional() }),
+      created: z.boolean(),
+      idempotency_key: z.string(),
+    }),
+    handler: async (params) => {
+      const result = await client.request('POST', '/entries/upsert', params);
+      return result.ok ? ok(result.data) : err('upserting beacon entry', result.data);
+    },
+  });
+
   registerTool(server, {
     name: 'beacon_retire',
     description: 'Retire (soft-delete) a Beacon.',

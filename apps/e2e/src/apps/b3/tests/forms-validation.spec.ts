@@ -1,4 +1,5 @@
 import { test, expect } from '../../../fixtures/base.fixture';
+import type { BrowserContextOptions } from '@playwright/test';
 import { DashboardPage } from '../pages/dashboard.page';
 import { LoginPage } from '../../../page-objects/login.page';
 import { expectFormValidationError } from '../../../helpers/interactions';
@@ -7,7 +8,7 @@ import { expectFormValidationError } from '../../../helpers/interactions';
 // including those created via browser.newContext(). To exercise the login
 // form we need an explicitly unauthenticated context — empty cookies +
 // empty origins.
-const EMPTY_STORAGE = { cookies: [], origins: [] } as const;
+const EMPTY_STORAGE: BrowserContextOptions['storageState'] = { cookies: [], origins: [] };
 
 test.describe('B3 — Form Validation', () => {
   test('login form requires email and password', async ({ browser, screenshots }) => {

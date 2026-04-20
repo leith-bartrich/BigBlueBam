@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Globe } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 
@@ -41,8 +41,8 @@ export function extractExternalUrls(content: string): string[] {
   }
 
   while ((hrefMatch = hrefRe.exec(content)) !== null) {
-    if (!INTERNAL_PATH_RE.test(hrefMatch[1])) {
-      urls.add(hrefMatch[1]);
+    if (!INTERNAL_PATH_RE.test(hrefMatch[1]!)) {
+      urls.add(hrefMatch[1]!);
     }
   }
 

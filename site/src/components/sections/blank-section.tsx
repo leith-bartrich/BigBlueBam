@@ -4,6 +4,7 @@ import {
   Globe,
   GitBranch,
   BarChart3,
+  Bot,
 } from 'lucide-react';
 import { SectionWrapper } from '@/components/ui/section-wrapper';
 import { AnimatedReveal } from '@/components/ui/animated-reveal';
@@ -38,6 +39,13 @@ const features = [
     description:
       'Real-time response charts, completion funnels, and CSV export for every form and survey you create.',
     color: 'bg-violet-100 text-violet-600',
+  },
+  {
+    icon: Bot,
+    title: 'AI Form Operations',
+    description:
+      '11 MCP tools let AI agents generate form definitions from a prompt, publish forms, list and export submissions, pull per-form analytics, and summarize free-text responses.',
+    color: 'bg-purple-100 text-purple-600',
   },
 ];
 

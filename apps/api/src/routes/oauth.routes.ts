@@ -259,12 +259,13 @@ export default async function oauthRoutes(fastify: FastifyInstance) {
       .limit(1);
 
     if (existingLink) {
-      // Sign the user in by issuing a session.
+      // Sign the user in by issuing a session. sessions.id IS the token
+      // (not a separate column).
       const sessionToken = randomUUID();
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       await db.insert(sessions).values({
+        id: sessionToken,
         user_id: existingLink.user_id,
-        token: sessionToken,
         expires_at: expiresAt,
       });
       await db
@@ -344,8 +345,8 @@ export default async function oauthRoutes(fastify: FastifyInstance) {
     const sessionToken = randomUUID();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await db.insert(sessions).values({
+      id: sessionToken,
       user_id: newUser.id,
-      token: sessionToken,
       expires_at: expiresAt,
     });
 

@@ -1,5 +1,5 @@
 import { useRevenueSummary, useOutstanding, useProfitability, useOverdue } from '@/hooks/use-reports';
-import { formatCents, formatDate, statusBadgeClass, cn } from '@/lib/utils';
+import { formatCents } from '@/lib/utils';
 
 interface Props {
   onNavigate: (path: string) => void;

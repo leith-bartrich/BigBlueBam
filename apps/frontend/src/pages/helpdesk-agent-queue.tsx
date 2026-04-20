@@ -113,7 +113,7 @@ export function HelpdeskAgentQueuePage({ onNavigate }: HelpdeskAgentQueuePagePro
   }, [fetchQueue]);
 
   return (
-    <AppLayout title="Helpdesk Agent Queue" onNavigate={onNavigate}>
+    <AppLayout onNavigate={onNavigate} onCreateProject={() => { /* helpdesk queue has no project creation affordance */ }}>
       <div className="max-w-6xl mx-auto py-6 px-4">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
@@ -183,7 +183,10 @@ export function HelpdeskAgentQueuePage({ onNavigate }: HelpdeskAgentQueuePagePro
               </thead>
               <tbody>
                 {tickets.map((t) => {
-                  const slaBadge = SLA_BADGES[t.sla_state] ?? SLA_BADGES.ok;
+                  // Fallback object literal in case SLA_BADGES is keyed by a
+                  // string not present; noUncheckedIndexedAccess treats the
+                  // lookup (and even the .ok fallback) as possibly undefined.
+                  const slaBadge = SLA_BADGES[t.sla_state] ?? SLA_BADGES.ok ?? { label: 'OK', className: 'bg-zinc-100 text-zinc-700' };
                   return (
                     <tr
                       key={t.id}

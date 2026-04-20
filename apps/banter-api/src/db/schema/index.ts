@@ -1,4 +1,4 @@
-export { organizations, users, sessions, apiKeys, organizationMemberships } from './bbb-refs.js';
+export { organizations, users, sessions, apiKeys, organizationMemberships, agentPolicies } from './bbb-refs.js';
 export { banterChannelGroups } from './channel-groups.js';
 export { banterChannels } from './channels.js';
 export { banterMessages } from './messages.js';
@@ -17,3 +17,7 @@ export { banterSettings } from './settings.js';
 export { banterAuditLog } from './audit-log.js';
 export { banterUserPresence } from './user-presence.js';
 export type { BanterPresenceStatus } from './user-presence.js';
+// §13 Wave 4 scheduled banter
+export { banterScheduledMessages } from './scheduled-messages.js';
+// §1 Wave 5 banter subs
+export { banterAgentSubscriptions } from './agent-subscriptions.js';

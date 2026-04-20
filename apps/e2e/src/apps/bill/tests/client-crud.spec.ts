@@ -104,7 +104,7 @@ test.describe('Bill — Client CRUD', () => {
     test.skip(!clientId, 'No client available');
 
     const invoicesPage = new InvoicesPage(page, screenshots);
-    await invoicesPage.goto(`/clients/${clientId}`);
+    await invoicesPage.navigate(`/clients/${clientId}`);
     await screenshots.capture(page, 'client-detail-loaded');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'client-detail-content');

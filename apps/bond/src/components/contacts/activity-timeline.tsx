@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Badge } from '@/components/common/badge';
-import { cn, formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/utils';
 import { type Activity, type ActivityType, activityTypeLabel, activityTypeColor } from '@/hooks/use-activities';
 import type { LucideIcon } from 'lucide-react';
 

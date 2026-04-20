@@ -60,8 +60,9 @@ export function HelpdeskSection() {
             <Bot className="mb-3 h-5 w-5 text-amber-600" />
             <h3 className="text-base font-semibold text-zinc-900">AI agent triages</h3>
             <p className="mt-2 text-sm text-zinc-600">
-              A task is auto-created on the board. An AI agent sets priority, assigns it to the right
-              engineer, and responds to the customer.
+              A task is auto-created on the board. An AI agent sets priority, checks for similar
+              open tickets via the dedupe primitives, upserts the requester by email, and
+              responds to the customer.
             </p>
           </div>
           <div className="relative rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">

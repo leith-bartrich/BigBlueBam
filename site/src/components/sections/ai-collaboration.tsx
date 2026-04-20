@@ -45,13 +45,21 @@ const capabilities = [
   'Task management & bulk operations',
   'Reports & analytics (velocity, burndown, cycle time)',
   'Team collaboration & notifications',
-  'Banter messaging (channels, DMs, threads, calls)',
+  'Banter messaging (channels, DMs, threads, calls, scheduled posts)',
   'Brief document collaboration & graduation',
-  'Bolt workflow automations',
+  'Bolt workflow automations & runtime observability',
   'Bearing goals & OKR tracking',
   'Board visual collaboration & canvas analysis',
-  'Bond CRM pipeline & contact management',
-  'Helpdesk ticket operations',
+  'Bond CRM pipeline, contact management & dedupe',
+  'Helpdesk ticket operations & similar-ticket lookup',
+  'Beacon knowledge base & graph search',
+  'Blast email campaigns, segments & analytics',
+  'Bill invoicing, expenses & revenue reporting',
+  'Blank forms, submissions & conditional routing',
+  'Book scheduling & mixed-roster availability',
+  'Bench analytics dashboards & scheduled reports',
+  'Cross-app search, composite views, entity linking',
+  'Agent identity, proposals, policies & audit',
   'Platform administration',
 ];
 
@@ -122,10 +130,13 @@ export function AiCollaboration() {
             <div>
               <h3 className="text-xl font-bold text-zinc-900">Full parity through MCP</h3>
               <p className="mt-3 text-zinc-600">
-                The built-in Model Context Protocol server exposes 215 structured tools that mirror
-                every UI action across BigBlueBam, Beacon, Brief, Bolt, Bearing, Board, Bond, Banter, and the Helpdesk. AI agents authenticate
-                with scoped API keys, operate under the same role-based permissions as humans, and
-                leave the same audit trail in the activity log.
+                The built-in Model Context Protocol server exposes 340 structured tools that mirror
+                every UI action across all fourteen apps plus cross-cutting platform capabilities
+                (agent identity, approval queues, visibility preflight, unified activity, cross-app
+                search, composite views, entity linking, scheduled posts, upserts, attachment
+                metadata, agent policies, outbound webhooks). AI agents authenticate with scoped
+                API keys, operate under the same role-based permissions as humans, and leave the
+                same audit trail in the activity log.
               </p>
               <div className="mt-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
@@ -138,7 +149,7 @@ export function AiCollaboration() {
             </div>
             <div>
               <h3 className="mb-4 text-sm font-semibold text-zinc-500 uppercase tracking-wider">
-                215 tools across 13 areas
+                340 tools across 14 apps + platform
               </h3>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {capabilities.map((cap) => (

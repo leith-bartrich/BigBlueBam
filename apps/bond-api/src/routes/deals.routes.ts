@@ -115,9 +115,12 @@ export default async function dealRoutes(fastify: FastifyInstance) {
     '/deals/:id',
     { preHandler: [requireAuth] },
     async (request, reply) => {
+      const role = request.user!.role;
+      const isRestrictedRole = role === 'member' || role === 'viewer';
       const deal = await dealService.getDeal(
         request.params.id,
         request.user!.org_id,
+        isRestrictedRole ? request.user!.id : undefined,
       );
       return reply.send({ data: deal });
     },
@@ -273,9 +276,12 @@ export default async function dealRoutes(fastify: FastifyInstance) {
     '/deals/:id/stage-history',
     { preHandler: [requireAuth] },
     async (request, reply) => {
+      const role = request.user!.role;
+      const isRestrictedRole = role === 'member' || role === 'viewer';
       const history = await dealService.getDealStageHistory(
         request.params.id,
         request.user!.org_id,
+        isRestrictedRole ? request.user!.id : undefined,
       );
       return reply.send({ data: history });
     },
@@ -306,9 +312,17 @@ export default async function dealRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const dealId = request.params.id;
       const orgId = request.user!.org_id;
+      const role = request.user!.role;
+      const isRestrictedRole = role === 'member' || role === 'viewer';
 
-      // Verify the deal exists and belongs to the caller's org
-      const deal = await dealService.getDeal(dealId, orgId);
+      // Verify the deal exists and belongs to the caller's org. Restricted
+      // roles (member/viewer/guest) only see deals they own; the same rule
+      // the list endpoint enforces via visibility_owner_id.
+      const deal = await dealService.getDeal(
+        dealId,
+        orgId,
+        isRestrictedRole ? request.user!.id : undefined,
+      );
       if (!deal) {
         return reply.status(404).send({
           error: {

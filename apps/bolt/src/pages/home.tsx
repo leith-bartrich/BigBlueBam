@@ -3,7 +3,6 @@ import { Zap, Activity, Power, PowerOff, Plus, Search, MoreVertical, Copy, Trash
 import { useAutomationList, useAutomationStats, useEnableAutomation, useDisableAutomation, useDeleteAutomation, useDuplicateAutomation, type TriggerSource, type BoltAutomation } from '@/hooks/use-automations';
 import { Badge } from '@/components/common/badge';
 import { Button } from '@/components/common/button';
-import { StatusBadge } from '@/components/execution/status-badge';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 import { formatRelativeTime } from '@/lib/utils';
 

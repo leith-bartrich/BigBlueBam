@@ -10,7 +10,7 @@ import { sprints } from '../db/schema/sprints.js';
 import { projects } from '../db/schema/projects.js';
 import { comments } from '../db/schema/comments.js';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
-import { requireProjectRole, requireProjectAccess } from '../middleware/authorize.js';
+import { requireProjectRole } from '../middleware/authorize.js';
 
 // ── helpers ─────────────────────────────────────────────────────────────
 

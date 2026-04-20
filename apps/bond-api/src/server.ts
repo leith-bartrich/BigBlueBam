@@ -84,6 +84,8 @@ import scoringRoutes from './routes/scoring.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import customFieldRoutes from './routes/custom-fields.routes.js';
 import importRoutes from './routes/imports.routes.js';
+// §7 Wave 5 dedupe
+import dedupeRoutes from './routes/dedupe.routes.js';
 
 await fastify.register(contactRoutes, { prefix: '/v1' });
 await fastify.register(companyRoutes, { prefix: '/v1' });
@@ -94,6 +96,8 @@ await fastify.register(scoringRoutes, { prefix: '/v1' });
 await fastify.register(analyticsRoutes, { prefix: '/v1' });
 await fastify.register(customFieldRoutes, { prefix: '/v1' });
 await fastify.register(importRoutes, { prefix: '/v1' });
+// §7 Wave 5 dedupe
+await fastify.register(dedupeRoutes, { prefix: '/v1' });
 
 // Graceful shutdown
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

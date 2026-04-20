@@ -57,7 +57,12 @@ export function CreateTaskDialog({
     reset,
     formState: { errors },
   } = useForm<CreateTaskFormValues>({
-    resolver: zodResolver(createTaskFormSchema),
+    // z.preprocess(...) widens story_points' input type to unknown, so
+    // zodResolver's inferred Resolver shape doesn't match useForm's
+    // TFieldValues. Cast through any; the runtime resolver is correct,
+    // it's purely a generic-alignment issue.
+    // biome-ignore lint/suspicious/noExplicitAny: see comment above
+    resolver: zodResolver(createTaskFormSchema) as any,
     defaultValues: {
       title: '',
       phase_id: defaultPhaseId ?? '',

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Loader2, RotateCcw, Archive, XCircle } from 'lucide-react';
+import { RotateCcw, Archive, XCircle } from 'lucide-react';
 import type { Task, Sprint } from '@bigbluebam/shared';
 import { Dialog } from '@/components/common/dialog';
 import { Button } from '@/components/common/button';
@@ -10,11 +10,6 @@ import { cn, priorityColor } from '@/lib/utils';
 import { api } from '@/lib/api';
 
 type CarryAction = 'carry_forward' | 'backlog' | 'cancel';
-
-interface TaskDecision {
-  taskId: string;
-  action: CarryAction;
-}
 
 interface CarryForwardDialogProps {
   open: boolean;
@@ -178,7 +173,7 @@ export function CarryForwardDialog({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-xs font-mono text-zinc-400">
-                      {task.human_id ?? `#${task.task_number}`}
+                      {task.human_id ?? `#${task.id.slice(0, 8)}`}
                     </span>
                     <Badge className={priorityColor(task.priority)}>
                       {task.priority}

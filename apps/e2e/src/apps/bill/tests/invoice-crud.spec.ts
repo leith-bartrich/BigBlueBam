@@ -99,7 +99,7 @@ test.describe('Bill — Invoice CRUD', () => {
     test.skip(!invoiceId, 'No invoice available');
 
     const invoicesPage = new InvoicesPage(page, screenshots);
-    await invoicesPage.goto(`/invoices/${invoiceId}`);
+    await invoicesPage.navigate(`/invoices/${invoiceId}`);
     await screenshots.capture(page, 'invoice-detail-loaded');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'invoice-detail-content');

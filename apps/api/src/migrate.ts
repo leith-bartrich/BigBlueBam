@@ -111,8 +111,13 @@ async function getApplied(sql: postgres.Sql): Promise<Map<string, AppliedRow>> {
 
 async function applyMigration(sql: postgres.Sql, migration: MigrationFile): Promise<void> {
   await sql.begin(async (tx) => {
+    // postgres.TransactionSql is callable as a tagged template at runtime
+    // but its TS surface in the pinned version doesn't expose the call
+    // signature cleanly; cast to any for the tagged-template uses.
+    // biome-ignore lint/suspicious/noExplicitAny: see comment
+    const txTag = tx as any;
     await tx.unsafe(migration.sql);
-    await tx`
+    await txTag`
       INSERT INTO schema_migrations (id, checksum)
       VALUES (${migration.id}, ${migration.checksum})
       ON CONFLICT (id) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()
@@ -185,7 +190,9 @@ async function ensureSuperuserSentinel(sql: postgres.Sql): Promise<void> {
   // Role is left at the `users_role_check` default-friendly 'owner' value so
   // the row satisfies the role CHECK constraint.
   await sql.begin(async (tx) => {
-    await tx`
+    // biome-ignore lint/suspicious/noExplicitAny: TransactionSql tagged-template call signature
+    const txTag = tx as any;
+    await txTag`
       INSERT INTO organizations (id, name, slug, plan, settings)
       VALUES (
         ${BOOTSTRAP_ORG_ID}::uuid,
@@ -199,7 +206,7 @@ async function ensureSuperuserSentinel(sql: postgres.Sql): Promise<void> {
 
     // Insert by id first, then fall back to a by-email insert in case a
     // prior environment already owns the sentinel email with a different id.
-    await tx`
+    await txTag`
       INSERT INTO users (
         id, org_id, email, display_name, password_hash, role,
         is_active, is_superuser
@@ -216,7 +223,7 @@ async function ensureSuperuserSentinel(sql: postgres.Sql): Promise<void> {
       )
       ON CONFLICT (id) DO NOTHING
     `;
-    await tx`
+    await txTag`
       INSERT INTO users (
         id, org_id, email, display_name, password_hash, role,
         is_active, is_superuser

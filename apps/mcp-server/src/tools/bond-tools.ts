@@ -403,6 +403,40 @@ export function registerBondTools(server: McpServer, api: ApiClient, bondApiUrl:
     },
   });
 
+  // ===== §14 Wave 4 upserts =====
+
+  registerTool(server, {
+    name: 'bond_upsert_contact',
+    description: 'Idempotent create-or-update of a CRM contact by email. Natural key is (organization_id, lower(email)). Soft-deleted matches are resurrected. Returns { data, created, idempotency_key } — `created` is true on insert, false on update.',
+    input: {
+      email: z.string().email().max(255).describe('Email address — idempotency key (case-insensitive)'),
+      first_name: z.string().max(100).optional().describe('First name'),
+      last_name: z.string().max(100).optional().describe('Last name'),
+      phone: z.string().max(50).optional().describe('Phone number'),
+      title: z.string().max(150).optional().describe('Job title'),
+      avatar_url: z.string().url().optional().describe('Avatar URL'),
+      lifecycle_stage: z.enum(['subscriber', 'lead', 'marketing_qualified', 'sales_qualified', 'opportunity', 'customer', 'evangelist', 'other']).optional().describe('Lifecycle stage'),
+      lead_source: z.string().max(60).optional().describe('Lead source'),
+      address_line1: z.string().max(255).optional(),
+      address_line2: z.string().max(255).optional(),
+      city: z.string().max(100).optional(),
+      state_region: z.string().max(100).optional(),
+      postal_code: z.string().max(20).optional(),
+      country: z.string().length(2).optional().describe('ISO 3166-1 alpha-2 country code'),
+      custom_fields: z.record(z.unknown()).optional(),
+      owner_id: z.string().uuid().optional().describe('Owner user UUID (defaults to acting user on insert; unchanged on update)'),
+    },
+    returns: z.object({
+      data: contactShape,
+      created: z.boolean(),
+      idempotency_key: z.string(),
+    }),
+    handler: async (params) => {
+      const result = await client.request('POST', '/contacts/upsert', params);
+      return result.ok ? ok(result.data) : err('upserting contact', result.data);
+    },
+  });
+
   // ===== COMPANIES (4) =====
 
   registerTool(server, {

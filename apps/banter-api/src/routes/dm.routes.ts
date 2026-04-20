@@ -131,6 +131,17 @@ export default async function dmRoutes(fastify: FastifyInstance) {
         })
         .returning();
 
+      if (!channel) {
+        return reply.status(500).send({
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'DM channel insert returned no row',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+
       await db.insert(banterChannelMemberships).values([
         { channel_id: channel.id, user_id: user.id, role: 'member' },
         { channel_id: channel.id, user_id: body.user_id, role: 'member' },
@@ -225,6 +236,17 @@ export default async function dmRoutes(fastify: FastifyInstance) {
           member_count: allUserIds.length,
         })
         .returning();
+
+      if (!channel) {
+        return reply.status(500).send({
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Group DM channel insert returned no row',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
 
       await db.insert(banterChannelMemberships).values(
         allUserIds.map((uid) => ({

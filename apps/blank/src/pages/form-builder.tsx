@@ -16,14 +16,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import {
-  Plus, GripVertical, Trash2, Save, Eye, Send, Settings,
-  Type, AlignLeft, Mail, Phone, Link, Hash,
-  ListChecks, ChevronDown, Calendar, Clock,
-  Star, BarChart3, ThumbsUp, CheckSquare, ToggleLeft,
-  Heading, FileText, EyeOff, Upload, SeparatorHorizontal,
-  ChevronLeft, ChevronRight, X, Copy, ExternalLink, CheckCircle2, Globe, Building2, FolderKanban,
-} from 'lucide-react';
+import { Plus, GripVertical, Trash2, Eye, Send, Settings, Type, AlignLeft, Mail, Phone, Link, Hash, ListChecks, ChevronDown, Calendar, Clock, Star, BarChart3, ThumbsUp, CheckSquare, ToggleLeft, Heading, FileText, EyeOff, Upload, SeparatorHorizontal, ChevronLeft, ChevronRight, X, Copy, ExternalLink, CheckCircle2, Globe, Building2, FolderKanban } from 'lucide-react';
 import { useForm, useUpdateForm, usePublishForm, useBamProjects } from '@/hooks/use-forms';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -410,7 +403,7 @@ function FormPreviewPanel({
 /*  Form builder page                                                  */
 /* ------------------------------------------------------------------ */
 
-export function FormBuilderPage({ formId, onNavigate }: FormBuilderPageProps) {
+export function FormBuilderPage({ formId, onNavigate: _onNavigate }: FormBuilderPageProps) {
   const { data, isLoading } = useForm(formId);
   const updateMutation = useUpdateForm(formId);
   const publishMutation = usePublishForm();

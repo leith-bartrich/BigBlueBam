@@ -34,7 +34,7 @@ class ApiClient {
     path: string,
     body?: unknown,
     params?: Record<string, string | number | boolean | undefined | null>,
-    options?: { skipAuthRedirect?: boolean },
+    _options?: { skipAuthRedirect?: boolean },
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`, window.location.origin);
 

@@ -76,7 +76,7 @@ test.describe('Blank — Form CRUD', () => {
     test.skip(!formId, 'No form available');
 
     const formsPage = new FormsListPage(page, screenshots);
-    await formsPage.goto(`/forms/${formId}/edit`);
+    await formsPage.navigate(`/forms/${formId}/edit`);
     await screenshots.capture(page, 'form-edit-loaded');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'form-edit-content');
@@ -96,7 +96,7 @@ test.describe('Blank — Form CRUD', () => {
     test.skip(!formId, 'No form available');
 
     const formsPage = new FormsListPage(page, screenshots);
-    await formsPage.goto(`/forms/${formId}/preview`);
+    await formsPage.navigate(`/forms/${formId}/preview`);
     await screenshots.capture(page, 'form-preview-loaded');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'form-preview-content');
@@ -116,7 +116,7 @@ test.describe('Blank — Form CRUD', () => {
     test.skip(!formId, 'No form available');
 
     const formsPage = new FormsListPage(page, screenshots);
-    await formsPage.goto(`/forms/${formId}/responses`);
+    await formsPage.navigate(`/forms/${formId}/responses`);
     await screenshots.capture(page, 'form-responses-loaded');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'form-responses-content');

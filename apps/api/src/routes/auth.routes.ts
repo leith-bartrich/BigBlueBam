@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { registerSchema, loginSchema, updateProfileSchema } from '@bigbluebam/shared';
+import { registerSchema, bootstrapSchema, loginSchema, updateProfileSchema } from '@bigbluebam/shared';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import * as authService from '../services/auth.service.js';
@@ -20,6 +20,8 @@ import {
 } from '../lib/login-lockout.js';
 import { issueCsrfToken } from '../plugins/csrf.js';
 import { isPublicSignupDisabled } from '../services/platform-settings.service.js';
+import { invalidateBootstrapRequiredCache } from '../services/bootstrap-status.service.js';
+import { logSuperuserAction } from '../services/superuser-audit.service.js';
 
 export default async function authRoutes(fastify: FastifyInstance) {
   const cookieOptions = {
@@ -57,6 +59,82 @@ export default async function authRoutes(fastify: FastifyInstance) {
       fastify.log.warn({ err }, 'Failed to record login_history entry');
     }
   }
+
+  fastify.post('/auth/bootstrap', {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: '5 minutes',
+        keyGenerator: (req) => req.ip,
+      },
+    },
+  }, async (request, reply) => {
+    const data = bootstrapSchema.parse(request.body);
+    const ipAddress = request.ip;
+    const userAgent = truncateUA(request.headers['user-agent']);
+
+    try {
+      const result = await authService.bootstrap(data, { ipAddress, userAgent });
+
+      invalidateBootstrapRequiredCache();
+
+      reply.setCookie('session', result.session.id, cookieOptions);
+      issueCsrfToken(reply);
+
+      await recordLoginAttempt({
+        userId: result.user.id,
+        email: data.email.toLowerCase(),
+        ipAddress,
+        userAgent,
+        success: true,
+        failureReason: null,
+      });
+
+      await logSuperuserAction({
+        superuserId: result.user.id,
+        action: 'bootstrap_create',
+        targetType: 'user',
+        targetId: result.user.id,
+        details: {
+          org_id: result.org.id,
+          org_slug: result.org.slug,
+        },
+        ipAddress,
+        userAgent: userAgent ?? undefined,
+      });
+
+      return reply.status(201).send({
+        data: {
+          user: {
+            id: result.user.id,
+            email: result.user.email,
+            display_name: result.user.display_name,
+            role: result.user.role,
+            org_id: result.user.org_id,
+            is_superuser: result.user.is_superuser,
+            active_org_id: result.user.org_id,
+          },
+          organization: {
+            id: result.org.id,
+            name: result.org.name,
+            slug: result.org.slug,
+          },
+        },
+      });
+    } catch (err) {
+      if (err instanceof authService.BootstrapAlreadyCompleteError) {
+        return reply.status(409).send({
+          error: {
+            code: 'ALREADY_BOOTSTRAPPED',
+            message: err.message,
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      throw err;
+    }
+  });
 
   fastify.post('/auth/register', async (request, reply) => {
     // Platform-wide kill switch: SuperUsers can freeze public signup from

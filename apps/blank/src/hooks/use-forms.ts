@@ -44,6 +44,9 @@ export interface BlankForm {
   confirmation_type: string;
   confirmation_message: string | null;
   theme_color: string;
+  header_image_url?: string | null;
+  one_per_email?: boolean;
+  notify_on_submit?: boolean;
   submission_count?: number;
   field_count?: number;
   fields?: BlankField[];

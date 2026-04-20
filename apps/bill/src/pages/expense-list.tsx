@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Plus, Receipt } from 'lucide-react';
-import { useExpenses, useCreateExpense, useApproveExpense, useRejectExpense } from '@/hooks/use-expenses';
+import { Plus } from 'lucide-react';
+import { useExpenses, useApproveExpense, useRejectExpense } from '@/hooks/use-expenses';
 import { formatDate, formatCents, statusBadgeClass, cn } from '@/lib/utils';
 
 interface Props {

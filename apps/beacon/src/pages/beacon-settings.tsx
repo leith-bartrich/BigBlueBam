@@ -6,13 +6,7 @@ import { Input } from '@/components/common/input';
 import { Select } from '@/components/common/select';
 import { useAuthStore } from '@/stores/auth.store';
 import { bbbGet } from '@/lib/bbb-api';
-import {
-  useEffectivePolicy,
-  usePolicyResolve,
-  useUpdatePolicy,
-  type PolicyScope,
-  type EffectivePolicy,
-} from '@/hooks/use-policies';
+import { useEffectivePolicy, useUpdatePolicy, type PolicyScope, type EffectivePolicy } from '@/hooks/use-policies';
 
 // ── Types ────────────────────────────────────────────────────────────
 

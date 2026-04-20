@@ -51,16 +51,16 @@ export function Architecture() {
       <AnimatedReveal delay={0.5}>
         <div className="mt-10 rounded-xl border border-zinc-200 bg-zinc-50 p-6">
           <div className="mb-4 flex flex-wrap justify-center gap-2">
-            <Badge variant="blue">215 MCP Tools</Badge>
+            <Badge variant="blue">340 MCP Tools</Badge>
             <Badge variant="blue">900+ Tests</Badge>
             <Badge variant="blue">19 Docker Services</Badge>
             <Badge variant="blue">MIT License</Badge>
           </div>
           <p className="text-center text-sm text-zinc-600">
-            Application containers (Bam API, Beacon API, Banter API, Brief API, Bolt API, Bearing API, Board API, Bond API, Helpdesk API, MCP server, worker,
-            voice agent, eight frontends) are stateless. Data services (PostgreSQL, Redis, MinIO,
-            LiveKit) can be swapped for managed cloud equivalents by changing environment variables
-            only.
+            Application containers (Bam, Banter, Beacon, Bearing, Bench, Bill, Blank, Blast, Board,
+            Bolt, Bond, Book, Brief, Helpdesk APIs plus MCP server, worker, voice agent, and their
+            frontends) are stateless. Data services (PostgreSQL, Redis, MinIO, Qdrant, LiveKit)
+            can be swapped for managed cloud equivalents by changing environment variables only.
           </p>
         </div>
       </AnimatedReveal>

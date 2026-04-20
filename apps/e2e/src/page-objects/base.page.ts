@@ -101,7 +101,7 @@ export abstract class BasePage {
     await this.page.waitForResponse((r) => r.url().includes(pathContains) && r.status() < 400);
   }
 
-  async getMainContent(): Locator {
+  async getMainContent(): Promise<Locator> {
     return this.page.locator('main').first();
   }
 }

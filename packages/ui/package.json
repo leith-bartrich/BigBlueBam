@@ -3,8 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./help-viewer": "./help-viewer.tsx",
+    "./launchpad": "./launchpad.tsx",
+    "./notifications-bell": "./notifications-bell.tsx",
+    "./org-switcher": "./org-switcher.tsx",
+    "./user-menu": "./user-menu.tsx",
+    "./markdown": "./markdown.ts"
+  },
   "dependencies": {
     "dompurify": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2"
   },
   "peerDependencies": {
     "react": "^19.0.0",

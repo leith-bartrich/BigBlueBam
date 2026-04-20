@@ -7,7 +7,6 @@ import { cn, formatMessageTime, formatAbsoluteTime, generateAvatarInitials } fro
 import { markdownToHtml, sanitizeHtml } from '@/lib/markdown';
 import type { Message } from '@/hooks/use-messages';
 import { useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
 
 interface ThreadPanelProps {
   messageId: string;

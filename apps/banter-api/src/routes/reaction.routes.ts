@@ -306,15 +306,14 @@ export default async function reactionRoutes(fastify: FastifyInstance) {
       // Group by emoji
       const grouped: Record<string, { emoji: string; count: number; users: Array<{ id: string; display_name: string; avatar_url: string | null }> }> = {};
       for (const r of reactions) {
-        if (!grouped[r.emoji]) {
-          grouped[r.emoji] = { emoji: r.emoji, count: 0, users: [] };
-        }
-        grouped[r.emoji].count++;
-        grouped[r.emoji].users.push({
+        const bucket = grouped[r.emoji] ?? { emoji: r.emoji, count: 0, users: [] };
+        bucket.count++;
+        bucket.users.push({
           id: r.user_id,
           display_name: r.display_name,
           avatar_url: r.avatar_url,
         });
+        grouped[r.emoji] = bucket;
       }
 
       return reply.send({ data: Object.values(grouped) });

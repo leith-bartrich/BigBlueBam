@@ -202,8 +202,8 @@ const categories: Category[] = [
 
 const mcpServer: Product = {
   name: 'MCP Server',
-  subtitle: '238 AI Tools',
-  description: 'Unified Model Context Protocol server exposing every product to AI agents.',
+  subtitle: '340 AI Tools',
+  description: 'Unified Model Context Protocol server exposing every product plus cross-cutting platform capabilities (search, composite views, proposals, policies, webhooks) to AI agents.',
   icon: Bot,
   color: 'bg-slate-100 text-slate-600',
   borderColor: 'border-l-slate-400',
@@ -237,7 +237,7 @@ export function ProductGrid() {
       <AnimatedReveal>
         <div className="mx-auto mb-12 max-w-2xl text-center">
           <Badge variant="blue" className="mb-4">
-            15 Products, One Platform
+            14 Apps + MCP Platform, One Stack
           </Badge>
           <h2 className="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">
             Everything your team needs

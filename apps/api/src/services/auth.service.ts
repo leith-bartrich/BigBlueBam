@@ -1,12 +1,13 @@
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import argon2 from 'argon2';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { organizations } from '../db/schema/organizations.js';
 import { users } from '../db/schema/users.js';
 import { sessions } from '../db/schema/sessions.js';
+import { organizationMemberships } from '../db/schema/organization-memberships.js';
 import { env } from '../env.js';
-import type { RegisterInput, LoginInput, UpdateProfileInput } from '@bigbluebam/shared';
+import type { BootstrapInput, RegisterInput, UpdateProfileInput } from '@bigbluebam/shared';
 
 export type LoginFailureReason =
   | 'user_not_found'
@@ -64,6 +65,103 @@ const RESERVED_ORG_SLUGS = new Set([
   'static',
   'assets',
 ]);
+
+/**
+ * Count non-sentinel SuperUsers. The migration-time sentinel at
+ * `system-bootstrap@bigbluebam.internal` has password_hash '!' (unloginable);
+ * we exclude it so a fresh DB correctly reports zero real SuperUsers.
+ */
+export async function countRealSuperusers(): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(users)
+    .where(
+      and(
+        eq(users.is_superuser, true),
+        sql`${users.password_hash} IS DISTINCT FROM '!'`,
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+export class BootstrapAlreadyCompleteError extends Error {
+  constructor() {
+    super('A SuperUser already exists. Bootstrap is not available.');
+    this.name = 'BootstrapAlreadyCompleteError';
+  }
+}
+
+/**
+ * First-run bootstrap. Creates the very first real SuperUser, org, and
+ * membership atomically. Refuses if a real SuperUser already exists
+ * (the sentinel does not count).
+ */
+export async function bootstrap(data: BootstrapInput, meta?: SessionMetadata) {
+  const existingCount = await countRealSuperusers();
+  if (existingCount > 0) {
+    throw new BootstrapAlreadyCompleteError();
+  }
+
+  const passwordHash = await argon2.hash(data.password);
+  const orgSlug = slugify(data.org_name);
+
+  if (RESERVED_ORG_SLUGS.has(orgSlug)) {
+    throw new Error(
+      `The organization name "${data.org_name}" produces a reserved slug ("${orgSlug}"). ` +
+      'Please choose a different organization name.',
+    );
+  }
+
+  const result = await db.transaction(async (tx) => {
+    // Re-check inside the transaction to close the race between two
+    // simultaneous bootstrap attempts.
+    const [txCount] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(
+        and(
+          eq(users.is_superuser, true),
+          sql`${users.password_hash} IS DISTINCT FROM '!'`,
+        ),
+      );
+    if ((txCount?.count ?? 0) > 0) {
+      throw new BootstrapAlreadyCompleteError();
+    }
+
+    const [org] = await tx
+      .insert(organizations)
+      .values({
+        name: data.org_name,
+        slug: orgSlug,
+      })
+      .returning();
+
+    const [user] = await tx
+      .insert(users)
+      .values({
+        org_id: org!.id,
+        email: data.email,
+        display_name: data.display_name,
+        password_hash: passwordHash,
+        role: 'owner',
+        is_superuser: true,
+      })
+      .returning();
+
+    await tx.insert(organizationMemberships).values({
+      user_id: user!.id,
+      org_id: org!.id,
+      role: 'owner',
+      is_default: true,
+    });
+
+    const session = await createSessionInTx(tx, user!.id, meta);
+
+    return { org: org!, user: user!, session };
+  });
+
+  return result;
+}
 
 export async function register(data: RegisterInput, meta?: SessionMetadata) {
   const passwordHash = await argon2.hash(data.password);

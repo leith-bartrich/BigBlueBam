@@ -155,7 +155,7 @@ export function useBriefEditor({
   content,
   onUpdate,
   editable = true,
-  key,
+  key: _key,
 }: {
   content: string;
   onUpdate: (html: string) => void;

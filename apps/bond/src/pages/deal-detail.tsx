@@ -1,21 +1,5 @@
 import { useState } from 'react';
-import {
-  ArrowLeft,
-  DollarSign,
-  Calendar,
-  Clock,
-  Building2,
-  Users,
-  Trophy,
-  XCircle,
-  Edit2,
-  Trash2,
-  MoreHorizontal,
-  FileText,
-  CalendarDays,
-  CheckSquare,
-  Link2,
-} from 'lucide-react';
+import { ArrowLeft, DollarSign, Calendar, Clock, Building2, Trophy, XCircle, Edit2, Trash2, MoreHorizontal, FileText, CalendarDays, CheckSquare, Link2 } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { Badge } from '@/components/common/badge';
 import { Avatar } from '@/components/common/avatar';
@@ -24,7 +8,7 @@ import { ActivityTimeline } from '@/components/contacts/activity-timeline';
 import { LogActivityForm } from '@/components/contacts/log-activity-form';
 import { useDeal, useDealStageHistory, useCloseDealWon, useCloseDealLost, useDeleteDeal, useDealRelated } from '@/hooks/use-deals';
 import { useDealActivities } from '@/hooks/use-activities';
-import { cn, formatCurrency, formatDate, daysInStage, formatRelativeTime } from '@/lib/utils';
+import { formatCurrency, formatDate, daysInStage, formatRelativeTime } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 
 interface DealDetailPageProps {

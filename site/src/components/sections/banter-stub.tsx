@@ -32,7 +32,7 @@ const featureTable = [
   { label: 'Pins & Bookmarks', status: 'Stable', icon: Pin },
   { label: 'Presence', status: 'Stable', icon: Eye },
   { label: 'Bam Integration', status: 'Stable', icon: Link2 },
-  { label: '44 MCP Tools', status: 'Stable', icon: Bot },
+  { label: '53 MCP Tools', status: 'Stable', icon: Bot },
   { label: 'Voice Calls', status: 'Alpha', icon: Phone },
   { label: 'AI Voice Agent', status: 'Planned', icon: Mic },
 ];
@@ -163,8 +163,10 @@ export function BanterStub() {
             </div>
             <h3 className="text-base font-semibold text-zinc-900">AI-Native</h3>
             <p className="mt-2 text-sm text-zinc-600">
-              44 dedicated MCP tools let AI agents post messages, manage channels, react, search
-              conversations, and even join voice calls as spoken participants with STT/TTS pipelines.
+              53 dedicated MCP tools let AI agents post messages, schedule deferred posts that
+              respect channel quiet hours, manage channels, react, search conversations,
+              subscribe to message patterns, and even join voice calls as spoken participants
+              with STT/TTS pipelines.
             </p>
           </div>
         </div>

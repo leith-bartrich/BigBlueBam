@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Plus, Play, Trash2, Clock, Mail, MessageCircle, FileText, X } from 'lucide-react';
 import { useReports, useCreateReport, useDeleteReport, useSendReportNow } from '@/hooks/use-reports';
 import { useDashboards } from '@/hooks/use-dashboards';
-import { formatRelativeTime, formatDate } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/utils';
 
 interface ReportsPageProps {
   onNavigate: (path: string) => void;
@@ -261,7 +261,7 @@ function CreateReportDialog({
   );
 }
 
-export function ReportsPage({ onNavigate }: ReportsPageProps) {
+export function ReportsPage({ onNavigate: _onNavigate }: ReportsPageProps) {
   const { data, isLoading } = useReports();
   const deleteMutation = useDeleteReport();
   const sendNowMutation = useSendReportNow();

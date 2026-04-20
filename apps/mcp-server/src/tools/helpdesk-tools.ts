@@ -431,4 +431,53 @@ export function registerHelpdeskTools(server: McpServer, api: ApiClient, helpdes
       };
     },
   });
+
+  // §14 Wave 4: idempotent create-or-update of a helpdesk_user by email.
+  // The route layer resolves X-Org-Slug into an org_id and scopes the
+  // upsert to that tenant. Update path NEVER overwrites password_hash.
+  registerTool(server, {
+    name: 'helpdesk_upsert_user',
+    description: 'Idempotent create-or-update of a helpdesk end-user by email. Natural key is (org_id, email); the tool resolves the org via the provided org_slug. Returns { data, created, idempotency_key }. SECURITY: the update path ignores the password field, so calling this tool on an existing email cannot change that user\'s credentials.',
+    input: {
+      org_slug: z.string().min(1).max(128).describe('Organization slug (sent as X-Org-Slug header)'),
+      email: z.string().email().max(320).describe('Email address — idempotency key (lowercased server-side)'),
+      display_name: z.string().min(1).max(100).describe('Display name'),
+      password: z.string().min(12).max(256).optional().describe('Password — honored ONLY on the insert path. On update this field is silently ignored.'),
+      email_verified: z.boolean().optional().describe('Whether the email address has been verified'),
+      is_active: z.boolean().optional().describe('Whether the account is active'),
+    },
+    returns: z.object({
+      data: z.object({
+        id: z.string().uuid(),
+        email: z.string(),
+        org_id: z.string().uuid().nullable(),
+        display_name: z.string(),
+        email_verified: z.boolean(),
+        is_active: z.boolean(),
+        created_at: z.string(),
+        updated_at: z.string(),
+      }).passthrough(),
+      created: z.boolean(),
+      idempotency_key: z.string(),
+    }),
+    handler: async ({ org_slug, ...body }) => {
+      const result = await helpdeskRequest(
+        'POST',
+        '/v1/helpdesk-users/upsert',
+        body,
+        { 'X-Org-Slug': org_slug },
+      );
+      if (!result.ok) {
+        const scopeErr = handleScopeError('helpdesk_upsert_user', 'admin', result);
+        if (scopeErr) return scopeErr;
+        return {
+          content: [{ type: 'text' as const, text: `Error upserting helpdesk user: ${JSON.stringify(result.data)}` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result.data, null, 2) }],
+      };
+    },
+  });
 }

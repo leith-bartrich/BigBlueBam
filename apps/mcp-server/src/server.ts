@@ -8,6 +8,9 @@ import { loadEnv } from './env.js';
 import { ApiClient } from './middleware/api-client.js';
 import { RateLimiter } from './middleware/rate-limiter.js';
 import { AuditLogger } from './middleware/audit-logger.js';
+// §15 Wave 5 agent policies
+import { attachPolicyGate, createPolicyGate } from './lib/register-tool.js';
+import Redis from 'ioredis';
 import { registerProjectTools } from './tools/project-tools.js';
 import { registerBoardTools } from './tools/board-tools.js';
 import { registerTaskTools } from './tools/task-tools.js';
@@ -34,6 +37,34 @@ import { registerBillTools } from './tools/bill-tools.js';
 import { registerBlankTools } from './tools/blank-tools.js';
 import { registerMeTools } from './tools/me-tools.js';
 import { registerPlatformTools } from './tools/platform-tools.js';
+import { registerAgentTools } from './tools/agent-tools.js';
+import { registerProposalTools } from './tools/proposal-tools.js';
+import { registerVisibilityTools } from './tools/visibility-tools.js';
+import { registerSearchTools } from './tools/search-tools.js';
+import { registerResolveTools } from './tools/resolve-tools.js';
+import { registerActivityTools } from './tools/activity-tools.js';
+import { registerCompositeTools } from './tools/composite-tools.js';
+// §16 Wave 4 entity links
+import { registerEntityLinksTools } from './tools/entity-links-tools.js';
+// §17 Wave 4 attachments
+import { registerAttachmentTools } from './tools/attachment-tools.js';
+// §15 Wave 5 agent policies
+import { registerAgentPolicyTools } from './tools/agent-policy-tools.js';
+// §20 Wave 5 webhooks
+import { registerAgentWebhookTools } from './tools/agent-webhook-tools.js';
+// §7 Wave 5 dedupe
+import { registerDedupeTools } from './tools/dedupe-tools.js';
+// §12 Wave 5 bolt observability
+import { registerBoltObservabilityTools } from './tools/bolt-observability-tools.js';
+// §18 + §19 Wave 5 misc
+import { registerIngestFingerprintTools } from './tools/ingest-fingerprint-tools.js';
+import { createFingerprintStore, type FingerprintStore } from './lib/fingerprint-store.js';
+import { createConfirmTokenStore, type ConfirmTokenStore } from './lib/confirm-token-store.js';
+// §4 + §8 Wave 5 trends/expertise
+import { registerPhraseCountTools } from './tools/phrase-count-tools.js';
+import { registerExpertiseTools } from './tools/expertise-tools.js';
+// §1 Wave 5 banter subs
+import { registerBanterSubscriptionTools } from './tools/banter-subscription-tools.js';
 import { registerResources, registerBanterResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
 import { handleToolsCall } from './routes/tools-call.js';
@@ -60,6 +91,57 @@ const streamableTransports = new Map<string, StreamableHTTPServerTransport>();
 // Track SSE transports by session ID
 const sseTransports = new Map<string, SSEServerTransport>();
 
+// §15 Wave 5 agent policies: session-level policy gates. Keyed by session id
+// so the Redis PubSub listener below can reach every gate and invalidate it
+// when a policy row changes for one of its callers. Entries are removed when
+// the transport closes (see the onclose hooks further down).
+const policyGates = new Map<string, ReturnType<typeof createPolicyGate>>();
+
+// §19 Wave 5 misc: process-wide ingest fingerprint store. Single Redis
+// connection shared across every session so every ingest_fingerprint_check
+// call lands in the same keyspace. The store connects lazily and fails open
+// if Redis is unavailable, so the mcp-server stays online even without Redis.
+const fingerprintStore: FingerprintStore = createFingerprintStore({
+  redisUrl: env.REDIS_URL,
+  logger,
+});
+
+// Process-wide confirm_action token store. Redis-backed so staging and
+// confirm legs can land on different MCP instances and tokens survive
+// rolling deploys. Falls back to an in-process map with a sweeper when
+// Redis is unavailable.
+const confirmTokenStore: ConfirmTokenStore = createConfirmTokenStore({
+  redisUrl: env.REDIS_URL,
+  logger,
+});
+
+// §15 Wave 5: Redis PubSub listener. When an operator updates a policy via
+// POST /v1/agent-policies/:id the API publishes the agent_user_id on
+// `agent_policies:invalidate`; we fan that out to every live gate so they
+// drop their cached decision for that agent. If Redis is unavailable we
+// degrade to TTL-only invalidation (5s default) and log once.
+let policySubscriber: Redis | null = null;
+try {
+  policySubscriber = new Redis(env.REDIS_URL, {
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+  });
+  await policySubscriber.connect();
+  await policySubscriber.subscribe('agent_policies:invalidate');
+  policySubscriber.on('message', (_channel: string, message: string) => {
+    for (const gate of policyGates.values()) {
+      gate.invalidate(message);
+    }
+  });
+  logger.info('Subscribed to agent_policies:invalidate');
+} catch (err) {
+  logger.warn(
+    { err },
+    'agent_policies:invalidate subscription unavailable; falling back to TTL-only cache',
+  );
+  policySubscriber = null;
+}
+
 function extractBearerToken(req: IncomingMessage): string | null {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return null;
@@ -80,13 +162,29 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.end(JSON.stringify(data));
 }
 
-function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
+function createMcpServer(
+  apiClient: ApiClient,
+  sessionId: string,
+  opts: { trackGate?: boolean } = { trackGate: true },
+): McpServer {
   const auditLogger = new AuditLogger(apiClient, logger);
 
   const server = new McpServer({
     name: 'BigBlueBam',
     version: '1.0.0',
   });
+
+  // §15 Wave 5: attach the policy gate BEFORE any register* call so the
+  // registerTool wrapper picks it up. Gate is session-scoped and gets
+  // invalidated by the Redis subscriber above. For one-shot ephemeral
+  // servers (spun up per /tools/call invocation) trackGate is left off so
+  // we don't leak into the session map; the gate still works because it is
+  // attached to the server via the WeakMap in register-tool.ts.
+  const gate = createPolicyGate({ apiClient, logger, sessionId });
+  attachPolicyGate(server, gate);
+  if (opts.trackGate !== false) {
+    policyGates.set(sessionId, gate);
+  }
 
   // Register all tools
   registerProjectTools(server, apiClient);
@@ -100,12 +198,14 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
   registerReportTools(server, apiClient);
   registerTemplateTools(server, apiClient);
   registerImportTools(server, apiClient);
-  registerUtilityTools(server, apiClient, rateLimiter);
+  registerUtilityTools(server, apiClient, rateLimiter, confirmTokenStore);
   registerHelpdeskTools(server, apiClient, env.HELPDESK_API_URL);
   registerBanterTools(server, apiClient, env.BANTER_API_URL);
   registerBeaconTools(server, apiClient, env.BEACON_API_URL);
   registerBriefTools(server, apiClient, env.BRIEF_API_URL);
   registerBoltTools(server, apiClient, env.BOLT_API_URL);
+  // §12 Wave 5 bolt observability
+  registerBoltObservabilityTools(server, apiClient, env.BOLT_API_URL);
   registerBearingTools(server, apiClient, env.BEARING_API_URL);
   registerBondTools(server, apiClient, env.BOND_API_URL);
   registerBlastTools(server, apiClient, env.BLAST_API_URL);
@@ -115,6 +215,57 @@ function createMcpServer(apiClient: ApiClient, sessionId: string): McpServer {
   registerBlankTools(server, apiClient, env.BLANK_API_URL);
   registerMeTools(server, apiClient);
   registerPlatformTools(server, apiClient);
+  registerAgentTools(server, apiClient);
+  registerProposalTools(server, apiClient);
+  registerVisibilityTools(server, apiClient);
+  registerSearchTools(server, apiClient, {
+    apiUrl: env.API_INTERNAL_URL,
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+    bondApiUrl: env.BOND_API_URL,
+    briefApiUrl: env.BRIEF_API_URL,
+    beaconApiUrl: env.BEACON_API_URL,
+    banterApiUrl: env.BANTER_API_URL,
+    boardApiUrl: env.BOARD_API_URL,
+  });
+  registerResolveTools(server, apiClient, {
+    bondApiUrl: env.BOND_API_URL,
+    briefApiUrl: env.BRIEF_API_URL,
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+  });
+  registerActivityTools(server, apiClient);
+  registerCompositeTools(server, apiClient, {
+    apiUrl: env.API_INTERNAL_URL,
+    bondApiUrl: env.BOND_API_URL,
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+    billApiUrl: env.BILL_API_URL,
+    bearingApiUrl: env.BEARING_API_URL,
+    briefApiUrl: env.BRIEF_API_URL,
+    beaconApiUrl: env.BEACON_API_URL,
+  });
+  // §16 Wave 4 entity links
+  registerEntityLinksTools(server, apiClient);
+  // §17 Wave 4 attachments
+  registerAttachmentTools(server, apiClient);
+  // §15 Wave 5 agent policies
+  registerAgentPolicyTools(server, apiClient);
+  // §20 Wave 5 webhooks
+  registerAgentWebhookTools(server, apiClient);
+  // §7 Wave 5 dedupe
+  registerDedupeTools(server, apiClient, {
+    bondApiUrl: env.BOND_API_URL,
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+  });
+  // §18 + §19 Wave 5 misc
+  registerIngestFingerprintTools(server, apiClient, fingerprintStore);
+  // §4 + §8 Wave 5 trends/expertise
+  registerPhraseCountTools(server, apiClient, {
+    helpdeskApiUrl: env.HELPDESK_API_URL,
+    apiUrl: env.API_INTERNAL_URL,
+  });
+  registerExpertiseTools(server, apiClient);
+
+  // §1 Wave 5 banter subs
+  registerBanterSubscriptionTools(server, apiClient, env.BANTER_API_URL);
 
   // Register resources and prompts
   registerResources(server, apiClient);
@@ -181,7 +332,10 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
       internalSecret: env.INTERNAL_SERVICE_SECRET ?? '',
       apiInternalUrl: env.API_INTERNAL_URL,
       mcpInternalApiToken: env.MCP_INTERNAL_API_TOKEN ?? '',
-      createMcpServer,
+      // §15 Wave 5: pass trackGate:false so ephemeral per-call servers don't
+      // leak into the session-wide policyGates map.
+      createMcpServer: (apiClient, sid) =>
+        createMcpServer(apiClient, sid, { trackGate: false }),
     });
     return;
   }
@@ -208,6 +362,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
 
       transport.onclose = () => {
         sseTransports.delete(sessionId);
+        policyGates.delete(sessionId);
         logger.info({ sessionId }, 'SSE session closed');
       };
 
@@ -288,6 +443,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
         const sid = transport.sessionId;
         if (sid) {
           streamableTransports.delete(sid);
+          policyGates.delete(sid);
           logger.info({ sessionId: sid }, 'MCP session closed');
         }
       };
@@ -369,6 +525,30 @@ async function shutdown(signal: string) {
     }
   }
   sseTransports.clear();
+
+  // §15 Wave 5: drop the Redis subscriber
+  if (policySubscriber) {
+    try {
+      await policySubscriber.quit();
+    } catch {
+      logger.warn('Error closing agent_policies Redis subscriber');
+    }
+  }
+  policyGates.clear();
+
+  // §19 Wave 5: close the ingest fingerprint store's Redis connection.
+  try {
+    await fingerprintStore.close();
+  } catch {
+    logger.warn('Error closing ingest fingerprint store');
+  }
+
+  // Close the confirm_action token store's Redis connection.
+  try {
+    await confirmTokenStore.close();
+  } catch {
+    logger.warn('Error closing confirm-token store');
+  }
 
   httpServer.close(() => {
     logger.info('MCP server shut down');

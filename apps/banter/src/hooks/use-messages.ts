@@ -22,6 +22,7 @@ export interface Message {
   thread_latest_reply_at: string | null;
   reactions: Reaction[];
   attachments: Attachment[];
+  has_link_preview?: boolean;
   created_at: string;
   updated_at: string;
 }

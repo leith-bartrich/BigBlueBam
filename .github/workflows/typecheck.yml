@@ -40,7 +40,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build shared packages
-        run: pnpm --filter @bigbluebam/shared build
+        # Every workspace package under packages/ that exports from ./dist
+        # needs to be built before tsc consumers can resolve their types.
+        # --if-present skips packages (like @bigbluebam/ui) that are
+        # source-only and consumed via bundler path resolution.
+        run: pnpm -r --filter './packages/*' --if-present run build
 
       - name: Run typecheck
         run: pnpm -r --parallel --if-present typecheck

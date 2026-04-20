@@ -84,7 +84,7 @@ function assignColor(boardId: string): string {
     if (!usedColors.has(color)) return color;
   }
   // All colors taken, cycle based on count
-  return CURSOR_COLORS[usedColors.size % CURSOR_COLORS.length];
+  return CURSOR_COLORS[usedColors.size % CURSOR_COLORS.length]!;
 }
 
 export default async function websocketHandler(fastify: FastifyInstance) {
@@ -290,7 +290,7 @@ export default async function websocketHandler(fastify: FastifyInstance) {
       orgId,
       boardId: null,
       displayName,
-      color: CURSOR_COLORS[0],
+      color: CURSOR_COLORS[0]!,
       canEdit: false,
       isAdminOrOwner,
       msgCount: 0,

@@ -6,7 +6,7 @@
  */
 
 import { Client as MinioClient } from 'minio';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { billExpenses } from '../db/schema/index.js';
 import { env } from '../env.js';
@@ -115,7 +115,7 @@ export async function uploadReceipt(
   let totalSize = 0;
 
   for await (const chunk of file.file) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as Uint8Array);
     totalSize += buf.length;
     if (totalSize > MAX_FILE_SIZE) {
       throw badRequest(`File exceeds maximum size of ${MAX_FILE_SIZE / 1024 / 1024} MB`);

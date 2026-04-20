@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import type { BriefDocument, DocumentStatus } from '@/hooks/use-documents';
+import type { DocumentStatus } from '@/hooks/use-documents';
 
 // ── Response types ──────────────────────────────────────────────────
 

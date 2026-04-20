@@ -91,8 +91,10 @@ export function BoltSection() {
             </div>
             <h3 className="text-base font-semibold text-zinc-900">Cross-Product Events</h3>
             <p className="mt-2 text-sm text-zinc-600">
-              26 events across 6 sources — Bam, Banter, Beacon, Brief, Helpdesk, and Schedule.
-              React to task moves, new messages, stale knowledge, ticket creation, and cron schedules.
+              109 events across every app plus platform-level signals — task moves, new messages,
+              stale knowledge, ticket creation, scheduled posts, proposals, upserts, webhook
+              failures, and runtime catalog-drift alerts. A CI drift guard keeps producers and
+              the catalog in lockstep.
             </p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
@@ -101,18 +103,21 @@ export function BoltSection() {
             </div>
             <h3 className="text-base font-semibold text-zinc-900">MCP-Native</h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Every action compiles to MCP tool calls — same permissions model, same audit trail.
-              AI agents can create and manage automations through 12 dedicated tools.
+              Every action compiles to MCP tool calls from the full 340-tool catalog — same
+              permissions model, same audit trail. AI agents create and manage automations
+              through 13 dedicated tools.
             </p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
               <ClipboardList className="h-5 w-5" />
             </div>
-            <h3 className="text-base font-semibold text-zinc-900">Execution Audit Log</h3>
+            <h3 className="text-base font-semibold text-zinc-900">Runtime Observability</h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Every run is recorded with trigger context, condition evaluation results, action
-              outcomes, and duration. Full transparency into what ran and why.
+              Every run is recorded with trigger context, condition evaluation trail, action
+              outcomes, and duration. bolt_event_trace explains why each rule matched or skipped,
+              bolt_recent_events surfaces live ingest, and a catalog.drift_detected event fires
+              on producer/catalog mismatch with 24h Redis-backed suppression.
             </p>
           </div>
         </div>

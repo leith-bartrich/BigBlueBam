@@ -35,7 +35,6 @@ export function ChannelView({ slug, type, onNavigate }: ChannelViewProps) {
   const clearUnread = useChannelStore((s) => s.clearUnread);
   const activeCallId = useChannelStore((s) => s.activeCallId);
   const activeCallToken = useChannelStore((s) => s.activeCallToken);
-  const activeCallRoomName = useChannelStore((s) => s.activeCallRoomName);
   const activeCallType = useChannelStore((s) => s.activeCallType);
   const setActiveCall = useChannelStore((s) => s.setActiveCall);
   const clearActiveCall = useChannelStore((s) => s.clearActiveCall);

@@ -70,6 +70,11 @@ export const tasks = pgTable(
     subtask_done_count: integer('subtask_done_count').default(0).notNull(),
     carry_forward_count: integer('carry_forward_count').default(0).notNull(),
     original_sprint_id: uuid('original_sprint_id'),
+    // Wave 4 §14: idempotency key for task_upsert_by_external_id. Unique per
+    // project via the partial index in migration 0130
+    // (tasks_project_external_id_uniq). Nullable: tasks created through the
+    // normal UI path do not set this.
+    external_id: text('external_id'),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

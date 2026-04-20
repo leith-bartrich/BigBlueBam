@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Users } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useClients, useCreateClient } from '@/hooks/use-clients';
 
 interface Props {

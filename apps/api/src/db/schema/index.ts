@@ -1,5 +1,5 @@
 export { organizations } from './organizations.js';
-export { users } from './users.js';
+export { users, actorTypeEnum } from './users.js';
 export { sessions } from './sessions.js';
 export { projects } from './projects.js';
 export { projectMemberships } from './project-memberships.js';
@@ -35,3 +35,15 @@ export { llmProviders } from './llm-providers.js';
 export { systemSettings } from './system-settings.js';
 export { oauthProviders } from './oauth-providers.js';
 export { oauthUserLinks } from './oauth-user-links.js';
+export { agentRunners } from './agent-runners.js';
+export { agentProposals, proposalStatusEnum } from './agent-proposals.js';
+export { vActivityUnified, V_ACTIVITY_UNIFIED } from './activity-unified-view.js';
+export { entityLinks, entityLinkKindEnum } from './entity-links.js';
+export { agentPolicies } from './agent-policies.js';
+export { agentWebhookDeliveries } from './agent-webhook-deliveries.js';
+export type {
+  AgentWebhookDelivery,
+  AgentWebhookDeliveryInsert,
+} from './agent-webhook-deliveries.js';
+// §7 Wave 5 dedupe
+export { dedupeDecisions } from './dedupe-decisions.js';

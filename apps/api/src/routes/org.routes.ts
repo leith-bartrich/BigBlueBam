@@ -830,7 +830,7 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       const data = schema.parse(request.body ?? {});
 
       try {
-        const { user, password } = await orgService.resetMemberPassword({
+        const { user, password: _password } = await orgService.resetMemberPassword({
           orgId: request.user!.org_id,
           targetUserId: request.params.userId,
           callerUserId: request.user!.id,

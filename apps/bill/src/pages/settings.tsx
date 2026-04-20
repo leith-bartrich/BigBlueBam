@@ -6,7 +6,7 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-export function SettingsPage({ onNavigate }: Props) {
+export function SettingsPage({ onNavigate: _onNavigate }: Props) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['settings'],

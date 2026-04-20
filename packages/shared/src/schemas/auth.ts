@@ -7,6 +7,13 @@ export const registerSchema = z.object({
   org_name: z.string().max(255),
 });
 
+export const bootstrapSchema = z.object({
+  email: z.string().email().max(320),
+  password: z.string().min(12),
+  display_name: z.string().max(100),
+  org_name: z.string().max(255),
+});
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),

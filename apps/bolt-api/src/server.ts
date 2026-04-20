@@ -81,9 +81,15 @@ import eventRoutes from './routes/event.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import aiAssistRoutes from './routes/ai-assist.routes.js';
 import eventIngestionRoutes from './routes/event-ingestion.routes.js';
+// §12 Wave 5 bolt observability
+import observabilityRoutes from './routes/observability.routes.js';
 
 await fastify.register(automationRoutes, { prefix: '/v1' });
 await fastify.register(executionRoutes, { prefix: '/v1' });
+// §12 Wave 5 bolt observability: register before eventRoutes so the literal
+// path `/events/recent` and the specific `/events/:event_id/trace` shape win
+// over the dynamic `/events/:source` handler in event.routes.ts.
+await fastify.register(observabilityRoutes, { prefix: '/v1' });
 await fastify.register(eventRoutes, { prefix: '/v1' });
 await fastify.register(templateRoutes, { prefix: '/v1' });
 await fastify.register(aiAssistRoutes, { prefix: '/v1' });

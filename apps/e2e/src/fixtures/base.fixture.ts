@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
 import { DirectApiClient } from '../api/api-client';
 import { ApiInterceptor } from '../interceptors/api-interceptor';
 import { UiApiChecker } from '../interceptors/ui-api-checker';
@@ -40,10 +41,10 @@ export const test = base.extend<TestFixtures>({
 export { expect };
 
 export function createAppApiClient(
-  request: InstanceType<typeof base>['request'] extends infer R ? R : never,
+  request: APIRequestContext,
   cookies: Array<{ name: string; value: string }>,
   appConfig: AppConfig,
 ): DirectApiClient {
   const csrfToken = readCsrfTokenFromCookies(cookies) || undefined;
-  return new DirectApiClient(request as any, appConfig.apiBasePath, csrfToken);
+  return new DirectApiClient(request, appConfig.apiBasePath, csrfToken);
 }

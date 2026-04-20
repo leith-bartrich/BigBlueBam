@@ -89,7 +89,7 @@ test.describe('Blast — Template CRUD', () => {
     test.skip(!templateId, 'No template available');
 
     const campaignsPage = new CampaignsPage(page, screenshots);
-    await campaignsPage.goto(`/templates/${templateId}/edit`);
+    await campaignsPage.navigate(`/templates/${templateId}/edit`);
     await screenshots.capture(page, 'template-edit-loaded');
     await expect(page.locator('main')).toBeVisible();
     await screenshots.capture(page, 'template-edit-content');

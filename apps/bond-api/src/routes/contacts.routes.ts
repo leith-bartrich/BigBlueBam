@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import * as contactService from '../services/contact.service.js';
+import * as contactUpsertService from '../services/contact-upsert.service.js';
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -39,6 +40,28 @@ const mergeContactSchema = z.object({
 
 const importContactsSchema = z.object({
   contacts: z.array(createContactSchema).min(1).max(5000),
+});
+
+// AGENTIC_TODO §14 Wave 4: idempotent create-or-update by email.
+// `email` is required (unlike create, where it is optional) because it is
+// the natural key of the upsert.
+const upsertContactSchema = z.object({
+  email: z.string().email().max(255),
+  first_name: z.string().max(100).optional(),
+  last_name: z.string().max(100).optional(),
+  phone: z.string().max(50).optional(),
+  title: z.string().max(150).optional(),
+  avatar_url: z.string().url().optional(),
+  lifecycle_stage: z.enum(lifecycleStages).optional(),
+  lead_source: z.string().max(60).optional(),
+  address_line1: z.string().max(255).optional(),
+  address_line2: z.string().max(255).optional(),
+  city: z.string().max(100).optional(),
+  state_region: z.string().max(100).optional(),
+  postal_code: z.string().max(20).optional(),
+  country: z.string().length(2).optional(),
+  custom_fields: z.record(z.unknown()).optional(),
+  owner_id: z.string().uuid().optional(),
 });
 
 const listQuerySchema = z.object({
@@ -117,6 +140,27 @@ export default async function contactRoutes(fastify: FastifyInstance) {
         query.limit,
       );
       return reply.send({ data: results });
+    },
+  );
+
+  // POST /contacts/upsert — Idempotent create-or-update by email
+  // (AGENTIC_TODO §14 Wave 4). Returns { data, created, idempotency_key }.
+  // Natural key is (organization_id, lower(email)); soft-deleted rows are
+  // resurrected on match.
+  fastify.post(
+    '/contacts/upsert',
+    {
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+      preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')],
+    },
+    async (request, reply) => {
+      const body = upsertContactSchema.parse(request.body);
+      const result = await contactUpsertService.upsertContactByEmail(
+        body,
+        request.user!.org_id,
+        request.user!.id,
+      );
+      return reply.status(result.created ? 201 : 200).send(result);
     },
   );
 

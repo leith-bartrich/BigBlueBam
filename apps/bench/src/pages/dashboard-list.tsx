@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { Plus, BarChart3, Copy, Trash2, Eye, MoreHorizontal, Globe, Lock, Users } from 'lucide-react';
 import { useDashboards, useCreateDashboard, useDeleteDashboard, useDuplicateDashboard } from '@/hooks/use-dashboards';
-import { formatRelativeTime, cn } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '@/components/common/dropdown-menu';
 
 interface DashboardListPageProps {

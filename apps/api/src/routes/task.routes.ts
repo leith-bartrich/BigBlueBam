@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createTaskSchema, updateTaskSchema, moveTaskSchema, bulkUpdateSchema } from '@bigbluebam/shared';
 import * as taskService from '../services/task.service.js';
+import * as taskUpsertService from '../services/task-upsert.service.js';
 import * as projectService from '../services/project.service.js';
 import { db } from '../db/index.js';
 import { tasks } from '../db/schema/tasks.js';
@@ -102,6 +103,88 @@ export default async function taskRoutes(fastify: FastifyInstance) {
         return reply.status(201).send({ data: task });
       } catch (err) {
         if (err instanceof taskService.TaskError) {
+          return reply.status(err.statusCode).send({
+            error: {
+              code: err.code,
+              message: err.message,
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // POST /v1/tasks/upsert-by-external-id — idempotent intake for webhooks and
+  // imports (AGENTIC_TODO §14 Wave 4). Natural key is (project_id,
+  // external_id); the response envelope carries a `created` boolean so
+  // retriable callers can log insert vs. update correctly. Backed by the
+  // partial unique index from migration 0130.
+  const taskUpsertBodySchema = z.object({
+    project_id: z.string().uuid(),
+    external_id: z.string().min(1).max(256),
+    title: z.string().min(1).max(500),
+    description: z.string().nullable().optional(),
+    phase_id: z.string().uuid().nullable().optional(),
+    state_id: z.string().uuid().nullable().optional(),
+    sprint_id: z.string().uuid().nullable().optional(),
+    epic_id: z.string().uuid().nullable().optional(),
+    assignee_id: z.string().uuid().nullable().optional(),
+    priority: z.enum(['critical', 'high', 'medium', 'low', 'none']).optional(),
+    story_points: z.number().int().positive().nullable().optional(),
+    time_estimate_minutes: z.number().int().positive().nullable().optional(),
+    start_date: z.string().nullable().optional(),
+    due_date: z.string().nullable().optional(),
+    labels: z.array(z.string().uuid()).optional(),
+    custom_fields: z.record(z.unknown()).optional(),
+    parent_task_id: z.string().uuid().nullable().optional(),
+  });
+  fastify.post(
+    '/v1/tasks/upsert-by-external-id',
+    { preHandler: [requireAuth, requireMinRole('member'), requireScope('read_write')] },
+    async (request, reply) => {
+      const body = taskUpsertBodySchema.parse(request.body);
+
+      // Org + project access check. If the project belongs to another org,
+      // reject with the standard 404 shape so we do not leak project IDs.
+      const project = await projectService.getProject(body.project_id);
+      if (!project || project.org_id !== request.user!.org_id) {
+        return reply.status(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Project not found',
+            details: [],
+            request_id: request.id,
+          },
+        });
+      }
+      if (!request.user!.is_superuser) {
+        const membership = await projectService.getProjectMembership(
+          body.project_id,
+          request.user!.id,
+        );
+        if (!membership) {
+          return reply.status(404).send({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Project not found',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
+      try {
+        const result = await taskUpsertService.upsertTaskByExternalId(
+          body,
+          request.user!.id,
+        );
+        return reply.status(result.created ? 201 : 200).send(result);
+      } catch (err) {
+        if (err instanceof taskUpsertService.TaskUpsertError) {
           return reply.status(err.statusCode).send({
             error: {
               code: err.code,
