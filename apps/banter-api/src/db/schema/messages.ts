@@ -46,6 +46,7 @@ export const banterMessages = pgTable(
     edit_permission: varchar('edit_permission', { length: 20 })
       .notNull()
       .default('own'),
+    also_sent_to_channel: boolean('also_sent_to_channel').notNull().default(false),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

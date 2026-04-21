@@ -8,7 +8,7 @@ export function useThreadReplies(messageId: string) {
     queryKey: ['threads', messageId],
     queryFn: () =>
       api
-        .get<{ data: Message[] }>(`/messages/${messageId}/replies`)
+        .get<{ data: Message[] }>(`/messages/${messageId}/thread`)
         .then((r) => r.data),
     enabled: !!messageId,
   });
@@ -28,7 +28,7 @@ export function usePostThreadReply() {
       alsoSendToChannel?: boolean;
     }) =>
       api
-        .post<{ data: Message }>(`/messages/${messageId}/replies`, {
+        .post<{ data: Message }>(`/messages/${messageId}/thread`, {
           content,
           also_send_to_channel: alsoSendToChannel ?? false,
         })

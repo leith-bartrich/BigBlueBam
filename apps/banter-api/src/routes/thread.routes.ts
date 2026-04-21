@@ -24,6 +24,7 @@ import {
 const createReplySchema = z.object({
   content: z.string().min(1).max(40000),
   content_format: z.enum(['html', 'markdown', 'plain']).default('html'),
+  also_send_to_channel: z.boolean().optional().default(false),
 });
 
 export default async function threadRoutes(fastify: FastifyInstance) {
@@ -142,9 +143,24 @@ export default async function threadRoutes(fastify: FastifyInstance) {
         replies.reverse();
       }
 
+      // Shape must match the channel listing (apps/banter-api/src/routes/message.routes.ts),
+      // because the frontend renders both lists through the same MessageItem
+      // component, which accesses message.attachments.length and
+      // message.reactions.length directly. Returning raw DB rows (which
+      // have no attachments/reactions arrays) crashes the thread panel
+      // with "Cannot read properties of undefined (reading 'length')".
       const data = replies.map((row) => ({
         ...row.message,
-        author: row.author,
+        author_id: row.message.author_id,
+        author_display_name: row.author.display_name,
+        author_avatar_url: row.author.avatar_url,
+        is_bot: row.message.is_bot ?? false,
+        is_pinned: false,
+        is_edited: row.message.is_edited ?? false,
+        thread_reply_count: row.message.reply_count ?? 0,
+        thread_latest_reply_at: row.message.last_reply_at ?? null,
+        reactions: [],
+        attachments: [],
       }));
 
       return reply.send({
@@ -220,6 +236,7 @@ export default async function threadRoutes(fastify: FastifyInstance) {
           content: sanitizedReplyContent,
           content_plain: contentPlain,
           content_format: body.content_format,
+          also_sent_to_channel: body.also_send_to_channel,
         })
         .returning();
 
@@ -258,6 +275,28 @@ export default async function threadRoutes(fastify: FastifyInstance) {
         },
         timestamp: new Date().toISOString(),
       });
+
+      // When "Also send to channel" is checked, the reply is also surfaced
+      // in the channel's top-level message list. Emit message.created so
+      // live channel views append it without a refetch; the row itself is
+      // already persisted with also_sent_to_channel=true, and the channel
+      // listing query unions on that flag so reloads pick it up too.
+      if (body.also_send_to_channel && message) {
+        broadcastToChannel(parent.channel_id, {
+          type: 'message.created',
+          data: {
+            message: {
+              ...message,
+              author: {
+                id: user.id,
+                display_name: user.display_name,
+                avatar_url: user.avatar_url,
+              },
+            },
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // ── Dispatch notifications (async, non-blocking) ─────────────
       (async () => {

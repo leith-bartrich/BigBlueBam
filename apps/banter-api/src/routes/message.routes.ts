@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, and, sql, lt, gt, desc, asc, isNull } from 'drizzle-orm';
+import { eq, and, or, sql, lt, gt, desc, asc, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   banterChannels,
@@ -108,7 +108,15 @@ export default async function messageRoutes(fastify: FastifyInstance) {
       const conditions = [
         eq(banterMessages.channel_id, id),
         eq(banterMessages.is_deleted, false),
-        isNull(banterMessages.thread_parent_id),
+        // Channel listing shows top-level messages, plus thread replies
+        // that the author opted to mirror into the channel via the
+        // "Also send to channel" checkbox. The partial index
+        // banter_messages_channel_broadcast_idx (migration 0142) keeps
+        // the OR cheap.
+        or(
+          isNull(banterMessages.thread_parent_id),
+          eq(banterMessages.also_sent_to_channel, true),
+        )!,
       ];
 
       if (beforeCursor) {
