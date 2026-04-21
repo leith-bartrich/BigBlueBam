@@ -4,12 +4,30 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./help-viewer": "./help-viewer.tsx",
-    "./launchpad": "./launchpad.tsx",
-    "./notifications-bell": "./notifications-bell.tsx",
-    "./org-switcher": "./org-switcher.tsx",
-    "./user-menu": "./user-menu.tsx",
-    "./markdown": "./markdown.ts"
+    "./help-viewer": {
+      "types": "./help-viewer.tsx",
+      "default": "./help-viewer.tsx"
+    },
+    "./launchpad": {
+      "types": "./launchpad.tsx",
+      "default": "./launchpad.tsx"
+    },
+    "./notifications-bell": {
+      "types": "./notifications-bell.tsx",
+      "default": "./notifications-bell.tsx"
+    },
+    "./org-switcher": {
+      "types": "./org-switcher.tsx",
+      "default": "./org-switcher.tsx"
+    },
+    "./user-menu": {
+      "types": "./user-menu.tsx",
+      "default": "./user-menu.tsx"
+    },
+    "./markdown": {
+      "types": "./markdown.ts",
+      "default": "./markdown.ts"
+    }
   },
   "dependencies": {
     "dompurify": "^3.2.0"

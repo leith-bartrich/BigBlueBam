@@ -40,6 +40,7 @@ export const APP_SERVICES = [
       ],
       optional: [
         'CORS_ORIGIN', 'LOG_LEVEL', 'FRONTEND_URL',
+        'INTERNAL_SERVICE_SECRET',
         'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
         'OAUTH_GITHUB_CLIENT_ID', 'OAUTH_GITHUB_CLIENT_SECRET',
         'OAUTH_GOOGLE_CLIENT_ID', 'OAUTH_GOOGLE_CLIENT_SECRET',
@@ -80,6 +81,7 @@ export const APP_SERVICES = [
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
       optional: [
         'CORS_ORIGIN', 'LOG_LEVEL',
+        'INTERNAL_SERVICE_SECRET',
         'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
         'LIVEKIT_HOST', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'LIVEKIT_WS_URL',
         'VOICE_AGENT_URL',
@@ -100,6 +102,7 @@ export const APP_SERVICES = [
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'QDRANT_URL', 'BBB_API_INTERNAL_URL'],
       optional: [
         'CORS_ORIGIN', 'LOG_LEVEL',
+        'INTERNAL_SERVICE_SECRET',
         'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
       ],
     },
@@ -116,7 +119,7 @@ export const APP_SERVICES = [
     public_paths: ['/brief/api/', '/brief/ws'],
     env: {
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
-      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'INTERNAL_SERVICE_SECRET', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
     },
   },
   {
@@ -146,7 +149,7 @@ export const APP_SERVICES = [
     public_paths: ['/bearing/api/'],
     env: {
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
-      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'INTERNAL_SERVICE_SECRET', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
     },
   },
   {
@@ -163,6 +166,7 @@ export const APP_SERVICES = [
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
       optional: [
         'CORS_ORIGIN', 'LOG_LEVEL',
+        'INTERNAL_SERVICE_SECRET',
         'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'LIVEKIT_URL',
       ],
     },
@@ -179,7 +183,7 @@ export const APP_SERVICES = [
     public_paths: ['/bond/api/'],
     env: {
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
-      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'INTERNAL_SERVICE_SECRET', 'RATE_LIMIT_MAX', 'RATE_LIMIT_WINDOW_MS'],
     },
   },
   {
@@ -196,6 +200,7 @@ export const APP_SERVICES = [
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL', 'BOND_API_INTERNAL_URL', 'TRACKING_BASE_URL'],
       optional: [
         'CORS_ORIGIN', 'LOG_LEVEL',
+        'INTERNAL_SERVICE_SECRET',
         'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS',
         'SMTP_FROM_EMAIL', 'SMTP_FROM_NAME',
       ],
@@ -230,6 +235,7 @@ export const APP_SERVICES = [
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL', 'PUBLIC_URL'],
       optional: [
         'CORS_ORIGIN', 'LOG_LEVEL',
+        'INTERNAL_SERVICE_SECRET',
         'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
         'MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET',
       ],
@@ -247,7 +253,7 @@ export const APP_SERVICES = [
     public_paths: ['/blank/api/', '/forms/'],
     env: {
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL'],
-      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'PUBLIC_FORM_RATE_LIMIT', 'PUBLIC_FORM_RATE_WINDOW_MS'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'INTERNAL_SERVICE_SECRET', 'PUBLIC_FORM_RATE_LIMIT', 'PUBLIC_FORM_RATE_WINDOW_MS'],
     },
   },
   {
@@ -262,7 +268,7 @@ export const APP_SERVICES = [
     public_paths: ['/bill/api/', '/invoice/'],
     env: {
       required: ['DATABASE_URL', 'REDIS_URL', 'SESSION_SECRET', 'BBB_API_INTERNAL_URL', 'PUBLIC_URL'],
-      optional: ['CORS_ORIGIN', 'LOG_LEVEL'],
+      optional: ['CORS_ORIGIN', 'LOG_LEVEL', 'INTERNAL_SERVICE_SECRET'],
     },
   },
   {
@@ -285,7 +291,7 @@ export const APP_SERVICES = [
         'HELPDESK_API_URL', 'BEACON_API_URL', 'BOLT_API_URL', 'BEARING_API_URL',
         'BOARD_API_URL', 'BOND_API_URL', 'BLAST_API_URL', 'BOOK_API_URL',
         'BENCH_API_URL', 'BILL_API_URL', 'BLANK_API_URL',
-        'MCP_AUTH_REQUIRED', 'LOG_LEVEL',
+        'MCP_AUTH_REQUIRED', 'LOG_LEVEL', 'INTERNAL_SERVICE_SECRET',
       ],
     },
   },
@@ -303,6 +309,7 @@ export const APP_SERVICES = [
       required: ['DATABASE_URL', 'REDIS_URL'],
       optional: [
         'WORKER_CONCURRENCY', 'LOG_LEVEL',
+        'INTERNAL_SERVICE_SECRET',
         'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION',
         'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM',
       ],

@@ -260,20 +260,22 @@ function printWelcomeBanner() {
 function extractSecretsFromEnvConfig(envConfig = {}) {
   const sessionSecret = envConfig.SESSION_SECRET ?? '';
   const helpdeskSecret = envConfig.INTERNAL_HELPDESK_SECRET ?? '';
+  const serviceSecret = envConfig.INTERNAL_SERVICE_SECRET ?? '';
   const tooShort = [];
   if (sessionSecret.length < 32) tooShort.push(`SESSION_SECRET (${sessionSecret.length} chars)`);
   if (helpdeskSecret.length < 32) tooShort.push(`INTERNAL_HELPDESK_SECRET (${helpdeskSecret.length} chars)`);
+  if (serviceSecret.length < 32) tooShort.push(`INTERNAL_SERVICE_SECRET (${serviceSecret.length} chars)`);
   if (tooShort.length > 0) {
     throw new Error(
       `Required secret(s) too short for Bam env validation: ${tooShort.join(', ')}. ` +
-        `Both must be ≥ 32 characters. This usually means '.deploy-state.json' was ` +
+        `All must be ≥ 32 characters. This usually means '.deploy-state.json' was ` +
         `loaded with redacted placeholder values; delete it and re-run, or pass --reconfigure.`,
     );
   }
   return {
     SESSION_SECRET: sessionSecret,
     INTERNAL_HELPDESK_SECRET: helpdeskSecret,
-    INTERNAL_SERVICE_SECRET: envConfig.INTERNAL_SERVICE_SECRET ?? helpdeskSecret,
+    INTERNAL_SERVICE_SECRET: serviceSecret,
     MINIO_ROOT_USER: envConfig.MINIO_ROOT_USER ?? '',
     MINIO_ROOT_PASSWORD: envConfig.MINIO_ROOT_PASSWORD ?? '',
     LIVEKIT_API_KEY: envConfig.LIVEKIT_API_KEY ?? '',

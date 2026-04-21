@@ -118,7 +118,7 @@ function writeEnvFile(envConfig) {
     '# --- Core ---': ['NODE_ENV', 'DOMAIN', 'BASE_URL'],
     '# --- Database ---': ['POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_DB', 'DATABASE_URL'],
     '# --- Redis ---': ['REDIS_PASSWORD', 'REDIS_URL'],
-    '# --- Auth ---': ['SESSION_SECRET', 'INTERNAL_HELPDESK_SECRET'],
+    '# --- Auth ---': ['SESSION_SECRET', 'INTERNAL_HELPDESK_SECRET', 'INTERNAL_SERVICE_SECRET'],
     '# --- Storage ---': [
       'MINIO_ROOT_USER', 'MINIO_ROOT_PASSWORD',
       'S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET', 'S3_REGION', 'S3_FORCE_PATH_STYLE',

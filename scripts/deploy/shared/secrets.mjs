@@ -19,6 +19,7 @@ export function generateSecrets() {
   return {
     SESSION_SECRET: randomHex(32),
     INTERNAL_HELPDESK_SECRET: randomHex(32),
+    INTERNAL_SERVICE_SECRET: randomHex(32),
     MINIO_ROOT_USER: 'bigbluebam',
     MINIO_ROOT_PASSWORD: randomHex(24),
     POSTGRES_PASSWORD: randomHex(24),
@@ -206,6 +207,7 @@ export function buildEnvConfig(choices) {
     // Sessions
     SESSION_SECRET: secrets.SESSION_SECRET,
     INTERNAL_HELPDESK_SECRET: secrets.INTERNAL_HELPDESK_SECRET,
+    INTERNAL_SERVICE_SECRET: secrets.INTERNAL_SERVICE_SECRET,
 
     // Node environment
     NODE_ENV: 'production',
