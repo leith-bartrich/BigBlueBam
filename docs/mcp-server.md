@@ -85,6 +85,20 @@ graph LR
 
 Built with the official `@modelcontextprotocol/sdk` TypeScript package. Runs as a sidecar Docker container on internal port 3001, exposed externally at `/mcp/` through the shared nginx reverse proxy on port 80. Communicates with the API server over the internal Docker network.
 
+### Endpoint paths
+
+The canonical MCP endpoint for an MCP client is the `/mcp/` path on the public ingress. `/mcp` (no trailing slash) is also accepted. Other paths on the `/mcp/` prefix are reserved for out-of-band operational surfaces:
+
+| External path | Upstream path | Purpose |
+|---|---|---|
+| `https://DOMAIN/mcp/` or `/mcp` | `/mcp` | **Primary MCP endpoint** — Streamable HTTP transport. POST for client→server requests; GET for server→client SSE notifications on an established session; DELETE to terminate. Use this URL in Claude Desktop / Claude Code / any MCP client config. |
+| `https://DOMAIN/mcp/health` | `/health` | Liveness probe. Returns `{"status":"ok","server":"BigBlueBam MCP","version":"..."}`. No auth. |
+| `https://DOMAIN/mcp/sse` | `/sse` | SSE transport connection (only active when `MCP_TRANSPORT=sse`; the default is `streamable-http` and this route returns 404). |
+| `https://DOMAIN/mcp/messages` | `/messages` | SSE transport POST endpoint for client→server messages (only active when `MCP_TRANSPORT=sse`). |
+| `https://DOMAIN/mcp/tools/call` | `/tools/call` | Internal shared-secret direct-invocation route for service-to-service callers (bolt-api, worker, api). Not for external MCP clients — use `/mcp/` for that. |
+
+Configured in `infra/nginx/nginx-with-site.conf` (docker-compose) and `infra/nginx/nginx.conf` (baked-in fallback); the Railway flavor `infra/nginx/nginx.railway.conf` is auto-generated from the former. The routing matches `apps/mcp-server/src/server.ts`.
+
 ---
 
 ## Authentication
@@ -821,7 +835,7 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "bigbluebam": {
-      "url": "https://app.bigbluebam.io/mcp/sse",
+      "url": "https://app.bigbluebam.io/mcp/",
       "headers": {
         "Authorization": "Bearer bbam_your_api_key_here"
       }
@@ -836,7 +850,7 @@ For a local Docker instance:
 {
   "mcpServers": {
     "bigbluebam": {
-      "url": "http://localhost/mcp/sse",
+      "url": "http://localhost/mcp/",
       "headers": {
         "Authorization": "Bearer bbam_your_api_key_here"
       }
@@ -844,6 +858,15 @@ For a local Docker instance:
   }
 }
 ```
+
+For Claude Code via the `claude mcp add` CLI:
+
+```sh
+claude mcp add --transport http bigbluebam https://YOUR_DOMAIN/mcp/ \
+  --header "Authorization: Bearer bbam_your_api_key_here"
+```
+
+For service-account use (the `bbam_svc_` prefix signals a locked, non-login account minted with `docker compose exec api node dist/cli.js create-service-account`), substitute that token for the user key.
 
 ### Claude Code
 

@@ -405,7 +405,7 @@ BigBlueBam exposes **340 MCP (Model Context Protocol) tools** that give AI assis
 
 ### MCP Setup
 
-Add this to your Claude Desktop or Claude Code configuration:
+The canonical MCP endpoint is `/mcp/` on the public ingress (Streamable HTTP transport). Add this to your Claude Desktop or Claude Code configuration:
 
 ```json
 {
@@ -420,7 +420,14 @@ Add this to your Claude Desktop or Claude Code configuration:
 }
 ```
 
-Generate an API key from **Settings > Integrations** in the BigBlueBam UI.
+Or from the Claude Code CLI:
+
+```sh
+claude mcp add --transport http bigbluebam https://YOUR_DOMAIN/mcp/ \
+  --header "Authorization: Bearer YOUR_API_KEY"
+```
+
+Generate an API key from **Settings > Integrations** in the BigBlueBam UI. For server-to-server integrations, mint a `bbam_svc_`-prefixed service-account key instead (see the Provision the internal MCP service account section below). `/mcp/health` returns a liveness JSON with no auth; see [docs/mcp-server.md](docs/mcp-server.md#endpoint-paths) for the full endpoint map.
 
 ---
 

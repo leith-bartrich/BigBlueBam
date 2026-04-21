@@ -332,7 +332,12 @@ function generateRailwayNginxConf() {
       const varName = `$rw_upstream_${++varSeq}`;
       resultLines.push(`${indent}set ${varName} "${host}";`);
       if (uri && uri !== '') {
-        const locEsc = currentLoc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Strip the `= ` exact-match modifier (and any leading whitespace)
+        // from currentLoc so the rewrite regex sees only the URI path.
+        // Without this, `location = /mcp` would produce a rewrite anchored
+        // on literal `= /mcp`, which nginx parses as a broken regex.
+        const locPath = currentLoc.replace(/^=\s+/, '');
+        const locEsc = locPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         resultLines.push(
           `${indent}rewrite ^${locEsc}(.*)$ ${uri}$1 break;`,
         );
