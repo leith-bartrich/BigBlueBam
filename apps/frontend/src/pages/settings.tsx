@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Users, Trash2, Plug, Copy, Check, Plus, Headset, Pencil, Lock, Zap } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Users, Trash2, Plug, Copy, Check, Plus, Headset, Pencil, Lock, Zap, Bot, RefreshCw } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -23,6 +23,35 @@ interface ApiKeyData {
   created_at: string;
   last_used_at: string | null;
   key?: string; // only present on creation
+}
+
+interface ServiceAccountData {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+  disabled_at: string | null;
+  created_by: { id: string; display_name: string | null } | null;
+  policy: { enabled: boolean; allowed_tool_count: number } | null;
+  api_key: {
+    id: string;
+    name: string;
+    key_hint: string;
+    scope: string;
+    project_ids: string[] | null;
+    last_used_at: string | null;
+    rotated_at: string | null;
+  } | null;
+}
+
+interface ServiceAccountCreateResponse {
+  data: {
+    id: string;
+    name: string;
+    email: string;
+    api_key: { id: string; name: string; key: string; key_prefix: string; scope: string; project_ids: string[] | null };
+    policy: { enabled: boolean; allowed_tools: string[] };
+  };
 }
 
 interface WebhookData {
@@ -80,6 +109,15 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyScope, setNewKeyScope] = useState('read');
   const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null);
+  // Service-account form state (Agents section)
+  const [showCreateAgent, setShowCreateAgent] = useState(false);
+  const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentScope, setNewAgentScope] = useState('read_write');
+  const [newAgentProjectIds, setNewAgentProjectIds] = useState<string[]>([]);
+  const [newAgentAllowedTools, setNewAgentAllowedTools] = useState('');
+  const [createdAgentKey, setCreatedAgentKey] = useState<{ key: string; name: string } | null>(null);
+  const [rotatedAgentKey, setRotatedAgentKey] = useState<{ key: string; name: string } | null>(null);
+
   const [showAddWebhook, setShowAddWebhook] = useState<string | null>(null); // project id
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
@@ -154,6 +192,44 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     mutationFn: (id: string) => api.delete(`/auth/api-keys/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+    },
+  });
+
+  // ── Agents (service accounts) ──────────────────────────────────────
+  const { data: agentsRes } = useQuery({
+    queryKey: ['service-accounts'],
+    queryFn: () => api.get<{ data: ServiceAccountData[] }>('/auth/service-accounts'),
+    enabled: activeTab === 'integrations',
+  });
+  const agentsData = agentsRes?.data ?? [];
+
+  const createAgent = useMutation({
+    mutationFn: (payload: { name: string; scope: string; project_ids?: string[]; allowed_tools?: string[] }) =>
+      api.post<ServiceAccountCreateResponse>('/auth/service-accounts', payload),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['service-accounts'] });
+      setCreatedAgentKey({ key: res.data.api_key.key, name: res.data.name });
+      setNewAgentName('');
+      setNewAgentScope('read_write');
+      setNewAgentProjectIds([]);
+      setNewAgentAllowedTools('');
+      setShowCreateAgent(false);
+    },
+  });
+
+  const revokeAgent = useMutation({
+    mutationFn: (id: string) => api.delete(`/auth/service-accounts/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['service-accounts'] });
+    },
+  });
+
+  const rotateAgentKey = useMutation({
+    mutationFn: (keyId: string) =>
+      api.post<{ data: { key: string; name: string } }>(`/auth/api-keys/${keyId}/rotate`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['service-accounts'] });
+      setRotatedAgentKey({ key: res.data.key, name: res.data.name });
     },
   });
 
@@ -865,6 +941,297 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     </div>
                   ) : (
                     <p className="text-sm text-zinc-400">No API keys created yet.</p>
+                  )}
+                </div>
+
+                {/* Agents (service accounts) */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1 flex items-center gap-2">
+                        <Bot className="h-5 w-5 text-primary-600" />
+                        Agents
+                      </h2>
+                      <p className="text-sm text-zinc-500">
+                        Service accounts for automations and AI agents. The account
+                        is owned by you and cannot act beyond your own permissions.
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={() => setShowCreateAgent((v) => !v)}>
+                      <Plus className="h-4 w-4" />
+                      New Agent
+                    </Button>
+                  </div>
+
+                  {createdAgentKey && (
+                    <div className="p-4 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950 space-y-2">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                        Agent "{createdAgentKey.name}" created. Copy its API key now — it will not be shown again.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs bg-white dark:bg-zinc-900 rounded px-3 py-2 font-mono border border-green-200 dark:border-green-800 break-all">
+                          {createdAgentKey.key}
+                        </code>
+                        <button
+                          onClick={() => handleCopyUrl(createdAgentKey.key)}
+                          className="shrink-0 rounded-md p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          {copiedUrl === createdAgentKey.key ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setCreatedAgentKey(null)}
+                        className="text-xs text-green-700 dark:text-green-300 underline"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+
+                  {rotatedAgentKey && (
+                    <div className="p-4 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950 space-y-2">
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Rotated key for "{rotatedAgentKey.name}". The old key works during the 7-day grace window.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs bg-white dark:bg-zinc-900 rounded px-3 py-2 font-mono border border-blue-200 dark:border-blue-800 break-all">
+                          {rotatedAgentKey.key}
+                        </code>
+                        <button
+                          onClick={() => handleCopyUrl(rotatedAgentKey.key)}
+                          className="shrink-0 rounded-md p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          {copiedUrl === rotatedAgentKey.key ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setRotatedAgentKey(null)}
+                        className="text-xs text-blue-700 dark:text-blue-300 underline"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+
+                  {showCreateAgent && (
+                    <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-3">
+                      <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Create a new agent</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Input
+                          id="agent-name"
+                          label="Name"
+                          placeholder="e.g. Daily Stand-up Bot"
+                          value={newAgentName}
+                          onChange={(e) => setNewAgentName(e.target.value)}
+                        />
+                        <div
+                          title={
+                            user?.role === 'owner' || user?.is_superuser === true
+                              ? undefined
+                              : 'Admin-scope agents can only be created by an organization owner.'
+                          }
+                        >
+                          <Select
+                            label="Scope"
+                            options={[
+                              { value: 'read', label: 'Read' },
+                              { value: 'read_write', label: 'Read / Write' },
+                              ...(user?.role === 'owner' || user?.is_superuser === true
+                                ? [{ value: 'admin', label: 'Admin' }]
+                                : []),
+                            ]}
+                            value={newAgentScope}
+                            onValueChange={setNewAgentScope}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1 block">
+                          Restrict to projects <span className="text-zinc-400">(optional — leave empty for org-wide)</span>
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {projects.length === 0 ? (
+                            <p className="text-xs text-zinc-400">No projects available.</p>
+                          ) : (
+                            projects.map((p) => {
+                              const on = newAgentProjectIds.includes(p.id);
+                              return (
+                                <button
+                                  type="button"
+                                  key={p.id}
+                                  onClick={() =>
+                                    setNewAgentProjectIds((prev) =>
+                                      on ? prev.filter((id) => id !== p.id) : [...prev, p.id],
+                                    )
+                                  }
+                                  className={
+                                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ' +
+                                    (on
+                                      ? 'border-primary-500 bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200'
+                                      : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800')
+                                  }
+                                >
+                                  {on && <Check className="h-3 w-3" />}
+                                  {p.name}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1 block">
+                          Allowed tool patterns <span className="text-zinc-400">(one per line — leave empty for full allowlist)</span>
+                        </label>
+                        <textarea
+                          value={newAgentAllowedTools}
+                          onChange={(e) => setNewAgentAllowedTools(e.target.value)}
+                          placeholder="banter_*&#10;bond_get_*&#10;get_me"
+                          rows={3}
+                          className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                        <p className="mt-1 text-xs text-zinc-500">
+                          Patterns use glob-prefix syntax (<code className="text-xs">banter_*</code> matches every Banter tool). Runtime role/scope checks still apply — this is an extra filter, not an escalation.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const tools = newAgentAllowedTools
+                              .split('\n')
+                              .map((s) => s.trim())
+                              .filter(Boolean);
+                            createAgent.mutate({
+                              name: newAgentName,
+                              scope: newAgentScope,
+                              project_ids: newAgentProjectIds.length > 0 ? newAgentProjectIds : undefined,
+                              allowed_tools: tools.length > 0 ? tools : undefined,
+                            });
+                          }}
+                          loading={createAgent.isPending}
+                          disabled={!newAgentName.trim()}
+                        >
+                          Create Agent
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowCreateAgent(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                      {createAgent.isError && (
+                        <p className="text-xs text-red-600 dark:text-red-400">
+                          Failed: {(createAgent.error as Error).message}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {agentsData.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-zinc-200 dark:border-zinc-700 text-left">
+                            <th className="pb-2 font-medium text-zinc-500">Name</th>
+                            <th className="pb-2 font-medium text-zinc-500">Key</th>
+                            <th className="pb-2 font-medium text-zinc-500">Scope</th>
+                            <th className="pb-2 font-medium text-zinc-500">Projects</th>
+                            <th className="pb-2 font-medium text-zinc-500">Status</th>
+                            <th className="pb-2 font-medium text-zinc-500 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {agentsData.map((agent) => {
+                            const isDisabled = agent.disabled_at !== null || agent.policy?.enabled === false;
+                            const projectNames = (agent.api_key?.project_ids ?? []).map(
+                              (id) => projects.find((p) => p.id === id)?.name ?? id.slice(0, 8),
+                            );
+                            return (
+                              <tr key={agent.id} className="border-b border-zinc-100 dark:border-zinc-800">
+                                <td className="py-3">
+                                  <div className="font-medium text-zinc-900 dark:text-zinc-100">{agent.name}</div>
+                                  {agent.created_by && (
+                                    <div className="text-xs text-zinc-500">
+                                      by {agent.created_by.display_name || agent.created_by.id.slice(0, 8)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-3 text-zinc-500 font-mono text-xs">
+                                  {agent.api_key?.key_hint ?? '—'}
+                                </td>
+                                <td className="py-3 text-zinc-600 dark:text-zinc-400 capitalize">
+                                  {agent.api_key?.scope ?? '—'}
+                                </td>
+                                <td className="py-3 text-zinc-500 text-xs">
+                                  {projectNames.length === 0 ? (
+                                    <span className="text-zinc-400">org-wide</span>
+                                  ) : (
+                                    <span className="truncate max-w-xs inline-block" title={projectNames.join(', ')}>
+                                      {projectNames.join(', ')}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3">
+                                  {isDisabled ? (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                                      Revoked
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                      Active
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3 text-right">
+                                  <div className="inline-flex items-center gap-1.5">
+                                    {!isDisabled && agent.api_key && (
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => {
+                                          if (window.confirm(`Rotate key for "${agent.name}"? The old key works during the 7-day grace window.`)) {
+                                            rotateAgentKey.mutate(agent.api_key!.id);
+                                          }
+                                        }}
+                                        loading={rotateAgentKey.isPending && rotateAgentKey.variables === agent.api_key.id}
+                                      >
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                        Rotate
+                                      </Button>
+                                    )}
+                                    {!isDisabled && (
+                                      <Button
+                                        size="sm"
+                                        variant="danger"
+                                        onClick={() => {
+                                          if (window.confirm(`Revoke agent "${agent.name}"? Its key is deleted and the policy is disabled.`)) {
+                                            revokeAgent.mutate(agent.id);
+                                          }
+                                        }}
+                                        loading={revokeAgent.isPending && revokeAgent.variables === agent.id}
+                                      >
+                                        Revoke
+                                      </Button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-zinc-400">No agents created yet.</p>
                   )}
                 </div>
 

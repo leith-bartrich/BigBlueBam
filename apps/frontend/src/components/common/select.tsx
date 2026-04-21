@@ -17,11 +17,26 @@ interface SelectProps {
   className?: string;
 }
 
-export function Select({ options, value, onValueChange, placeholder = 'Select...', label, error, className }: SelectProps) {
+// Radix Select 2.2+ rejects SelectItems with an empty-string value at render
+// time. Historically callers used `{ value: '', label: 'Select…' }` to render
+// a "no selection" placeholder row inside the dropdown. We transparently
+// convert that pattern: strip empty-value options, promote the first
+// stripped label into the placeholder prop, and normalize `value === ''`
+// into an unset Radix value (which surfaces the placeholder anyway).
+export function Select({ options, value, onValueChange, placeholder, label, error, className }: SelectProps) {
+  const emptyOption = options.find((o) => o.value === '');
+  const realOptions = options.filter((o) => o.value !== '');
+  const effectivePlaceholder = placeholder ?? emptyOption?.label ?? 'Select...';
+  const radixValue = value === '' ? undefined : value ?? undefined;
+
+  const handleChange = (next: string) => {
+    if (onValueChange) onValueChange(next);
+  };
+
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{label}</span>}
-      <RadixSelect.Root value={value ?? undefined} onValueChange={onValueChange}>
+      <RadixSelect.Root value={radixValue} onValueChange={handleChange}>
         <RadixSelect.Trigger
           className={cn(
             'inline-flex items-center justify-between rounded-lg border bg-white px-3 py-2 text-sm gap-2',
@@ -30,7 +45,7 @@ export function Select({ options, value, onValueChange, placeholder = 'Select...
             error ? 'border-red-500' : 'border-zinc-300',
           )}
         >
-          <RadixSelect.Value placeholder={placeholder} />
+          <RadixSelect.Value placeholder={effectivePlaceholder} />
           <RadixSelect.Icon>
             <ChevronDown className="h-4 w-4 text-zinc-400" />
           </RadixSelect.Icon>
@@ -42,7 +57,7 @@ export function Select({ options, value, onValueChange, placeholder = 'Select...
             sideOffset={4}
           >
             <RadixSelect.Viewport className="p-1">
-              {options.map((option) => (
+              {realOptions.map((option) => (
                 <RadixSelect.Item
                   key={option.value}
                   value={option.value}

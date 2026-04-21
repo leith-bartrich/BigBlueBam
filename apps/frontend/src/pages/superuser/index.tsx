@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft, Settings, Mail, Download, Globe } from 'lucide-react';
+import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft, Settings, Mail, Download, Globe, Bot, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { exportCsv, todayStamp } from '@/lib/csv';
 import type { SuperuserOrgListItem, SuperuserOrgListResponse } from '@bigbluebam/shared';
@@ -74,7 +74,7 @@ export function SuperuserPage({ onNavigate }: SuperuserPageProps) {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6">
-        {tab === 'overview' && <OverviewTab />}
+        {tab === 'overview' && <OverviewTab onNavigate={onNavigate} />}
         {tab === 'organizations' && <OrganizationsTab onNavigate={onNavigate} />}
         {tab === 'platform' && <PlatformTab />}
         {tab === 'beta-signups' && <BetaSignupsTab />}
@@ -101,7 +101,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 // ─── Overview Tab ───────────────────────────────────────────────────────────
 
-function OverviewTab() {
+function OverviewTab({ onNavigate }: { onNavigate: (path: string) => void }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['superuser', 'overview'],
     queryFn: () => superuserApi.getOverview(),
@@ -144,6 +144,26 @@ function OverviewTab() {
     <div className="flex flex-col gap-6">
       <section>
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 uppercase tracking-wider">
+          Admin tools
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <AdminToolCard
+            icon={Users}
+            title="All users"
+            description="Search, disable, or promote any user on the server."
+            onClick={() => onNavigate('/superuser/people')}
+          />
+          <AdminToolCard
+            icon={Bot}
+            title="Agent policies"
+            description="Enable or disable agents in the active org. §15 kill switch."
+            onClick={() => onNavigate('/superuser/agents')}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 uppercase tracking-wider">
           Server Totals
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -165,6 +185,34 @@ function OverviewTab() {
         </div>
       </section>
     </div>
+  );
+}
+
+function AdminToolCard({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group text-left rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary-100 dark:bg-primary-900/30">
+          <Icon className="h-4.5 w-4.5 text-primary-600 dark:text-primary-400" />
+        </div>
+        <ArrowRight className="h-4 w-4 text-zinc-400 group-hover:text-primary-600 group-hover:translate-x-0.5 transition-all" />
+      </div>
+      <div className="mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</div>
+      <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{description}</div>
+    </button>
   );
 }
 

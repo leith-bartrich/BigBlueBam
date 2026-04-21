@@ -13,6 +13,7 @@ import { ProjectReportsPage } from '@/pages/project-reports';
 import { SuperuserPage } from '@/pages/superuser';
 import { SuperuserPeopleListPage } from '@/pages/superuser/people-list';
 import { SuperuserPeopleDetailPage } from '@/pages/superuser/people-detail';
+import { SuperuserAgentsListPage } from '@/pages/superuser/agents-list';
 import { PeoplePage } from '@/pages/people';
 import { PersonDetailPage } from '@/pages/people/detail';
 import { GuestAcceptPage } from '@/pages/guest-accept';
@@ -41,6 +42,7 @@ type Route =
   | { page: 'superuser' }
   | { page: 'superuser-people' }
   | { page: 'superuser-person-detail'; userId: string }
+  | { page: 'superuser-agents' }
   | { page: 'people' }
   | { page: 'person-detail'; userId: string }
   | { page: 'guest-accept'; token: string }
@@ -96,6 +98,9 @@ function parseRoute(path: string): Route {
   }
   if (p === '/superuser/people' || p === '/superuser/people/') {
     return { page: 'superuser-people' };
+  }
+  if (p === '/superuser/agents' || p === '/superuser/agents/') {
+    return { page: 'superuser-agents' };
   }
   const personDetailMatch = p.match(/^\/people\/([^/]+)$/);
   if (personDetailMatch) {
@@ -280,6 +285,8 @@ export function App() {
       return <SuperuserPeopleListPage onNavigate={navigate} />;
     case 'superuser-person-detail':
       return <SuperuserPeopleDetailPage userId={route.userId} onNavigate={navigate} />;
+    case 'superuser-agents':
+      return <SuperuserAgentsListPage onNavigate={navigate} />;
     case 'people':
       return <PeoplePage onNavigate={navigate} />;
     case 'person-detail':
