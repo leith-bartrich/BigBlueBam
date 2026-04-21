@@ -333,6 +333,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
         org_id: request.user!.org_id,
         active_org_id: request.user!.active_org_id,
         is_superuser: user.is_superuser,
+        // Actor kind (users.kind — migration 0127 / AGENTIC_TODO §10). Present
+        // so callers like the MCP PolicyGate don't need a second round-trip to
+        // /users/:id to decide "is this a human (skip policy check) or an
+        // agent/service (run policy check)". A stale api image that didn't
+        // return this field silently failed the gate as AGENT_DISABLED for
+        // human callers; keeping it on /auth/me is load-bearing.
+        kind: user.kind,
         // True when the user is a SuperUser viewing an org they are NOT a
         // native member of (via sessions.active_org_id). Used by the UI
         // to label confirm dialogs ("you will not be demoted") and show

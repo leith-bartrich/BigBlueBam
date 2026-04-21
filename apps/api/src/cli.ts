@@ -8,6 +8,7 @@ import { organizations } from './db/schema/organizations.js';
 import { users } from './db/schema/users.js';
 import { organizationMemberships } from './db/schema/organization-memberships.js';
 import { apiKeys } from './db/schema/api-keys.js';
+import { agentPolicies } from './db/schema/agent-policies.js';
 import { pgTable, uuid, varchar, text, timestamp } from 'drizzle-orm/pg-core';
 
 // Local reference to the helpdesk_agent_api_keys table (owned by the
@@ -457,6 +458,7 @@ async function createServiceAccount(flags: Record<string, string>) {
           password_hash: passwordHash,
           role: 'member',
           is_superuser: false,
+          kind: 'service',
         })
         .returning();
 
@@ -465,6 +467,18 @@ async function createServiceAccount(flags: Record<string, string>) {
         org_id: org.id,
         role: 'member',
         is_default: true,
+      });
+
+      // Permissive §15 policy so the first tool call doesn't fail-closed.
+      // Migration 0139 backfilled existing service accounts; new ones
+      // minted via this CLI need their row inserted here.
+      await db.insert(agentPolicies).values({
+        agent_user_id: user!.id,
+        org_id: org.id,
+        enabled: true,
+        allowed_tools: ['*'],
+        channel_subscriptions: [],
+        updated_by: user!.id,
       });
     }
 

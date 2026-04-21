@@ -30,6 +30,7 @@ export const users = pgTable(
     last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
     disabled_at: timestamp('disabled_at', { withTimezone: true }),
     disabled_by: uuid('disabled_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+    created_by: uuid('created_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
     email_verified: boolean('email_verified').default(true).notNull(),
     pending_email: varchar('pending_email', { length: 320 }),
     email_verification_token: text('email_verification_token'),

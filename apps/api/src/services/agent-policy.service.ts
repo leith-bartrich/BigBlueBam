@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { Redis } from 'ioredis';
 import { db } from '../db/index.js';
 import { agentPolicies } from '../db/schema/agent-policies.js';
@@ -72,6 +73,7 @@ export type ListPolicyRow = {
   allowed_tool_count: number;
   last_heartbeat_at: string | null;
   updated_at: string;
+  created_by: { id: string; display_name: string | null } | null;
 };
 
 function normalize(raw: typeof agentPolicies.$inferSelect): AgentPolicyRow {
@@ -266,18 +268,24 @@ export async function listPolicies(
     conditions.push(eq(agentPolicies.enabled, true));
   }
 
+  const creators = alias(users, 'creators');
+
   const rows = await db
     .select({
       agent_user_id: agentPolicies.agent_user_id,
       agent_name: users.display_name,
+      created_by_id: users.created_by,
       enabled: agentPolicies.enabled,
       allowed_tools: agentPolicies.allowed_tools,
       updated_at: agentPolicies.updated_at,
       last_heartbeat_at: agentRunners.last_heartbeat_at,
+      creator_id: creators.id,
+      creator_name: creators.display_name,
     })
     .from(agentPolicies)
     .leftJoin(users, eq(agentPolicies.agent_user_id, users.id))
     .leftJoin(agentRunners, eq(agentRunners.user_id, agentPolicies.agent_user_id))
+    .leftJoin(creators, eq(users.created_by, creators.id))
     .where(and(...conditions))
     .orderBy(sql`${agentPolicies.enabled} ASC`, sql`${agentPolicies.updated_at} DESC`);
 
@@ -288,6 +296,10 @@ export async function listPolicies(
     allowed_tool_count: (r.allowed_tools as string[]).length,
     last_heartbeat_at: r.last_heartbeat_at ? r.last_heartbeat_at.toISOString() : null,
     updated_at: r.updated_at.toISOString(),
+    created_by:
+      r.creator_id && r.created_by_id
+        ? { id: r.creator_id, display_name: r.creator_name }
+        : null,
   }));
 }
 
