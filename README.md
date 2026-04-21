@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#the-vision">Vision</a> &bull;
+  <a href="#the-suite-at-a-glance">At a Glance</a> &bull;
   <a href="#product-tour">Tour</a> &bull;
   <a href="#for-teams">For Teams</a> &bull;
   <a href="#for-ai-agents">For AI Agents</a> &bull;
@@ -52,6 +53,31 @@ Most work platforms are built for humans talking to humans. BigBlueBam is built 
 The **suite** is the shared workspace. When an AI agent creates a task, replies to a customer, updates a deal, or posts to a Banter channel, it shows up in real time, right alongside everything your team is doing. No separate dashboards. No hidden automation. Full transparency.
 
 This is made possible by **340 MCP tools** that give AI assistants (Claude, Claude Code, custom agents) full read-write access to project boards, sprints, team messaging (with scheduled posts and pattern subscriptions), helpdesk tickets, knowledge base, collaborative docs, workflow automations with runtime observability, goals and OKRs, whiteboards, CRM pipelines with dedupe, email campaigns, analytics dashboards, scheduling with mixed human-and-agent rosters, forms, invoicing, plus cross-cutting platform capabilities (cross-app search, composite subject views, entity linking, durable proposal queues, per-agent kill switches, HMAC-signed outbound webhooks). Service-account agents run behind a fail-closed policy gate with confirm-action tokens backed by Redis so destructive flows survive rolling deploys.
+
+---
+
+## The Suite at a Glance
+
+Fourteen apps, one workspace. If you've used the tools on the right you already know most of how each app works — the difference is that all fourteen live under the same auth, the same org and project permissions, and the same 340-tool MCP surface, so AI agents can work across them without integration glue.
+
+| App | What it is | Comparable to |
+|-----|------------|---------------|
+| **Bam** | Project management — Kanban board, sprints, five views (board/list/timeline/calendar/workload) | Trello, Linear, Jira, Asana |
+| **Banter** | Team chat with LiveKit voice/video, transcripts, and AI agents as spoken call participants | Slack or Microsoft Teams, with Zoom-style voice/video built in |
+| **Beacon** | AI knowledge base with semantic search (Qdrant) and a graph explorer | Notion or Confluence, with an Obsidian-style graph view |
+| **Brief** | Real-time collaborative documents with versioning and inline comments | Google Docs, Notion, Dropbox Paper |
+| **Board** | Infinite-canvas whiteboard with shapes, stickies, and audio conferencing | Miro, Mural, FigJam |
+| **Bolt** | Workflow automation — both a form-based trigger/condition/action builder and a visual node-graph editor | Zapier or Make (form side); n8n or Node-RED (graph side) |
+| **Bearing** | Goals and OKRs with key results linked to Bam tasks for automatic progress | Lattice, 15Five, Quantive |
+| **Bond** | CRM — contacts, companies, deals, pipeline stages, activity log, dedupe | HubSpot, Pipedrive, Attio |
+| **Blast** | Email campaigns with templates, segments, tracking pixel, click redirect, engagement analytics | Mailchimp, ConvertKit, ActiveCampaign |
+| **Bench** | Analytics dashboards, widgets, ad-hoc queries, scheduled reports, anomaly detection | Metabase, Tableau, Looker |
+| **Book** | Scheduling with public booking pages and mixed human-plus-agent availability | Calendly, Cal.com |
+| **Blank** | Forms with conditional logic routing, submissions export, AI-generated form definitions | Typeform, Google Forms, Tally |
+| **Bill** | Invoicing, expenses, recurring billing, PDF generation, profitability reports | FreshBooks, QuickBooks, Wave |
+| **Helpdesk** | Customer support portal with ticket tracking, similar-ticket dedupe, and auto task creation | Zendesk, Intercom, Help Scout |
+
+**What the comparison table doesn't show:** every one of these apps is wired into the same MCP surface, so an AI agent triaging a Helpdesk ticket can upsert the requester in Bond, create a Bam task, post a Banter update to the engineering channel, and schedule a Book meeting with the customer — in one cross-app flow, with visibility preflight and a durable approval queue gating anything destructive.
 
 ---
 
