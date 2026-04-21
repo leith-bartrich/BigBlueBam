@@ -33,10 +33,13 @@ function makeBanterClient(banterApiUrl: string, api: ApiClient) {
     path: string,
     body?: unknown,
   ): Promise<BanterRequestResult<T>> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const init: RequestInit = { method, headers };
-    if (body !== undefined) init.body = JSON.stringify(body);
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(body);
+    }
     try {
       const res = await fetch(`${baseUrl}${path}`, init);
       const data = (await res.json()) as T;

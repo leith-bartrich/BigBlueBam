@@ -31,7 +31,6 @@ describe('ApiClient', () => {
         method: 'GET',
         headers: expect.objectContaining({
           Authorization: 'Bearer test-token-123',
-          'Content-Type': 'application/json',
         }),
       }),
     );

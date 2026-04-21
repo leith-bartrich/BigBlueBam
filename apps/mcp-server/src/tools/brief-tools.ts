@@ -18,7 +18,7 @@ function createBriefClient(briefApiUrl: string, api: ApiClient) {
 
   async function request(method: string, path: string, body?: unknown) {
     const url = `${baseUrl}${path}`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {};
 
     // Forward the bearer token from the main API client
     const token = (api as unknown as { token?: string }).token;
@@ -28,6 +28,7 @@ function createBriefClient(briefApiUrl: string, api: ApiClient) {
 
     const init: RequestInit = { method, headers };
     if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }
 

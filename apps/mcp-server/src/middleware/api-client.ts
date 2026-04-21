@@ -28,13 +28,13 @@ export class ApiClient {
     this.logger.debug({ method, url }, 'API request');
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${this.token}`,
     };
 
     const init: RequestInit = { method, headers };
 
     if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }
 

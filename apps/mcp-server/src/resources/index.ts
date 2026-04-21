@@ -169,7 +169,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
     'banter_channels',
     'banter://channels',
     async () => {
-      const data = await banterFetch(banterApiUrl, '/banter/api/v1/channels');
+      const data = await banterFetch(banterApiUrl, '/v1/channels');
 
       return {
         contents: [
@@ -192,7 +192,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
       const slug = match?.[1] ?? '';
 
       // Fetch channel by slug, which returns detail including recent messages
-      const data = await banterFetch(banterApiUrl, `/banter/api/v1/channels/by-slug/${slug}`);
+      const data = await banterFetch(banterApiUrl, `/v1/channels/by-slug/${slug}`);
 
       return {
         contents: [
@@ -214,7 +214,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
       const match = uri.href.match(/banter:\/\/dm\/([^/]+)/);
       const userId = match?.[1] ?? '';
 
-      const data = await banterFetch(banterApiUrl, `/banter/api/v1/dm/${userId}`);
+      const data = await banterFetch(banterApiUrl, `/v1/dm/${userId}`);
 
       return {
         contents: [
@@ -233,7 +233,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
     'banter_unread',
     'banter://me/unread',
     async () => {
-      const data = await banterFetch(banterApiUrl, '/banter/api/v1/me/unread');
+      const data = await banterFetch(banterApiUrl, '/v1/me/unread');
 
       return {
         contents: [
@@ -257,7 +257,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
 
       const data = await banterFetch(
         banterApiUrl,
-        `/banter/api/v1/channels/by-slug/${slug}/messages?limit=50`,
+        `/v1/channels/by-slug/${slug}/messages?limit=50`,
       );
 
       return {
@@ -282,7 +282,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
 
       const data = await banterFetch(
         banterApiUrl,
-        `/banter/api/v1/channels/by-slug/${slug}/members`,
+        `/v1/channels/by-slug/${slug}/members`,
       );
 
       return {
@@ -302,7 +302,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
     'banter_dms',
     'banter://dms',
     async () => {
-      const data = await banterFetch(banterApiUrl, '/banter/api/v1/dm');
+      const data = await banterFetch(banterApiUrl, '/v1/dm');
 
       return {
         contents: [
@@ -321,7 +321,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
     'banter_users',
     'banter://users',
     async () => {
-      const data = await banterFetch(banterApiUrl, '/banter/api/v1/users');
+      const data = await banterFetch(banterApiUrl, '/v1/users');
 
       return {
         contents: [
@@ -340,7 +340,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
     'banter_user_groups',
     'banter://user-groups',
     async () => {
-      const data = await banterFetch(banterApiUrl, '/banter/api/v1/user-groups');
+      const data = await banterFetch(banterApiUrl, '/v1/user-groups');
 
       return {
         contents: [
@@ -359,7 +359,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
     'banter_active_calls',
     'banter://calls/active',
     async () => {
-      const data = await banterFetch(banterApiUrl, '/banter/api/v1/calls?status=active');
+      const data = await banterFetch(banterApiUrl, '/v1/calls?status=active');
 
       return {
         contents: [
@@ -383,7 +383,7 @@ export function registerBanterResources(server: McpServer, banterApiUrl: string)
 
       const data = await banterFetch(
         banterApiUrl,
-        `/banter/api/v1/search/messages?q=${encodeURIComponent(query)}`,
+        `/v1/search/messages?q=${encodeURIComponent(query)}`,
       );
 
       return {

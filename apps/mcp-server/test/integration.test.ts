@@ -1340,7 +1340,7 @@ describe('MCP Integration Tests', () => {
       });
       expect(result.isError).toBeUndefined();
       const call = mockFetch.mock.calls[0]!;
-      expect(call[0]).toContain(`/banter/api/v1/channels/${CHANNEL_UUID}/messages`);
+      expect(call[0]).toContain(`/v1/channels/${CHANNEL_UUID}/messages`);
       expect(call[1].method).toBe('POST');
       const body = JSON.parse(call[1].body);
       // Back-compat: no scheduled_at or quiet-hours keys are sent.
@@ -1389,7 +1389,7 @@ describe('MCP Integration Tests', () => {
       });
       expect(result.isError).toBeUndefined();
       const call = mockFetch.mock.calls[0]!;
-      expect(call[0]).toContain(`/banter/api/v1/channels/${CHANNEL_UUID}/messages`);
+      expect(call[0]).toContain(`/v1/channels/${CHANNEL_UUID}/messages`);
       const body = JSON.parse(call[1].body);
       expect(body.scheduled_at).toBe('2026-05-01T12:00:00Z');
       // respect_quiet_hours is a placeholder flag; it must not be forwarded

@@ -9,7 +9,7 @@ function createBlastClient(blastApiUrl: string, api: ApiClient) {
 
   async function request(method: string, path: string, body?: unknown) {
     const url = `${baseUrl}${path}`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {};
 
     const token = (api as unknown as { token?: string }).token;
     if (token) {
@@ -18,6 +18,7 @@ function createBlastClient(blastApiUrl: string, api: ApiClient) {
 
     const init: RequestInit = { method, headers };
     if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }
 

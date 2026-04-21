@@ -39,10 +39,13 @@ function createServiceClient(baseUrl: string, api: ApiClient) {
   const base = baseUrl.replace(/\/$/, '');
   async function request(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>) {
     const token = (api as unknown as { token?: string }).token;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(extraHeaders ?? {}) };
+    const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const init: RequestInit = { method, headers };
-    if (body !== undefined) init.body = JSON.stringify(body);
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(body);
+    }
     const res = await fetch(`${base}${path}`, init);
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, data };

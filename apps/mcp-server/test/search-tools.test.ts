@@ -247,7 +247,7 @@ describe('search_everything MCP tool', () => {
     expect(calledUrls.some((u) => u.includes('board.test'))).toBe(false);
     // And the arms we do want were actually called.
     expect(calledUrls.some((u) => u.includes('api.test/projects'))).toBe(true);
-    expect(calledUrls.some((u) => u.includes('helpdesk.test/tickets/search'))).toBe(true);
+    expect(calledUrls.some((u) => u.includes('helpdesk.test/helpdesk/tickets/search'))).toBe(true);
   });
 
   it('runs can_access per hit when as_user_id is present and counts denials in filtered_count', async () => {

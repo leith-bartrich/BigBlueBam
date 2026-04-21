@@ -339,7 +339,7 @@ async function resolveOnePinnedMention(
     }
     case 'ticket': {
       const stripped = m.value.replace(/^#/, '');
-      const res = await helpdesk('GET', `/tickets/by-number/${encodeURIComponent(stripped)}`);
+      const res = await helpdesk('GET', `/helpdesk/tickets/by-number/${encodeURIComponent(stripped)}`);
       if (!res.ok) return null;
       const data = (res.data as { data?: { id?: string; subject?: string; ticket_number?: number } } | null)?.data;
       if (!data?.id) return null;
@@ -540,7 +540,7 @@ async function resolvePhraseCandidates(
     })(),
     // Helpdesk tickets
     (async () => {
-      const res = await helpdesk('GET', `/tickets/search?q=${encoded}`);
+      const res = await helpdesk('GET', `/helpdesk/tickets/search?q=${encoded}`);
       if (!res.ok) return [];
       const rows = extractRows(res.data) as Array<{
         id?: string;

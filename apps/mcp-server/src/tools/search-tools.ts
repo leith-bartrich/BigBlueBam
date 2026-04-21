@@ -255,7 +255,7 @@ async function searchHelpdeskTickets(
   const headers = authHeaders(api);
   const qs = new URLSearchParams({ q: query });
   const r = await fetchWithTimeout(
-    `${base}/tickets/search?${qs.toString()}`,
+    `${base}/helpdesk/tickets/search?${qs.toString()}`,
     { method: 'GET', headers },
     timeoutMs,
   );
@@ -447,9 +447,8 @@ async function searchBanterMessages(
   const base = banterApiUrl.replace(/\/$/, '');
   const headers = authHeaders(api);
   const qs = new URLSearchParams({ q: query, limit: String(Math.min(limit, 50)) });
-  // Banter mounts its routes at /banter/api/v1/* — see banter-tools.ts.
   const r = await fetchWithTimeout(
-    `${base}/banter/api/v1/search/messages?${qs.toString()}`,
+    `${base}/v1/search/messages?${qs.toString()}`,
     { method: 'GET', headers },
     timeoutMs,
   );

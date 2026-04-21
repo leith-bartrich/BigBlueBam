@@ -38,19 +38,14 @@ function createMockServer(): { server: McpServer; tools: Map<string, ToolHandler
   return { server, tools };
 }
 
-function mockMe(id: string) {
+function mockMe(id: string, kind?: string) {
+  // register-tool's PolicyGate resolves caller via a single /auth/me call
+  // that returns both id and kind. Callers pass kind when they care about
+  // the policy check path; omit for tests that only need id resolution.
   mockFetch.mockResolvedValueOnce({
     ok: true,
     status: 200,
-    json: async () => ({ data: { id } }),
-  });
-}
-
-function mockUserKind(id: string, kind: string) {
-  mockFetch.mockResolvedValueOnce({
-    ok: true,
-    status: 200,
-    json: async () => ({ data: { id, kind } }),
+    json: async () => ({ data: kind ? { id, kind } : { id } }),
   });
 }
 
@@ -152,9 +147,8 @@ describe('register-tool PolicyGate wrapper', () => {
     attachPolicyGate(server, gate);
     registerSampleTool(server, 'banter_post_message', () => ({ ok: true }));
 
-    // Gate will call /auth/me and /users/:id once on first invocation.
-    mockMe(HUMAN_ID);
-    mockUserKind(HUMAN_ID, 'human');
+    // Gate resolves caller via a single /auth/me call (which now returns kind).
+    mockMe(HUMAN_ID, 'human');
 
     const handler = tools.get('banter_post_message')!;
     const result = await handler({});
@@ -188,8 +182,7 @@ describe('register-tool PolicyGate wrapper', () => {
     registerSampleTool(server, 'banter_post_message', () => ({ posted: true }));
 
     // Identity resolution (once) + check decision
-    mockMe(AGENT_ID);
-    mockUserKind(AGENT_ID, 'service');
+    mockMe(AGENT_ID, 'service');
     mockCheckDecision({ allowed: true });
 
     const result = await tools.get('banter_post_message')!({});
@@ -202,8 +195,7 @@ describe('register-tool PolicyGate wrapper', () => {
     attachPolicyGate(server, gate);
     registerSampleTool(server, 'banter_post_message', () => ({ posted: true }));
 
-    mockMe(AGENT_ID);
-    mockUserKind(AGENT_ID, 'service');
+    mockMe(AGENT_ID, 'service');
     mockCheckDecision({
       allowed: false,
       reason: 'TOOL_NOT_ALLOWED',
@@ -224,8 +216,7 @@ describe('register-tool PolicyGate wrapper', () => {
     attachPolicyGate(server, gate);
     registerSampleTool(server, 'banter_post_message', () => ({ posted: true }));
 
-    mockMe(AGENT_ID);
-    mockUserKind(AGENT_ID, 'service');
+    mockMe(AGENT_ID, 'service');
     mockCheckDecision({
       allowed: false,
       reason: 'AGENT_DISABLED',
@@ -260,8 +251,7 @@ describe('register-tool PolicyGate wrapper', () => {
     attachPolicyGate(server, gate);
     registerSampleTool(server, 'banter_post_message', () => ({ posted: true }));
 
-    mockMe(AGENT_ID);
-    mockUserKind(AGENT_ID, 'service');
+    mockMe(AGENT_ID, 'service');
     mockApiFail(500, { error: { code: 'INTERNAL_ERROR' } });
 
     const result = await tools.get('banter_post_message')!({});
@@ -281,8 +271,7 @@ describe('register-tool PolicyGate wrapper', () => {
     registerSampleTool(server, 'banter_post_message', () => ({ posted: true }));
 
     // First invocation: identity + check endpoint
-    mockMe(AGENT_ID);
-    mockUserKind(AGENT_ID, 'service');
+    mockMe(AGENT_ID, 'service');
     mockCheckDecision({ allowed: true });
 
     await tools.get('banter_post_message')!({});
@@ -304,9 +293,8 @@ describe('register-tool PolicyGate wrapper', () => {
     attachPolicyGate(server, gate);
     registerSampleTool(server, 'banter_post_message', () => ({ posted: true }));
 
-    // First call: identity (2 fetches) + allow decision
-    mockMe(AGENT_ID);
-    mockUserKind(AGENT_ID, 'service');
+    // First call: identity (1 fetch) + allow decision
+    mockMe(AGENT_ID, 'service');
     mockCheckDecision({ allowed: true });
     await tools.get('banter_post_message')!({});
 

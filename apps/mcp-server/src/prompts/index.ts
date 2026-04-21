@@ -215,9 +215,9 @@ Format the breakdown as a numbered list with details for each sub-task.`,
       const msgLimit = limit ?? '50';
       const messagesData = await banterFetch(
         banterUrl,
-        `/banter/api/v1/channels/${channel_id}/messages?limit=${msgLimit}`,
+        `/v1/channels/${channel_id}/messages?limit=${msgLimit}`,
       );
-      const channelData = await banterFetch(banterUrl, `/banter/api/v1/channels/${channel_id}`);
+      const channelData = await banterFetch(banterUrl, `/v1/channels/${channel_id}`);
 
       const messages = JSON.stringify(messagesData, null, 2);
       const channel = JSON.stringify(channelData, null, 2);
@@ -265,7 +265,7 @@ Format the summary so someone who missed the conversation can quickly get up to 
       const sprintResult = await api.get(`/projects/${project_id}/sprints?status=active&limit=1`);
 
       // Fetch channel info from Banter
-      const channelData = await banterFetch(banterUrl, `/banter/api/v1/channels/${channel_id}`);
+      const channelData = await banterFetch(banterUrl, `/v1/channels/${channel_id}`);
 
       const board = JSON.stringify(boardResult.data, null, 2);
       const sprint = JSON.stringify(
@@ -318,11 +318,11 @@ Format the output as a single Banter message using markdown. Keep it concise but
     async ({ message_id }) => {
       const threadData = await banterFetch(
         banterUrl,
-        `/banter/api/v1/messages/${message_id}/thread?limit=100`,
+        `/v1/messages/${message_id}/thread?limit=100`,
       );
       const parentData = await banterFetch(
         banterUrl,
-        `/banter/api/v1/messages/${message_id}`,
+        `/v1/messages/${message_id}`,
       );
 
       const thread = JSON.stringify(threadData, null, 2);
@@ -365,10 +365,10 @@ Keep the summary brief enough to post as a reply in the thread itself.`,
       call_id: z.string().uuid().describe('The call ID to summarize'),
     },
     async ({ call_id }) => {
-      const callData = await banterFetch(banterUrl, `/banter/api/v1/calls/${call_id}`);
+      const callData = await banterFetch(banterUrl, `/v1/calls/${call_id}`);
       const transcriptData = await banterFetch(
         banterUrl,
-        `/banter/api/v1/calls/${call_id}/transcript`,
+        `/v1/calls/${call_id}/transcript`,
       );
 
       const call = JSON.stringify(callData, null, 2);
