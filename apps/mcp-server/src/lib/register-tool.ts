@@ -142,25 +142,32 @@ export function createPolicyGate(opts: CreatePolicyGateOptions): PolicyGate {
     const now = Date.now();
     if (callerCache && now - callerCache.cachedAt < ttl) return callerCache;
 
-    // Resolve via /auth/me for the id, then /users/:id for the kind. The
-    // /auth/me response does not carry `kind`; /users/:id does. We tolerate
-    // failure: on an error we treat the caller as 'unknown' and fail-closed
-    // in the gate check.
+    // Resolve via /auth/me, which returns both `id` and `kind` in a single
+    // round-trip. Historically this required a second /users/:id hop (which
+    // silently returned no `kind` field on older api images, causing the
+    // gate to mark every human caller as 'unknown' and fail-closed with
+    // AGENT_DISABLED). We tolerate failure: on an error we treat the caller
+    // as 'unknown' and fail-closed in the gate check.
     try {
-      const meRes = await opts.apiClient.get<{ data?: { id?: string } }>('/auth/me');
+      const meRes = await opts.apiClient.get<{
+        data?: { id?: string; kind?: string };
+      }>('/auth/me');
       const id = meRes.ok ? meRes.data?.data?.id ?? null : null;
       if (!id) {
         callerCache = { kind: 'unknown', id: null, cachedAt: now };
         return callerCache;
       }
-      const userRes = await opts.apiClient.get<{ data?: { kind?: string } }>(
-        `/users/${id}`,
-      );
-      const rawKind = userRes.ok ? userRes.data?.data?.kind : undefined;
+      const rawKind = meRes.data?.data?.kind;
       const kind: CachedCallerKind['kind'] =
         rawKind === 'human' || rawKind === 'agent' || rawKind === 'service'
           ? rawKind
           : 'unknown';
+      if (kind === 'unknown') {
+        opts.logger.warn(
+          { sessionId: opts.sessionId, id, rawKind },
+          'PolicyGate: /auth/me returned no usable kind; upgrading api image should restore it',
+        );
+      }
       callerCache = { kind, id, cachedAt: now };
       return callerCache;
     } catch (err) {
