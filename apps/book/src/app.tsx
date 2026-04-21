@@ -115,19 +115,6 @@ export function App() {
     return <MeetPage slug={route.slug} />;
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-zinc-50 dark:bg-zinc-950">
-        <div className="flex flex-col items-center gap-4">
-          <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-blue-600 text-white font-bold text-2xl">
-            B
-          </div>
-          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-        </div>
-      </div>
-    );
-  }
-
   // ? keyboard shortcut to open Help
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -141,6 +128,19 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-zinc-50 dark:bg-zinc-950">
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-blue-600 text-white font-bold text-2xl">
+            B
+          </div>
+          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
