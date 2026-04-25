@@ -18,6 +18,7 @@ import {
 } from './shared/secrets.mjs';
 import { createSuperUser } from './shared/admin-setup.mjs';
 import { printSummary } from './shared/summary.mjs';
+import { maybeAdvancedPortMapping } from './shared/port-mapping.mjs';
 import { bold, dim, green, red, yellow, cyan, check, cross } from './shared/colors.mjs';
 
 // Platform modules
@@ -209,6 +210,18 @@ async function main() {
     // Root redirect choice
     const rootRedirect = await promptRootRedirect();
 
+    // Advanced port mapping. Only the docker-compose adapter exposes host
+    // ports directly to the operator's machine; on Railway the platform
+    // routes traffic for us, so the prompt is skipped there. We probe the
+    // host first so the "do I need this?" question has a real answer
+    // backed by data, not a guess.
+    let portMapping = null;
+    if (!isRailway) {
+      portMapping = await maybeAdvancedPortMapping({
+        skipLiveKit: livekit.livekitProvider !== 'livekit-local',
+      });
+    }
+
     // Build complete config
     envConfig = buildEnvConfig({
       secrets,
@@ -217,17 +230,20 @@ async function main() {
       livekit,
       integrations,
       domain,
+      portMapping,
     });
 
     // Save to state for resume
     state.envConfig = envConfig;
     state.rootRedirect = rootRedirect;
+    state.portMapping = portMapping;
     state.choices = {
       domain,
       storage: storage.storageProvider,
       vectorDb: vectorDb.vectorProvider,
       livekit: livekit.livekitProvider,
       rootRedirect,
+      portMapping,
     };
     markPhaseComplete(state, 'configuration');
     saveState(state);
@@ -439,6 +455,8 @@ async function main() {
     vectorDb: choices.vectorDb || 'skip',
     livekit: choices.livekit || 'skip',
     platform: state.platform === 'Docker Compose' ? 'docker-compose' : state.platform,
+    portMapping: choices.portMapping || state.portMapping || null,
+    baseUrl: envConfig.BASE_URL,
   });
 
   // Mark everything done

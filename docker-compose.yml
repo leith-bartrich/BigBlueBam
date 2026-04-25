@@ -783,8 +783,11 @@ services:
     image: livekit/livekit-server:latest
     command: --config /etc/livekit.yaml
     ports:
-      - "7880:7880"
-      - "7881:7881"
+      # Overridable by the advanced-port-mapping flow in scripts/deploy/main.mjs;
+      # defaults match the upstream LiveKit defaults so existing installs
+      # are unaffected. Container-internal ports stay at 7880/7881.
+      - "${LIVEKIT_RTC_PORT:-7880}:7880"
+      - "${LIVEKIT_TCP_PORT:-7881}:7881"
     volumes:
       - ./infra/livekit/livekit.yaml:/etc/livekit.yaml:ro
     networks:

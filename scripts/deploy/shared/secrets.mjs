@@ -4,6 +4,7 @@
 import * as crypto from 'node:crypto';
 import { ask, askPassword, select, confirm } from './prompt.mjs';
 import { bold, dim, check, green, yellow, cyan } from './colors.mjs';
+import { formatPublicUrl } from './public-url.mjs';
 
 /**
  * Generate a cryptographically random hex string.
@@ -187,12 +188,35 @@ export async function promptRootRedirect() {
  * Build a complete env config object from all collected choices.
  */
 export function buildEnvConfig(choices) {
-  const { secrets, storage, vectorDb, livekit, integrations, domain } = choices;
+  const { secrets, storage, vectorDb, livekit, integrations, domain, portMapping } = choices;
+
+  // Port mapping — null/undefined means "use the laptop defaults". The
+  // advanced-port-mapping flow returns { ports: { HTTP_PORT, HTTPS_PORT,
+  // LIVEKIT_RTC_PORT, LIVEKIT_TCP_PORT }, useTls } when the operator
+  // walked through it.
+  const httpPort = portMapping?.ports?.HTTP_PORT ?? 80;
+  const httpsPort = portMapping?.ports?.HTTPS_PORT ?? 443;
+  const baseUrl = formatPublicUrl({
+    domain: domain || 'localhost',
+    httpPort,
+    httpsPort,
+    useTls: portMapping?.useTls,
+  });
 
   const env = {
     // Domain
     DOMAIN: domain || 'localhost',
-    BASE_URL: domain ? `https://${domain}` : 'http://localhost',
+    BASE_URL: baseUrl,
+    // Echoed into every API service's CORS_ORIGIN and FRONTEND_URL so the
+    // browser-side origin (which always includes the actual host port the
+    // user typed) matches what the API checks against. The launchpad
+    // resolver, login cookie path, and helpdesk routing all derive from
+    // these.
+    CORS_ORIGIN: baseUrl,
+    FRONTEND_URL: `${baseUrl}/b3`,
+    HELPDESK_URL: `${baseUrl}/helpdesk`,
+    PUBLIC_URL: baseUrl,
+    TRACKING_BASE_URL: `${baseUrl}/t`,
 
     // Database
     POSTGRES_USER: 'bigbluebam',
@@ -258,6 +282,25 @@ export function buildEnvConfig(choices) {
   ];
   for (const key of intKeys) {
     if (integrations[key]) env[key] = integrations[key];
+  }
+
+  // Advanced port mapping (only when the operator opted in). Each is
+  // emitted as a top-level .env var; docker-compose.yml interpolates them
+  // via ${HTTP_PORT:-80}, ${LIVEKIT_RTC_PORT:-7880}, etc. We only emit
+  // values that differ from the upstream default to keep the .env file
+  // small and to make "what did I customize?" obvious to a future reader.
+  const PORT_DEFAULTS = {
+    HTTP_PORT: 80,
+    HTTPS_PORT: 443,
+    LIVEKIT_RTC_PORT: 7880,
+    LIVEKIT_TCP_PORT: 7881,
+  };
+  if (portMapping?.ports) {
+    for (const [key, value] of Object.entries(portMapping.ports)) {
+      if (typeof value === 'number' && value !== PORT_DEFAULTS[key]) {
+        env[key] = String(value);
+      }
+    }
   }
 
   return env;

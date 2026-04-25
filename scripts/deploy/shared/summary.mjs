@@ -2,16 +2,32 @@
 
 import { bold, green, dim, cyan, blue, yellow, check } from './colors.mjs';
 import { APP_URLS, SERVICES, INFRASTRUCTURE } from './services.mjs';
+import { formatPublicUrl } from './public-url.mjs';
 
 /**
  * Print a formatted deployment summary with URLs, service status, and next steps.
  *
- * @param {{ domain: string, adminEmail?: string, storage: string, vectorDb: string, livekit: string, platform: string }} config
+ * @param {{
+ *   domain: string,
+ *   adminEmail?: string,
+ *   storage: string,
+ *   vectorDb: string,
+ *   livekit: string,
+ *   platform: string,
+ *   portMapping?: { ports?: Record<string, number>, useTls?: boolean } | null,
+ *   baseUrl?: string,
+ * }} config
  */
 export function printSummary(config) {
-  const baseUrl = config.domain === 'localhost'
-    ? 'http://localhost'
-    : `https://${config.domain}`;
+  // Prefer the BASE_URL the env was actually built with — guarantees the
+  // banner matches CORS_ORIGIN/FRONTEND_URL/HELPDESK_URL on the running
+  // services. Fall back to re-deriving for callers that don't pass it.
+  const baseUrl = config.baseUrl ?? formatPublicUrl({
+    domain: config.domain || 'localhost',
+    httpPort: config.portMapping?.ports?.HTTP_PORT ?? 80,
+    httpsPort: config.portMapping?.ports?.HTTPS_PORT ?? 443,
+    useTls: config.portMapping?.useTls,
+  });
 
   console.log('');
   console.log(green('================================================================'));
@@ -62,6 +78,21 @@ export function printSummary(config) {
     console.log(`    ${check} ${'Voice/Video'.padEnd(30)} ${dim('LiveKit Cloud (external)')}`);
   } else {
     console.log(`    ${dim('--')} ${'Voice/Video'.padEnd(30)} ${dim('not configured')}`);
+  }
+
+  // Port-mapping callout — only when the operator went through the
+  // advanced flow and at least one binding ended up on a non-default port.
+  // Helps a future operator (or reviewer) understand WHY the URLs above
+  // have non-standard ports in them.
+  const remappedPorts = config.portMapping?.ports
+    ? Object.entries(config.portMapping.ports).filter(([, v]) => typeof v === 'number')
+    : [];
+  if (remappedPorts.length > 0) {
+    console.log('');
+    console.log(bold('  Port mapping (advanced):\n'));
+    for (const [key, value] of remappedPorts) {
+      console.log(`    ${check} ${key.padEnd(30)} ${dim(`host port ${value}`)}`);
+    }
   }
 
   // Admin account
