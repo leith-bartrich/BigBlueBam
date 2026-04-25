@@ -12,6 +12,7 @@ import {
   promptStorageChoice,
   promptVectorDbChoice,
   promptLiveKitChoice,
+  promptHostPortExposure,
   promptOptionalIntegrations,
   promptRootRedirect,
   buildEnvConfig,
@@ -203,6 +204,14 @@ async function main() {
     // LiveKit
     const livekit = await promptLiveKitChoice();
 
+    // Host-port exposure — Docker Compose only. Railway terminates at its
+    // edge and doesn't publish host ports, so the prompt would be meaningless
+    // there. Leaving `hostPorts` undefined lets buildEnvConfig fall through
+    // to the compose-file defaults (HTTP_PORT=80, no HTTPS bind).
+    const hostPorts = platform.name === 'Docker Compose'
+      ? await promptHostPortExposure()
+      : undefined;
+
     // Optional integrations
     const integrations = await promptOptionalIntegrations();
 
@@ -217,6 +226,7 @@ async function main() {
       livekit,
       integrations,
       domain,
+      hostPorts,
     });
 
     // Save to state for resume
@@ -227,6 +237,7 @@ async function main() {
       storage: storage.storageProvider,
       vectorDb: vectorDb.vectorProvider,
       livekit: livekit.livekitProvider,
+      hostPorts,
       rootRedirect,
     };
     markPhaseComplete(state, 'configuration');

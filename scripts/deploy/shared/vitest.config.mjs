@@ -16,6 +16,6 @@ export default {
   test: {
     globals: true,
     environment: 'node',
-    include: ['*.test.mjs'],
+    include: ['*.test.mjs', '../platforms/*.test.mjs'],
   },
 };

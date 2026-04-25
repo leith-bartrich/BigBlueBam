@@ -83,6 +83,60 @@ export async function promptVectorDbChoice() {
 }
 
 /**
+ * Prompt the operator for host-side port exposure on a Docker Compose deploy.
+ *
+ * HTTP host port defaults to 80 — correct for a directly-public-facing host.
+ * Operators who already use 80 on the host, or who front BigBlueBam with an
+ * upstream reverse proxy (Cloudflare, Caddy, host nginx, Synology DSM, etc.),
+ * pick a high port instead.
+ *
+ * HTTPS host port defaults to off. Opting in toggles the `docker-compose.ssl.yml`
+ * overlay at deploy time, which adds an HTTPS host port publish on the
+ * frontend service. The bundled nginx does not terminate TLS today, so the
+ * port is reserved but no TLS is served until TLS termination is added.
+ *
+ * Returns a config object consumed by buildEnvConfig():
+ *
+ *   { HTTP_PORT: '80',    bindHttps: false }
+ *   { HTTP_PORT: '18080', bindHttps: true, HTTPS_PORT: '443' }
+ */
+export async function promptHostPortExposure() {
+  console.log(`\n${bold('Host port exposure')}`);
+  console.log(dim("How BigBlueBam's nginx is published on the host."));
+  console.log('');
+
+  const HTTP_PORT = await askPort(
+    'HTTP host port (80 for direct-public deploys; e.g. 18080 when fronted by an upstream proxy):',
+    80,
+  );
+
+  console.log('');
+  console.log(dim('The bundled nginx does not terminate TLS today. Binding an HTTPS host'));
+  console.log(dim('port reserves it for a future HTTPS integration; no TLS is served now.'));
+  const bindHttps = await confirm('Bind an HTTPS host port?', false);
+
+  const out = { HTTP_PORT, bindHttps };
+  if (bindHttps) {
+    out.HTTPS_PORT = await askPort('HTTPS host port:', 443);
+  }
+
+  const summary = bindHttps
+    ? `HTTP=${HTTP_PORT}, HTTPS=${out.HTTPS_PORT} (reserved; no TLS yet)`
+    : `HTTP=${HTTP_PORT}, no HTTPS bind`;
+  console.log(`  ${check} ${summary}`);
+  return out;
+}
+
+async function askPort(question, defaultPort) {
+  for (;;) {
+    const raw = await ask(question, String(defaultPort));
+    const n = Number(raw);
+    if (Number.isInteger(n) && n >= 1 && n <= 65535) return String(n);
+    console.log(`  ${yellow('Invalid port')} — enter an integer between 1 and 65535.`);
+  }
+}
+
+/**
  * Prompt user for LiveKit choice.
  */
 export async function promptLiveKitChoice() {
@@ -187,12 +241,20 @@ export async function promptRootRedirect() {
  * Build a complete env config object from all collected choices.
  */
 export function buildEnvConfig(choices) {
-  const { secrets, storage, vectorDb, livekit, integrations, domain } = choices;
+  const { secrets, storage, vectorDb, livekit, integrations, domain, hostPorts } = choices;
 
   const env = {
     // Domain
     DOMAIN: domain || 'localhost',
     BASE_URL: domain ? `https://${domain}` : 'http://localhost',
+
+    // Public URLs — read at runtime by every API service for CORS, frontend
+    // deep links, and tracking redirects. `docker-compose.yml` falls back to
+    // `http://localhost` when these are unset; writing them from the prompted
+    // domain so a real deploy isn't silently stuck on the localhost default.
+    CORS_ORIGIN: domain ? `https://${domain}` : 'http://localhost',
+    FRONTEND_URL: domain ? `https://${domain}/b3` : 'http://localhost/b3',
+    PUBLIC_URL: domain ? `https://${domain}` : 'http://localhost',
 
     // Database
     POSTGRES_USER: 'bigbluebam',
@@ -212,6 +274,17 @@ export function buildEnvConfig(choices) {
     // Node environment
     NODE_ENV: 'production',
   };
+
+  // Host port exposure — Docker Compose only (Railway doesn't publish host
+  // ports). When `hostPorts` is undefined the compose-file defaults apply:
+  // HTTP_PORT=80, and no HTTPS publish (that's only added when the operator
+  // opts in via docker-compose.ssl.yml).
+  if (hostPorts) {
+    env.HTTP_PORT = hostPorts.HTTP_PORT;
+    if (hostPorts.bindHttps && hostPorts.HTTPS_PORT) {
+      env.HTTPS_PORT = hostPorts.HTTPS_PORT;
+    }
+  }
 
   // Storage
   if (storage.storageProvider === 'minio') {

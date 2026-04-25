@@ -692,7 +692,7 @@ After login, you land on the project dashboard:
 
 ### Services
 
-All services are accessed through a single nginx container on port 80:
+All services are accessed through a single nginx container listening on container port 80 (the host-side publish defaults to port 80 and is configurable via the deploy script's Host port exposure prompt — see [docs/deployment-guide.md](docs/deployment-guide.md)):
 
 | URL Path | Backend | Description |
 |----------|---------|-------------|

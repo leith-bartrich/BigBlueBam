@@ -103,9 +103,44 @@ async function checkPrerequisites() {
 }
 
 /**
+ * Decide which `-f <compose-file>` tokens the `docker compose` CLI should be
+ * invoked with. Exposed so unit tests can assert on the assembly directly
+ * without spinning up Docker.
+ *
+ * Always starts with the base `docker-compose.yml`. Layers in the marketing-
+ * site overlay when `site/package.json` exists, and layers in the optional
+ * HTTPS-port overlay when `envConfig.HTTPS_PORT` is set (operator opted in
+ * at the Host port exposure prompt).
+ *
+ * @param {object} envConfig - The resolved env config produced by buildEnvConfig.
+ * @param {object} [options]
+ * @param {string} [options.cwd=process.cwd()] - Working directory to resolve
+ *   site/ against. Tests pass a temp dir to avoid hitting the real repo.
+ * @param {boolean} [options.verbose=false] - When true, print informational
+ *   lines about each included overlay to stdout.
+ * @returns {string[]} Flat list of shell tokens (e.g. ['-f', 'docker-compose.yml', ...]).
+ */
+export function buildComposeFiles(envConfig, { cwd = process.cwd(), verbose = false } = {}) {
+  const files = ['-f', 'docker-compose.yml'];
+
+  const sitePath = path.resolve(cwd, 'site');
+  if (fs.existsSync(sitePath) && fs.existsSync(path.join(sitePath, 'package.json'))) {
+    files.push('-f', 'docker-compose.site.yml');
+    if (verbose) console.log(`  ${dim('site/ detected -- enabling marketing site overlay')}`);
+  }
+
+  if (envConfig.HTTPS_PORT) {
+    files.push('-f', 'docker-compose.ssl.yml');
+    if (verbose) console.log(`  ${dim(`HTTPS host port enabled -- layering docker-compose.ssl.yml (reserving host port ${envConfig.HTTPS_PORT}; no TLS served yet)`)}`);
+  }
+
+  return files;
+}
+
+/**
  * Write the .env file from a key-value config object.
  */
-function writeEnvFile(envConfig) {
+export function writeEnvFile(envConfig) {
   const envPath = path.resolve(process.cwd(), '.env');
   const lines = [
     '# BigBlueBam environment configuration',
@@ -115,7 +150,8 @@ function writeEnvFile(envConfig) {
   ];
 
   const sections = {
-    '# --- Core ---': ['NODE_ENV', 'DOMAIN', 'BASE_URL'],
+    '# --- Core ---': ['NODE_ENV', 'DOMAIN', 'BASE_URL', 'CORS_ORIGIN', 'FRONTEND_URL', 'PUBLIC_URL'],
+    '# --- Host port exposure ---': ['HTTP_PORT', 'HTTPS_PORT'],
     '# --- Database ---': ['POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_DB', 'DATABASE_URL'],
     '# --- Redis ---': ['REDIS_PASSWORD', 'REDIS_URL'],
     '# --- Auth ---': ['SESSION_SECRET', 'INTERNAL_HELPDESK_SECRET', 'INTERNAL_SERVICE_SECRET'],
@@ -204,12 +240,7 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
   }
 
   // 2. Build compose args
-  const composeFiles = ['-f', 'docker-compose.yml'];
-  const sitePath = path.resolve(process.cwd(), 'site');
-  if (fs.existsSync(sitePath) && fs.existsSync(path.join(sitePath, 'package.json'))) {
-    composeFiles.push('-f', 'docker-compose.site.yml');
-    console.log(`  ${dim('site/ detected -- enabling marketing site overlay')}`);
-  }
+  const composeFiles = buildComposeFiles(envConfig, { verbose: true });
   const fileFlags = composeFiles.join(' ');
 
   // 3. Pull images

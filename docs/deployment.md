@@ -79,16 +79,16 @@ docker compose exec api node dist/cli.js create-admin \
 
 ### TLS Configuration
 
-For production, configure TLS in the nginx configuration:
+The bundled nginx inside the `frontend` container serves plain HTTP on the configured `HTTP_PORT` only. It does **not** currently terminate TLS — `infra/nginx/nginx.conf` has no `listen 443 ssl;` block, and no certificate material is mounted into the container.
 
-```bash
-# Place certificates in infra/nginx/
-cp your-cert.pem infra/nginx/cert.pem
-cp your-key.pem infra/nginx/key.pem
+TLS is expected to terminate at an upstream layer:
 
-# Update .env
-CORS_ORIGIN=https://your-domain.com
-```
+- **Cloud:** a managed load balancer, CDN, or edge service (AWS ALB, Cloudflare, Fastly, Railway's edge, etc.)
+- **Self-hosted:** a reverse proxy on the host or on another node (Caddy, host-level nginx, Traefik, Synology DSM reverse proxy, etc.)
+
+Set `CORS_ORIGIN`, `FRONTEND_URL`, and `PUBLIC_URL` in `.env` to the `https://` public URL of whichever upstream terminates TLS — the deploy script populates these automatically from the domain you enter at setup. Configure the upstream to forward to your server's `HTTP_PORT` (default 80; configurable via the deploy script's **Host port exposure** prompt).
+
+**Future HTTPS integration.** `docker-compose.ssl.yml` is an overlay that adds an HTTPS host port publish on the `frontend` service. The bundled nginx does not terminate TLS today, so opting in reserves the port but no TLS is served until TLS termination is added to nginx. The deploy script's Host port exposure prompt toggles this overlay.
 
 ---
 

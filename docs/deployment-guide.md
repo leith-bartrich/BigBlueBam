@@ -87,6 +87,18 @@ How should BigBlueBam store uploaded files?
 
 Similar prompts for vector search (Beacon knowledge base) and voice/video (Banter calls). Most teams just press Enter for the defaults — you can change everything later.
 
+**Docker Compose only — Host port exposure.** The script then asks which host ports the bundled nginx should publish:
+
+```
+Host port exposure
+
+  HTTP host port [80]:
+  Bind an HTTPS host port? [y/N]:
+```
+
+- **HTTP host port** defaults to 80 — the right answer when the deploy target is a single-purpose server that will be directly public-facing. Pick a high port like `18080` if host port 80 is already in use, or if an upstream reverse proxy (Cloudflare, Caddy, host nginx, Synology DSM, etc.) will forward to it.
+- **HTTPS host port** defaults to off. Opting in layers [`docker-compose.ssl.yml`](../docker-compose.ssl.yml) onto the stack so the `frontend` service also publishes the HTTPS host port (default 443). The bundled nginx does not terminate TLS today — TLS is expected at an upstream layer (reverse proxy, CDN, load balancer). This option is for future HTTPS integration: the port gets reserved, but no TLS is served until that work lands.
+
 ### Step 5: Deploy
 
 - **Docker Compose**: Builds all containers locally, starts everything with `docker compose up`. Migrations run automatically before app services start.
@@ -312,10 +324,15 @@ docker compose logs -f bolt-api     # Automations
 
 ### Port conflicts
 
-If port 80 is already in use, set a custom port:
+The deploy script's **Host port exposure** prompt picks the host-side HTTP port up front (default 80), so port-80 conflicts are handled interactively at setup time — pick `18080` or any other free high port when prompted.
+
+If you've already deployed and need to change the port after the fact:
 ```bash
-HTTP_PORT=8080 docker compose up -d
+# Edit .env to set HTTP_PORT (and HTTPS_PORT if you've opted in to the optional HTTPS bind)
+docker compose up -d --force-recreate frontend
 ```
+
+On an existing deploy that was set up before this prompt existed (no `HTTP_PORT` in `.env`), add the line manually and restart the `frontend` service.
 
 ### Migration failures
 
