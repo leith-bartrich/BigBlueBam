@@ -117,7 +117,11 @@ function mockSelectLimit(rows: any[]) {
 function mockSelectListPolicies(rows: any[]) {
   const orderBy = vi.fn().mockResolvedValue(rows);
   const where = vi.fn().mockReturnValue({ orderBy });
-  const leftJoin2 = vi.fn().mockReturnValue({ where });
+  // Service chains three leftJoins: users (agent), agentRunners (heartbeat),
+  // and a self-join on users (creator for created_by provenance). Added with
+  // migration 0141; see apps/api/src/services/agent-policy.service.ts.
+  const leftJoin3 = vi.fn().mockReturnValue({ where });
+  const leftJoin2 = vi.fn().mockReturnValue({ leftJoin: leftJoin3 });
   const leftJoin1 = vi.fn().mockReturnValue({ leftJoin: leftJoin2 });
   const from = vi.fn().mockReturnValue({ leftJoin: leftJoin1 });
   mockDb.select.mockReturnValueOnce({ from });

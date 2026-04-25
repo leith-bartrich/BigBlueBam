@@ -817,6 +817,122 @@ export default async function orgRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // Bulk variant of /org/members/invite. Accepts up to 100 invites in one
+  // request and processes them per-row (CSV-import-style): one bad row
+  // doesn't fail the batch. Returns { succeeded, failed } so the UI can
+  // show a per-row outcome table. Auth gate is identical to the single
+  // endpoint, including the members_can_invite_members org setting.
+  fastify.post(
+    '/org/members/invite/bulk',
+    {
+      preHandler: [requireAuth, requireScope('admin')],
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      if (!request.user!.is_superuser && !isOrgPrivileged(request.user!.role)) {
+        const org = await orgService.getOrganizationCached(fastify.redis, request.user!.org_id);
+        const allowed = checkOrgPermission(
+          org?.settings as Record<string, unknown> | null,
+          'members_can_invite_members',
+        );
+        if (!allowed) {
+          return reply.status(403).send({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Your organization does not allow members to invite other members',
+              details: [],
+              request_id: request.id,
+            },
+          });
+        }
+      }
+
+      const schema = z.object({
+        invites: z
+          .array(
+            z.object({
+              email: z.string().email().max(320),
+              role: z.enum(['member', 'admin']).default('member'),
+              display_name: z.string().max(100).optional(),
+            }),
+          )
+          .min(1)
+          .max(100),
+      });
+      const data = schema.parse(request.body);
+
+      type Succeeded = Awaited<ReturnType<typeof orgService.inviteMember>>['user'] & {
+        was_existing: boolean;
+      };
+      const succeeded: Succeeded[] = [];
+      const failed: { email: string; code: string; message: string }[] = [];
+
+      // De-dup within the batch: if the same email appears twice, the
+      // second one fails with DUPLICATE_IN_BATCH so the caller can fix
+      // their spreadsheet without producing a misleading ALREADY_MEMBER
+      // error from the second row's DB attempt.
+      const seen = new Set<string>();
+
+      for (const row of data.invites) {
+        const normalized = row.email.toLowerCase().trim();
+        if (seen.has(normalized)) {
+          failed.push({
+            email: row.email,
+            code: 'DUPLICATE_IN_BATCH',
+            message: 'This email appears more than once in the batch',
+          });
+          continue;
+        }
+        seen.add(normalized);
+
+        try {
+          const { user, was_existing } = await orgService.inviteMember(
+            request.user!.org_id,
+            row.email,
+            row.role,
+            row.display_name,
+          );
+          succeeded.push({ ...user, was_existing });
+        } catch (err: any) {
+          if (err instanceof orgService.AlreadyMemberError) {
+            failed.push({
+              email: row.email,
+              code: 'ALREADY_MEMBER',
+              message: err.message,
+            });
+            continue;
+          }
+          if (err?.code === '23505') {
+            failed.push({
+              email: row.email,
+              code: 'CONFLICT',
+              message:
+                'A user with this email was just created by a concurrent request — please retry',
+            });
+            continue;
+          }
+          // Unknown error — surface enough to debug but don't leak internals.
+          request.log.error({ err, email: row.email }, 'bulk invite row failed');
+          failed.push({
+            email: row.email,
+            code: 'INTERNAL_ERROR',
+            message: 'Failed to invite this member — try again or invite individually',
+          });
+        }
+      }
+
+      return reply.status(200).send({
+        data: {
+          succeeded,
+          failed,
+          total_requested: data.invites.length,
+          total_succeeded: succeeded.length,
+          total_failed: failed.length,
+        },
+      });
+    },
+  );
+
   fastify.post<{ Params: { userId: string } }>(
     '/org/members/:userId/reset-password',
     {

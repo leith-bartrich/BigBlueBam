@@ -169,6 +169,20 @@ export const peopleApi = {
     );
   },
 
+  bulkInviteMembers(
+    invites: Array<{ email: string; display_name?: string; role: string }>,
+  ): Promise<{
+    data: {
+      succeeded: Array<PersonListItem & { was_existing: boolean }>;
+      failed: Array<{ email: string; code: string; message: string }>;
+      total_requested: number;
+      total_succeeded: number;
+      total_failed: number;
+    };
+  }> {
+    return api.post('/org/members/invite/bulk', { invites });
+  },
+
   resetPassword(
     userId: string,
     password?: string,

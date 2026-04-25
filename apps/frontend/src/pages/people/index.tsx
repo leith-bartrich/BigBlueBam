@@ -37,6 +37,7 @@ import {
 import { formatRelativeTime } from '@/lib/utils';
 import { useOrgSummary } from '@/hooks/use-org-summary';
 import { exportCsv, todayStamp, type CsvColumn } from '@/lib/csv';
+import { BulkInviteDialog } from './bulk-invite-dialog';
 
 interface PeoplePageProps {
   onNavigate: (path: string) => void;
@@ -100,6 +101,7 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
 
   // Invite modal state
   const [showInvite, setShowInvite] = useState(false);
+  const [showBulkInvite, setShowBulkInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteDisplayName, setInviteDisplayName] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
@@ -399,11 +401,19 @@ export function PeoplePage({ onNavigate }: PeoplePageProps) {
               Manage members of your organization.
             </p>
           </div>
-          <Button onClick={() => setShowInvite(true)}>
-            <UserPlus className="h-4 w-4" />
-            Invite member
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => setShowBulkInvite(true)}>
+              <UserPlus className="h-4 w-4" />
+              Invite more
+            </Button>
+            <Button onClick={() => setShowInvite(true)}>
+              <UserPlus className="h-4 w-4" />
+              Invite member
+            </Button>
+          </div>
         </div>
+
+        <BulkInviteDialog open={showBulkInvite} onOpenChange={setShowBulkInvite} />
 
         {versionConflictMsg && (
           <div
