@@ -7,7 +7,7 @@
  * To update the Launchpad, edit THIS file — all apps pick it up on rebuild.
  */
 
-import { useEffect, useRef, useCallback, type FC } from 'react';
+import { useEffect, useRef, useCallback, useState, type FC } from 'react';
 import {
   LayoutDashboard,
   MessageCircle,
@@ -85,21 +85,65 @@ interface LaunchpadProps {
   currentApp: string;
 }
 
+// `null` while we haven't fetched yet (fall back to all apps), then either an
+// allowed-id Set or `null` if the resolver fails. We cache across opens so the
+// dialog feels instant on second use.
+let cachedEnabledIds: Set<string> | null = null;
+let cacheFetchedAt = 0;
+const CACHE_TTL_MS = 60_000;
+
+async function fetchEnabledAppIds(): Promise<Set<string> | null> {
+  // The endpoint is registered on the Bam api at /b3/api/launchpad/apps.
+  // Every app served by the same nginx host can reach it; cookies/auth are
+  // shared on the same origin. We fail open (return null → render all apps)
+  // so a transient API error never makes the launcher look empty.
+  try {
+    const res = await fetch('/b3/api/launchpad/apps', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: { enabled?: unknown } };
+    const enabled = json.data?.enabled;
+    if (!Array.isArray(enabled)) return null;
+    return new Set(enabled.filter((x): x is string => typeof x === 'string'));
+  } catch {
+    return null;
+  }
+}
+
 export function Launchpad({ isOpen, onClose, currentApp }: LaunchpadProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [enabledIds, setEnabledIds] = useState<Set<string> | null>(cachedEnabledIds);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
   }, [onClose]);
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      return () => document.removeEventListener('keydown', handleKeyDown);
+    if (!isOpen) return;
+    document.addEventListener('keydown', handleKeyDown);
+    // Refetch on open if cache is stale; otherwise use the cached value
+    // (already pushed into local state above).
+    const now = Date.now();
+    if (!cachedEnabledIds || now - cacheFetchedAt > CACHE_TTL_MS) {
+      fetchEnabledAppIds().then((ids) => {
+        cachedEnabledIds = ids;
+        cacheFetchedAt = Date.now();
+        setEnabledIds(ids);
+      });
     }
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
   if (!isOpen) return null;
+
+  // Filter the catalog to enabled ids; if we don't have a list yet (initial
+  // load or fetch error), show every app. Always include the currentApp so
+  // the user can still see "you are here" even if it was just disabled.
+  const visibleApps = enabledIds
+    ? APPS.filter((app) => enabledIds.has(app.id) || app.id === currentApp)
+    : APPS;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -115,7 +159,7 @@ export function Launchpad({ isOpen, onClose, currentApp }: LaunchpadProps) {
         </button>
         <h2 className="text-lg font-semibold mb-4 text-zinc-900 dark:text-zinc-100">BigBlueBam Suite</h2>
         <div className="grid grid-cols-4 gap-3">
-          {APPS.map((app) => {
+          {visibleApps.map((app) => {
             const Icon = app.icon;
             const isCurrent = app.id === currentApp;
             return (

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft, Settings, Mail, Download, Globe, Bot, ArrowRight } from 'lucide-react';
+import { Shield, Search, LogIn, Loader2, Users, FolderKanban, ListChecks, TicketIcon, MessageSquare, Building2, UserPlus, TrendingUp, ArrowLeft, Settings, Mail, Download, Globe, Bot, ArrowRight, Plus, Pencil, Trash2, LayoutGrid } from 'lucide-react';
 import { api } from '@/lib/api';
 import { exportCsv, todayStamp } from '@/lib/csv';
 import type { SuperuserOrgListItem, SuperuserOrgListResponse } from '@bigbluebam/shared';
@@ -9,6 +9,7 @@ import { superuserApi } from '@/lib/api/superuser';
 import { Button } from '@/components/common/button';
 import { Input } from '@/components/common/input';
 import { Select } from '@/components/common/select';
+import { Dialog } from '@/components/common/dialog';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface SuperuserPageProps {
@@ -243,12 +244,22 @@ function GrowthCard({ label, value }: { label: string; value: number }) {
 
 // ─── Organizations Tab ──────────────────────────────────────────────────────
 
+type OrgDialogState =
+  | { mode: 'closed' }
+  | { mode: 'create' }
+  | { mode: 'edit'; org: SuperuserOrgListItem }
+  | { mode: 'delete'; org: SuperuserOrgListItem };
+
 function OrganizationsTab({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<keyof SuperuserOrgListItem>('last_activity_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [dialog, setDialog] = useState<OrgDialogState>({ mode: 'closed' });
   const queryClient = useQueryClient();
+
+  const invalidateOrgs = () =>
+    queryClient.invalidateQueries({ queryKey: ['superuser', 'organizations'] });
 
   // Debounce search
   useEffect(() => {
@@ -326,6 +337,11 @@ function OrganizationsTab({ onNavigate }: { onNavigate: (path: string) => void }
         <div className="text-xs text-zinc-500">
           {rows.length} {rows.length === 1 ? 'org' : 'orgs'}
         </div>
+        <div className="flex-1" />
+        <Button onClick={() => setDialog({ mode: 'create' })}>
+          <Plus className="h-4 w-4" />
+          New organization
+        </Button>
       </div>
 
       <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
@@ -380,16 +396,34 @@ function OrganizationsTab({ onNavigate }: { onNavigate: (path: string) => void }
                     {org.last_activity_at ? formatRelativeTime(org.last_activity_at) : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => switchContext.mutate(org.id)}
-                      loading={switchContext.isPending && switchContext.variables === org.id}
-                      disabled={switchContext.isPending}
-                    >
-                      <LogIn className="h-3.5 w-3.5" />
-                      Enter
-                    </Button>
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setDialog({ mode: 'edit', org })}
+                        title="Rename or change plan"
+                        className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDialog({ mode: 'delete', org })}
+                        title="Delete organization"
+                        className="rounded-md p-1.5 text-zinc-500 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => switchContext.mutate(org.id)}
+                        loading={switchContext.isPending && switchContext.variables === org.id}
+                        disabled={switchContext.isPending}
+                      >
+                        <LogIn className="h-3.5 w-3.5" />
+                        Enter
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -405,7 +439,186 @@ function OrganizationsTab({ onNavigate }: { onNavigate: (path: string) => void }
           </Button>
         </div>
       )}
+
+      <OrgDialog
+        state={dialog}
+        onClose={() => setDialog({ mode: 'closed' })}
+        onSuccess={invalidateOrgs}
+      />
     </div>
+  );
+}
+
+function OrgDialog({
+  state,
+  onClose,
+  onSuccess,
+}: {
+  state: OrgDialogState;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [plan, setPlan] = useState('free');
+  const [error, setError] = useState<string | null>(null);
+
+  // Prefill form when dialog opens
+  useEffect(() => {
+    if (state.mode === 'create') {
+      setName('');
+      setPlan('free');
+      setError(null);
+    } else if (state.mode === 'edit') {
+      setName(state.org.name);
+      setPlan('free'); // list response has no plan; let user re-set if desired
+      setError(null);
+    } else if (state.mode === 'delete') {
+      setError(null);
+    }
+  }, [state]);
+
+  const createMut = useMutation({
+    mutationFn: () => superuserApi.createOrganization({ name: name.trim(), plan: plan.trim() || 'free' }),
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (id: string) => superuserApi.updateOrganization(id, { name: name.trim(), plan: plan.trim() || 'free' }),
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => superuserApi.deleteOrganization(id),
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  if (state.mode === 'closed') {
+    return <Dialog open={false} onOpenChange={onClose} title="">{null}</Dialog>;
+  }
+
+  if (state.mode === 'delete') {
+    const org = state.org;
+    return (
+      <Dialog
+        open
+        onOpenChange={(open) => !open && onClose()}
+        title="Delete organization?"
+        description={`This permanently removes "${org.name}" and CASCADE-deletes every user, project, task, and ticket in it.`}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="rounded-md border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-300">
+            <div>
+              <span className="font-semibold">{org.name}</span>{' '}
+              <span className="font-mono text-xs">({org.slug})</span>
+            </div>
+            <div className="mt-1 text-xs">
+              {org.member_count} members · {org.project_count} projects · {org.task_count} tasks
+            </div>
+          </div>
+          {error && (
+            <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={deleteMut.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => deleteMut.mutate(org.id)}
+              loading={deleteMut.isPending}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete organization
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    );
+  }
+
+  const isEdit = state.mode === 'edit';
+  const submit = () => {
+    setError(null);
+    if (!name.trim()) {
+      setError('Name is required');
+      return;
+    }
+    if (isEdit) {
+      updateMut.mutate(state.org.id);
+    } else {
+      createMut.mutate();
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={isEdit ? 'Edit organization' : 'New organization'}
+      description={
+        isEdit
+          ? 'Renaming regenerates the slug. Existing URLs with the old slug will break.'
+          : 'Creates a new org. You can enter it afterwards via the Enter button.'
+      }
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            Name
+          </label>
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Acme Corp"
+            maxLength={255}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+            Plan
+          </label>
+          <Input
+            value={plan}
+            onChange={(e) => setPlan(e.target.value)}
+            placeholder="free"
+            maxLength={50}
+          />
+          <p className="mt-1 text-xs text-zinc-500">
+            Billing plan identifier. Defaults to "free".
+          </p>
+        </div>
+        {error && (
+          <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={createMut.isPending || updateMut.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={createMut.isPending || updateMut.isPending}>
+            {isEdit ? 'Save changes' : 'Create organization'}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -607,7 +820,200 @@ function PlatformTab() {
           </div>
         </div>
       </section>
+
+      <LaunchpadDefaultsCard />
     </div>
+  );
+}
+
+// ─── Launchpad Defaults (SuperUser) ─────────────────────────────────────────
+
+const LAUNCHPAD_APP_CATALOG: { id: string; name: string; description: string }[] = [
+  { id: 'b3', name: 'Bam', description: 'Project Management' },
+  { id: 'banter', name: 'Banter', description: 'Team Messaging' },
+  { id: 'beacon', name: 'Beacon', description: 'Knowledge Base' },
+  { id: 'bond', name: 'Bond', description: 'CRM' },
+  { id: 'blast', name: 'Blast', description: 'Email Campaigns' },
+  { id: 'bill', name: 'Bill', description: 'Invoicing' },
+  { id: 'blank', name: 'Blank', description: 'Forms' },
+  { id: 'book', name: 'Book', description: 'Scheduling' },
+  { id: 'bench', name: 'Bench', description: 'Analytics' },
+  { id: 'brief', name: 'Brief', description: 'Documents' },
+  { id: 'bolt', name: 'Bolt', description: 'Automations' },
+  { id: 'bearing', name: 'Bearing', description: 'Goals & OKRs' },
+  { id: 'board', name: 'Board', description: 'Whiteboards' },
+  { id: 'helpdesk', name: 'Helpdesk', description: 'Customer Support' },
+];
+
+function LaunchpadDefaultsCard() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['system-settings', 'launchpad_default_apps'],
+    queryFn: async () => {
+      try {
+        return await api.get<{ data: { value: unknown } }>(
+          '/system-settings/launchpad_default_apps',
+        );
+      } catch {
+        // 404 is the expected "no override yet" state — return null sentinel.
+        return { data: { value: null } } as { data: { value: unknown } };
+      }
+    },
+  });
+
+  // Decode the stored JSON-string value back into an array (or null).
+  const stored: string[] | null = (() => {
+    const raw = data?.data?.value;
+    if (raw === null || raw === undefined) return null;
+    if (Array.isArray(raw)) return raw as string[];
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? (parsed as string[]) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  })();
+
+  // Local edit state. `null` means "all enabled (no override)".
+  const [draft, setDraft] = useState<string[] | null>(null);
+  useEffect(() => {
+    setDraft(stored);
+  }, [data]);
+
+  const isOverride = draft !== null;
+  const enabledSet = new Set(isOverride ? (draft as string[]) : LAUNCHPAD_APP_CATALOG.map((a) => a.id));
+
+  const save = useMutation({
+    mutationFn: (apps: string[] | null) =>
+      api.put<{ data: unknown }>('/system-settings/launchpad_default_apps', { value: apps }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-settings', 'launchpad_default_apps'] });
+    },
+  });
+
+  const toggleApp = (id: string) => {
+    if (!isOverride) {
+      // Switching from "all enabled" → explicit list of all minus this one.
+      const allMinus = LAUNCHPAD_APP_CATALOG.map((a) => a.id).filter((x) => x !== id);
+      setDraft(allMinus);
+      return;
+    }
+    const current = draft as string[];
+    if (current.includes(id)) {
+      setDraft(current.filter((x) => x !== id));
+    } else {
+      setDraft([...current, id]);
+    }
+  };
+
+  return (
+    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+      <div className="flex items-start gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/30">
+          <LayoutGrid className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+            Launchpad defaults
+          </h3>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Choose which apps appear in the Launchpad for orgs that have not set their
+            own override. Org admins can always narrow this further from their org
+            settings; they cannot enable apps you have disabled here.
+          </p>
+
+          {isLoading ? (
+            <div className="mt-4 flex items-center gap-2 text-sm text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : (
+            <>
+              <div className="mt-4 flex items-center gap-3 text-sm">
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">Mode:</span>
+                <button
+                  type="button"
+                  onClick={() => setDraft(null)}
+                  className={`rounded-md px-2 py-1 text-xs ${
+                    !isOverride
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                      : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  All enabled (default)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraft(stored ?? LAUNCHPAD_APP_CATALOG.map((a) => a.id))}
+                  className={`rounded-md px-2 py-1 text-xs ${
+                    isOverride
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                      : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  Explicit list
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {LAUNCHPAD_APP_CATALOG.map((app) => {
+                  const checked = enabledSet.has(app.id);
+                  return (
+                    <label
+                      key={app.id}
+                      className={`flex items-center gap-2 rounded-md border px-3 py-2 cursor-pointer transition-colors ${
+                        checked
+                          ? 'border-primary-300 bg-primary-50/50 dark:border-primary-700 dark:bg-primary-900/20'
+                          : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
+                      } ${!isOverride ? 'opacity-60' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!isOverride}
+                        onChange={() => toggleApp(app.id)}
+                        className="rounded border-zinc-300 dark:border-zinc-700"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {app.name}
+                        </div>
+                        <div className="text-[11px] text-zinc-500 truncate">
+                          {app.description}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <Button
+                  onClick={() => save.mutate(draft)}
+                  loading={save.isPending}
+                  disabled={
+                    save.isPending ||
+                    JSON.stringify(draft ?? null) === JSON.stringify(stored ?? null)
+                  }
+                >
+                  Save changes
+                </Button>
+                {save.isSuccess && (
+                  <span className="text-xs text-green-600 dark:text-green-400">Saved.</span>
+                )}
+                {save.isError && (
+                  <span className="text-xs text-red-600 dark:text-red-400">
+                    Failed: {(save.error as Error).message}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

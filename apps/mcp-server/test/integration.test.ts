@@ -1541,6 +1541,9 @@ describe('MCP Integration Tests', () => {
         'mark_notifications_read', 'mark_all_notifications_read',
         // platform (superuser)
         'get_platform_settings', 'set_public_signup_disabled',
+        'platform_list_orgs', 'platform_create_org', 'platform_get_org',
+        'platform_update_org', 'platform_delete_org',
+        'get_launchpad_apps', 'set_platform_launchpad_defaults', 'set_org_launchpad_apps',
         'list_beta_signups', 'get_public_config', 'submit_beta_signup',
         // agent (AGENTIC_TODO §10)
         'agent_heartbeat', 'agent_audit', 'agent_self_report',

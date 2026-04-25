@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Monitor, User, Bell, Users, Trash2, Plug, Copy, Check, Plus, Headset, Pencil, Lock, Zap, Bot, RefreshCw } from 'lucide-react';
+import { Moon, Sun, Monitor, User, Bell, Users, Trash2, Plug, Copy, Check, Plus, Headset, Pencil, Lock, Zap, Bot, RefreshCw, LayoutGrid } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { PaginatedResponse, ApiResponse, Project } from '@bigbluebam/shared';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -94,7 +94,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk' | 'permissions' | 'ai-providers'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'members' | 'integrations' | 'helpdesk' | 'permissions' | 'launchpad' | 'ai-providers'>('profile');
   const [displayName, setDisplayName] = useState(user?.display_name ?? '');
   const [timezone, setTimezone] = useState(user?.timezone ?? 'UTC');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
@@ -607,6 +607,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'members' as const, label: 'Members', icon: Users },
     { id: 'permissions' as const, label: 'Permissions', icon: Lock },
+    { id: 'launchpad' as const, label: 'Launchpad', icon: LayoutGrid },
     { id: 'integrations' as const, label: 'Integrations', icon: Plug },
     { id: 'ai-providers' as const, label: 'AI Providers', icon: Zap },
     { id: 'helpdesk' as const, label: 'Helpdesk', icon: Headset },
@@ -1835,6 +1836,9 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                 )}
               </div>
             )}
+            {activeTab === 'launchpad' && (
+              <OrgLaunchpadTab canEdit={canEditPermissions} />
+            )}
             {activeTab === 'ai-providers' && (
               <SettingsLlmProviders />
             )}
@@ -1961,5 +1965,185 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+// ─── Org Launchpad Tab ──────────────────────────────────────────────────────
+
+interface LaunchpadConfigResponse {
+  data: {
+    catalog: string[];
+    org_override: string[] | null;
+    platform_default: string[] | null;
+  };
+}
+
+const ORG_LAUNCHPAD_APP_CATALOG: { id: string; name: string; description: string }[] = [
+  { id: 'b3', name: 'Bam', description: 'Project Management' },
+  { id: 'banter', name: 'Banter', description: 'Team Messaging' },
+  { id: 'beacon', name: 'Beacon', description: 'Knowledge Base' },
+  { id: 'bond', name: 'Bond', description: 'CRM' },
+  { id: 'blast', name: 'Blast', description: 'Email Campaigns' },
+  { id: 'bill', name: 'Bill', description: 'Invoicing' },
+  { id: 'blank', name: 'Blank', description: 'Forms' },
+  { id: 'book', name: 'Book', description: 'Scheduling' },
+  { id: 'bench', name: 'Bench', description: 'Analytics' },
+  { id: 'brief', name: 'Brief', description: 'Documents' },
+  { id: 'bolt', name: 'Bolt', description: 'Automations' },
+  { id: 'bearing', name: 'Bearing', description: 'Goals & OKRs' },
+  { id: 'board', name: 'Board', description: 'Whiteboards' },
+  { id: 'helpdesk', name: 'Helpdesk', description: 'Customer Support' },
+];
+
+function OrgLaunchpadTab({ canEdit }: { canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['org', 'launchpad-apps'],
+    queryFn: () => api.get<LaunchpadConfigResponse>('/org/launchpad-apps'),
+  });
+
+  const orgOverride = data?.data?.org_override ?? null;
+  const platformDefault = data?.data?.platform_default ?? null;
+  const platformAllows = new Set<string>(
+    platformDefault ?? ORG_LAUNCHPAD_APP_CATALOG.map((a) => a.id),
+  );
+
+  const [draft, setDraft] = useState<string[] | null>(null);
+  useEffect(() => {
+    setDraft(orgOverride);
+  }, [data]);
+
+  const isOverride = draft !== null;
+  const enabledSet = new Set<string>(
+    isOverride ? (draft as string[]) : Array.from(platformAllows),
+  );
+
+  const save = useMutation({
+    mutationFn: (apps: string[] | null) =>
+      api.put<LaunchpadConfigResponse>('/org/launchpad-apps', { apps }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org', 'launchpad-apps'] });
+    },
+  });
+
+  const toggleApp = (id: string) => {
+    if (!isOverride) {
+      // Switching from "inherit" → start with the platform-allowed set, minus this id.
+      const seed = Array.from(platformAllows).filter((x) => x !== id);
+      setDraft(seed);
+      return;
+    }
+    const current = draft as string[];
+    setDraft(current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+  };
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+          Launchpad apps
+        </h2>
+        <p className="text-sm text-zinc-500">
+          Choose which apps appear in the Launchpad for everyone in your organization.
+          Apps disabled at the platform level are shown greyed out — your org cannot
+          enable apps that the platform has turned off.
+        </p>
+        {!canEdit && (
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            You need the admin or owner role to modify these settings.
+          </p>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <RefreshCw className="h-4 w-4 animate-spin" /> Loading…
+        </div>
+      ) : (
+        <fieldset disabled={!canEdit} className="space-y-4 disabled:opacity-60">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">Mode:</span>
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className={`rounded-md px-2 py-1 text-xs ${
+                !isOverride
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                  : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              }`}
+            >
+              Inherit from platform
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraft(orgOverride ?? Array.from(platformAllows))}
+              className={`rounded-md px-2 py-1 text-xs ${
+                isOverride
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                  : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              }`}
+            >
+              Custom for this org
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {ORG_LAUNCHPAD_APP_CATALOG.map((app) => {
+              const platformDisabled = !platformAllows.has(app.id);
+              const checked = enabledSet.has(app.id) && !platformDisabled;
+              return (
+                <label
+                  key={app.id}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 transition-colors ${
+                    platformDisabled
+                      ? 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 opacity-50 cursor-not-allowed'
+                      : checked
+                        ? 'border-primary-300 bg-primary-50/50 dark:border-primary-700 dark:bg-primary-900/20 cursor-pointer'
+                        : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer'
+                  } ${!isOverride && !platformDisabled ? 'opacity-70' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={platformDisabled || !isOverride}
+                    onChange={() => toggleApp(app.id)}
+                    className="rounded border-zinc-300 dark:border-zinc-700 text-primary-600 focus:ring-primary-500"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                      {app.name}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 truncate">
+                      {platformDisabled ? 'Disabled by platform admin' : app.description}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      )}
+
+      {canEdit && !isLoading && (
+        <div className="flex items-center gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+          <Button
+            onClick={() => save.mutate(draft)}
+            loading={save.isPending}
+            disabled={
+              save.isPending ||
+              JSON.stringify(draft ?? null) === JSON.stringify(orgOverride ?? null)
+            }
+          >
+            Save changes
+          </Button>
+          {save.isSuccess && <span className="text-sm text-green-600">Saved!</span>}
+          {save.isError && (
+            <span className="text-sm text-red-600">
+              Failed: {(save.error as Error).message}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

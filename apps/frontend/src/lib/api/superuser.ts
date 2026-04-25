@@ -11,6 +11,24 @@ export interface ListOrganizationsParams {
   search?: string;
 }
 
+export interface PlatformOrg {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  created_at: string;
+}
+
+export interface CreateOrgInput {
+  name: string;
+  plan?: string;
+}
+
+export interface UpdateOrgInput {
+  name?: string;
+  plan?: string;
+}
+
 export const superuserApi = {
   listOrganizations(params: ListOrganizationsParams = {}): Promise<SuperuserOrgListResponse> {
     return api.get<SuperuserOrgListResponse>('/superuser/organizations', {
@@ -34,5 +52,17 @@ export const superuserApi = {
 
   clearContext(): Promise<void> {
     return api.post<void>('/superuser/context/clear');
+  },
+
+  createOrganization(body: CreateOrgInput): Promise<{ data: PlatformOrg }> {
+    return api.post<{ data: PlatformOrg }>('/v1/platform/orgs', body);
+  },
+
+  updateOrganization(id: string, body: UpdateOrgInput): Promise<{ data: PlatformOrg }> {
+    return api.patch<{ data: PlatformOrg }>(`/v1/platform/orgs/${id}`, body);
+  },
+
+  deleteOrganization(id: string): Promise<{ data: { success: true } }> {
+    return api.delete<{ data: { success: true } }>(`/v1/platform/orgs/${id}`);
   },
 };

@@ -8,6 +8,29 @@ import { requireSuperuser } from '../middleware/require-superuser.js';
 import { logSuperuserAction } from '../services/superuser-audit.service.js';
 import { isBootstrapRequired } from '../services/bootstrap-status.service.js';
 
+// Canonical Launchpad app catalog. Mirrors the APPS array in
+// packages/ui/launchpad.tsx — keep them in sync. The launchpad_default_apps
+// system_setting and the per-org organizations.settings.launchpad_apps are
+// arrays of these ids; null/missing means "all apps enabled".
+export const LAUNCHPAD_APP_IDS = [
+  'b3',
+  'banter',
+  'beacon',
+  'bond',
+  'blast',
+  'bill',
+  'blank',
+  'book',
+  'bench',
+  'brief',
+  'bolt',
+  'bearing',
+  'board',
+  'helpdesk',
+] as const;
+
+export type LaunchpadAppId = (typeof LAUNCHPAD_APP_IDS)[number];
+
 // Valid values for the root_redirect setting
 const ROOT_REDIRECT_VALUES = [
   'site',
@@ -54,6 +77,14 @@ const REDIRECT_MAP: Record<RootRedirectValue, string | null> = {
 // env-only deploys still work.
 const KEY_VALIDATORS: Record<string, z.ZodType> = {
   root_redirect: z.enum(ROOT_REDIRECT_VALUES),
+
+  // Platform-wide Launchpad default. Null/empty means "all apps enabled".
+  // SuperUsers set this to constrain the default for every org that hasn't
+  // overridden launchpad_apps in their organizations.settings JSONB.
+  launchpad_default_apps: z.union([
+    z.null(),
+    z.array(z.enum(LAUNCHPAD_APP_IDS)).max(LAUNCHPAD_APP_IDS.length),
+  ]),
 
   // SMTP (see apps/worker/src/utils/smtp-config.mjs for the resolver)
   smtp_host: z.string().min(1).max(255),

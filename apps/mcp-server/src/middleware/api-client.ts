@@ -71,6 +71,10 @@ export class ApiClient {
     return this.request<T>('PATCH', path, body);
   }
 
+  async put<T = unknown>(path: string, body: unknown): Promise<ApiResult<T>> {
+    return this.request<T>('PUT', path, body);
+  }
+
   async delete<T = unknown>(path: string): Promise<ApiResult<T>> {
     return this.request<T>('DELETE', path);
   }
