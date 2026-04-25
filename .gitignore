@@ -18,6 +18,9 @@ test-*.png
 .deploy-state.json
 .deploy-state-railway.json
 .deploy-state-railway-logs/
+# Local TLS certs provisioned by scripts/deploy/main.mjs (self-signed,
+# mkcert, BYO, or Let's Encrypt). Never commit cert material.
+/certs/
 apps/e2e/test-results
 apps/e2e/reports
 apps/e2e/playwright-report

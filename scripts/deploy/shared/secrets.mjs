@@ -188,7 +188,7 @@ export async function promptRootRedirect() {
  * Build a complete env config object from all collected choices.
  */
 export function buildEnvConfig(choices) {
-  const { secrets, storage, vectorDb, livekit, integrations, domain, portMapping } = choices;
+  const { secrets, storage, vectorDb, livekit, integrations, domain, portMapping, tlsConfig } = choices;
 
   // Port mapping — null/undefined means "use the laptop defaults". The
   // advanced-port-mapping flow returns { ports: { HTTP_PORT, HTTPS_PORT,
@@ -196,11 +196,15 @@ export function buildEnvConfig(choices) {
   // walked through it.
   const httpPort = portMapping?.ports?.HTTP_PORT ?? 80;
   const httpsPort = portMapping?.ports?.HTTPS_PORT ?? 443;
+  // useTls promotes to true whenever a TLS cert source was chosen, even if
+  // the original port-mapping flow didn't ask. This keeps URL formation
+  // honest with the actual nginx posture.
+  const effectiveUseTls = tlsConfig != null ? true : portMapping?.useTls;
   const baseUrl = formatPublicUrl({
     domain: domain || 'localhost',
     httpPort,
     httpsPort,
-    useTls: portMapping?.useTls,
+    useTls: effectiveUseTls,
   });
 
   const env = {
@@ -300,6 +304,23 @@ export function buildEnvConfig(choices) {
       if (typeof value === 'number' && value !== PORT_DEFAULTS[key]) {
         env[key] = String(value);
       }
+    }
+  }
+
+  // Local TLS. When the operator opted in, the entrypoint renders nginx
+  // with TLS placeholders enabled and every API service receives
+  // COOKIE_SECURE=true so session cookies carry the Secure flag. The
+  // single COOKIE_SECURE line closes 14 audit findings (BAM-045, BOLT-011,
+  // BRF-020, etc.) since most satellite APIs default this to false.
+  if (tlsConfig) {
+    env.TLS_CERT_SOURCE = tlsConfig.source;
+    env.TLS_HTTP_MODE = tlsConfig.httpMode;
+    env.EXT_HTTPS_PORT = String(httpsPort);
+    env.COOKIE_SECURE = 'true';
+    if (tlsConfig.letsencrypt) {
+      env.LETSENCRYPT_DOMAIN = tlsConfig.letsencrypt.domain;
+      env.LETSENCRYPT_EMAIL = tlsConfig.letsencrypt.email;
+      env.LETSENCRYPT_AGREE_TOS = tlsConfig.letsencrypt.agreeTos ? 'true' : 'false';
     }
   }
 

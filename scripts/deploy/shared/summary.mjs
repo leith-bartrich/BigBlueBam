@@ -95,6 +95,31 @@ export function printSummary(config) {
     }
   }
 
+  // TLS callout — surfaces the cert source and HTTP-coexistence mode so
+  // operators know whether they need to install a CA, expect a cert
+  // warning, or watch for the renewal cron entry. See docs/local-ssl-notes.md.
+  if (config.tlsConfig) {
+    const tls = config.tlsConfig;
+    const sourceLabels = {
+      'self-signed': 'Self-signed (browser warning expected)',
+      'mkcert': 'mkcert (this machine\'s browsers trust automatically)',
+      'byo': 'Bring-your-own (operator-provided cert)',
+      'letsencrypt': 'Let\'s Encrypt (real public cert with auto-renewal)',
+    };
+    const modeLabels = {
+      redirect: 'redirect (http → https)',
+      both: 'both (http and https serve content)',
+      'https-only': 'https-only (http connections dropped)',
+    };
+    console.log('');
+    console.log(bold('  TLS:\n'));
+    console.log(`    ${check} ${'Cert source'.padEnd(30)} ${dim(sourceLabels[tls.source] ?? tls.source)}`);
+    console.log(`    ${check} ${'HTTP coexistence'.padEnd(30)} ${dim(modeLabels[tls.httpMode] ?? tls.httpMode)}`);
+    if (tls.source === 'letsencrypt') {
+      console.log(dim('    (Set up the daily renewal task printed during deploy — see above.)'));
+    }
+  }
+
   // Admin account
   console.log('');
   if (config.adminEmail) {

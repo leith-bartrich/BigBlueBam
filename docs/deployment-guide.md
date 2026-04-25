@@ -87,6 +87,23 @@ How should BigBlueBam store uploaded files?
 
 Similar prompts for vector search (Beacon knowledge base) and voice/video (Banter calls). Most teams just press Enter for the defaults — you can change everything later.
 
+#### Advanced port mapping (optional)
+
+If you're deploying to a NAS (Synology, QNAP, TrueNAS, Unraid) or any host where the BigBlueBam default ports (80, 443, 7880, 7881) are already in use, the script auto-detects the conflicts and walks you through remapping. See `scripts/deploy/shared/port-mapping.mjs` for the full list of ports it can remap. Default behavior on a clean laptop is "no questions asked" — the prompt only fires when conflicts are detected or you opt in.
+
+#### Local TLS / SSL (optional)
+
+When you opt into HTTPS-style URLs (the default for any non-localhost domain), the deploy script offers four ways to put a real certificate behind that promise:
+
+1. **Self-signed (recommended baseline)** — the script generates a cert with `openssl` at deploy time. Browsers warn once per device, but TLS itself works correctly: cookies get the `Secure` flag, HSTS is honored, OAuth flows complete properly. Right answer if you just need TLS to function.
+2. **Bring your own** — type the absolute paths to a cert and key you already have (corp PKI, wildcard, manually-fetched LE, etc.). The script validates the pair with `openssl` before copying into `./certs/`.
+3. **mkcert** — if you have [mkcert](https://github.com/FiloSottile/mkcert) installed, the script can issue a cert signed by mkcert's local CA. Browsers on the deploy machine trust it automatically. Other client devices need the CA installed manually.
+4. **Let's Encrypt** — auto-issues a real, public-trusted cert via certbot's HTTP-01 challenge. Requires a public domain pointing at your host with port 80 reachable from the internet (the prompt refuses cleanly if you remapped HTTP_PORT). Renewal is a daily cron entry the script prints for you to install.
+
+The script also asks how plain HTTP and HTTPS should coexist: `redirect` (recommended), `both` (kept for LAN scripts that use plain http), or `https-only` (drops port 80 entirely).
+
+For the full picture — sharp edges, deferred work, and design decisions — see `docs/local-ssl-notes.md`.
+
 ### Step 5: Deploy
 
 - **Docker Compose**: Builds all containers locally, starts everything with `docker compose up`. Migrations run automatically before app services start.
