@@ -16,7 +16,7 @@
 #
 # Selection rule: if Railway-injected env vars are present, use railway;
 # otherwise use default. The compose flow ALSO bind-mounts
-# infra/nginx/nginx-with-site.conf at /etc/nginx/templates/site.conf.template
+# infra/nginx/nginx-with-site.conf at /etc/nginx/bbb-templates/site.conf.template
 # (read-only); when present this script copies it over the chosen profile
 # and applies the TLS / HTTP-mode substitutions described below.
 #
@@ -31,7 +31,7 @@
 #     (in those modes a separate /etc/nginx/conf.d/00-tls-redirect.conf
 #     becomes the sole port-80 listener).
 #   - When TLS_HTTP_MODE is redirect or https-only, the
-#     /etc/nginx/templates/tls-redirect.conf.template file is rendered
+#     /etc/nginx/bbb-templates/tls-redirect.conf.template file is rendered
 #     into /etc/nginx/conf.d/00-tls-redirect.conf with __TLS_RETURN__
 #     and __EXT_HTTPS_PORT__ substituted.
 #
@@ -47,8 +47,8 @@ else
 fi
 
 ACTIVE_CONF="/etc/nginx/conf.d/default.conf"
-SITE_TEMPLATE="/etc/nginx/templates/site.conf.template"
-TLS_REDIRECT_TEMPLATE="/etc/nginx/templates/tls-redirect.conf.template"
+SITE_TEMPLATE="/etc/nginx/bbb-templates/site.conf.template"
+TLS_REDIRECT_TEMPLATE="/etc/nginx/bbb-templates/tls-redirect.conf.template"
 TLS_REDIRECT_OUT="/etc/nginx/conf.d/00-tls-redirect.conf"
 CERT_FILE="/etc/nginx/certs/local.crt"
 KEY_FILE="/etc/nginx/certs/local.key"

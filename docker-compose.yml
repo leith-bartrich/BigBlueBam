@@ -249,8 +249,15 @@ services:
       # sed-edit a working copy at /etc/nginx/conf.d/default.conf without
       # touching the read-only mount. Required for the TLS placeholder
       # substitution path.
-      - ./infra/nginx/nginx-with-site.conf:/etc/nginx/templates/site.conf.template:ro
-      - ./infra/nginx/tls-redirect.conf.template:/etc/nginx/templates/tls-redirect.conf.template:ro
+      # Mount the templates outside /etc/nginx/templates/ — that directory
+      # is auto-processed by the nginx:alpine `20-envsubst-on-templates.sh`
+      # script, which would `envsubst` our `__HTTP_LISTEN__` placeholders into
+      # /etc/nginx/conf.d/site.conf as-is (envsubst only handles `${var}`,
+      # not `__FOO__`). nginx then refuses to start on the unsubstituted
+      # directives. Mounting at a sibling path keeps our entrypoint as the
+      # sole consumer of these templates.
+      - ./infra/nginx/nginx-with-site.conf:/etc/nginx/bbb-templates/site.conf.template:ro
+      - ./infra/nginx/tls-redirect.conf.template:/etc/nginx/bbb-templates/tls-redirect.conf.template:ro
       - ./docs/apps:/usr/share/nginx/html/docs/apps:ro
       # TLS certs (gitignored). If empty, entrypoint silently runs HTTP-only.
       - ./certs:/etc/nginx/certs:ro
