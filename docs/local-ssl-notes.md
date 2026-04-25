@@ -24,7 +24,7 @@ adapter is intentionally untouched.
 
 ## Architecture
 
-**Cert sources (1-of-4 menu, default self-signed):**
+**Cert sources (1-of-5 menu, default self-signed):**
 
 1. **Self-signed** — `openssl req -x509` at deploy time. Browser warns once per device but TLS
    itself works correctly (cookies get the `Secure` flag, HSTS is honored, etc.). Right baseline
@@ -38,6 +38,13 @@ adapter is intentionally untouched.
 4. **Let's Encrypt** — certbot sidecar with HTTP-01 / webroot challenge. Initial issuance runs
    AFTER `docker compose up` because certbot needs nginx serving `/.well-known/acme-challenge/`.
    Renewal is a host-side cron entry, NOT an in-container loop (see "Sharp edges" below).
+5. **External (reverse proxy / CDN handles TLS)** — BBB itself stays plain HTTP; an upstream
+   layer (Cloudflare, Caddy, host nginx, NAS reverse proxy, k8s ingress, etc.) terminates TLS
+   on the public side. No certs are provisioned, no certs mounted, no `listen 443 ssl;` block
+   rendered — the entrypoint runs `TLS_HTTP_MODE=none` and serves only port 80 internally.
+   `formatPublicUrl` still produces `https://domain` (port 443 elided), so `CORS_ORIGIN`,
+   `FRONTEND_URL`, and friends match the browser's `Origin` and `COOKIE_SECURE=true` is still
+   written into `.env`. HSTS is left to the upstream layer (see "Sharp edges" below).
 
 **HTTP-vs-HTTPS coexistence (operator chooses, default redirect):**
 
@@ -59,10 +66,12 @@ flips Fastify's session-cookie `Secure` flag. This single line closes 14 audit f
 ## Sharp edges to avoid (READ BEFORE EXTENDING)
 
 1. **HSTS aggressiveness scales with cert provenance.** Self-signed / mkcert / BYO get
-   `max-age=300`. Only Let's Encrypt gets `max-age=31536000; includeSubDomains`. Reason:
-   permanently poisoning a NAS operator's Chrome HSTS cache for `nas.local` (a hostname they
-   may later move or repurpose) is a footgun with no clean revocation path. The conservative
-   default is intentional — do not "improve" it.
+   `max-age=300`. Only Let's Encrypt gets `max-age=31536000; includeSubDomains`. The
+   reverse-proxy source returns `null` so the upstream layer owns the header (it's the layer
+   that actually terminates TLS, so it's the right place to set policy). Reason for the
+   conservative defaults: permanently poisoning a NAS operator's Chrome HSTS cache for
+   `nas.local` (a hostname they may later move or repurpose) is a footgun with no clean
+   revocation path. Do not "improve" the existing values.
 
 2. **`add_header` directives do not inherit across nginx server blocks.** The existing
    `nginx-with-site.conf` already comments this at the `location /` block. The TLS placeholder
@@ -110,11 +119,6 @@ These items were explicitly considered and deferred. Don't re-relitigate without
   one provider locks operators in; supporting all of them is a big surface. v1 ships HTTP-01
   only with a clear refusal path. If demand comes from a specific provider (Cloudflare, Route
   53, etc.) tackle that one as a follow-up — don't try to abstract.
-
-- **BYO via reverse proxy.** Some operators run nginx-proxy-manager / Caddy / Traefik in front
-  of BBB and want BBB to stay HTTP-only behind that. This works today: just don't opt into
-  TLS. Document the pattern in `docs/deployment-guide.md` if confusion arises, but don't add
-  a "trusted reverse proxy" mode — the existing `useTls=false` path already covers it.
 
 - **Wildcard certs.** Useful when multiple subdomains under the same apex point at this BBB
   install. v1 issues single-name certs only. mkcert and BYO already support wildcards if the

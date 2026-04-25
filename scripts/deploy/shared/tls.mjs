@@ -25,7 +25,7 @@ import { bold, dim, check, cyan, yellow, red, green, warn } from './colors.mjs';
  * the .env as TLS_CERT_SOURCE so the nginx entrypoint can pick the right
  * HSTS aggressiveness (only "letsencrypt" gets the long-lived header).
  */
-export const CERT_SOURCES = ['self-signed', 'mkcert', 'byo', 'letsencrypt'];
+export const CERT_SOURCES = ['self-signed', 'mkcert', 'byo', 'letsencrypt', 'reverse-proxy'];
 
 /**
  * HTTP-vs-HTTPS coexistence modes. Mirrors what the entrypoint understands.
@@ -198,8 +198,8 @@ function detectWslWithWindowsDocker() {
  * @param {boolean} args.hasOAuth - True when OAuth credentials are
  *   already configured (so we can warn about callback-URL allowlists).
  * @returns {Promise<{
- *   source: 'self-signed' | 'mkcert' | 'byo' | 'letsencrypt',
- *   httpMode: 'redirect' | 'both' | 'https-only',
+ *   source: 'self-signed' | 'mkcert' | 'byo' | 'letsencrypt' | 'reverse-proxy',
+ *   httpMode: 'redirect' | 'both' | 'https-only' | 'none',
  *   byo?: { srcCertPath: string, srcKeyPath: string },
  *   letsencrypt?: { domain: string, email: string, agreeTos: true }
  * } | null>}
@@ -208,12 +208,12 @@ export async function promptTlsConfig({ useTls, httpPort = 80, httpsPort = 443, 
   if (!useTls) return null;
 
   console.log('');
-  console.log(bold('Local TLS / SSL'));
-  console.log(dim('  You opted into https-style URLs in the previous step. Now we need to'));
-  console.log(dim('  put a certificate behind that promise — without one, nginx will keep'));
-  console.log(dim('  serving plain HTTP and your browsers will fail with cookie/CORS errors.'));
+  console.log(bold('TLS / SSL'));
+  console.log(dim('  You opted into https-style URLs in the previous step. Pick where TLS'));
+  console.log(dim('  is handled — BBB itself (one of four cert sources below) or an upstream'));
+  console.log(dim('  layer that already terminates it (reverse proxy, CDN, ingress, etc.).'));
   console.log('');
-  console.log(dim('  Four options below; pick the first one unless you know better.'));
+  console.log(dim('  Pick the first one unless you know better.'));
   console.log('');
 
   const mkcertPath = detectMkcert();
@@ -222,13 +222,14 @@ export async function promptTlsConfig({ useTls, httpPort = 80, httpsPort = 443, 
     { label: 'Bring your own cert + key', value: 'byo', description: 'You already have a .crt and .key from somewhere (corp PKI, wildcard, etc.). We copy them into place.' },
     { label: mkcertPath ? `mkcert (detected at ${mkcertPath})` : 'mkcert (not installed)', value: 'mkcert', description: mkcertPath ? 'Issues a cert signed by mkcert\'s local CA. THIS machine\'s browsers trust automatically.' : 'mkcert is not on PATH. Install it first or pick another option.' },
     { label: 'Let\'s Encrypt (real public cert)', value: 'letsencrypt', description: 'Auto-issues a real cert via certbot. Requires a public domain pointing at this host with port 80 reachable from the internet.' },
+    { label: 'External (reverse proxy / CDN handles TLS)', value: 'reverse-proxy', description: 'BBB stays plain HTTP and URLs declare https://. Pick this when fronted by Cloudflare, Caddy, host nginx, NAS reverse proxy, k8s ingress, etc.' },
   ];
 
-  let source = await select('How should TLS certs be provisioned?', sourceOptions);
+  let source = await select('How is TLS handled for this deployment?', sourceOptions);
 
   if (source === 'mkcert' && !mkcertPath) {
     console.log(`  ${red('mkcert not on PATH.')} Install it (https://github.com/FiloSottile/mkcert) or pick another option.`);
-    source = await select('How should TLS certs be provisioned?', sourceOptions.filter((o) => o.value !== 'mkcert'));
+    source = await select('How is TLS handled for this deployment?', sourceOptions.filter((o) => o.value !== 'mkcert'));
   }
 
   if (source === 'mkcert' && detectWslWithWindowsDocker()) {
@@ -301,33 +302,42 @@ export async function promptTlsConfig({ useTls, httpPort = 80, httpsPort = 443, 
     }
   }
 
-  // HTTP-vs-HTTPS coexistence prompt (ELI5).
-  console.log('');
-  console.log(bold('  HTTP and HTTPS coexistence'));
-  console.log(dim('  Once TLS is in place, what should happen when someone visits the plain'));
-  console.log(dim('  http:// URL? Three options:'));
-  console.log('');
-  console.log(`    ${cyan('redirect')}    — http requests bounce to https (recommended)`);
-  console.log(dim('                Bookmarks and old links keep working. Cookies stay safe.'));
-  console.log(dim('                The right default for any deployment.'));
-  console.log('');
-  console.log(`    ${cyan('both')}        — http and https BOTH serve the app`);
-  console.log(dim('                Useful if you have internal LAN scripts or monitoring tools'));
-  console.log(dim('                that hit the app over plain http and you can\'t change them.'));
-  console.log(`                ${yellow('Caveat:')} login may silently fail if the user lands on http`);
-  console.log(dim('                first — browsers refuse to store the secure session cookie.'));
-  console.log('');
-  console.log(`    ${cyan('https-only')}  — http requests are dropped (connection close)`);
-  console.log(dim('                Strictest posture. Pick this if you actively do not want'));
-  console.log(dim('                ANY plain-http traffic, including health probes from a LAN'));
-  console.log(dim('                that you control.'));
-  console.log('');
+  // HTTP-vs-HTTPS coexistence prompt (ELI5). Only relevant when BBB itself
+  // serves TLS. With the 'reverse-proxy' source the entrypoint always runs
+  // plain HTTP on the configured port; the upstream layer owns the redirect
+  // / coexistence policy on its side. Pin httpMode='none' here so downstream
+  // code (env writing, entrypoint, summary) sees a well-defined value.
+  let httpMode;
+  if (source === 'reverse-proxy') {
+    httpMode = 'none';
+  } else {
+    console.log('');
+    console.log(bold('  HTTP and HTTPS coexistence'));
+    console.log(dim('  Once TLS is in place, what should happen when someone visits the plain'));
+    console.log(dim('  http:// URL? Three options:'));
+    console.log('');
+    console.log(`    ${cyan('redirect')}    — http requests bounce to https (recommended)`);
+    console.log(dim('                Bookmarks and old links keep working. Cookies stay safe.'));
+    console.log(dim('                The right default for any deployment.'));
+    console.log('');
+    console.log(`    ${cyan('both')}        — http and https BOTH serve the app`);
+    console.log(dim('                Useful if you have internal LAN scripts or monitoring tools'));
+    console.log(dim('                that hit the app over plain http and you can\'t change them.'));
+    console.log(`                ${yellow('Caveat:')} login may silently fail if the user lands on http`);
+    console.log(dim('                first — browsers refuse to store the secure session cookie.'));
+    console.log('');
+    console.log(`    ${cyan('https-only')}  — http requests are dropped (connection close)`);
+    console.log(dim('                Strictest posture. Pick this if you actively do not want'));
+    console.log(dim('                ANY plain-http traffic, including health probes from a LAN'));
+    console.log(dim('                that you control.'));
+    console.log('');
 
-  const httpMode = await select('Coexistence mode for HTTP and HTTPS?', [
-    { label: 'redirect (recommended)', value: 'redirect', description: 'Most deployments want this.' },
-    { label: 'both', value: 'both', description: 'Keeps plain http working alongside https.' },
-    { label: 'https-only', value: 'https-only', description: 'Drops plain http connections entirely.' },
-  ]);
+    httpMode = await select('Coexistence mode for HTTP and HTTPS?', [
+      { label: 'redirect (recommended)', value: 'redirect', description: 'Most deployments want this.' },
+      { label: 'both', value: 'both', description: 'Keeps plain http working alongside https.' },
+      { label: 'https-only', value: 'https-only', description: 'Drops plain http connections entirely.' },
+    ]);
+  }
 
   // OAuth callback warning — only relevant when OAuth is configured AND we're
   // about to switch the scheme. The callback URL allowlisted in the provider
@@ -375,6 +385,10 @@ export function provisionCerts(tlsConfig, { domain, certsDir }) {
       // Deferred. The LE flow needs nginx up to serve the ACME challenge,
       // so docker-compose.mjs runs the certbot sidecar after `up`.
       return null;
+    case 'reverse-proxy':
+      // No certs to provision — an upstream layer terminates TLS. The
+      // entrypoint sees TLS_HTTP_MODE=none and keeps nginx on plain HTTP.
+      return null;
     default:
       throw new Error(`Unknown TLS cert source: ${tlsConfig.source}`);
   }
@@ -388,5 +402,9 @@ export function provisionCerts(tlsConfig, { domain, certsDir }) {
  */
 export function pickHstsHeader(source) {
   if (source === 'letsencrypt') return 'max-age=31536000; includeSubDomains';
+  // External-TLS deployments leave HSTS to the upstream proxy/CDN — that's
+  // the layer that actually handles TLS, so it's the right place to set the
+  // header (and it almost certainly has its own opinions about max-age).
+  if (source === 'reverse-proxy') return null;
   return 'max-age=300';
 }
