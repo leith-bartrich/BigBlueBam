@@ -105,11 +105,13 @@ export function printSummary(config) {
       'mkcert': 'mkcert (this machine\'s browsers trust automatically)',
       'byo': 'Bring-your-own (operator-provided cert)',
       'letsencrypt': 'Let\'s Encrypt (real public cert with auto-renewal)',
+      'reverse-proxy': 'External (TLS terminates at upstream proxy / CDN)',
     };
     const modeLabels = {
       redirect: 'redirect (http → https)',
       both: 'both (http and https serve content)',
       'https-only': 'https-only (http connections dropped)',
+      none: 'plain HTTP only (TLS terminates upstream)',
     };
     console.log('');
     console.log(bold('  TLS:\n'));

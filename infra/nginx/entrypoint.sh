@@ -47,8 +47,8 @@ else
 fi
 
 ACTIVE_CONF="/etc/nginx/conf.d/default.conf"
-SITE_TEMPLATE="/etc/nginx/templates/site.conf.template"
-TLS_REDIRECT_TEMPLATE="/etc/nginx/templates/tls-redirect.conf.template"
+SITE_TEMPLATE="/etc/nginx/bbb-templates/site.conf.template"
+TLS_REDIRECT_TEMPLATE="/etc/nginx/bbb-templates/tls-redirect.conf.template"
 TLS_REDIRECT_OUT="/etc/nginx/conf.d/00-tls-redirect.conf"
 CERT_FILE="/etc/nginx/certs/local.crt"
 KEY_FILE="/etc/nginx/certs/local.key"

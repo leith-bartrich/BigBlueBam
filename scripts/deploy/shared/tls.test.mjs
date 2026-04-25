@@ -3,15 +3,27 @@
 // generated cert/key files are real and the validateCertKeyPair pairing
 // check is exercised end-to-end.
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+
+vi.mock('./prompt.mjs', () => ({
+  ask: vi.fn(),
+  askPassword: vi.fn(),
+  confirm: vi.fn(),
+  select: vi.fn(),
+  banner: vi.fn(),
+}));
+
+import { select } from './prompt.mjs';
 import {
   pickHstsHeader,
   generateSelfSigned,
   validateCertKeyPair,
   detectMkcert,
+  provisionCerts,
+  promptTlsConfig,
   CERT_SOURCES,
   HTTP_MODES,
 } from './tls.mjs';
@@ -30,6 +42,10 @@ describe('pickHstsHeader', () => {
     expect(pickHstsHeader('byo')).toBe('max-age=300');
   });
 
+  it('returns null for reverse-proxy (HSTS belongs to the upstream layer)', () => {
+    expect(pickHstsHeader('reverse-proxy')).toBeNull();
+  });
+
   it('falls back to max-age=300 for unknown sources', () => {
     expect(pickHstsHeader('something-else')).toBe('max-age=300');
     expect(pickHstsHeader(undefined)).toBe('max-age=300');
@@ -37,12 +53,13 @@ describe('pickHstsHeader', () => {
 });
 
 describe('CERT_SOURCES + HTTP_MODES enums', () => {
-  it('exposes the four cert sources', () => {
+  it('exposes the five cert sources including reverse-proxy', () => {
     expect(CERT_SOURCES).toContain('self-signed');
     expect(CERT_SOURCES).toContain('mkcert');
     expect(CERT_SOURCES).toContain('byo');
     expect(CERT_SOURCES).toContain('letsencrypt');
-    expect(CERT_SOURCES).toHaveLength(4);
+    expect(CERT_SOURCES).toContain('reverse-proxy');
+    expect(CERT_SOURCES).toHaveLength(5);
   });
 
   it('exposes the three http modes', () => {
@@ -103,5 +120,71 @@ describe('generateSelfSigned + validateCertKeyPair', () => {
     const validation = validateCertKeyPair('/nonexistent/cert.pem', '/nonexistent/key.pem');
     expect(validation.ok).toBe(false);
     expect(validation.reason).toMatch(/not found/i);
+  });
+});
+
+describe('provisionCerts — reverse-proxy', () => {
+  let tmpDir;
+  afterEach(() => {
+    if (tmpDir && fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null and writes nothing for source=reverse-proxy', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bbb-tls-test-'));
+    const result = provisionCerts(
+      { source: 'reverse-proxy', httpMode: 'none', byo: null, letsencrypt: null },
+      { domain: 'bbb.example.com', certsDir: tmpDir },
+    );
+    expect(result).toBeNull();
+    // The certs directory should not be created or populated by the
+    // reverse-proxy path — an upstream layer holds the cert material.
+    if (fs.existsSync(tmpDir)) {
+      expect(fs.readdirSync(tmpDir)).toEqual([]);
+    }
+  });
+});
+
+describe('promptTlsConfig — reverse-proxy', () => {
+  beforeEach(() => {
+    select.mockReset();
+  });
+
+  it('returns the reverse-proxy shape when picked on the first prompt', async () => {
+    select.mockResolvedValueOnce('reverse-proxy');
+
+    const result = await promptTlsConfig({ useTls: true, httpPort: 80, httpsPort: 443 });
+
+    // byo/letsencrypt are optional (`?:` in the JSDoc) and conditionally
+    // spread, so they're absent from the return when unset.
+    expect(result).toEqual({ source: 'reverse-proxy', httpMode: 'none' });
+    // Only one select should have fired — the cert-source picker. The
+    // HTTP-coexistence prompt is suppressed for this source because the
+    // entrypoint ignores it (TLS_HTTP_MODE=none → plain HTTP only).
+    expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the reverse-proxy shape when picked via the LE-port-mismatch fallback', async () => {
+    // Operator initially picked LE; HTTP_PORT is non-default so LE refuses
+    // and the script offers a fallback select. Operator then picks
+    // reverse-proxy from the fallback. Final config should still be the
+    // clean reverse-proxy shape.
+    select.mockResolvedValueOnce('letsencrypt');
+    select.mockResolvedValueOnce('reverse-proxy');
+
+    const result = await promptTlsConfig({ useTls: true, httpPort: 18080, httpsPort: 443 });
+
+    expect(result).toEqual({
+      source: 'reverse-proxy',
+      httpMode: 'none',
+    });
+    expect(select).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns null when useTls is false (existing behavior pinned)', async () => {
+    const result = await promptTlsConfig({ useTls: false, httpPort: 80, httpsPort: 443 });
+    expect(result).toBeNull();
+    expect(select).not.toHaveBeenCalled();
   });
 });
