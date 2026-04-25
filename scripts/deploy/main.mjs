@@ -18,6 +18,8 @@ import {
 } from './shared/secrets.mjs';
 import { createSuperUser } from './shared/admin-setup.mjs';
 import { printSummary } from './shared/summary.mjs';
+import { maybeAdvancedPortMapping } from './shared/port-mapping.mjs';
+import { promptTlsConfig } from './shared/tls.mjs';
 import { bold, dim, green, red, yellow, cyan, check, cross } from './shared/colors.mjs';
 
 // Platform modules
@@ -209,6 +211,38 @@ async function main() {
     // Root redirect choice
     const rootRedirect = await promptRootRedirect();
 
+    // Advanced port mapping. Only the docker-compose adapter exposes host
+    // ports directly to the operator's machine; on Railway the platform
+    // routes traffic for us, so the prompt is skipped there. We probe the
+    // host first so the "do I need this?" question has a real answer
+    // backed by data, not a guess.
+    let portMapping = null;
+    if (!isRailway) {
+      portMapping = await maybeAdvancedPortMapping({
+        skipLiveKit: livekit.livekitProvider !== 'livekit-local',
+      });
+    }
+
+    // Local TLS. Only meaningful for docker-compose (Railway terminates
+    // TLS at its edge) and only when useTls was selected — either via the
+    // advanced-port-mapping flow or by default for non-localhost domains.
+    // See docs/local-ssl-notes.md.
+    let tlsConfig = null;
+    if (!isRailway) {
+      const httpPort = portMapping?.ports?.HTTP_PORT ?? 80;
+      const httpsPort = portMapping?.ports?.HTTPS_PORT ?? 443;
+      // Default useTls reflects the same scheme inference as
+      // public-url.mjs::pickScheme — non-localhost gets https-style URLs
+      // and therefore offers TLS provisioning by default.
+      const inferredUseTls = portMapping?.useTls ?? (domain && domain !== 'localhost');
+      tlsConfig = await promptTlsConfig({
+        useTls: inferredUseTls,
+        httpPort,
+        httpsPort,
+        hasOAuth: Boolean(integrations.OAUTH_GOOGLE_CLIENT_ID),
+      });
+    }
+
     // Build complete config
     envConfig = buildEnvConfig({
       secrets,
@@ -217,17 +251,23 @@ async function main() {
       livekit,
       integrations,
       domain,
+      portMapping,
+      tlsConfig,
     });
 
     // Save to state for resume
     state.envConfig = envConfig;
     state.rootRedirect = rootRedirect;
+    state.portMapping = portMapping;
+    state.tlsConfig = tlsConfig;
     state.choices = {
       domain,
       storage: storage.storageProvider,
       vectorDb: vectorDb.vectorProvider,
       livekit: livekit.livekitProvider,
       rootRedirect,
+      portMapping,
+      tlsConfig,
     };
     markPhaseComplete(state, 'configuration');
     saveState(state);
@@ -296,7 +336,7 @@ async function main() {
       console.log(`${bold('Step 5: Build and launch')}\n`);
     }
     if (await confirm('Ready to build and start all services?', true)) {
-      const healthy = await platform.deploy(envConfig, { branch });
+      const healthy = await platform.deploy(envConfig, { branch, tlsConfig: state.tlsConfig ?? null });
       if (healthy) {
         markPhaseComplete(state, 'deploy');
         saveState(state);
@@ -341,7 +381,7 @@ async function main() {
     console.log(dim('  the running services with the latest settings, which takes a few minutes.'));
     console.log('');
     if (await confirm('Push the current settings and redeploy now?', false)) {
-      const healthy = await platform.deploy(envConfig, { branch });
+      const healthy = await platform.deploy(envConfig, { branch, tlsConfig: state.tlsConfig ?? null });
       if (!healthy) {
         console.log('');
         console.log(red(bold('Redeploy did not complete successfully.')));
@@ -439,6 +479,9 @@ async function main() {
     vectorDb: choices.vectorDb || 'skip',
     livekit: choices.livekit || 'skip',
     platform: state.platform === 'Docker Compose' ? 'docker-compose' : state.platform,
+    portMapping: choices.portMapping || state.portMapping || null,
+    tlsConfig: choices.tlsConfig || state.tlsConfig || null,
+    baseUrl: envConfig.BASE_URL,
   });
 
   // Mark everything done

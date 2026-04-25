@@ -1,0 +1,45 @@
+# Auxiliary nginx server block written into /etc/nginx/conf.d/00-tls-redirect.conf
+# by entrypoint.sh ONLY when:
+#   - a TLS cert is present at /etc/nginx/certs/local.crt, AND
+#   - TLS_HTTP_MODE is one of "redirect" or "https-only".
+#
+# In those modes the main server block (nginx-with-site.conf) drops its
+# `listen 80;` directive so this block becomes the sole port-80 listener.
+#
+# Placeholders rendered by entrypoint.sh:
+#   __TLS_RETURN__ → either:
+#       return 301 https://$host_no_port:__EXT_HTTPS_PORT__$request_uri;
+#     (TLS_HTTP_MODE=redirect — bookmarks and email links transparently upgrade)
+#     or:
+#       return 444;
+#     (TLS_HTTP_MODE=https-only — drop the connection without a response. The
+#      operator picked this because they explicitly do not want plain HTTP.)
+#
+# Why /00-: nginx loads /etc/nginx/conf.d/*.conf in lexicographic order. The
+# 00- prefix ensures this minimal block is parsed before the larger
+# default.conf, so any default_server flag attached to its `listen 80` wins
+# the catch-all role cleanly.
+#
+# Why we don't serve the ACME challenge from here: the main server block
+# already handles /.well-known/acme-challenge/ unconditionally, but that
+# block only listens on whatever __HTTP_LISTEN__ resolved to (empty in
+# redirect/https-only modes, so it's NOT on port 80). For LE renewal to
+# work in redirect/https-only modes we have to also serve the challenge
+# path from this block — done below before the catch-all return.
+
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # Always serve ACME challenges over plain HTTP, even when everything
+    # else gets redirected or rejected. LE's HTTP-01 validators only
+    # speak port 80; without this carve-out, renewal would fail in
+    # redirect/https-only modes.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        __TLS_RETURN__
+    }
+}

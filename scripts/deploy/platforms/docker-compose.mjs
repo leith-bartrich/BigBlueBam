@@ -7,6 +7,8 @@ import * as path from 'node:path';
 import { bold, check, cross, dim, green, yellow, cyan, red, warn } from '../shared/colors.mjs';
 import { confirm, ask } from '../shared/prompt.mjs';
 import { checkDockerPrerequisites } from '../shared/prerequisites.mjs';
+import { provisionCerts } from '../shared/tls.mjs';
+import { runInitialIssuance, buildRenewalTask } from '../shared/letsencrypt.mjs';
 
 const name = 'Docker Compose';
 const description = 'Run everything locally with Docker (simplest)';
@@ -167,13 +169,31 @@ function writeEnvFile(envConfig) {
  *   `stable` — the validated production branch. Choose `main` for bleeding-
  *   edge deploys that may be unstable.
  */
-async function deploy(envConfig, { branch = 'stable' } = {}) {
+async function deploy(envConfig, { branch = 'stable', tlsConfig = null } = {}) {
   const dc = composeCmd();
 
   // 1. Write .env
   process.stdout.write('Writing .env file... ');
   const envPath = writeEnvFile(envConfig);
   console.log(`${check} ${dim(envPath)}`);
+
+  // 1a. Provision TLS certs (if the operator opted into TLS). Runs BEFORE
+  // `docker compose up` so the frontend container's entrypoint detects
+  // certs at first boot. Letsencrypt is the exception — its provisioning
+  // happens AFTER nginx is up so certbot can serve the ACME challenge.
+  // See docs/local-ssl-notes.md for the full picture.
+  if (tlsConfig && tlsConfig.source !== 'letsencrypt') {
+    const certsDir = path.resolve(process.cwd(), 'certs');
+    process.stdout.write(`Provisioning TLS cert (${tlsConfig.source})... `);
+    try {
+      provisionCerts(tlsConfig, { domain: envConfig.DOMAIN || 'localhost', certsDir });
+      console.log(`${check} ${dim(certsDir + '/local.{crt,key}')}`);
+    } catch (err) {
+      console.log(red('failed'));
+      console.log(dim(`  ${err.message ?? err}`));
+      console.log(dim('  The stack will boot but nginx will run HTTP-only until you fix this.'));
+    }
+  }
 
   // Check for updates if this is an existing installation
   const isUpgrade = fs.existsSync(path.resolve(process.cwd(), '.deploy-state.json'));
@@ -289,6 +309,47 @@ async function deploy(envConfig, { branch = 'stable' } = {}) {
   } else {
     console.log(yellow('[timeout]'));
     console.log(dim('  The API may still be starting. Check logs with: docker compose logs -f api'));
+  }
+
+  // 6. Let's Encrypt issuance (post-up, since certbot needs nginx serving
+  //    /.well-known/acme-challenge/). The other three cert sources were
+  //    already provisioned in step 1a before `compose up`.
+  if (tlsConfig?.source === 'letsencrypt' && tlsConfig.letsencrypt) {
+    console.log('');
+    console.log(bold('Issuing Let\'s Encrypt certificate...'));
+    console.log(dim('  certbot will validate ' + tlsConfig.letsencrypt.domain + ' over HTTP-01.'));
+    const result = runInitialIssuance({
+      domain: tlsConfig.letsencrypt.domain,
+      email: tlsConfig.letsencrypt.email,
+      composeBin: dc,
+    });
+    if (result.ok) {
+      console.log(`${check} Cert issued and symlinked into ${dim('./certs/local.{crt,key}')}`);
+      console.log(dim('  Reloading nginx so the new cert takes effect...'));
+      try {
+        await runShell(`${dc} ${fileFlags} exec -T frontend nginx -s reload`);
+        console.log(`${check} nginx reloaded`);
+      } catch (err) {
+        console.log(`${yellow('nginx reload failed; restart frontend manually:')} ${dim(`${dc} restart frontend`)}`);
+      }
+
+      // Renewal task. Print instructions instead of installing the cron
+      // entry automatically — operators frequently disable system cron
+      // (NAS hosts often have non-standard schedulers) and silently
+      // installing into a non-running cron daemon would create a
+      // false sense of "renewal handled" that breaks at month 3.
+      const task = buildRenewalTask({ projectDir: process.cwd(), composeBin: dc });
+      console.log('');
+      console.log(bold('Auto-renewal:'));
+      for (const line of task.instructions) {
+        console.log(dim('  ' + line));
+      }
+    } else {
+      console.log(`${red('Let\'s Encrypt issuance failed:')} ${dim(result.reason)}`);
+      console.log(dim('  The stack is up but nginx is HTTP-only. Re-run the deploy script after'));
+      console.log(dim('  resolving the issue (most often: domain not pointing at this host, or'));
+      console.log(dim('  port 80 not reachable from the public internet).'));
+    }
   }
 
   return apiReady;
