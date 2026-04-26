@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProjectStore } from '@/stores/project.store';
 import { BoardLayout } from '@/components/layout/board-layout';
 import { BoardListPage } from '@/pages/board-list';
 import { BoardCanvasPage } from '@/pages/board-canvas';
@@ -56,12 +57,27 @@ function parseRoute(path: string): Route {
 }
 
 export function App() {
-  const { isAuthenticated, isLoading, fetchMe } = useAuthStore();
+  const { user, isAuthenticated, isLoading, fetchMe } = useAuthStore();
+  const hydrateProjectStore = useProjectStore((s) => s.hydrateForOrg);
+  const clearProjectStore = useProjectStore((s) => s.clearAll);
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
 
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
+
+  // Hydrate the project store from the per-org localStorage key once we
+  // know the user's org. If the org changes between renders (e.g. a
+  // SuperUser context-switched without a page reload), drop the in-
+  // memory state first so we don't briefly send the prior org's project
+  // id on a list query before hydrate runs.
+  useEffect(() => {
+    if (user?.org_id) {
+      hydrateProjectStore(user.org_id);
+    } else {
+      clearProjectStore();
+    }
+  }, [user?.org_id, hydrateProjectStore, clearProjectStore]);
 
   // Apply saved theme on mount
   useEffect(() => {
