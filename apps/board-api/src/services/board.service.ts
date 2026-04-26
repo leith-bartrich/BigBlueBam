@@ -339,7 +339,29 @@ export async function listBoards(filters: ListBoardFilters) {
       archived_at: boards.archived_at,
       creator_name: users.display_name,
       project_name: projects.name,
-      element_count: sql<number>`(SELECT COUNT(*)::int FROM board_elements WHERE board_id = ${boards.id})`,
+      // element_count needs a fallback. The denormalized board_elements
+      // rows are populated by element-snapshot.service when a scene is
+      // persisted; if a board persisted via the WS scene_update path
+      // before the snapshot service ran (or if the snapshot job failed),
+      // board_elements can be empty even though boards.yjs_state is
+      // non-null and has scene content. Without the fallback, the All
+      // Boards card shows "Empty board" for boards that actually have
+      // drawings, which was half of the "ghost in the list, no content"
+      // symptom users reported. So: prefer the COUNT(*) when it's
+      // positive; else parse the yjs_state JSON and count its elements
+      // array. yjs_state is bytea but the actual content is UTF-8 JSON
+      // (Excalidraw scene), so jsonb_array_length(convert_from(yjs_state,'UTF8')::jsonb->'elements')
+      // works. NULL yjs_state ⇒ 0.
+      element_count: sql<number>`COALESCE(
+        NULLIF((SELECT COUNT(*)::int FROM board_elements WHERE board_id = ${boards.id}), 0),
+        CASE
+          WHEN ${boards.yjs_state} IS NULL THEN 0
+          ELSE COALESCE(
+            jsonb_array_length(
+              (convert_from(${boards.yjs_state}, 'UTF8')::jsonb)->'elements'
+            ), 0)
+        END
+      )`,
       collaborator_count: sql<number>`(SELECT COUNT(*)::int FROM board_collaborators WHERE board_id = ${boards.id})`,
       // Per-user star state for the requesting user. The list response goes
       // straight into the All Boards card grid which conditions the star
