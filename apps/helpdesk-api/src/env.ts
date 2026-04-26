@@ -54,7 +54,22 @@ const envSchema = z.object({
   S3_REGION: z.string().default('us-east-1'),
 
   COOKIE_DOMAIN: z.string().optional(),
-  COOKIE_SECURE: z.coerce.boolean().default(false),
+  // z.coerce.boolean() runs JS Boolean() which is `true` for any non-empty
+  // string — including 'false'. Parse the env string explicitly so the
+  // Secure flag actually flips off when an operator sets COOKIE_SECURE=false
+  // for an HTTP-only deployment. See apps/api/src/env.ts for context.
+  COOKIE_SECURE: z.preprocess(
+    (val) => {
+      if (val === '' || val === undefined) return false;
+      if (typeof val === 'string') {
+        const v = val.toLowerCase();
+        if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+        if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
+      }
+      return val;
+    },
+    z.boolean().default(false),
+  ),
 
   // HB-7: URL + shared secret for Bam's /internal/helpdesk/* surface. All
   // Bam-side writes (tasks, comments, phase transitions) go through these

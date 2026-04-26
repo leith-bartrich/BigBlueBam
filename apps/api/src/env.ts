@@ -48,9 +48,24 @@ const envSchema = z.object({
   S3_REGION: z.string().default('us-east-1'),
 
   COOKIE_DOMAIN: z.string().optional(),
+  // z.coerce.boolean() runs JS Boolean() which is `true` for ANY non-empty
+  // string — including the string 'false'. That bit us when operators set
+  // COOKIE_SECURE=false in .env to disable the Secure flag for HTTP-only
+  // local-network deploys: the cookie still went out with Secure, the
+  // browser silently dropped it, and every page reload bounced through
+  // /login. Parse the strings ourselves so 'false' / '0' actually mean
+  // false; '' / undefined falls through to the NODE_ENV-based default.
   COOKIE_SECURE: z.preprocess(
-    (val) => (val === '' || val === undefined ? undefined : val),
-    z.coerce.boolean().optional(),
+    (val) => {
+      if (val === '' || val === undefined) return undefined;
+      if (typeof val === 'string') {
+        const v = val.toLowerCase();
+        if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+        if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
+      }
+      return val;
+    },
+    z.boolean().optional(),
   ),
 
   // SMTP / email (P1-30). Optional — if SMTP_HOST is unset, outbound emails
