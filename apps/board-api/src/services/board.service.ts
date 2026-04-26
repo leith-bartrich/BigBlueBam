@@ -123,6 +123,168 @@ function visibilityFilter(userId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Integrity helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert that `projectId` (if non-null) belongs to the same org as the
+ * caller. Used at the service boundary by every code path that writes
+ * `boards.project_id` so a buggy / stale client can't drop a foreign-org
+ * project id into the table. Migration 0143 adds a DB trigger as
+ * belt-and-suspenders, but raising the friendly BoardError here gives
+ * clients a structured 400 response instead of a generic 500.
+ *
+ * Also enforces "user is allowed to attach a board to that project" — if
+ * the user can see the project at all (project_memberships row exists OR
+ * the project is in their org), we accept it; otherwise reject. This is
+ * scoped permissively because the visibility filter on listBoards already
+ * covers the "can the user SEE this board" question; we just want to
+ * stop a SuperUser-impersonation-style escalation here.
+ */
+export async function assertProjectOrgAlignment(
+  projectId: string | null | undefined,
+  orgId: string,
+): Promise<void> {
+  if (!projectId) return;
+  const [project] = await db
+    .select({ org_id: projects.org_id })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) {
+    throw new BoardError('PROJECT_NOT_FOUND', `Project ${projectId} not found`, 404);
+  }
+  if (project.org_id !== orgId) {
+    throw new BoardError(
+      'PROJECT_ORG_MISMATCH',
+      `Project ${projectId} belongs to a different organization than this board.`,
+      400,
+    );
+  }
+}
+
+/**
+ * Inspect a single board for known integrity issues. Today: just
+ * cross-org project_id (the symptom that drove migration 0143). Designed
+ * to grow — add additional checks as new corruption modes are
+ * discovered, and the alert UX picks them up automatically as long as
+ * each new check returns a unique `code`.
+ */
+export interface BoardIntegrityIssue {
+  code: 'PROJECT_ORG_MISMATCH' | 'PROJECT_NOT_FOUND';
+  message: string;
+  details: Record<string, unknown>;
+  remediations: ('detach' | 'reassign')[];
+}
+
+export async function checkBoardIntegrity(
+  boardId: string,
+  orgId: string,
+): Promise<BoardIntegrityIssue[]> {
+  const issues: BoardIntegrityIssue[] = [];
+
+  const [board] = await db
+    .select({
+      id: boards.id,
+      organization_id: boards.organization_id,
+      project_id: boards.project_id,
+    })
+    .from(boards)
+    .where(and(eq(boards.id, boardId), eq(boards.organization_id, orgId)))
+    .limit(1);
+  if (!board) return issues;
+
+  if (board.project_id) {
+    const [project] = await db
+      .select({ org_id: projects.org_id, name: projects.name })
+      .from(projects)
+      .where(eq(projects.id, board.project_id))
+      .limit(1);
+    if (!project) {
+      issues.push({
+        code: 'PROJECT_NOT_FOUND',
+        message: 'This board is attached to a project that no longer exists.',
+        details: { project_id: board.project_id },
+        remediations: ['detach', 'reassign'],
+      });
+    } else if (project.org_id !== board.organization_id) {
+      issues.push({
+        code: 'PROJECT_ORG_MISMATCH',
+        message:
+          "This board's project belongs to a different organization. Pick a project in this org or detach it.",
+        details: {
+          project_id: board.project_id,
+          project_org_id: project.org_id,
+          board_org_id: board.organization_id,
+        },
+        remediations: ['detach', 'reassign'],
+      });
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Apply a remediation for a board integrity issue. Currently both actions
+ * just patch project_id (detach → null, reassign → new id), but the
+ * function exists as its own service entrypoint so the audit-log write
+ * lives next to the mutation in a single transaction. Future remediations
+ * (e.g. "purge orphaned board_elements rows after a yjs_state mismatch")
+ * can plug in here.
+ */
+export async function remediateBoardIntegrity(args: {
+  boardId: string;
+  orgId: string;
+  userId: string;
+  action: { action: 'detach' } | { action: 'reassign'; project_id: string };
+}): Promise<{ id: string; project_id: string | null }> {
+  const existing = await getBoard(args.boardId, args.orgId);
+  if (!existing) throw new BoardError('NOT_FOUND', 'Board not found', 404);
+
+  let newProjectId: string | null;
+  if (args.action.action === 'detach') {
+    newProjectId = null;
+  } else {
+    // reassign — alignment-check before the DB trigger sees it so the
+    // user gets a readable error instead of a CHECK violation.
+    await assertProjectOrgAlignment(args.action.project_id, args.orgId);
+    newProjectId = args.action.project_id;
+  }
+
+  const remediation =
+    args.action.action === 'detach' ? 'user_detached' : 'user_reassigned';
+
+  return await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(boards)
+      .set({
+        project_id: newProjectId,
+        updated_at: new Date(),
+        updated_by: args.userId,
+      })
+      .where(eq(boards.id, args.boardId))
+      .returning({ id: boards.id, project_id: boards.project_id });
+
+    await tx.execute(sql`
+      INSERT INTO board_integrity_audit (board_id, issue_code, details, remediation)
+      VALUES (
+        ${args.boardId},
+        ${args.action.action === 'detach' ? 'PROJECT_DETACHED' : 'PROJECT_REASSIGNED'},
+        ${JSON.stringify({
+          previous_project_id: existing.project_id,
+          new_project_id: newProjectId,
+          user_id: args.userId,
+        })}::jsonb,
+        ${remediation}
+      )
+    `);
+
+    return updated!;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
@@ -184,6 +346,19 @@ export async function listBoards(filters: ListBoardFilters) {
       // icon's fill on this boolean — without it, every card renders unstarred
       // regardless of the actual board_stars row state.
       starred: sql<boolean>`EXISTS (SELECT 1 FROM board_stars WHERE board_id = ${boards.id} AND user_id = ${filters.userId})`,
+      // Inline integrity check so the All Boards card grid can render an
+      // amber warning indicator without a per-card round-trip. Covers the
+      // two known issue codes (PROJECT_ORG_MISMATCH, PROJECT_NOT_FOUND);
+      // checkBoardIntegrity() is the source of truth and detail endpoint
+      // for the exact issue list. A non-null project_id that resolves to
+      // a project in a different org OR doesn't resolve at all counts as
+      // 1; otherwise 0. CASE expression so a NULL project_id is always 0.
+      integrity_issue_count: sql<number>`CASE
+        WHEN ${boards.project_id} IS NULL THEN 0
+        WHEN NOT EXISTS (SELECT 1 FROM projects WHERE id = ${boards.project_id}) THEN 1
+        WHEN (SELECT org_id FROM projects WHERE id = ${boards.project_id}) <> ${boards.organization_id} THEN 1
+        ELSE 0
+      END`,
     })
     .from(boards)
     .leftJoin(users, eq(boards.created_by, users.id))
@@ -252,6 +427,11 @@ export async function getBoardStats(id: string, orgId: string) {
 }
 
 export async function createBoard(data: CreateBoardInput, userId: string, orgId: string) {
+  // Reject up-front so the client gets a structured 400 instead of the DB
+  // trigger's check_violation. The trigger from migration 0143 still
+  // catches anything that bypasses the service layer.
+  await assertProjectOrgAlignment(data.project_id, orgId);
+
   let yjsState: Buffer | null = null;
   if (data.template_id) {
     const [tpl] = await db
@@ -291,6 +471,12 @@ export async function updateBoard(
 ) {
   const existing = await getBoard(id, orgId);
   if (!existing) throw new BoardError('NOT_FOUND', 'Board not found', 404);
+
+  // Same alignment check on update — a PATCH with project_id from a
+  // different org gets rejected before the DB trigger sees it.
+  if (data.project_id !== undefined) {
+    await assertProjectOrgAlignment(data.project_id, orgId);
+  }
 
   const updateValues: Record<string, unknown> = { updated_at: new Date(), updated_by: userId };
   if (data.name !== undefined) updateValues.name = data.name;
@@ -356,12 +542,24 @@ export async function duplicateBoard(id: string, userId: string, orgId: string) 
     .limit(1);
   if (!existing) throw new BoardError('NOT_FOUND', 'Board not found', 404);
 
+  // If the source board's project_id is misaligned (corrupted state,
+  // pre-trigger), don't propagate the corruption. Detach the duplicate and
+  // log; the user can re-attach via the alert UX.
+  let projectIdForCopy = existing.project_id;
+  if (projectIdForCopy) {
+    try {
+      await assertProjectOrgAlignment(projectIdForCopy, orgId);
+    } catch {
+      projectIdForCopy = null;
+    }
+  }
+
   return await db.transaction(async (tx) => {
     const [newBoard] = await tx
       .insert(boards)
       .values({
         organization_id: orgId,
-        project_id: existing.project_id,
+        project_id: projectIdForCopy,
         name: `${existing.name} (copy)`,
         description: existing.description,
         icon: existing.icon,
