@@ -31,7 +31,7 @@ export interface Board {
 }
 
 export interface BoardIntegrityIssue {
-  code: 'PROJECT_ORG_MISMATCH' | 'PROJECT_NOT_FOUND';
+  code: 'PROJECT_ORG_MISMATCH' | 'PROJECT_NOT_FOUND' | 'PROJECT_AUTO_DETACHED';
   message: string;
   details: Record<string, unknown>;
   remediations: ('detach' | 'reassign')[];

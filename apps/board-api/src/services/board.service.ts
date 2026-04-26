@@ -171,7 +171,7 @@ export async function assertProjectOrgAlignment(
  * each new check returns a unique `code`.
  */
 export interface BoardIntegrityIssue {
-  code: 'PROJECT_ORG_MISMATCH' | 'PROJECT_NOT_FOUND';
+  code: 'PROJECT_ORG_MISMATCH' | 'PROJECT_NOT_FOUND' | 'PROJECT_AUTO_DETACHED';
   message: string;
   details: Record<string, unknown>;
   remediations: ('detach' | 'reassign')[];
@@ -217,6 +217,37 @@ export async function checkBoardIntegrity(
           project_org_id: project.org_id,
           board_org_id: board.organization_id,
         },
+        remediations: ['detach', 'reassign'],
+      });
+    }
+  } else {
+    // project_id is NULL — but the user might have a board the migration
+    // 0143 backfill auto-detached because it was previously misaligned.
+    // Surface those so the user gets a chance to reassign to a project
+    // in their current org. We consider the issue resolved once the
+    // user has explicitly remediated it (via either Detach — meaning
+    // they confirmed the no-project state — or Reassign).
+    const autoDetachRow = await db.execute(sql`
+      SELECT details, created_at FROM board_integrity_audit
+      WHERE board_id = ${boardId}
+        AND remediation = 'auto_detached_by_migration_0143'
+        AND NOT EXISTS (
+          SELECT 1 FROM board_integrity_audit later
+          WHERE later.board_id = ${boardId}
+            AND later.remediation IN ('user_detached', 'user_reassigned')
+            AND later.created_at > board_integrity_audit.created_at
+        )
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+    const row = (autoDetachRow as unknown as { rows?: Array<{ details: unknown }> }).rows?.[0]
+      ?? (autoDetachRow as unknown as Array<{ details: unknown }>)[0];
+    if (row) {
+      issues.push({
+        code: 'PROJECT_AUTO_DETACHED',
+        message:
+          "This board was automatically detached from a project that belonged to a different organization. Reassign it to a project in this org, or confirm you want to leave it unattached.",
+        details: (row.details as Record<string, unknown>) ?? {},
         remediations: ['detach', 'reassign'],
       });
     }
@@ -369,14 +400,33 @@ export async function listBoards(filters: ListBoardFilters) {
       // regardless of the actual board_stars row state.
       starred: sql<boolean>`EXISTS (SELECT 1 FROM board_stars WHERE board_id = ${boards.id} AND user_id = ${filters.userId})`,
       // Inline integrity check so the All Boards card grid can render an
-      // amber warning indicator without a per-card round-trip. Covers the
-      // two known issue codes (PROJECT_ORG_MISMATCH, PROJECT_NOT_FOUND);
-      // checkBoardIntegrity() is the source of truth and detail endpoint
-      // for the exact issue list. A non-null project_id that resolves to
-      // a project in a different org OR doesn't resolve at all counts as
-      // 1; otherwise 0. CASE expression so a NULL project_id is always 0.
+      // amber warning indicator without a per-card round-trip.
+      // checkBoardIntegrity() is the source of truth for the exact issue
+      // list returned by the per-board endpoint. The CASE here mirrors
+      // the three issue codes:
+      //   PROJECT_NOT_FOUND      — non-null project_id, no projects row.
+      //   PROJECT_ORG_MISMATCH   — project_id resolves to a project in a
+      //                            different org (pre-trigger drift).
+      //   PROJECT_AUTO_DETACHED  — project_id is null, but migration 0143
+      //                            auto-detached this board from a
+      //                            misaligned project and the user hasn't
+      //                            yet explicitly confirmed (detach) or
+      //                            reassigned. The unresolved-audit-row
+      //                            EXISTS keeps the count at 0 once the
+      //                            user has acted on the alert.
       integrity_issue_count: sql<number>`CASE
-        WHEN ${boards.project_id} IS NULL THEN 0
+        WHEN ${boards.project_id} IS NULL THEN
+          CASE WHEN EXISTS (
+            SELECT 1 FROM board_integrity_audit a
+            WHERE a.board_id = ${boards.id}
+              AND a.remediation = 'auto_detached_by_migration_0143'
+              AND NOT EXISTS (
+                SELECT 1 FROM board_integrity_audit later
+                WHERE later.board_id = a.board_id
+                  AND later.remediation IN ('user_detached', 'user_reassigned')
+                  AND later.created_at > a.created_at
+              )
+          ) THEN 1 ELSE 0 END
         WHEN NOT EXISTS (SELECT 1 FROM projects WHERE id = ${boards.project_id}) THEN 1
         WHEN (SELECT org_id FROM projects WHERE id = ${boards.project_id}) <> ${boards.organization_id} THEN 1
         ELSE 0

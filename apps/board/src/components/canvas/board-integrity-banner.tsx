@@ -82,14 +82,14 @@ export function BoardIntegrityBanner({ boardId }: BoardIntegrityBannerProps) {
             onClick={handleDetach}
             loading={remediate.isPending && remediate.variables?.action.action === 'detach'}
           >
-            Detach from project
+            {primary.code === 'PROJECT_AUTO_DETACHED' ? 'Leave unattached' : 'Detach from project'}
           </Button>
           <Button
             size="sm"
             onClick={() => setReassignOpen(true)}
             disabled={remediate.isPending}
           >
-            Reassign to a project here
+            {primary.code === 'PROJECT_AUTO_DETACHED' ? 'Reassign to a project' : 'Reassign to a project here'}
           </Button>
         </div>
       </div>
