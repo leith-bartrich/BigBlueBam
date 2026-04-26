@@ -1,6 +1,7 @@
-import { PaintbrushVertical, LayoutGrid, Star, LayoutTemplate, FolderOpen, ChevronDown, Check } from 'lucide-react';
+import { PaintbrushVertical, LayoutGrid, Star, LayoutTemplate, FolderOpen, ChevronDown, Check, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/project.store';
+import { useAuthStore } from '@/stores/auth.store';
 import { useProjects } from '@/hooks/use-projects';
 import { useState, useRef, useEffect } from 'react';
 
@@ -13,12 +14,17 @@ const navItems = [
   { label: 'All Boards', icon: LayoutGrid, path: '/', page: 'home' },
   { label: 'Starred', icon: Star, path: '/starred', page: 'starred' },
   { label: 'Templates', icon: LayoutTemplate, path: '/templates', page: 'templates' },
+  { label: 'Archive', icon: Archive, path: '/archived', page: 'archived' },
 ];
 
 function ProjectScopeSelector() {
   const { projects } = useProjects();
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const setActiveProject = useProjectStore((s) => s.setActiveProject);
+  // Active org is required so the project store key never crosses orgs.
+  // We default to a sentinel empty string if the auth store hasn't
+  // hydrated yet — setActiveProject will be a no-op until it has.
+  const orgId = useAuthStore((s) => s.user?.org_id ?? '');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -49,7 +55,7 @@ function ProjectScopeSelector() {
       {open && (
         <div className="absolute left-2 right-2 top-full z-30 mt-1 rounded-lg border border-zinc-700 bg-zinc-900 shadow-lg py-1 max-h-64 overflow-y-auto">
           <button
-            onClick={() => { setActiveProject(null); setOpen(false); }}
+            onClick={() => { orgId && setActiveProject(orgId, null); setOpen(false); }}
             className={cn(
               'flex items-center justify-between w-full px-3 py-2 text-sm transition-colors',
               activeProjectId === null
@@ -70,7 +76,7 @@ function ProjectScopeSelector() {
             return (
               <button
                 key={project.id}
-                onClick={() => { setActiveProject(project.id); setOpen(false); }}
+                onClick={() => { orgId && setActiveProject(orgId, project.id); setOpen(false); }}
                 className={cn(
                   'flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors',
                   isActive

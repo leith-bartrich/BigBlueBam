@@ -36,6 +36,14 @@ export function useBoardSync(
   // Buffer: accumulate remote elements between apply ticks
   const pendingRemoteRef = useRef<any[]>([]);
 
+  // Last seen Redis-stream sequence id for scene_update events. Used by
+  // the reconnect-replay protocol: when the WS drops and reconnects, we
+  // send this back on join_board and the server replays everything that
+  // landed after it. Closes the "edits during reconnect gap silently
+  // dropped" window. Cleared only when the user navigates away from the
+  // board entirely; preserved across WS drop+reconnect cycles.
+  const lastSeenSeqRef = useRef<string | null>(null);
+
   // Remote collaborator pointers (for laser + cursor rendering)
   const collaboratorsRef = useRef<Map<string, any>>(new Map());
 
@@ -66,7 +74,12 @@ export function useBoardSync(
   useEffect(() => {
     mountedRef.current = true;
     joinedRef.current = false;
-    pendingRemoteRef.current = [];
+    // Don't wipe pendingRemoteRef across reconnects — the server's
+    // replay-since-last-seen-seq protocol will refill it with everything
+    // we missed. Wiping was the previous-version data-loss path on a
+    // reconnect that overlapped a peer's edit. Initial mount also lands
+    // here; pendingRemoteRef defaults to [] from the useRef init so
+    // there's nothing stale to clear on first connect either.
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${window.location.host}/board/ws`;
@@ -108,7 +121,18 @@ export function useBoardSync(
 
         switch (msg.type) {
           case 'connected':
-            ws.send(JSON.stringify({ type: 'join_board', boardId }));
+            // Echo last_seen_seq back so the server can replay any peer
+            // edits that landed during a reconnect gap. On a fresh
+            // session lastSeenSeqRef is null and the server skips
+            // replay; on a reconnect it's the id of the last
+            // scene_update we saw.
+            ws.send(
+              JSON.stringify({
+                type: 'join_board',
+                boardId,
+                last_seen_seq: lastSeenSeqRef.current ?? undefined,
+              }),
+            );
             break;
 
           case 'room_state':
@@ -123,9 +147,34 @@ export function useBoardSync(
 
           case 'scene_update': {
             const remoteElements = msg.data?.elements;
+            if (typeof msg.seq === 'string') {
+              lastSeenSeqRef.current = msg.seq;
+            }
             if (!Array.isArray(remoteElements) || remoteElements.length === 0) break;
             // Buffer — don't apply immediately (browser may throttle rendering)
             pendingRemoteRef.current.push(...remoteElements);
+            break;
+          }
+
+          case 'replay': {
+            // Server response to join_board with last_seen_seq. Each
+            // entry is a scene_update event the server already broadcast
+            // while we were disconnected. Apply them in order so the
+            // local state catches up before we accept new realtime
+            // updates from peers.
+            const events = msg.data?.events;
+            if (!Array.isArray(events)) break;
+            for (const ev of events) {
+              if (ev?.type === 'scene_update') {
+                if (typeof ev.seq === 'string') {
+                  lastSeenSeqRef.current = ev.seq;
+                }
+                const els = ev.data?.elements;
+                if (Array.isArray(els) && els.length > 0) {
+                  pendingRemoteRef.current.push(...els);
+                }
+              }
+            }
             break;
           }
 

@@ -19,3 +19,4 @@ export { boardTaskLinks } from './board-task-links.js';
 export { boardCollaborators } from './board-collaborators.js';
 export { boardStars } from './board-stars.js';
 export { boardChatMessages } from './board-chat-messages.js';
+export { boardIntegrityAudit } from './board-integrity-audit.js';

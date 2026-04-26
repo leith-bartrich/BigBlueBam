@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as RadixDropdownMenu from '@radix-ui/react-dropdown-menu';
 import { bbbGet, bbbPost } from '@/lib/bbb-api';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProjectStore } from '@/stores/project.store';
 import { cn } from '@/lib/utils';
 
 interface MembershipOrg {
@@ -46,6 +47,14 @@ export function OrgSwitcher() {
       bbbPost<{ data: unknown }>('/auth/switch-org', { org_id: targetOrgId }),
     onSuccess: async () => {
       await queryClient.invalidateQueries();
+      // Wipe every per-org localStorage key the project store has
+      // written. Without this, the in-memory store still holds the prior
+      // org's activeProjectId until the page reload, AND the legacy un-
+      // scoped key (if it survived from an old build) would otherwise
+      // hydrate into the new org. The result was misaligned project_id
+      // values landing in boards.project_id (cf. migration 0143). Belt
+      // to the org-scoped storage key's suspenders.
+      useProjectStore.getState().clearAll();
       await fetchMe();
       window.location.href = '/board/';
     },

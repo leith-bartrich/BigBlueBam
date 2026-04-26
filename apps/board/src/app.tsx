@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProjectStore } from '@/stores/project.store';
 import { BoardLayout } from '@/components/layout/board-layout';
 import { BoardListPage } from '@/pages/board-list';
 import { BoardCanvasPage } from '@/pages/board-canvas';
@@ -7,6 +8,7 @@ import { BoardNewPage } from '@/pages/board-new';
 import { VersionHistoryPage } from '@/pages/version-history';
 import { TemplateBrowserPage } from '@/pages/template-browser';
 import { StarredBoardsPage } from '@/pages/starred-boards';
+import { ArchivedBoardsPage } from '@/pages/archived-boards';
 import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
@@ -17,6 +19,7 @@ type Route =
   | { page: 'versions'; id: string }
   | { page: 'templates' }
   | { page: 'starred' }
+  | { page: 'archived' }
   | { page: 'help' };
 
 const BASE_PATH = '/board';
@@ -35,6 +38,7 @@ function parseRoute(path: string): Route {
   if (p === '/new') return { page: 'new' };
   if (p === '/templates') return { page: 'templates' };
   if (p === '/starred') return { page: 'starred' };
+  if (p === '/archived') return { page: 'archived' };
   if (p === '/help') return { page: 'help' };
 
   // /:id/versions
@@ -53,12 +57,27 @@ function parseRoute(path: string): Route {
 }
 
 export function App() {
-  const { isAuthenticated, isLoading, fetchMe } = useAuthStore();
+  const { user, isAuthenticated, isLoading, fetchMe } = useAuthStore();
+  const hydrateProjectStore = useProjectStore((s) => s.hydrateForOrg);
+  const clearProjectStore = useProjectStore((s) => s.clearAll);
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
 
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
+
+  // Hydrate the project store from the per-org localStorage key once we
+  // know the user's org. If the org changes between renders (e.g. a
+  // SuperUser context-switched without a page reload), drop the in-
+  // memory state first so we don't briefly send the prior org's project
+  // id on a list query before hydrate runs.
+  useEffect(() => {
+    if (user?.org_id) {
+      hydrateProjectStore(user.org_id);
+    } else {
+      clearProjectStore();
+    }
+  }, [user?.org_id, hydrateProjectStore, clearProjectStore]);
 
   // Apply saved theme on mount
   useEffect(() => {
@@ -148,6 +167,8 @@ export function App() {
         return <TemplateBrowserPage onNavigate={navigate} />;
       case 'starred':
         return <StarredBoardsPage onNavigate={navigate} />;
+      case 'archived':
+        return <ArchivedBoardsPage onNavigate={navigate} />;
       default:
         return null;
     }

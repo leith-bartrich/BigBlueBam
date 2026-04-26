@@ -165,6 +165,47 @@ export default async function boardRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /boards/:id/integrity — Per-board integrity check
+  // Returns the structured issue list that powers the alert UX. The list
+  // response carries an integrity_issue_count for the card-level indicator;
+  // this endpoint backs the canvas-level banner and the Detach / Reassign
+  // remediation dialog.
+  fastify.get<{ Params: { id: string } }>(
+    '/boards/:id/integrity',
+    { preHandler: [requireAuth, requireBoardAccess()] },
+    async (request, reply) => {
+      const issues = await boardService.checkBoardIntegrity(
+        (request as any).board.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: { issues, ok: issues.length === 0 } });
+    },
+  );
+
+  // POST /boards/:id/remediate — Apply a fix for an integrity issue
+  // Two operations: detach (project_id := NULL) or reassign (project_id :=
+  // <new id from caller's org>). Both write a board_integrity_audit row so
+  // the operator can see what got fixed by whom. The trigger from migration
+  // 0143 means a malformed reassign target is caught at the DB level too.
+  fastify.post<{ Params: { id: string } }>(
+    '/boards/:id/remediate',
+    { preHandler: [requireAuth, requireBoardEditAccess(), requireScope('read_write')] },
+    async (request, reply) => {
+      const schema = z.discriminatedUnion('action', [
+        z.object({ action: z.literal('detach') }),
+        z.object({ action: z.literal('reassign'), project_id: z.string().uuid() }),
+      ]);
+      const body = schema.parse(request.body);
+      const board = await boardService.remediateBoardIntegrity({
+        boardId: (request as any).board.id,
+        orgId: request.user!.org_id,
+        userId: request.user!.id,
+        action: body,
+      });
+      return reply.send({ data: board });
+    },
+  );
+
   // GET /boards/:id/stats — Board statistics
   fastify.get<{ Params: { id: string } }>(
     '/boards/:id/stats',
@@ -240,6 +281,23 @@ export default async function boardRoutes(fastify: FastifyInstance) {
         request.user!.org_id,
       );
       return reply.send({ data: board });
+    },
+  );
+
+  // DELETE /boards/:id/permanent — Hard-delete a board (and via FK CASCADE,
+  // all its elements, collaborators, stars, versions, etc.). Distinct from
+  // the plain DELETE which archives. The /permanent suffix keeps the two
+  // affordances visible in the route list and route logs; using a query
+  // param like ?permanent=true would conflate the two in audit grep.
+  fastify.delete<{ Params: { id: string } }>(
+    '/boards/:id/permanent',
+    { preHandler: [requireAuth, requireBoardEditAccess(), requireScope('read_write')] },
+    async (request, reply) => {
+      const result = await boardService.permanentlyDeleteBoard(
+        (request as any).board.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: result });
     },
   );
 

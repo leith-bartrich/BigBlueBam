@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Plus, Search, LayoutGrid, Clock, Star, Archive, Loader2 } from 'lucide-react';
+import { Plus, Search, LayoutGrid, Clock, Star, Archive, Loader2, FolderOpen, X } from 'lucide-react';
 import { Button } from '@/components/common/button';
 import { BoardCard } from '@/components/list/board-card';
 import { useBoardList, useBoardStats } from '@/hooks/use-boards';
+import { useProjectStore } from '@/stores/project.store';
+import { useAuthStore } from '@/stores/auth.store';
+import { useProjects } from '@/hooks/use-projects';
 
 interface BoardListPageProps {
   onNavigate: (path: string) => void;
@@ -12,6 +15,18 @@ export function BoardListPage({ onNavigate }: BoardListPageProps) {
   const [search, setSearch] = useState('');
   const { data: boardsData, isLoading } = useBoardList({ search: search || undefined });
   const { data: statsData } = useBoardStats();
+
+  // Read the active filter so we can show the operator exactly what
+  // they're filtering by. Without this banner, picking a project in the
+  // sidebar produced an empty page with no clue why; the user thought
+  // the listing was broken.
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const setActiveProject = useProjectStore((s) => s.setActiveProject);
+  const orgId = useAuthStore((s) => s.user?.org_id ?? '');
+  const { projects } = useProjects();
+  const activeProjectName = activeProjectId
+    ? projects.find((p) => p.id === activeProjectId)?.name ?? null
+    : null;
 
   const boards = boardsData?.data ?? [];
   const stats = statsData?.data;
@@ -26,7 +41,7 @@ export function BoardListPage({ onNavigate }: BoardListPageProps) {
             Visual collaboration whiteboards for your team
           </p>
         </div>
-        <Button onClick={() => onNavigate('/new')}>
+        <Button onClick={() => onNavigate('/templates')}>
           <Plus className="h-4 w-4" />
           New Board
         </Button>
@@ -41,6 +56,40 @@ export function BoardListPage({ onNavigate }: BoardListPageProps) {
           <StatCard icon={Archive} label="Archived" value={stats.archived} />
         </div>
       )}
+
+      {/* Active-filter banner. Always renders something so the operator
+          knows exactly what's being filtered: "All Projects" when the
+          picker is on All Projects (informational, no clear button), or
+          "Showing: <Project Name>" with a one-click reset when filtered
+          to a specific project. Stops the "page is empty for no
+          obvious reason" footgun when the picker is set to a project
+          with no boards. */}
+      <div
+        className={
+          'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ' +
+          (activeProjectId
+            ? 'border-primary-200 bg-primary-50 text-primary-800 dark:border-primary-900/50 dark:bg-primary-900/20 dark:text-primary-200'
+            : 'border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300')
+        }
+      >
+        <FolderOpen className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate">
+          {activeProjectId
+            ? `Showing: ${activeProjectName ?? 'Unknown project'}`
+            : 'Showing: All Projects'}
+        </span>
+        {activeProjectId && (
+          <button
+            type="button"
+            onClick={() => orgId && setActiveProject(orgId, null)}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium hover:bg-primary-100 dark:hover:bg-primary-900/40"
+            title="Clear project filter"
+          >
+            <X className="h-3 w-3" />
+            Show All Projects
+          </button>
+        )}
+      </div>
 
       {/* Search */}
       <div className="relative">
@@ -70,7 +119,7 @@ export function BoardListPage({ onNavigate }: BoardListPageProps) {
             {search ? 'Try a different search term' : 'Create your first visual collaboration board'}
           </p>
           {!search && (
-            <Button onClick={() => onNavigate('/new')}>
+            <Button onClick={() => onNavigate('/templates')}>
               <Plus className="h-4 w-4" />
               Create Board
             </Button>

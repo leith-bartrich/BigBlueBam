@@ -1,0 +1,90 @@
+# Multi-instance overlay for testing Board's cross-replica collaboration.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.multi.yml up -d board-api board-api-2
+#
+# Brings up TWO board-api containers (board-api and board-api-2) pointed
+# at the same Postgres and Redis. Each is exposed on a different host
+# port so a test client can pin itself to one replica:
+#   board-api    → http://localhost:4008/health
+#   board-api-2  → http://localhost:4108/health
+#
+# nginx routing is NOT updated by this overlay — production-style
+# load-balancing with sticky sessions is a separate concern. This file
+# exists to prove the cross-replica Redis path works in isolation.
+#
+# What "working" looks like:
+#   1. Browser A connects to ws://localhost:4008/ws (board-api).
+#   2. Browser B connects to ws://localhost:4108/ws (board-api-2).
+#   3. A draws → B sees strokes within ~150ms via board:events pub/sub.
+#   4. A moves cursor → B sees the cursor live via board:cursors pub/sub.
+#   5. Only B has a tab open, draws, closes the tab. board-api-2 logs
+#      "Flushed dirty scene on room-empty" within a few hundred ms.
+#   6. A's WS drops (DevTools → Network → Offline for 2s), B makes an
+#      edit, A reconnects. A receives a "replay" message containing B's
+#      edit and applies it.
+#
+# Plain `docker compose up` keeps the simple single-replica behavior.
+
+services:
+  board-api:
+    # Label this replica for log filtering. The board-api process itself
+    # already includes its instanceId (nanoid) in structured logs; the
+    # label is for quickly distinguishing the two via `docker compose logs`.
+    environment:
+      BOARD_INSTANCE_LABEL: primary
+
+  # Second replica. All settings mirror board-api except the host port
+  # binding (no clash on 4008 → 4008 from two services). Explicit rather
+  # than via `extends:` because compose's extends doesn't merge env vars
+  # cleanly and the field list here is short.
+  board-api-2:
+    # Mirror docker-compose.yml's x-common anchor inline. YAML anchors
+    # don't carry across compose -f files, so we restate restart policy
+    # and the rotated logging config here.
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    build:
+      context: .
+      dockerfile: apps/board-api/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    image: bigbluebam-board-api
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bigbluebam}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      SESSION_SECRET: ${SESSION_SECRET}
+      BBB_API_INTERNAL_URL: http://api:4000
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+      LIVEKIT_URL: ${LIVEKIT_WS_URL:-ws://localhost:7880}
+      NODE_ENV: production
+      PORT: 4008
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      RATE_LIMIT_MAX: 100
+      RATE_LIMIT_WINDOW_MS: 60000
+      BOARD_INSTANCE_LABEL: secondary
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "4108:4008"
+    networks:
+      - backend
+      - frontend

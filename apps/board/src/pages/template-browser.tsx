@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutTemplate, Loader2, Plus } from 'lucide-react';
+import { LayoutTemplate, Loader2, Plus, FileEdit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/common/badge';
 import { Button } from '@/components/common/button';
@@ -9,14 +9,19 @@ interface TemplateBrowserPageProps {
   onNavigate: (path: string) => void;
 }
 
+// Order: General first (the safe default new users land on), domain-specific
+// categories in the middle, "All" last (the escape hatch when none of the
+// domain tabs surface what the user wants). The shape is hardcoded rather
+// than DB-derived because the categories are also hardcoded in the
+// `TemplateCategory` union in @/hooks/use-templates — keep them in sync.
 const categories: { value: TemplateCategory | 'all'; label: string }[] = [
-  { value: 'all', label: 'All' },
+  { value: 'general', label: 'General' },
   { value: 'retro', label: 'Retro' },
   { value: 'brainstorm', label: 'Brainstorm' },
   { value: 'planning', label: 'Planning' },
   { value: 'architecture', label: 'Architecture' },
   { value: 'strategy', label: 'Strategy' },
-  { value: 'general', label: 'General' },
+  { value: 'all', label: 'All' },
 ];
 
 const categoryBadgeVariant: Record<TemplateCategory, 'primary' | 'success' | 'warning' | 'info' | 'default'> = {
@@ -50,11 +55,21 @@ export function TemplateBrowserPage({ onNavigate }: TemplateBrowserPageProps) {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Templates</h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-          Start from a pre-built template to get going faster
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Templates</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+            Start from a pre-built template, or create a blank board
+          </p>
+        </div>
+        {/* The "New Board" entry point on the All Boards page now lands on
+            this page, so we still need a one-click path to an empty board for
+            users who don't want a template. /new is the existing form-based
+            page; preserved for direct-URL access and for this affordance. */}
+        <Button variant="secondary" onClick={() => onNavigate('/new')}>
+          <FileEdit className="h-4 w-4" />
+          Blank board
+        </Button>
       </div>
 
       {/* Category tabs */}
