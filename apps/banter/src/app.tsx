@@ -70,15 +70,31 @@ export function App() {
     fetchMe();
   }, [fetchMe]);
 
-  // Apply saved theme on mount
+  // Apply saved theme on mount. Wrap storage + matchMedia access — iPad
+  // Safari can throw on localStorage in private/lockdown contexts and on
+  // matchMedia under unusual configurations; an unhandled throw here would
+  // unmount the tree without the error boundary in main.tsx.
   useEffect(() => {
-    const savedTheme = localStorage.getItem('bbam-theme') ?? 'system';
+    let savedTheme = 'system';
+    try {
+      savedTheme = window.localStorage?.getItem('bbam-theme') ?? 'system';
+    } catch {
+      // localStorage unavailable — fall back to system theme.
+    }
     const root = document.documentElement;
     root.classList.remove('dark');
     if (savedTheme === 'dark') {
       root.classList.add('dark');
-    } else if (savedTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      root.classList.add('dark');
+      return;
+    }
+    if (savedTheme === 'system') {
+      try {
+        if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+          root.classList.add('dark');
+        }
+      } catch {
+        // matchMedia unavailable — leave default light theme.
+      }
     }
   }, []);
 
