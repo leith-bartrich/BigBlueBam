@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useProjectStore } from '@/stores/project.store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,19 +66,17 @@ interface BoardStatsResponse {
 // ---------------------------------------------------------------------------
 
 export function useBoardList(params?: { search?: string; archived?: boolean }) {
-  // The All Boards page is meant to show every board the user can see in
-  // their current org — that's what the page name says. Previous versions
-  // forwarded the sidebar's "active project" selector as a project_id
-  // filter, which scoped the listing to whichever project happened to be
-  // selected and silently hid every other board (including detached ones
-  // and boards in other projects). Result: a user with a stale active-
-  // project selection saw an empty page even when they had boards.
-  // The active project still drives the default project_id on board
-  // creation (board-new.tsx); that's the right consumer.
+  // The picker has explicit "All Projects" (activeProjectId = null) and
+  // per-project options. Honor that contract: null = no filter, anything
+  // else = filter by that project_id. The visible filter banner on the
+  // All Boards page makes the current state never invisible.
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+
   return useQuery({
-    queryKey: ['boards', 'list', params],
+    queryKey: ['boards', 'list', activeProjectId, params],
     queryFn: () =>
       api.get<BoardListResponse>('/boards', {
+        project_id: activeProjectId ?? undefined,
         search: params?.search,
         archived: params?.archived,
       }),
@@ -94,13 +93,17 @@ export function useBoard(id: string | undefined) {
 }
 
 export function useBoardStats() {
-  // Same reasoning as useBoardList — stats should reflect ALL boards in
-  // the user's org. The Total/Recent/Starred/Archived stat cards on the
-  // All Boards page would otherwise show inconsistent numbers depending
-  // on which project happened to be selected in the sidebar.
+  // Stats follow the same project filter as the list so the cards
+  // labeled "Total / Recent / Starred / Archived" agree with what the
+  // grid below them is showing.
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+
   return useQuery({
-    queryKey: ['boards', 'stats'],
-    queryFn: () => api.get<BoardStatsResponse>('/boards/stats', {}),
+    queryKey: ['boards', 'stats', activeProjectId],
+    queryFn: () =>
+      api.get<BoardStatsResponse>('/boards/stats', {
+        project_id: activeProjectId ?? undefined,
+      }),
     staleTime: 30_000,
   });
 }

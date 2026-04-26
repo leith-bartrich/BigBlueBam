@@ -759,7 +759,7 @@ export async function getStats(orgId: string, userId: string) {
               WHERE board_id = b2.id AND user_id = ${userId}
             )
             OR (b2.visibility = 'project' AND EXISTS (
-              SELECT 1 FROM project_members
+              SELECT 1 FROM project_memberships
               WHERE project_id = b2.project_id AND user_id = ${userId}
             ))
           )
@@ -774,7 +774,7 @@ export async function getStats(orgId: string, userId: string) {
           WHERE board_id = b.id AND user_id = ${userId}
         )
         OR (b.visibility = 'project' AND EXISTS (
-          SELECT 1 FROM project_members
+          SELECT 1 FROM project_memberships
           WHERE project_id = b.project_id AND user_id = ${userId}
         ))
       )

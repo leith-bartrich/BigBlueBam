@@ -34,11 +34,33 @@ export function useProjects() {
     icon: p.icon,
   }));
 
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const knownOrgId = useProjectStore((s) => s.knownOrgId);
+  const setActiveProject = useProjectStore((s) => s.setActiveProject);
+
   useEffect(() => {
     if (projects.length > 0) {
       setProjects(projects);
     }
   }, [projects.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Self-heal a stale activeProjectId. If the user has a non-null
+  // selection from a previous session, an org switch, or hand-edited
+  // localStorage, and the projects fetch comes back successful with a
+  // list that does not contain it, the All Boards listing will silently
+  // filter to a project the user can't see and look empty. Better to
+  // fall back to "All Projects" so SOMETHING shows up. We only do this
+  // once we have a successful fetch (query.isSuccess) — without that
+  // guard a transient network error would wipe a perfectly valid
+  // selection. We also require knownOrgId to be set so the project
+  // store knows which org to write the cleared key to.
+  useEffect(() => {
+    if (!query.isSuccess) return;
+    if (!knownOrgId) return;
+    if (activeProjectId === null) return;
+    if (projects.some((p) => p.id === activeProjectId)) return;
+    setActiveProject(knownOrgId, null);
+  }, [query.isSuccess, activeProjectId, knownOrgId, projects, setActiveProject]);
 
   return { ...query, projects };
 }
