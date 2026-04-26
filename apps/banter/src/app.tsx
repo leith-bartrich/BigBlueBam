@@ -104,6 +104,17 @@ export function App() {
     setRoute(parseRoute(fullPath));
   }, []);
 
+  // Default route: bounce to #general from inside an effect rather than
+  // calling navigate() during render. Calling setState mid-render works in
+  // React 19 but can leave the UI stuck on the `return null` branch on
+  // some browsers (observed on iPad Safari hitting `/banter/` after the
+  // /banter -> /banter/ 301), producing a black screen.
+  useEffect(() => {
+    if (isAuthenticated && route.page === 'redirect') {
+      navigate('/channels/general');
+    }
+  }, [isAuthenticated, route.page, navigate]);
+
   // Register keyboard shortcuts
   useKeyboardShortcuts(navigate);
 
@@ -140,10 +151,14 @@ export function App() {
     return <HelpViewer appSlug="banter" onBack={() => navigate('/channels/general')} />;
   }
 
-  // Default route: redirect to #general
+  // Default route: redirect handled by the useEffect above. Show the loader
+  // while it bounces so iPad Safari doesn't paint a blank `return null`.
   if (route.page === 'redirect') {
-    navigate('/channels/general');
-    return null;
+    return (
+      <div className="flex items-center justify-center h-screen bg-zinc-50 dark:bg-zinc-950">
+        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+      </div>
+    );
   }
 
   const renderPage = () => {
