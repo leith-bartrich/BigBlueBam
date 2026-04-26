@@ -51,4 +51,33 @@ export default async function sceneRoutes(fastify: FastifyInstance) {
       return reply.send({ data: { saved: true } });
     },
   );
+
+  // POST /boards/:id/scene/beacon — fire-and-forget flush for
+  // navigator.sendBeacon. Browsers limit beacon size to ~64KB and
+  // require Content-Type 'application/json' (not application/json;
+  // charset=utf-8). The endpoint is intentionally identical in semantics
+  // to PUT /scene but uses POST so beacon-style fetch has a destination.
+  // Critically: it persists DIRECTLY to boards.yjs_state — we don't
+  // route through the Redis dirty hash because the user is leaving the
+  // page and we want the durable write to land before the tab dies, not
+  // a Redis intermediate that depends on the 5s flush timer firing.
+  fastify.post<{ Params: { id: string } }>(
+    '/boards/:id/scene/beacon',
+    {
+      preHandler: [requireAuth, requireBoardEditAccess(), requireScope('read_write')],
+    },
+    async (request, reply) => {
+      const board = (request as any).board;
+      const body = sceneBodySchema.parse(request.body);
+
+      const sceneData: SceneData = {
+        elements: body.elements,
+        appState: body.appState ?? {},
+        files: body.files ?? {},
+      };
+
+      await saveScene(board.id, request.user!.org_id, sceneData);
+      return reply.send({ data: { saved: true } });
+    },
+  );
 }
