@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useProjectStore } from '@/stores/project.store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,13 +65,19 @@ interface BoardStatsResponse {
 // ---------------------------------------------------------------------------
 
 export function useBoardList(params?: { search?: string; archived?: boolean }) {
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
-
+  // The All Boards page is meant to show every board the user can see in
+  // their current org — that's what the page name says. Previous versions
+  // forwarded the sidebar's "active project" selector as a project_id
+  // filter, which scoped the listing to whichever project happened to be
+  // selected and silently hid every other board (including detached ones
+  // and boards in other projects). Result: a user with a stale active-
+  // project selection saw an empty page even when they had boards.
+  // The active project still drives the default project_id on board
+  // creation (board-new.tsx); that's the right consumer.
   return useQuery({
-    queryKey: ['boards', 'list', activeProjectId, params],
+    queryKey: ['boards', 'list', params],
     queryFn: () =>
       api.get<BoardListResponse>('/boards', {
-        project_id: activeProjectId ?? undefined,
         search: params?.search,
         archived: params?.archived,
       }),
@@ -89,14 +94,13 @@ export function useBoard(id: string | undefined) {
 }
 
 export function useBoardStats() {
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
-
+  // Same reasoning as useBoardList — stats should reflect ALL boards in
+  // the user's org. The Total/Recent/Starred/Archived stat cards on the
+  // All Boards page would otherwise show inconsistent numbers depending
+  // on which project happened to be selected in the sidebar.
   return useQuery({
-    queryKey: ['boards', 'stats', activeProjectId],
-    queryFn: () =>
-      api.get<BoardStatsResponse>('/boards/stats', {
-        project_id: activeProjectId ?? undefined,
-      }),
+    queryKey: ['boards', 'stats'],
+    queryFn: () => api.get<BoardStatsResponse>('/boards/stats', {}),
     staleTime: 30_000,
   });
 }
