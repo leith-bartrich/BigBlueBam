@@ -27,6 +27,10 @@ function composeCmd() {
 
 /**
  * Run a shell command and stream output, returning stdout on success.
+ *
+ * `opts.env` extends process.env for the child. Use this for build-time
+ * vars instead of bash `VAR=value command` prefixing — that syntax is
+ * unparseable on Windows cmd.exe and breaks deploys there.
  */
 function runShell(cmd, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -34,6 +38,7 @@ function runShell(cmd, opts = {}) {
       shell: true,
       stdio: opts.silent ? 'pipe' : 'inherit',
       cwd: opts.cwd || process.cwd(),
+      env: opts.env ? { ...process.env, ...opts.env } : process.env,
     });
     let stdout = '';
     let stderr = '';
@@ -314,7 +319,9 @@ async function deploy(envConfig, { branch = 'stable', tlsConfig = null } = {}) {
   // to know this exists.
   if (isUpgrade) {
     console.log('\nRebuilding api image with --no-cache (ensures new migrations are baked in)...\n');
-    await runShell(`GIT_COMMIT=${gitCommit} BUILD_DATE=${buildDate} ${dc} ${fileFlags} build --no-cache api`);
+    await runShell(`${dc} ${fileFlags} build --no-cache api`, {
+      env: { GIT_COMMIT: gitCommit, BUILD_DATE: buildDate },
+    });
     console.log(`\n${check} api image rebuilt`);
 
     console.log('\nRunning database migrations (explicit sidecar invocation)...\n');
@@ -332,7 +339,9 @@ async function deploy(envConfig, { branch = 'stable', tlsConfig = null } = {}) {
   }
 
   console.log('\nBuilding and starting services...\n');
-  await runShell(`GIT_COMMIT=${gitCommit} BUILD_DATE=${buildDate} ${dc} ${fileFlags} up -d --build`);
+  await runShell(`${dc} ${fileFlags} up -d --build`, {
+    env: { GIT_COMMIT: gitCommit, BUILD_DATE: buildDate },
+  });
   console.log(`\n${check} All services started`);
 
   // 5. Wait for API to be healthy
