@@ -243,6 +243,23 @@ export default async function boardRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // DELETE /boards/:id/permanent — Hard-delete a board (and via FK CASCADE,
+  // all its elements, collaborators, stars, versions, etc.). Distinct from
+  // the plain DELETE which archives. The /permanent suffix keeps the two
+  // affordances visible in the route list and route logs; using a query
+  // param like ?permanent=true would conflate the two in audit grep.
+  fastify.delete<{ Params: { id: string } }>(
+    '/boards/:id/permanent',
+    { preHandler: [requireAuth, requireBoardEditAccess(), requireScope('read_write')] },
+    async (request, reply) => {
+      const result = await boardService.permanentlyDeleteBoard(
+        (request as any).board.id,
+        request.user!.org_id,
+      );
+      return reply.send({ data: result });
+    },
+  );
+
   // POST /boards/:id/restore — Restore archived board
   fastify.post<{ Params: { id: string } }>(
     '/boards/:id/restore',

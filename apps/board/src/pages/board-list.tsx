@@ -26,7 +26,7 @@ export function BoardListPage({ onNavigate }: BoardListPageProps) {
             Visual collaboration whiteboards for your team
           </p>
         </div>
-        <Button onClick={() => onNavigate('/new')}>
+        <Button onClick={() => onNavigate('/templates')}>
           <Plus className="h-4 w-4" />
           New Board
         </Button>
@@ -70,7 +70,7 @@ export function BoardListPage({ onNavigate }: BoardListPageProps) {
             {search ? 'Try a different search term' : 'Create your first visual collaboration board'}
           </p>
           {!search && (
-            <Button onClick={() => onNavigate('/new')}>
+            <Button onClick={() => onNavigate('/templates')}>
               <Plus className="h-4 w-4" />
               Create Board
             </Button>

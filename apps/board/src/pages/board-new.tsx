@@ -50,38 +50,59 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center gap-3 mb-8">
-        <button
-          onClick={() => onNavigate('/')}
-          className="flex items-center justify-center h-8 w-8 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Create New Board</h1>
-          <p className="text-sm text-zinc-500">Choose a template and give your board a name</p>
+    <div className="max-w-3xl mx-auto">
+      {/* Sticky header — keeps the name field, icon picker, and the
+          Create/Cancel buttons visible at the top of the page even when
+          the templates grid is taller than the viewport. Previously the
+          actions sat at the bottom and were hidden below the fold once
+          enough templates were seeded, which made "create" feel buried. */}
+      <div className="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-950/95 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 px-6 pt-6 pb-4">
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => onNavigate('/')}
+            className="flex items-center justify-center h-8 w-8 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Create New Board</h1>
+            <p className="text-sm text-zinc-500">Choose a template and give your board a name</p>
+          </div>
+        </div>
+
+        {/* Icon + name + actions on a single row so all primary controls are
+            visible above any template grid scroll. The name input is
+            constrained to a sensible max-width rather than spanning the
+            entire form, which made it feel uncomfortably wide on big
+            screens. */}
+        <div className="flex items-end gap-3 flex-wrap">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+              Icon
+            </label>
+            <IconPicker value={icon} onChange={setIcon} tone="blue" />
+          </div>
+          <div className="flex-1 min-w-[14rem] max-w-md">
+            <Input
+              label="Board name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Untitled Board"
+              autoFocus
+            />
+          </div>
+          <div className="flex items-center gap-2 ml-auto pb-0.5">
+            <Button variant="ghost" onClick={() => onNavigate('/')}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} loading={createBoard.isPending}>
+              Create Board
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Board icon + name */}
-      <div className="mb-8 flex items-end gap-3">
-        <div>
-          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
-            Icon
-          </label>
-          <IconPicker value={icon} onChange={setIcon} tone="blue" />
-        </div>
-        <div className="flex-1">
-          <Input
-            label="Board name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Untitled Board"
-            autoFocus
-          />
-        </div>
-      </div>
+      <div className="px-6 py-6">
 
       {/* Template selector */}
       <div className="mb-8">
@@ -146,15 +167,6 @@ export function BoardNewPage({ onNavigate }: BoardNewPageProps) {
           {error}
         </div>
       )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-3">
-        <Button onClick={handleCreate} loading={createBoard.isPending}>
-          Create Board
-        </Button>
-        <Button variant="ghost" onClick={() => onNavigate('/')}>
-          Cancel
-        </Button>
       </div>
     </div>
   );

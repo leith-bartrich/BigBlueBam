@@ -7,6 +7,7 @@ import { BoardNewPage } from '@/pages/board-new';
 import { VersionHistoryPage } from '@/pages/version-history';
 import { TemplateBrowserPage } from '@/pages/template-browser';
 import { StarredBoardsPage } from '@/pages/starred-boards';
+import { ArchivedBoardsPage } from '@/pages/archived-boards';
 import { HelpViewer } from '@bigbluebam/ui/help-viewer';
 import { Loader2 } from 'lucide-react';
 
@@ -17,6 +18,7 @@ type Route =
   | { page: 'versions'; id: string }
   | { page: 'templates' }
   | { page: 'starred' }
+  | { page: 'archived' }
   | { page: 'help' };
 
 const BASE_PATH = '/board';
@@ -35,6 +37,7 @@ function parseRoute(path: string): Route {
   if (p === '/new') return { page: 'new' };
   if (p === '/templates') return { page: 'templates' };
   if (p === '/starred') return { page: 'starred' };
+  if (p === '/archived') return { page: 'archived' };
   if (p === '/help') return { page: 'help' };
 
   // /:id/versions
@@ -148,6 +151,8 @@ export function App() {
         return <TemplateBrowserPage onNavigate={navigate} />;
       case 'starred':
         return <StarredBoardsPage onNavigate={navigate} />;
+      case 'archived':
+        return <ArchivedBoardsPage onNavigate={navigate} />;
       default:
         return null;
     }

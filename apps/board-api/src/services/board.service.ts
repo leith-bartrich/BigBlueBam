@@ -179,6 +179,11 @@ export async function listBoards(filters: ListBoardFilters) {
       project_name: projects.name,
       element_count: sql<number>`(SELECT COUNT(*)::int FROM board_elements WHERE board_id = ${boards.id})`,
       collaborator_count: sql<number>`(SELECT COUNT(*)::int FROM board_collaborators WHERE board_id = ${boards.id})`,
+      // Per-user star state for the requesting user. The list response goes
+      // straight into the All Boards card grid which conditions the star
+      // icon's fill on this boolean — without it, every card renders unstarred
+      // regardless of the actual board_stars row state.
+      starred: sql<boolean>`EXISTS (SELECT 1 FROM board_stars WHERE board_id = ${boards.id} AND user_id = ${filters.userId})`,
     })
     .from(boards)
     .leftJoin(users, eq(boards.created_by, users.id))
@@ -312,6 +317,18 @@ export async function archiveBoard(id: string, userId: string, orgId: string) {
     .where(eq(boards.id, id))
     .returning();
   return board!;
+}
+
+export async function permanentlyDeleteBoard(id: string, orgId: string) {
+  const existing = await getBoard(id, orgId);
+  if (!existing) throw new BoardError('NOT_FOUND', 'Board not found', 404);
+
+  // Hard-delete. Dependent rows in board_elements / board_collaborators /
+  // board_stars / board_versions are cleaned up via the FK ON DELETE CASCADE
+  // declarations in their migrations; we don't enumerate them here so the
+  // CASCADE remains the single source of truth.
+  await db.delete(boards).where(eq(boards.id, id));
+  return { id };
 }
 
 export async function restoreBoard(id: string, userId: string, orgId: string) {

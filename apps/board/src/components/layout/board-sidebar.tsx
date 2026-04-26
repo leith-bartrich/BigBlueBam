@@ -1,4 +1,4 @@
-import { PaintbrushVertical, LayoutGrid, Star, LayoutTemplate, FolderOpen, ChevronDown, Check } from 'lucide-react';
+import { PaintbrushVertical, LayoutGrid, Star, LayoutTemplate, FolderOpen, ChevronDown, Check, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/project.store';
 import { useProjects } from '@/hooks/use-projects';
@@ -13,6 +13,7 @@ const navItems = [
   { label: 'All Boards', icon: LayoutGrid, path: '/', page: 'home' },
   { label: 'Starred', icon: Star, path: '/starred', page: 'starred' },
   { label: 'Templates', icon: LayoutTemplate, path: '/templates', page: 'templates' },
+  { label: 'Archive', icon: Archive, path: '/archived', page: 'archived' },
 ];
 
 function ProjectScopeSelector() {

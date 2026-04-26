@@ -140,7 +140,26 @@ export function useArchiveBoard() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => api.post<void>(`/boards/${id}/archive`),
+    // The backend archives via DELETE /boards/:id (soft-delete; sets
+    // archived_at). There is no POST /boards/:id/archive — calls to it
+    // return 404 silently and the card stays put in the All Boards list,
+    // which was the "Archive doesn't do anything" UX bug.
+    mutationFn: (id: string) => api.delete<void>(`/boards/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['boards'] });
+    },
+  });
+}
+
+export function useDeleteBoard() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    // Hard-delete. Distinct from useArchiveBoard. Used from the Archive
+    // page (where boards are already soft-deleted and the operator wants
+    // them gone) and as a separate "Delete permanently" option on the
+    // active board's "..." menu for power users.
+    mutationFn: (id: string) => api.delete<void>(`/boards/${id}/permanent`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boards'] });
     },
