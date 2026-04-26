@@ -62,6 +62,13 @@ export function useDevices(): UseDevicesReturn {
   }, []);
 
   const enumerateDevices = useCallback(async () => {
+    // navigator.mediaDevices is `undefined` in non-secure contexts (plain
+    // HTTP on iPad Safari, Android Chrome, etc). Calling .enumerateDevices()
+    // on that throws "undefined is not an object" and unmounts the React
+    // root via our error boundary. Bail cleanly on those browsers.
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) {
+      return;
+    }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
 
@@ -87,17 +94,19 @@ export function useDevices(): UseDevicesReturn {
   useEffect(() => {
     enumerateDevices();
 
+    const md = typeof navigator !== "undefined" ? navigator.mediaDevices : null;
+    if (!md || typeof md.addEventListener !== "function") {
+      return;
+    }
+
     const handleDeviceChange = () => {
       enumerateDevices();
     };
 
-    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+    md.addEventListener("devicechange", handleDeviceChange);
 
     return () => {
-      navigator.mediaDevices.removeEventListener(
-        "devicechange",
-        handleDeviceChange,
-      );
+      md.removeEventListener("devicechange", handleDeviceChange);
     };
   }, [enumerateDevices]);
 
@@ -117,6 +126,13 @@ export function useDevices(): UseDevicesReturn {
   }, []);
 
   const requestPermissions = useCallback(async (): Promise<boolean> => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      // Insecure context (plain HTTP) or feature-locked browser. The caller
+      // is the call-join UI; surface the missing-permission state instead
+      // of throwing.
+      if (mountedRef.current) setHasPermission(false);
+      return false;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
