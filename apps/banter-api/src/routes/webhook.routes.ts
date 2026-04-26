@@ -15,6 +15,7 @@ import {
   getUserOrgId,
   leaveCall,
 } from '../services/presence.service.js';
+import { parseAppRoomName } from '@bigbluebam/livekit-tokens';
 
 /**
  * LiveKit webhook events.
@@ -39,20 +40,21 @@ interface LiveKitWebhookEvent {
 /**
  * Verify LiveKit webhook signature.
  *
- * LiveKit signs webhooks by issuing a JWT in the Authorization header using the
- * API secret as the HMAC-SHA256 signing key. The JWT payload contains the webhook
- * body SHA-256 hash. We perform a best-effort verification:
+ * LiveKit signs webhooks by issuing a JWT in the Authorization header
+ * using the API secret as the HMAC-SHA256 signing key. We:
  *   1. Extract the Bearer token from the Authorization header.
- *   2. Look up all org settings that have a livekit_api_secret configured.
- *   3. For each secret, verify the JWT HMAC-SHA256 signature.
- *   4. If none match, log a warning but still process the event (graceful degradation).
- *
- * TODO: Once multi-org LiveKit routing is finalized, narrow down to a single org's
- * secret based on the room name prefix instead of iterating all settings rows.
+ *   2. Parse the room name from the webhook body to find the owning org
+ *      via parseAppRoomName(). This is O(1) — single org lookup, no
+ *      table scan. The legacy `banter_…` room format is recognized too,
+ *      so this transition is non-breaking for in-flight calls.
+ *   3. Look up that org's livekit_api_secret and verify HMAC-SHA256.
+ *   4. If lookup fails (room name doesn't parse, no settings row), fall
+ *      back to scanning all org secrets — preserves the historical
+ *      behavior for any room name shape we haven't accounted for yet.
  */
 async function verifyLiveKitSignature(
   authHeader: string | undefined,
-  _rawBody: unknown,
+  body: unknown,
   logger: FastifyInstance['log'],
 ): Promise<boolean> {
   if (!authHeader) {
@@ -75,8 +77,39 @@ async function verifyLiveKitSignature(
 
   const signingInput = `${parts[0]}.${parts[1]}`;
   const signatureB64 = parts[2]!;
+  const base64urlDecode = (str: string): Buffer =>
+    Buffer.from(str.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  const receivedSig = base64urlDecode(signatureB64);
 
-  // Retrieve all configured LiveKit API secrets
+  // Try the room-name-prefix path first. If the room name encodes the
+  // orgId (new format or legacy banter format), we can verify in O(1).
+  const roomName = (body as { room?: { name?: string } } | undefined)?.room?.name;
+  const parsed = roomName ? parseAppRoomName(roomName) : null;
+  if (parsed?.orgId) {
+    const [row] = await db
+      .select({ livekit_api_secret: banterSettings.livekit_api_secret })
+      .from(banterSettings)
+      .where(eq(banterSettings.org_id, parsed.orgId))
+      .limit(1);
+    const secret = row?.livekit_api_secret;
+    if (secret) {
+      const expectedSig = createHmac('sha256', secret).update(signingInput).digest();
+      if (expectedSig.length === receivedSig.length && expectedSig.equals(receivedSig)) {
+        return true;
+      }
+      // The room is owned by this org but the signature didn't match.
+      // Fall through to the broad scan below — possible the org has
+      // rotated secrets and the webhook is signed with the previous one.
+      logger.warn(
+        { orgId: parsed.orgId },
+        'LiveKit webhook: org-scoped secret mismatch, falling back to broad scan',
+      );
+    }
+  }
+
+  // Fallback: scan every configured secret. Historical behavior; kept
+  // for the case where a webhook arrives with a room name we don't
+  // recognize (new format added in another app, etc).
   const settingsRows = await db
     .select({ livekit_api_secret: banterSettings.livekit_api_secret })
     .from(banterSettings)
@@ -87,29 +120,11 @@ async function verifyLiveKitSignature(
     return false;
   }
 
-  // Base64url decode helper
-  const base64urlDecode = (str: string): Buffer => {
-    const padded = str.replace(/-/g, '+').replace(/_/g, '/');
-    return Buffer.from(padded, 'base64');
-  };
-
-  const receivedSig = base64urlDecode(signatureB64);
-
   for (const row of settingsRows) {
     const secret = row.livekit_api_secret;
     if (!secret) continue;
-
-    const expectedSig = createHmac('sha256', secret)
-      .update(signingInput)
-      .digest();
-
-    if (
-      expectedSig.length === receivedSig.length &&
-      createHmac('sha256', secret)
-        .update(signingInput)
-        .digest()
-        .equals(receivedSig)
-    ) {
+    const expectedSig = createHmac('sha256', secret).update(signingInput).digest();
+    if (expectedSig.length === receivedSig.length && expectedSig.equals(receivedSig)) {
       return true;
     }
   }

@@ -1,12 +1,26 @@
-import { SignJWT } from 'jose';
+import {
+  mintRoomToken,
+  buildAppRoomName,
+  parseAppRoomName,
+  type AppRoomNameParts,
+} from '@bigbluebam/livekit-tokens';
 import { env } from '../env.js';
+
+/**
+ * Thin shim over the shared @bigbluebam/livekit-tokens package. Was a
+ * standalone jose-based JWT minter with a 1h TTL; now delegates to the
+ * shared minter (livekit-server-sdk under the hood, 24h TTL by default
+ * matching the rest of the suite). Same call sites; just one
+ * implementation across Banter, Board, and any future caller.
+ *
+ * The `generateLiveKitToken` and `buildRoomName` shapes are preserved
+ * for the existing call.routes.ts call sites — no churn there.
+ */
 
 export interface LiveKitTokenGrants {
   canPublish?: boolean;
   canSubscribe?: boolean;
   canPublishData?: boolean;
-  room?: string;
-  roomJoin?: boolean;
   hidden?: boolean;
 }
 
@@ -18,62 +32,40 @@ export interface GenerateTokenOptions {
   ttlSeconds?: number;
 }
 
-/**
- * Generate a LiveKit-compatible JWT access token.
- *
- * LiveKit expects a JWT with specific claims:
- *   - sub: participant identity
- *   - iss: API key
- *   - video: grant claims (room, roomJoin, canPublish, etc.)
- *   - nbf / exp: validity window
- *   - jti: unique token id
- */
 export async function generateLiveKitToken(opts: GenerateTokenOptions): Promise<string> {
-  const {
-    participantIdentity,
-    participantName,
-    roomName,
-    grants = {},
-    ttlSeconds = 3600,
-  } = opts;
-
   if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
     throw new Error('LiveKit API key and secret are not configured');
   }
-
-  const secret = new TextEncoder().encode(env.LIVEKIT_API_SECRET);
-  const now = Math.floor(Date.now() / 1000);
-
-  const videoGrants: Record<string, unknown> = {
-    room: roomName,
-    roomJoin: true,
-    canPublish: grants.canPublish ?? true,
-    canSubscribe: grants.canSubscribe ?? true,
-    canPublishData: grants.canPublishData ?? true,
-  };
-
-  if (grants.hidden !== undefined) {
-    videoGrants.hidden = grants.hidden;
-  }
-
-  const token = await new SignJWT({
-    video: videoGrants,
-    metadata: JSON.stringify({ name: participantName }),
-  })
-    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setSubject(participantIdentity)
-    .setIssuer(env.LIVEKIT_API_KEY)
-    .setNotBefore(now)
-    .setExpirationTime(now + ttlSeconds)
-    .setJti(crypto.randomUUID())
-    .sign(secret);
-
-  return token;
+  return mintRoomToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
+    identity: opts.participantIdentity,
+    name: opts.participantName,
+    roomName: opts.roomName,
+    metadata: { name: opts.participantName },
+    permissions: {
+      can_publish: opts.grants?.canPublish ?? true,
+      can_subscribe: opts.grants?.canSubscribe ?? true,
+      can_publish_data: opts.grants?.canPublishData ?? true,
+      hidden: opts.grants?.hidden ?? false,
+    },
+    ttlSeconds: opts.ttlSeconds,
+  });
 }
 
 /**
- * Build a standardised LiveKit room name.
+ * Build a Banter-channel room name in the new app-agnostic format.
+ * Existing `banter_<org>_<channel>_<call>` rooms keep working because
+ * parseAppRoomName accepts both forms — but new calls use the
+ * structured form so the webhook handler can route by orgId in O(1).
  */
 export function buildRoomName(orgId: string, channelId: string, callId: string): string {
-  return `banter_${orgId}_${channelId}_${callId}`;
+  return buildAppRoomName({
+    app: 'banter',
+    orgId,
+    scopeType: 'channel',
+    scopeId: channelId,
+    callId,
+  });
 }
+
+export { parseAppRoomName };
+export type { AppRoomNameParts };

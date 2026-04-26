@@ -220,6 +220,9 @@ importers:
       '@bigbluebam/db-stubs':
         specifier: workspace:*
         version: link:../../packages/db-stubs
+      '@bigbluebam/livekit-tokens':
+        specifier: workspace:*
+        version: link:../../packages/livekit-tokens
       '@bigbluebam/logging':
         specifier: workspace:*
         version: link:../../packages/logging
@@ -2367,12 +2370,12 @@ importers:
 
   apps/frontend:
     dependencies:
-      '@bigbluebam/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       '@bigbluebam/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@bigbluebam/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
