@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, Lock, MoreHorizontal, Copy, Trash2, History, ArchiveRestore, Archive } from 'lucide-react';
+import { Star, Lock, MoreHorizontal, Copy, Trash2, History, ArchiveRestore, Archive, AlertTriangle } from 'lucide-react';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { Badge } from '@/components/common/badge';
 import { Button } from '@/components/common/button';
@@ -102,6 +102,23 @@ export function BoardCard({ board, onNavigate }: BoardCardProps) {
           {board.locked && !isArchived && (
             <div className="absolute top-2 left-2 rounded-lg p-1.5 text-zinc-500 bg-white/80 dark:bg-zinc-900/80">
               <Lock className="h-3.5 w-3.5" />
+            </div>
+          )}
+
+          {/* Integrity-issue indicator. Pin to top-left for active boards
+              (next to / replacing the lock icon position) and bottom-left
+              for archived boards so it doesn't fight with the Archived
+              badge. Click target propagates to handleClick which routes to
+              the canvas; the canvas's banner exposes the actual fix UI. */}
+          {board.integrity_issue_count > 0 && (
+            <div
+              className={cn(
+                'absolute rounded-lg p-1.5 bg-amber-100/95 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shadow-sm',
+                isArchived ? 'bottom-2 left-2' : board.locked ? 'top-2 left-12' : 'top-2 left-2',
+              )}
+              title={`${board.integrity_issue_count} integrity issue${board.integrity_issue_count > 1 ? 's' : ''}. Open the board to fix.`}
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
             </div>
           )}
 

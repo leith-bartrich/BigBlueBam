@@ -5,6 +5,7 @@ import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import { BoardToolbar } from '@/components/canvas/board-toolbar';
 import { ChatPanel } from '@/components/canvas/chat-panel';
 import { ConnectionStatusBadge } from '@/components/canvas/connection-status-badge';
+import { BoardIntegrityBanner } from '@/components/canvas/board-integrity-banner';
 import { useBoardSync } from '@/hooks/use-board-sync';
 
 interface BoardCanvasPageProps {
@@ -121,6 +122,8 @@ export function BoardCanvasPage({ boardId, onNavigate }: BoardCanvasPageProps) {
 
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
+      {/* Integrity banner. Renders nothing for healthy boards. */}
+      <BoardIntegrityBanner boardId={boardId} />
       <div className="flex-1 relative">
         <div style={{ height: '100%', width: '100%' }}>
           <Excalidraw

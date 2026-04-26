@@ -21,9 +21,24 @@ export interface Board {
   element_count: number;
   collaborator_count: number;
   starred: boolean;
+  /** Server-side count of detected integrity issues. Drives the amber
+   *  AlertTriangle indicator on the All Boards card grid. The detailed
+   *  issue list is fetched via /boards/:id/integrity. */
+  integrity_issue_count: number;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+}
+
+export interface BoardIntegrityIssue {
+  code: 'PROJECT_ORG_MISMATCH' | 'PROJECT_NOT_FOUND';
+  message: string;
+  details: Record<string, unknown>;
+  remediations: ('detach' | 'reassign')[];
+}
+
+interface BoardIntegrityResponse {
+  data: { ok: boolean; issues: BoardIntegrityIssue[] };
 }
 
 export interface BoardStats {
@@ -204,6 +219,37 @@ export function useToggleLock() {
 
   return useMutation({
     mutationFn: (id: string) => api.post<void>(`/boards/${id}/lock`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['boards'] });
+    },
+  });
+}
+
+export function useBoardIntegrity(id: string | undefined, hint?: number) {
+  // Fetched lazily — only when the inline `integrity_issue_count` from the
+  // list response (or the explicit `hint` from the canvas page when no
+  // list response is in cache) indicates there's something to fix. Saves
+  // a round-trip on every healthy board.
+  return useQuery({
+    queryKey: ['boards', 'integrity', id],
+    queryFn: () => api.get<BoardIntegrityResponse>(`/boards/${id}/integrity`),
+    enabled: !!id && (hint === undefined || hint > 0),
+    staleTime: 60_000,
+  });
+}
+
+export function useRemediateBoard() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (args: {
+      id: string;
+      action: { action: 'detach' } | { action: 'reassign'; project_id: string };
+    }) =>
+      api.post<{ data: { id: string; project_id: string | null } }>(
+        `/boards/${args.id}/remediate`,
+        args.action,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boards'] });
     },
