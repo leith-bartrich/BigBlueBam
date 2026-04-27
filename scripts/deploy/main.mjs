@@ -191,10 +191,40 @@ async function main() {
       );
     }
 
-    // Generate secrets
+    // Generate secrets — but on a `--reconfigure` run against an existing
+    // .env, preserve the secrets that bind to *persistent volumes* (postgres
+    // role password, redis password, minio root credentials). Postgres only
+    // honors POSTGRES_PASSWORD on first init; rolling it via reconfigure
+    // breaks every subsequent migrate run with "password authentication
+    // failed for user bigbluebam" because the role hash in pg_authid still
+    // matches the old password. Same hazard for redis (AUTH on existing
+    // RDB/AOF) and minio (root user baked into bucket IAM). Session secrets
+    // and INTERNAL_* secrets are safe to reroll — they only invalidate
+    // active sessions / require simultaneous service restart, which the
+    // deploy script does anyway.
     process.stdout.write('\nGenerating cryptographic secrets... ');
     const secrets = generateSecrets();
+    const STORAGE_SECRET_KEYS = [
+      'POSTGRES_PASSWORD',
+      'REDIS_PASSWORD',
+      'MINIO_ROOT_USER',
+      'MINIO_ROOT_PASSWORD',
+    ];
+    const preserved = [];
+    if (state.envConfig) {
+      for (const key of STORAGE_SECRET_KEYS) {
+        const existing = state.envConfig[key];
+        if (existing && existing !== '[REDACTED]') {
+          secrets[key] = existing;
+          preserved.push(key);
+        }
+      }
+    }
     console.log(check);
+    if (preserved.length > 0) {
+      console.log(dim(`  Preserved ${preserved.length} secret(s) bound to persistent volumes:`));
+      console.log(dim(`    ${preserved.join(', ')}`));
+    }
 
     // Storage
     const storage = await promptStorageChoice();
