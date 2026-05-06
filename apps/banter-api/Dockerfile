@@ -37,22 +37,6 @@ RUN pnpm --filter @bigbluebam/shared build \
 RUN pnpm --filter @bigbluebam/banter-api deploy --prod /app/deployed
 
 
-# ── Stage: dev ────────────────────────────────────────────────────
-FROM deps AS dev
-
-COPY tsconfig.base.json ./
-COPY packages/shared/ ./packages/shared/
-COPY packages/logging/ ./packages/logging/
-COPY packages/service-health/ ./packages/service-health/
-COPY packages/db-stubs/ ./packages/db-stubs/
-COPY apps/banter-api/ ./apps/banter-api/
-
-WORKDIR /app/apps/banter-api
-
-EXPOSE 4002
-
-CMD ["npx", "tsx", "watch", "src/server.ts"]
-
 # ── Stage: production ────────────────────────────────────────────
 FROM node:22-alpine AS production
 

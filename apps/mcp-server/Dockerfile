@@ -27,19 +27,6 @@ RUN pnpm --filter @bigbluebam/shared build \
 RUN pnpm --filter @bigbluebam/mcp-server deploy --prod /app/deployed
 
 
-# ── Stage: dev ────────────────────────────────────────────────────
-FROM deps AS dev
-
-COPY tsconfig.base.json ./
-COPY packages/shared/ ./packages/shared/
-COPY apps/mcp-server/ ./apps/mcp-server/
-
-WORKDIR /app/apps/mcp-server
-
-EXPOSE 3001
-
-CMD ["npx", "tsx", "watch", "src/server.ts"]
-
 # ── Stage: production ────────────────────────────────────────────
 FROM node:22-alpine AS production
 
