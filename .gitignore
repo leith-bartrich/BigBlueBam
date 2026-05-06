@@ -13,7 +13,9 @@ Thumbs.db
 .vite/
 e2e-*.png
 test-*.png
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 .claire/
 .deploy-state.json
 .deploy-state-railway.json
