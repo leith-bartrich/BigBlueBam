@@ -34,21 +34,6 @@ RUN pnpm --filter @bigbluebam/shared build \
 RUN pnpm --filter @bigbluebam/api deploy --prod /app/deployed
 
 
-# ── Stage: dev ────────────────────────────────────────────────────
-FROM deps AS dev
-
-COPY tsconfig.base.json ./
-COPY packages/shared/ ./packages/shared/
-COPY packages/logging/ ./packages/logging/
-COPY packages/service-health/ ./packages/service-health/
-COPY apps/api/ ./apps/api/
-
-WORKDIR /app/apps/api
-
-EXPOSE 4000
-
-CMD ["npx", "tsx", "watch", "src/server.ts"]
-
 # ── Stage: production ────────────────────────────────────────────
 FROM node:22-alpine AS production
 
