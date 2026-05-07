@@ -93,6 +93,7 @@ services:
       S3_BUCKET: ${S3_BUCKET:-bigbluebam-uploads}
       S3_REGION: ${S3_REGION:-us-east-1}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}

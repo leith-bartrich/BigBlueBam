@@ -49,8 +49,11 @@ const envSchema = z.object({
 
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.preprocess(
-    (val) => (val === '' || val === undefined ? undefined : val),
-    z.coerce.boolean().optional(),
+    (val) => {
+      if (val === '' || val === undefined) return undefined;
+      return val !== 'false' && val !== '0';
+    },
+    z.boolean().optional(),
   ),
 
   // SMTP / email (P1-30). Optional — if SMTP_HOST is unset, outbound emails
