@@ -191,10 +191,66 @@ async function main() {
       );
     }
 
-    // Generate secrets
+    // Generate secrets — but on a `--reconfigure` run against an existing
+    // .env, preserve the secrets that bind to *persistent volumes* (postgres
+    // role password, redis password, minio root credentials). Postgres only
+    // honors POSTGRES_PASSWORD on first init; rolling it via reconfigure
+    // breaks every subsequent migrate run with "password authentication
+    // failed for user bigbluebam" because the role hash in pg_authid still
+    // matches the old password. Same hazard for redis (AUTH on existing
+    // RDB/AOF) and minio (root user baked into bucket IAM). Session secrets
+    // and INTERNAL_* secrets are safe to reroll — they only invalidate
+    // active sessions / require simultaneous service restart, which the
+    // deploy script does anyway.
     process.stdout.write('\nGenerating cryptographic secrets... ');
     const secrets = generateSecrets();
+    const STORAGE_SECRET_KEYS = [
+      'POSTGRES_PASSWORD',
+      'REDIS_PASSWORD',
+      'MINIO_ROOT_USER',
+      'MINIO_ROOT_PASSWORD',
+    ];
+    // .deploy-state.json redacts secrets to '[REDACTED]' before persisting
+    // for safety, so we can't preserve from there. The actual source of
+    // truth for what the volumes hold is .env on disk — Docker Compose
+    // feeds it to postgres/redis/minio at boot. Read .env line-by-line if
+    // it exists and overlay the volume-bound keys.
+    const preserved = [];
+    try {
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const envPath = path.resolve(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        const text = fs.readFileSync(envPath, 'utf8');
+        const map = {};
+        for (const line of text.split(/\r?\n/)) {
+          const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+          if (m) map[m[1]] = m[2];
+        }
+        for (const key of STORAGE_SECRET_KEYS) {
+          const existing = map[key];
+          if (existing && existing !== '[REDACTED]') {
+            secrets[key] = existing;
+            preserved.push(key);
+          }
+        }
+      }
+    } catch (err) {
+      console.log(`\n  ${yellow('!')} Could not read existing .env for secret preservation: ${err.message}`);
+    }
     console.log(check);
+    if (preserved.length > 0) {
+      console.log(dim(`  Preserved ${preserved.length} secret(s) bound to persistent volumes (from .env):`));
+      for (const key of preserved) {
+        const v = secrets[key];
+        // Show first 4 + last 4 chars only — enough to verify against psql
+        // / redis-cli without leaking the full secret to a transcript.
+        const masked = v.length > 8 ? `${v.slice(0, 4)}…${v.slice(-4)} (len=${v.length})` : `(len=${v.length})`;
+        console.log(dim(`    ${key} = ${masked}`));
+      }
+    } else {
+      console.log(dim('  No existing volume-bound secrets to preserve (fresh install).'));
+    }
 
     // Storage
     const storage = await promptStorageChoice();

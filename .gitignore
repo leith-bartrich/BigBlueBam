@@ -28,3 +28,7 @@ apps/e2e/.auth
 test-results/
 AGENT_DEVELOPMENT.md
 agents/
+# LiveKit server config — rendered from livekit.yaml.template at deploy
+# time by scripts/deploy/platforms/docker-compose.mjs::renderLivekitConfig.
+# Never commit this; it carries the deployed LIVEKIT_API_SECRET.
+infra/livekit/livekit.yaml

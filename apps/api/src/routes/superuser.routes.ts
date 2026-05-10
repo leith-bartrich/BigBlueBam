@@ -1400,4 +1400,50 @@ export default async function superuserRoutes(fastify: FastifyInstance) {
       };
     },
   );
+
+  // ─── GET /superuser/calling-credentials ──────────────────────────────
+  // Read-only summary of LiveKit + voice-agent provider configuration
+  // for the SuperUser console's Platform tab. Reports whether the
+  // platform is running on the published `devkey:secret` dev pair (the
+  // template fallback), the public-facing LiveKit URL, and which STT /
+  // LLM / TTS providers the voice-agent service has access to.
+  //
+  // The actual rotation of credentials happens by re-running the deploy
+  // script — this endpoint is the visibility layer.
+  fastify.get(
+    '/superuser/calling-credentials',
+    { preHandler: [requireAuth, requireSuperuser] },
+    async () => {
+      const apiKey = process.env.LIVEKIT_API_KEY ?? '';
+      // "devkey" is the literal placeholder fallback baked into the
+      // livekit.yaml.template. Anything else is operator-supplied.
+      const usingDevkey = !apiKey || apiKey === 'devkey';
+
+      // STT / LLM / TTS providers come from the voice-agent's runtime
+      // env (or its admin-pushed config). We surface env presence here
+      // as a quick sanity check; the voice-agent's /config endpoint is
+      // the source of truth at runtime.
+      const stt = process.env.DEEPGRAM_API_KEY
+        ? 'deepgram'
+        : process.env.OPENAI_API_KEY
+          ? 'openai'
+          : null;
+      const llm = process.env.LLM_PROVIDER
+        ? process.env.LLM_PROVIDER
+        : process.env.ANTHROPIC_API_KEY
+          ? 'anthropic'
+          : process.env.OPENAI_API_KEY
+            ? 'openai'
+            : null;
+      const tts = process.env.OPENAI_API_KEY ? 'openai' : null;
+
+      return {
+        data: {
+          using_devkey: usingDevkey,
+          livekit_url: process.env.LIVEKIT_WS_URL || null,
+          providers: { stt, llm, tts },
+        },
+      };
+    },
+  );
 }

@@ -14,8 +14,8 @@ import { requireAuth, requireMinRole, requireScope } from '../plugins/auth.js';
 import { requireChannelMember } from '../middleware/channel-auth.js';
 import { broadcastToChannel } from '../services/realtime.js';
 import { generateLiveKitToken, buildRoomName } from '../services/livekit-token.js';
+import { resolveLivekitWsUrl } from '../services/livekit-url.js';
 import * as voiceAgent from '../services/voice-agent-client.js';
-import { env } from '../env.js';
 
 const startCallSchema = z.object({
   type: z.enum(['voice', 'video', 'huddle']),
@@ -121,7 +121,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
             data: {
               call: existingHuddle,
               token,
-              livekit_url: env.LIVEKIT_WS_URL,
+              livekit_url: resolveLivekitWsUrl(request),
               existing: true,
             },
           });
@@ -200,7 +200,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
         data: {
           call,
           token,
-          livekit_url: env.LIVEKIT_WS_URL,
+          livekit_url: resolveLivekitWsUrl(request),
           existing: false,
         },
       });
@@ -417,7 +417,7 @@ export default async function callRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
 
-      return reply.send({ data: { call, token, livekit_url: env.LIVEKIT_WS_URL } });
+      return reply.send({ data: { call, token, livekit_url: resolveLivekitWsUrl(request) } });
     },
   );
 

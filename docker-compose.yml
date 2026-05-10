@@ -105,6 +105,13 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@bigbluebam.com}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost/b3}
+      # env.ts auto-promotes COOKIE_SECURE to true whenever NODE_ENV=production
+      # (which it always is in this image). Browsers silently drop a Secure
+      # cookie sent over plain HTTP, so the session cookie never comes back
+      # and the SPA bounces straight to /login. Wire it explicitly with a
+      # safe HTTP-only default; TLS deploys set COOKIE_SECURE=true in .env.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       INTERNAL_HELPDESK_SECRET: ${INTERNAL_HELPDESK_SECRET:?INTERNAL_HELPDESK_SECRET is required}
       # BAM-RL-E2E: opt-in flag to multiply the global rate limit ceiling for
       # parallel e2e runs. Leave unset on real production deployments.
@@ -309,6 +316,10 @@ services:
       S3_REGION: ${S3_REGION:-us-east-1}
       HELPDESK_URL: ${HELPDESK_URL:-http://localhost/helpdesk}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      # See note on api.COOKIE_SECURE: helpdesk-api also issues session and
+      # csrf cookies, and the same Secure-over-HTTP drop applies.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

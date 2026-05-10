@@ -15,16 +15,32 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .pipeline import AgentPipeline, PipelineConfig
+from .registry import AgentRegistry
 
 logger = logging.getLogger("voice-agent")
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Banter Voice Agent", version="0.5.0")
 
-# ── In-memory state ──────────────────────────────────────────────
+# ── State ───────────────────────────────────────────────────────
+# Two layers:
+#   - `agents` (in-memory): the agents this pod is currently hosting.
+#                           Mirrors a subset of the Redis registry
+#                           (only entries this pod created itself).
+#   - `_active_pipelines` (in-memory): the live rtc.Room +
+#                           asyncio.Task references — not serializable,
+#                           so they only live in this process.
+#   - `registry` (Redis): cross-pod source of truth for "which agents
+#                           are believed alive somewhere." On pod
+#                           startup we read it, ask LiveKit to remove
+#                           any orphan participants from their rooms,
+#                           then clear it. banter-api re-spawns agents
+#                           on demand so we don't need to recreate
+#                           them ourselves.
 
 agents: dict[str, dict] = {}
 _active_pipelines: dict[str, AgentPipeline] = {}
+registry = AgentRegistry()
 
 # Provider configuration (pushed from banter-api admin settings)
 _provider_config: dict = {
@@ -81,16 +97,103 @@ class TranscribeRequest(BaseModel):
     callback_url: Optional[str] = None
 
 
+# ── Lifecycle hooks ─────────────────────────────────────────────
+
+
+@app.on_event("startup")
+async def _on_startup() -> None:
+    """Connect to Redis and reconcile any orphan agents from a prior pod.
+
+    The orphans are participants the previous pod believed it was
+    hosting. We can't bring back their pipeline state (asyncio.Task /
+    rtc.Room are dead), so the cleanest move is to ask LiveKit to remove
+    the participant from the room so banter-api can re-spawn cleanly on
+    the next user request. If the LiveKit server-side API is
+    unavailable we just log the orphans and let LiveKit's own empty-
+    room TTL clean up.
+    """
+    await registry.connect()
+    orphans = await registry.reconcile_orphans()
+    if not orphans:
+        return
+    logger.info(
+        "Reconciling %d orphan agent(s) from prior pod: clearing LiveKit participants",
+        len(orphans),
+    )
+    # Best-effort: remove each orphan from its LiveKit room. The Python
+    # LiveKit server SDK does this via RoomService.remove_participant.
+    # Failures are logged and swallowed — banter-api will detect the
+    # call has no agent and re-invoke /agents/spawn if needed.
+    try:
+        from livekit import api as lk_api  # noqa: PLC0415 — lazy import
+    except ImportError:
+        logger.info("livekit SDK unavailable; skipping orphan removal")
+        return
+    livekit_url = os.environ.get("LIVEKIT_URL", "")
+    api_key = os.environ.get("LIVEKIT_API_KEY", "")
+    api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+    if not (livekit_url and api_key and api_secret):
+        logger.info("LiveKit credentials not set; skipping orphan removal")
+        return
+    try:
+        room_service = lk_api.LiveKitAPI(livekit_url, api_key, api_secret)
+        for orphan in orphans:
+            agent_id = orphan.get("agent_id")
+            room_name = orphan.get("room_name")
+            if not (agent_id and room_name):
+                continue
+            try:
+                await room_service.room.remove_participant(
+                    lk_api.RoomParticipantIdentity(room=room_name, identity=agent_id)
+                )
+                logger.info("Removed orphan agent %s from room %s", agent_id, room_name)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to remove orphan agent %s from room %s: %s",
+                    agent_id,
+                    room_name,
+                    exc,
+                )
+        await room_service.aclose()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Orphan reconciliation aborted: %s", exc)
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    """Graceful disconnect of every pipeline this pod owns.
+
+    Called by FastAPI on SIGTERM / lifespan shutdown. Disconnects the
+    rtc.Room of every active pipeline so the SFU sees the participant
+    leave cleanly, then drops their Redis entry. Hard kill (SIGKILL)
+    bypasses this, which is exactly why the startup orphan-reconcile
+    above exists as the belt-and-suspenders.
+    """
+    for agent_id in list(_active_pipelines.keys()):
+        pipeline = _active_pipelines.pop(agent_id, None)
+        if pipeline:
+            try:
+                await pipeline.disconnect()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Shutdown: failed to disconnect pipeline %s: %s", agent_id, exc
+                )
+        await registry.deregister(agent_id)
+    await registry.disconnect()
+
+
 # ── Health ───────────────────────────────────────────────────────
 
 
 @app.get("/health")
-def health():
+async def health():
     pipeline_cfg = _build_pipeline_config()
     return {
         "status": "ok",
         "agents": len(agents),
         "active_pipelines": len(_active_pipelines),
+        "registry_connected": registry.connected,
+        "registry_count": await registry.count(),
         "livekit_sdk": pipeline_cfg.livekit_available,
         "stt_ready": pipeline_cfg.stt_ready,
         "llm_ready": pipeline_cfg.llm_ready,
@@ -174,6 +277,10 @@ async def spawn_agent(data: SpawnRequest):
         agent_state["detail"] = "Text-only participant"
 
     agents[agent_id] = agent_state
+    # Mirror to Redis so a pod restart can find and clean up this
+    # participant. Best-effort; ignored when the registry isn't
+    # connected (it falls back to in-memory-only).
+    await registry.register(agent_id, agent_state)
     return SpawnResponse(agent_id=agent_id, status=agent_state["status"])
 
 
@@ -188,6 +295,13 @@ async def despawn_agent(agent_id: str):
             await pipeline.disconnect()
         except Exception as exc:
             logger.warning("Error disconnecting pipeline for %s: %s", agent_id, exc)
+
+    # Drop the Redis registry entry too so the next pod restart's
+    # reconcile pass doesn't try to remove a participant that's
+    # already gone. We deregister even when `removed` was None — the
+    # in-memory state may have lagged (e.g. a previous restart cleared
+    # `agents` but Redis kept the entry), and we want both sides clean.
+    await registry.deregister(agent_id)
 
     if removed is None:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")

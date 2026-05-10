@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Hash,
   ChevronDown,
@@ -45,14 +45,29 @@ export function BanterSidebar({ onNavigate, activeRoute }: BanterSidebarProps) {
   const regularChannels = channels?.filter((c) => c.type === 'public' || c.type === 'private') ?? [];
   const dmChannels = channels?.filter((c) => c.type === 'dm' || c.type === 'group_dm') ?? [];
 
-  // Load org members for DM list when DMs section opens
-  if (dmsOpen && !membersLoaded) {
+  // Load org members for DM list when the DMs section opens. This used to
+  // run setState + fetch directly in the render body — a side effect during
+  // render that React 19 + iPad Safari handled inconsistently and could
+  // contribute to the black-screen-on-mount symptom. Move into an effect.
+  useEffect(() => {
+    if (!dmsOpen || membersLoaded) return;
+    let cancelled = false;
     setMembersLoaded(true);
-    fetch('/b3/api/org/members', { credentials: 'include' })
-      .then(r => r.json())
-      .then(j => { if (j.data) setOrgMembers(j.data.filter((m: any) => m.id !== user?.id)); })
-      .catch(() => {});
-  }
+    (async () => {
+      try {
+        const res = await fetch('/b3/api/org/members', { credentials: 'include' });
+        if (!res.ok || cancelled) return;
+        const j = await res.json();
+        if (cancelled || !j?.data) return;
+        setOrgMembers(j.data.filter((m: { id: string }) => m.id !== user?.id));
+      } catch {
+        // swallow — sidebar still renders without the DM-people roster
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dmsOpen, membersLoaded, user?.id]);
 
   const handleCreateChannel = () => {
     const name = newChannelName.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
